@@ -381,8 +381,9 @@ final class FaderPanelBody: NSView {
     var onFaderMoved: ((Double) -> Void)?
     /// Called when Cut is pressed.
     var onCut: (() -> Void)?
-    /// Called when Swap is pressed (the ONE/TWO fader only).
-    var onSwap: (() -> Void)?
+    private var cutButton: NSButton?
+    private var leftName = ""
+    private var rightName = ""
 
     /// - Parameters:
     ///   - leftLabel/rightLabel: the two ends, e.g. "A" and "B".
@@ -394,17 +395,27 @@ final class FaderPanelBody: NSView {
         includesSwap: Bool
     ) {
         self.fader = Controls.fader(value: 0.5, fillsFromCentre: true, accent: leftColor)
+        fader.leadingTint = leftColor
+        fader.trailingTint = rightColor
+        // The ONE/TWO fader is the programme cut — the heaviest control in the window.
+        if includesSwap { fader.trackHeightOverride = Theme.Fader.primaryTrackHeight }
         super.init(frame: .zero)
 
         fader.target = self
         fader.action = #selector(faderMoved)
 
+        // Broadcast language throughout, and the cut says where it is going: a button
+        // labelled "Swap" tells you the mechanism, but "CUT TO TWO" tells you what is
+        // about to be on air, which is the thing that matters in the moment.
         var buttons: [NSView] = []
-        if includesSwap {
-            buttons.append(Controls.button("◆ Swap", target: self, action: #selector(swapPressed)))
-        } else {
-            buttons.append(Controls.button("Cut", target: self, action: #selector(cutPressed)))
-        }
+        let cutButton = Controls.button(
+            "CUT TO \(rightLabel.uppercased())",
+            target: self, action: #selector(cutPressed))
+        cutButton.toolTip = "Hard cut to \(rightLabel)"
+        self.cutButton = cutButton
+        self.leftName = leftLabel
+        self.rightName = rightLabel
+        buttons.append(cutButton)
         buttons.append(Controls.button("Fade", enabled: false))
         // Cut-on-beat needs the musical clock scheduler to be wired to the mixer.
         buttons.append(Controls.segmented(["Beat"], selected: -1, enabled: false))
@@ -472,10 +483,12 @@ final class FaderPanelBody: NSView {
     func setPosition(_ position: Double) {
         fader.value = position
         valueLabel.stringValue = String(format: "%.2f", position)
+        updateCutLabel()
     }
 
     @objc private func faderMoved() {
         valueLabel.stringValue = String(format: "%.2f", fader.value)
+        updateCutLabel()
         onFaderMoved?(fader.value)
     }
 
@@ -487,10 +500,13 @@ final class FaderPanelBody: NSView {
         onCut?()
     }
 
-    @objc private func swapPressed() {
-        let target = 1.0 - fader.value.rounded()
-        setPosition(target)
-        onFaderMoved?(target)
-        onSwap?()
+    /// Retitles the cut button to name where the cut would land.
+    ///
+    /// Called whenever the fader moves, so the label always describes what pressing
+    /// it would do rather than what it did last time.
+    private func updateCutLabel() {
+        let destination = fader.value < 0.5 ? rightName : leftName
+        cutButton?.title = "CUT TO \(destination.uppercased())"
+        cutButton?.toolTip = "Hard cut to \(destination)"
     }
 }

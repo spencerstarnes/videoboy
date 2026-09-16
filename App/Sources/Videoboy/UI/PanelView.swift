@@ -67,7 +67,23 @@ final class PanelView: NSView {
         super.init(frame: .zero)
 
         wantsLayer = true
-        layer?.backgroundColor = Theme.Color.panelFill.cgColor
+        // A panel belonging to a bus carries a trace of that bus's colour, so the
+        // crossfader's tinted track and the windows it mixes are visibly the same
+        // two things. Very low strength: this is orientation, not decoration.
+        let fill: NSColor
+        switch bus {
+        case .one:
+            fill = Theme.Color.panelFill.blended(
+                withFraction: Theme.Color.busTintStrength, of: Theme.Color.busOne)
+                ?? Theme.Color.panelFill
+        case .two:
+            fill = Theme.Color.panelFill.blended(
+                withFraction: Theme.Color.busTintStrength, of: Theme.Color.busTwo)
+                ?? Theme.Color.panelFill
+        case .none:
+            fill = Theme.Color.panelFill
+        }
+        layer?.backgroundColor = fill.cgColor
         layer?.borderColor = Theme.Color.panelBorder.cgColor
         layer?.borderWidth = Theme.Metrics.hairline
         layer?.cornerRadius = Theme.Metrics.panelCornerRadius

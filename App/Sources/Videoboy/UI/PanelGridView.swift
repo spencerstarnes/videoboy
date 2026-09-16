@@ -156,6 +156,13 @@ final class PanelGridView: NSView {
 
     override var isFlipped: Bool { true }
 
+    /// Takes the chrome tint from the shell, so the gaps between panels carry the
+    /// pulse too. The panels themselves are left alone — only the space around them
+    /// breathes.
+    func setChromeTint(_ colour: NSColor) {
+        layer?.backgroundColor = colour.cgColor
+    }
+
     // MARK: - Panel construction
 
     /// Builds all sixteen panels in the arrangement of SPEC 14.1.

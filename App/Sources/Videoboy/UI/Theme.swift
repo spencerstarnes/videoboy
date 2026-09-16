@@ -86,6 +86,21 @@ enum Theme {
         static let valueReadoutWidth: CGFloat = 32
     }
 
+    // MARK: - Pulse
+    //
+    // How strongly the window chrome responds to the clock. Both are small on
+    // purpose: this is meant to be felt in peripheral vision while watching the
+    // picture, not looked at.
+
+    enum Pulse {
+        /// Peak strength of the per-beat pulse, as a blend fraction.
+        static let beatStrength: Double = 0.06
+        /// Peak strength of the tempo-change flash.
+        static let flashStrength: Double = 0.22
+        /// How fast that flash fades, per 30 Hz tick. About two-thirds of a second.
+        static let flashDecayPerFrame: Double = 0.05
+    }
+
     // MARK: - Record
     //
     // Recording lives at the top right (not in the bottom bar as the original mockup
@@ -133,6 +148,12 @@ enum Theme {
         static let keyboardStep: Double = 0.01
         /// Height of the taller crossfader used in the fader panels.
         static let crossfaderHeight: CGFloat = 20
+        /// How strongly a tinted track shows its bus colour. Low: it must say which
+        /// way you are heading without competing with the picture above it.
+        static let trackTintAlpha: CGFloat = 0.30
+        /// Track thickness for the primary crossfader — the heaviest control in the
+        /// window, and the one a hand finds without looking.
+        static let primaryTrackHeight: CGFloat = 18
         /// Height of the compact fader used in a shuttle strip, where the scrub track
         /// is a readout more than a control and must not dominate the row.
         static let compactHeight: CGFloat = 11
@@ -202,6 +223,10 @@ enum Theme {
 
         /// Sub Mix ONE identity, amber (`--one`).
         static let busOne = NSColor(srgbRed: 0xe3 / 255.0, green: 0xa5 / 255.0, blue: 0x3a / 255.0, alpha: 1)
+        /// How much of a bus's colour a panel belonging to it carries. Very low:
+        /// enough to group the windows by eye, not enough to tint the picture.
+        static let busTintStrength: CGFloat = 0.055
+
         /// Sub Mix TWO identity, cyan (`--two`).
         static let busTwo = NSColor(srgbRed: 0x54 / 255.0, green: 0xc2 / 255.0, blue: 0xcf / 255.0, alpha: 1)
 
@@ -232,6 +257,15 @@ enum Theme {
         static let recordRing = NSColor(white: 1.0, alpha: 0.28)
         /// An unarmed per-preview dot.
         static let recordDisarmed = NSColor(white: 1.0, alpha: 0.22)
+
+        /// The beat pulse painted on the window chrome.
+        ///
+        /// Deliberately faint. The point is to feel the tempo in peripheral vision
+        /// while watching the picture — anything strong enough to notice directly
+        /// would compete with the thing you are actually looking at.
+        static let beatPulse = NSColor(srgbRed: 0.42, green: 0.55, blue: 0.85, alpha: 1)
+        /// The stronger flash when the tempo itself changes.
+        static let tempoChangeFlash = NSColor(srgbRed: 0.30, green: 0.70, blue: 1.0, alpha: 1)
     }
 
     // MARK: - Type

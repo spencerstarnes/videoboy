@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-16T21:03:43Z
+when:     2026-09-16T21:07:32Z
 core:     0.3.0
 
 notes:
@@ -12,10 +12,10 @@ notes:
 
 assertions (8/8 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 863.7
+  PASS  wide is not blank — luminance variance 1000.4
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 722.0
+  PASS  compact is not blank — luminance variance 824.4
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 919.7
-  PASS  collapsed-left is not blank — luminance variance 698.4
-  PASS  collapsed-both-edges is not blank — luminance variance 525.9
+  PASS  narrow is not blank — luminance variance 1012.6
+  PASS  collapsed-left is not blank — luminance variance 814.7
+  PASS  collapsed-both-edges is not blank — luminance variance 609.4

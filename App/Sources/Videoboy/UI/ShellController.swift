@@ -33,6 +33,10 @@ final class ShellController {
         wireToolbar()
         wireSettingsBar()
         wireRecordIndicators()
+        engine.onTempoChanged = { [weak self] tempo in
+            self?.shell.flashTempoChange()
+            self?.shell.toolbar.setTempo(tempo)
+        }
         engine.onFrame = { [weak self] engine in self?.refresh(from: engine) }
     }
 
@@ -476,10 +480,15 @@ final class ShellController {
             let beats = engine.transport.beats(atHostTime: CACurrentMediaTime())
             let cycle = beats / Theme.Record.pulseBeats
             phase = cycle - cycle.rounded(.down)
+            // The window chrome breathes on the BEAT, not on the record pulse's two
+            // beats — they are different rhythms and should not be conflated.
+            let beatPhase = beats - beats.rounded(.down)
+            shell.setBeatPhase(beatPhase)
         } else {
             // Stopped: hold the indicators at full brightness rather than freezing
             // them mid-fade, which reads as a rendering fault.
             phase = 0
+            shell.clearBeatPulse()
         }
         for indicator in recordIndicators.values where indicator.isArmed {
             indicator.isRecording = isRecording
@@ -644,7 +653,7 @@ final class ShellController {
         let tempo = 60.0 / average
         // Ignore taps that imply an implausible tempo rather than lurching to it.
         guard tempo > 40, tempo < 300 else { return }
-        engine.transport.beatsPerMinute = tempo
+        engine.setTempo(tempo)
         shell.toolbar.setTempo(tempo)
     }
 

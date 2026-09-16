@@ -56,6 +56,19 @@ final class VBFader: NSControl {
     /// True while the user is dragging, so the cap can grow slightly.
     private var isDragging = false
 
+    /// Tints for the two ends of the travel.
+    ///
+    /// A crossfader between two named buses should say which end is which without a
+    /// label: the track carries each bus's colour on its own side, and the fill
+    /// takes the colour of whichever side is winning. Nil leaves the track neutral,
+    /// which is right for an ordinary parameter with no "sides".
+    var leadingTint: NSColor?
+    var trailingTint: NSColor?
+
+    /// Overrides the track thickness. The primary crossfader is the heaviest control
+    /// in the window and reads as such; a parameter fader does not need to.
+    var trackHeightOverride: CGFloat?
+
     /// A shorter, thinner variant for places where the fader is more readout than
     /// control — a shuttle's scrub track, for instance.
     var isCompact = false {
@@ -66,7 +79,8 @@ final class VBFader: NSControl {
     }
 
     private var trackHeight: CGFloat {
-        isCompact ? Theme.Fader.trackHeight * 0.6 : Theme.Fader.trackHeight
+        if let trackHeightOverride { return trackHeightOverride }
+        return isCompact ? Theme.Fader.trackHeight * 0.6 : Theme.Fader.trackHeight
     }
 
     private var capWidth: CGFloat {
@@ -126,11 +140,25 @@ final class VBFader: NSControl {
         let radius = trackHeight / 2
         let dimmed = isEnabled ? 1.0 : Theme.Fader.disabledAlpha
 
-        // Track.
+        // Track. With tints set, each half carries its bus's colour at low strength —
+        // enough to know which way you are heading without competing with the picture.
         let trackPath = NSBezierPath(roundedRect: track, xRadius: radius, yRadius: radius)
         Theme.Color.faderTrack.withAlphaComponent(
             Theme.Color.faderTrack.alphaComponent * dimmed).setFill()
         trackPath.fill()
+
+        if let leadingTint, let trailingTint {
+            NSGraphicsContext.saveGraphicsState()
+            trackPath.addClip()
+            let half = track.width / 2
+            leadingTint.withAlphaComponent(Theme.Fader.trackTintAlpha * dimmed).setFill()
+            NSBezierPath(rect: NSRect(
+                x: track.minX, y: track.minY, width: half, height: track.height)).fill()
+            trailingTint.withAlphaComponent(Theme.Fader.trackTintAlpha * dimmed).setFill()
+            NSBezierPath(rect: NSRect(
+                x: track.midX, y: track.minY, width: half, height: track.height)).fill()
+            NSGraphicsContext.restoreGraphicsState()
+        }
 
         // Fill. From the left normally; from the centre for a bipolar control, so a
         // crossfader shows how far it has been pushed from neutral rather than how
@@ -147,7 +175,15 @@ final class VBFader: NSControl {
         }
         if fillRect.width > 0.5 {
             let fillPath = NSBezierPath(roundedRect: fillRect, xRadius: radius, yRadius: radius)
-            accentColor.withAlphaComponent(dimmed).setFill()
+            // The fill takes the colour of the side being travelled toward, so the
+            // control answers "which bus am I on" at a glance and while moving.
+            let fillColour: NSColor
+            if let leadingTint, let trailingTint {
+                fillColour = normalisedValue >= 0.5 ? trailingTint : leadingTint
+            } else {
+                fillColour = accentColor
+            }
+            fillColour.withAlphaComponent(dimmed).setFill()
             fillPath.fill()
         }
 

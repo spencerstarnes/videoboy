@@ -98,6 +98,14 @@ final class Engine {
     /// The most recent tempo estimate from audio, for the toolbar's sync indicator.
     private(set) var latestTempoEstimate: TempoEstimate?
 
+    /// Called when the tempo changes from any source — a tap, beat detection, or by
+    /// hand. Two of those three happen without the operator doing it directly, which
+    /// is why it is worth announcing.
+    var onTempoChanged: ((Double) -> Void)?
+
+    /// The tempo last announced, so a change is reported once rather than per frame.
+    private var lastAnnouncedTempo: Double = 0
+
     /// Black-frame insertion on the program bus (SPEC 11).
     var blackFrameInsertion = BlackFrameInsertion(everyNFrames: 0)
 
@@ -418,6 +426,21 @@ final class Engine {
         if running { transport.start(atHostTime: now) } else { transport.stop(atHostTime: now) }
     }
 
+    /// Sets the tempo and announces it, whatever the source.
+    ///
+    /// Every route to a tempo change goes through here — tap, detection, manual —
+    /// so the announcement cannot be forgotten by one of them.
+    func setTempo(_ beatsPerMinute: Double) {
+        guard beatsPerMinute > 0 else { return }
+        transport.beatsPerMinute = beatsPerMinute
+        // Announce only a real change: detection nudges by fractions constantly, and
+        // flashing the window for each would be a strobe rather than a signal.
+        if abs(beatsPerMinute - lastAnnouncedTempo) > 0.4 {
+            lastAnnouncedTempo = beatsPerMinute
+            onTempoChanged?(beatsPerMinute)
+        }
+    }
+
     /// Records the output mode that was negotiated, for the settings bar and for
     /// comparison against captured loopback metrics.
     func setNegotiatedOutputMode(_ mode: String) {
@@ -506,7 +529,7 @@ final class Engine {
         // Ignore tiny corrections: nudging the tempo every window would make
         // everything locked to it jitter.
         guard abs(estimate.beatsPerMinute - transport.beatsPerMinute) > 0.5 else { return }
-        transport.beatsPerMinute = estimate.beatsPerMinute
+        setTempo(estimate.beatsPerMinute)
     }
 
     /// Sets a bus's interchange codec, which decides what data effects it offers.
