@@ -92,6 +92,55 @@ public enum TestPattern {
         return image
     }
 
+    /// Crosshatch / grid. Used for CRT geometry checks and, per SPEC 11, for seeding
+    /// feedback loops — a grid gives the loop hard edges to chew on.
+    public static func crosshatch(
+        width: Int = StandardDefinition.width,
+        height: Int = StandardDefinition.height,
+        spacing: Int = 40
+    ) -> ImageBuffer {
+        var image = ImageBuffer(width: width, height: height)
+        for y in 0..<height {
+            for x in 0..<width {
+                // Lines on the grid, plus a border, drawn white on black.
+                let onGrid = x % spacing == 0 || y % spacing == 0
+                    || x == width - 1 || y == height - 1
+                let value: UInt8 = onGrid ? 255 : 0
+                image.setPixel(x: x, y: y, r: value, g: value, b: value)
+            }
+        }
+        return image
+    }
+
+    /// PLUGE: black, below-black and above-black bars for setting CRT brightness.
+    ///
+    /// NTSC black sits at 7.5 IRE, so the reference patches straddle it — the
+    /// just-below patch should be invisible on a correctly set monitor and the
+    /// just-above one barely visible.
+    public static func pluge(
+        width: Int = StandardDefinition.width,
+        height: Int = StandardDefinition.height
+    ) -> ImageBuffer {
+        // 7.5 IRE of a 0...100 IRE range, in 8-bit terms.
+        let blackLevel = UInt8(0.075 * 255)
+        var image = solid(width: width, height: height, r: blackLevel, g: blackLevel, b: blackLevel)
+        let patchWidth = width / 6
+        let patches: [(index: Int, value: UInt8)] = [
+            (1, max(blackLevel, 4) - 4),   // below black
+            (2, blackLevel),               // black
+            (3, blackLevel + 8),           // just above black
+            (4, 191)                       // a 75% white reference
+        ]
+        for patch in patches {
+            for y in height / 4..<(height * 3 / 4) {
+                for x in (patch.index * patchWidth)..<((patch.index + 1) * patchWidth) {
+                    image.setPixel(x: x, y: y, r: patch.value, g: patch.value, b: patch.value)
+                }
+            }
+        }
+        return image
+    }
+
     /// A horizontal luminance ramp. Smooth vertically, so its comb score is the
     /// floor — this calibrates the interlace detector's lower end.
     public static func grayscaleRamp(

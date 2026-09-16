@@ -119,10 +119,57 @@ final class PanelSet {
                                          value: 0.25, activeBadges: ["C"], enabled: true)
                 ]
             ),
-            EffectCardModel(name: "Composite · NTSC", isEnabled: false, isImplemented: false, parameters: [
-                EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
-                                     value: 0.6, activeBadges: [], enabled: false)
-            ]),
+            EffectCardModel(
+                name: "Composite · NTSC",
+                isEnabled: false,
+                isImplemented: FeatureFlag.compositeCodec.isOn,
+                parameters: [
+                    EffectParameterModel(name: "path", code: ParamCode.compositePath.rawValue,
+                                         value: 0.0, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
+                                         value: 0.6, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "bleed", code: ParamCode.chromaBleed.rawValue,
+                                         value: 0.5, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "luma bw", code: ParamCode.lumaBandwidth.rawValue,
+                                         value: 0.7, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
+                                         value: 0.2, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "head sw", code: ParamCode.headSwitchingNoise.rawValue,
+                                         value: 0.3, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "chroma", code: ParamCode.chromaSubsampling.rawValue,
+                                         value: 1.0, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "gen", code: ParamCode.compositeGeneration.rawValue,
+                                         value: 0.0, activeBadges: [], enabled: true)
+                ]
+            ),
+            EffectCardModel(
+                name: "Echo / Trails",
+                isEnabled: false,
+                isImplemented: FeatureFlag.feedback.isOn,
+                parameters: [
+                    EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
+                                         value: 0.8, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
+                                         value: 0.0, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "thresh", code: ParamCode.echoThreshold.rawValue,
+                                         value: 0.15, activeBadges: [], enabled: true)
+                ]
+            ),
+            EffectCardModel(
+                name: "Feedback",
+                isEnabled: false,
+                isImplemented: FeatureFlag.feedback.isOn,
+                parameters: [
+                    EffectParameterModel(name: "gain", code: ParamCode.feedbackGain.rawValue,
+                                         value: 0.0, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "delay", code: ParamCode.feedbackDelayFrames.rawValue,
+                                         value: 0.02, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
+                                         value: 0.52, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "rotate", code: ParamCode.feedbackRotate.rawValue,
+                                         value: 0.5, activeBadges: [], enabled: true)
+                ]
+            ),
             EffectCardModel(name: "Color Ctrl", isEnabled: false, isImplemented: false, parameters: [
                 EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
                                      value: 0.62, activeBadges: [], enabled: false)
@@ -130,7 +177,14 @@ final class PanelSet {
             EffectCardModel(name: "Layer Mask", isEnabled: false, isImplemented: false, parameters: [])
         ])
 
+        // Sub Mix TWO's chain: the same effect types are available, but only one set
+        // of bus effects is wired to the graph so far, so these stay disabled rather
+        // than pretending to do something.
         effectsTwoBody = EffectChainPanelBody(effects: [
+            EffectCardModel(name: "Composite · NTSC", isEnabled: false, isImplemented: false, parameters: [
+                EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
+                                     value: 0.6, activeBadges: [], enabled: false)
+            ]),
             EffectCardModel(name: "Echo / Trails", isEnabled: false, isImplemented: false, parameters: [
                 EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
                                      value: 0.55, activeBadges: [], enabled: false)

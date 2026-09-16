@@ -104,12 +104,63 @@ final class ShellController {
         }
     }
 
+    /// Which slot each param code in the Sub Mix 1 chain belongs to.
+    ///
+    /// The chain shows effects from several nodes in one list, so a code alone is not
+    /// enough to know where a slider's value should land. This table is that mapping,
+    /// written out rather than inferred so adding an effect is a one-line change.
+    private static let subMixOneSlots: [ParamCode: String] = [
+        // The wedge lives on the source, because it must run before decode.
+        .corruptAmount: GraphTopology.sourceA,
+        .corruptMode: GraphTopology.sourceA,
+        .corruptRate: GraphTopology.sourceA,
+        .corruptSeed: GraphTopology.sourceA,
+        // The composite codec and the time-domain effects are bus FX.
+        .compositePath: Engine.compositeSlot,
+        .compositeCrawl: Engine.compositeSlot,
+        .chromaBleed: Engine.compositeSlot,
+        .lumaBandwidth: Engine.compositeSlot,
+        .tbcWobble: Engine.compositeSlot,
+        .headSwitchingNoise: Engine.compositeSlot,
+        .chromaSubsampling: Engine.compositeSlot,
+        .compositeGeneration: Engine.compositeSlot,
+        .echoDecay: Engine.echoSlot,
+        .trailLength: Engine.echoSlot,
+        .echoThreshold: Engine.echoSlot,
+        .feedbackGain: Engine.feedbackSlot,
+        .feedbackDelayFrames: Engine.feedbackSlot,
+        .feedbackZoom: Engine.feedbackSlot,
+        .feedbackRotate: Engine.feedbackSlot,
+        .feedbackThreshold: Engine.feedbackSlot
+    ]
+
     private func wireEffectChains() {
-        // Sub Mix 1's FX chain drives channel A's corruptor. One chain per sub-mix is
-        // the shape SPEC 14.2 describes; per-channel chains arrive with channel FX.
         shell.grid.panels.effectsOneBody.onParameterChanged = { [weak self] code, value in
             guard let self, let parameter = ParamCode(rawValue: code) else { return }
-            self.engine.registry.setValue(value, slot: GraphTopology.sourceA, code: parameter)
+            guard let slot = Self.subMixOneSlots[parameter] else {
+                Log.warn(.param, "no slot is registered for param code \(code); ignoring the change")
+                return
+            }
+            // The slider is 0...1; the registry scales it into the parameter's range.
+            guard let declared = self.engine.graph.nodes[slot]?.parameters
+                .first(where: { $0.code == parameter }) else { return }
+            self.engine.registry.setValue(declared.denormalise(value), slot: slot, code: parameter)
+        }
+
+        shell.grid.panels.effectsOneBody.onEffectToggled = { [weak self] name, isOn in
+            guard let self else { return }
+            // Bypassing is expressed as wet/dry, so there is one mechanism rather
+            // than a separate enable flag threaded through every node.
+            let slot: String?
+            switch name {
+            case "Composite · NTSC": slot = Engine.compositeSlot
+            case "Echo / Trails": slot = Engine.echoSlot
+            case "Feedback": slot = Engine.feedbackSlot
+            default: slot = nil
+            }
+            guard let slot else { return }
+            self.engine.registry.setValue(isOn ? 1 : 0, slot: slot, code: .wetDry)
+            Log.info(.app, "\(name) \(isOn ? "enabled" : "bypassed")")
         }
     }
 
@@ -143,9 +194,33 @@ final class ShellController {
     }
 
     private func wireSettingsBar() {
-        shell.grid.panels.settingsBarBody.onTestPatternToggled = { [weak self] on in
+        let settings = shell.grid.panels.settingsBarBody
+        settings.onTestPatternToggled = { [weak self] on in
             self?.setOutputWindowVisible(on)
         }
+        settings.onSafeZoneToggled = { [weak self] on in
+            self?.setSafeZonesVisible(on)
+        }
+        settings.onOverscanToggled = { [weak self] on in
+            // A single toggle picks a representative amount; the continuous control
+            // is the 82A parameter, which a mapping or a template can drive.
+            self?.engine.overscan = on ? 0.5 : 0.0
+            self?.shell.grid.panels.programBody.preview.overscan = on ? 0.5 : 0.0
+        }
+        settings.onBlackFrameInsertionToggled = { [weak self] on in
+            self?.engine.blackFrameInsertion = BlackFrameInsertion.from(normalised: on ? 0.5 : 0)
+        }
+    }
+
+    /// Shows or hides the action-safe and title-safe overlays on every preview.
+    private func setSafeZonesVisible(_ visible: Bool) {
+        let panels = shell.grid.panels
+        for letter in Self.channels {
+            panels.sourceBodies[letter]?.preview.showsSafeZones = visible
+        }
+        panels.subMixOneBody.preview.showsSafeZones = visible
+        panels.subMixTwoBody.preview.showsSafeZones = visible
+        panels.programBody.preview.showsSafeZones = visible
     }
 
     // MARK: - Output

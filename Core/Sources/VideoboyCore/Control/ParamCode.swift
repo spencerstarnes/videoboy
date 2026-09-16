@@ -50,6 +50,8 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
 
     case echoDecay = "21A"
     case trailLength = "22A"
+    /// Luma threshold above which a pixel is echoed at all.
+    case echoThreshold = "23A"
 
     // MARK: The bitstream wedge (3xB)
     //
@@ -69,6 +71,12 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
 
     case feedbackGain = "43C"
     case feedbackDelayFrames = "44C"
+    /// Zoom applied inside the feedback loop — the classic infinite tunnel.
+    case feedbackZoom = "45C"
+    /// Rotation applied inside the feedback loop, in turns.
+    case feedbackRotate = "46C"
+    /// Luma key threshold for what re-enters the loop.
+    case feedbackThreshold = "47C"
 
     // MARK: Colour (5xA)
 
@@ -92,6 +100,27 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case compositeCrawl = "71A"
     case chromaBleed = "72A"
     case tbcWobble = "73A"
+    /// Signal path: composite (cross-colour artefacts) vs S-Video (clean Y/C).
+    case compositePath = "74A"
+    /// How many times the codec runs — Nth-generation dubbing feel.
+    case compositeGeneration = "75A"
+    /// Luma bandwidth limit, which controls ringing and softness.
+    case lumaBandwidth = "76A"
+    /// Chroma subsampling: 4:4:4 / 4:2:2 / 4:1:1.
+    case chromaSubsampling = "77A"
+    /// Head-switching noise band at the bottom of the frame.
+    case headSwitchingNoise = "78A"
+
+    // MARK: CRT target (8xA)
+
+    /// Safe-zone overlay on previews.
+    case safeZone = "81A"
+    /// Overscan amount applied to output.
+    case overscan = "82A"
+    /// Black-frame insertion, clock-timed.
+    case blackFrameInsertion = "83A"
+    /// Grid/crosshatch overlay, for seeding feedback.
+    case gridOverlay = "84A"
 
     /// Human-readable name, used in the UI and in template comments.
     public var displayName: String {
@@ -121,6 +150,19 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .compositeCrawl: "dot crawl"
         case .chromaBleed: "chroma bleed"
         case .tbcWobble: "TBC wobble"
+        case .compositePath: "signal path"
+        case .compositeGeneration: "generation"
+        case .lumaBandwidth: "luma bandwidth"
+        case .chromaSubsampling: "chroma subsampling"
+        case .headSwitchingNoise: "head switching"
+        case .echoThreshold: "echo threshold"
+        case .feedbackZoom: "feedback zoom"
+        case .feedbackRotate: "feedback rotate"
+        case .feedbackThreshold: "feedback threshold"
+        case .safeZone: "safe zones"
+        case .overscan: "overscan"
+        case .blackFrameInsertion: "black frame insertion"
+        case .gridOverlay: "grid overlay"
         }
     }
 }

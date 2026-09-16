@@ -1,7 +1,7 @@
 check:    phase-0/blocked-check-self-test
 verdict:  BLOCKED
-when:     2026-09-16T05:35:08Z
-core:     0.2.0
+when:     2026-09-16T11:24:54Z
+core:     0.3.0
 
 notes:
   BLOCKED: no DVC100 attached
@@ -10,4 +10,4 @@ assertions (1/1 passed):
   PASS  irrelevant — ignored
 
 recent log:
-  1789536908.098 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1789557894.520 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored

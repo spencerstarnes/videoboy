@@ -23,6 +23,10 @@ final class SettingsBarPanelBody: NSView {
     var onTestPatternToggled: ((Bool) -> Void)?
     /// Called when the safe-zone toggle changes.
     var onSafeZoneToggled: ((Bool) -> Void)?
+    /// Called when the overscan toggle changes.
+    var onOverscanToggled: ((Bool) -> Void)?
+    /// Called when black-frame insertion is toggled.
+    var onBlackFrameInsertionToggled: ((Bool) -> Void)?
 
     init(negotiatedMode: String) {
         self.outputPopUp = Controls.popUp(["PRI → \(negotiatedMode)"])
@@ -51,11 +55,12 @@ final class SettingsBarPanelBody: NSView {
 
         let safeToggle = Controls.toggle(on: false, target: self, action: #selector(safeZoneChanged(_:)))
         let testToggle = Controls.toggle(on: false, target: self, action: #selector(testPatternChanged(_:)))
+        let overscanToggle = Controls.toggle(on: false, target: self, action: #selector(overscanChanged(_:)))
+        let bfiToggle = Controls.toggle(on: false, target: self, action: #selector(blackFrameChanged(_:)))
         let toggles = section("Toggles", views: [
             labelled("Safe", safeToggle),
-            // Overscan and black-frame-insertion are Phase 3 CRT features.
-            labelled("Overscan", Controls.toggle(enabled: false)),
-            labelled("BFI", Controls.toggle(enabled: false)),
+            labelled("Overscan", overscanToggle),
+            labelled("BFI", bfiToggle),
             labelled("Test Pat", testToggle)
         ])
 
@@ -98,5 +103,15 @@ final class SettingsBarPanelBody: NSView {
     @objc private func safeZoneChanged(_ sender: NSSwitch) {
         Log.info(.output, "safe zones \(sender.state == .on ? "on" : "off")")
         onSafeZoneToggled?(sender.state == .on)
+    }
+
+    @objc private func overscanChanged(_ sender: NSSwitch) {
+        Log.info(.output, "overscan \(sender.state == .on ? "on" : "off")")
+        onOverscanToggled?(sender.state == .on)
+    }
+
+    @objc private func blackFrameChanged(_ sender: NSSwitch) {
+        Log.info(.output, "black-frame insertion \(sender.state == .on ? "on" : "off")")
+        onBlackFrameInsertionToggled?(sender.state == .on)
     }
 }

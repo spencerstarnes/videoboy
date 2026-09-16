@@ -1,7 +1,7 @@
 check:    phase-2/beat-synced-corruption
 verdict:  PASS
-when:     2026-09-16T05:35:02Z
-core:     0.2.0
+when:     2026-09-16T11:24:48Z
+core:     0.3.0
 
 notes:
   120 BPM, quarter-note reseed, mode shuffleBlocks at amount 0.65

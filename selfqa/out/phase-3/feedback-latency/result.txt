@@ -1,0 +1,14 @@
+check:    phase-3/feedback-latency
+verdict:  PASS
+when:     2026-09-16T11:22:28Z
+core:     0.3.0
+
+notes:
+  output: 'MACROSILICON' at 1280x1024@60.00
+  capturing live from the DVC100 'svideo' input
+  round trip 3 frames = 100.1 ms
+  this is what beat-driven effects inside the physical loop must be scheduled early by
+
+assertions (2/2 passed):
+  PASS  round trip is physically plausible — 3 frames (100.1 ms)
+  PASS  detection is confident — marker exceeded the adaptive threshold by 17.7x

@@ -30,9 +30,21 @@ final class MetalPreviewView: NSView {
         didSet { needsDisplay = true }
     }
 
+    /// Draws the action-safe and title-safe rectangles over the picture (SPEC 11).
+    var showsSafeZones = false {
+        didSet { updateOverlays() }
+    }
+
+    /// Overscan amount, 0...1. Shown as the boundary of what a CRT would actually
+    /// display, so the operator can see what is about to be lost.
+    var overscan = 0.0 {
+        didSet { updateOverlays() }
+    }
+
     private let captionLabel = NSTextField(labelWithString: "")
     private let emptyLabel = NSTextField(labelWithString: "no source")
     private var metalLayer: CAMetalLayer?
+    private let overlayLayer = CAShapeLayer()
 
     /// - Parameter caption: overlay text, e.g. "A" or "720x480 · 480i".
     init(caption: String) {
@@ -57,6 +69,12 @@ final class MetalPreviewView: NSView {
         } else {
             Log.warn(.render, "preview '\(caption)' has no Metal device; showing empty state only")
         }
+
+        // Overlays sit above the picture and never intercept clicks.
+        overlayLayer.fillColor = nil
+        overlayLayer.lineWidth = 1
+        overlayLayer.strokeColor = Theme.Color.textSecondary.cgColor
+        layer?.addSublayer(overlayLayer)
 
         emptyLabel.font = Theme.Font.tinyLabel
         emptyLabel.textColor = Theme.Color.textTertiary
@@ -104,6 +122,47 @@ final class MetalPreviewView: NSView {
         // per screen pixel; see contentsScale above.
         metalLayer.frame = frame
         metalLayer.drawableSize = CGSize(width: max(frame.width, 1), height: max(frame.height, 1))
+        overlayLayer.frame = frame
+        updateOverlays()
+    }
+
+    /// Rebuilds the safe-zone and overscan outlines for the current picture area.
+    ///
+    /// The rectangles come from `CRTGeometry`, the same source the output path uses,
+    /// so what the overlay promises and what the output does cannot drift apart.
+    private func updateOverlays() {
+        guard let metalLayer else { return }
+        let bounds = CGRect(origin: .zero, size: metalLayer.frame.size)
+        guard bounds.width > 1, bounds.height > 1 else {
+            overlayLayer.path = nil
+            return
+        }
+
+        let path = CGMutablePath()
+
+        if showsSafeZones {
+            for rect in [CRTGeometry.actionSafe, CRTGeometry.titleSafe] {
+                path.addRect(CGRect(
+                    x: bounds.width * CGFloat(rect.x),
+                    y: bounds.height * CGFloat(rect.y),
+                    width: bounds.width * CGFloat(rect.width),
+                    height: bounds.height * CGFloat(rect.height)
+                ))
+            }
+        }
+
+        if overscan > 0.001 {
+            let visible = CRTGeometry.visibleRect(overscan: overscan)
+            path.addRect(CGRect(
+                x: bounds.width * CGFloat(visible.x),
+                y: bounds.height * CGFloat(visible.y),
+                width: bounds.width * CGFloat(visible.width),
+                height: bounds.height * CGFloat(visible.height)
+            ))
+        }
+
+        overlayLayer.path = path.isEmpty ? nil : path
+        overlayLayer.isHidden = path.isEmpty
     }
 
     override func draw(_ dirtyRect: NSRect) {

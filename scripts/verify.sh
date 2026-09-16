@@ -21,8 +21,9 @@ log "verify: 3/5 lint"
 log "verify: 4/5 offscreen self-QA"
 "$REPO_ROOT/scripts/selfqa.sh" offscreen
 
-log "verify: 5/5 app self-QA (layout + live graph)"
+log "verify: 5/5 app self-QA (layout + live graph + analog chain)"
 "$REPO_ROOT/scripts/selfqa.sh" ui
 "$REPO_ROOT/scripts/selfqa.sh" playback
+"$REPO_ROOT/scripts/selfqa.sh" analog
 
 log "verify: OK"

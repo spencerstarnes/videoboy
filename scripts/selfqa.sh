@@ -7,8 +7,14 @@
 #           blocked — absent hardware must not fail a build.
 # Usage   : scripts/selfqa.sh <check>
 #           offscreen   — render test patterns and graph output headlessly (no hardware)
-#           loopback    — capture the DVC100 and write metrics.json (needs hardware)
 #           midi        — virtual CoreMIDI detect/learn round-trip (no hardware)
+#           ui          — the window shell at three breakpoints (no hardware)
+#           playback    — the live graph: playback, fader, the wedge (no hardware)
+#           analog      — the composite codec, echo and feedback chain (no hardware)
+#           displays    — what displays exist and what mode they offer
+#           output      — the borderless output window on the HDMI card (needs hardware)
+#           loopback    — capture the DVC100 and write metrics.json (needs hardware)
+#           calibrate   — measure the physical feedback round trip (needs hardware)
 #           all         — every check that can run here
 # Outputs : selfqa/out/<check>/{*.png,metrics.json,result.txt}
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
@@ -52,12 +58,16 @@ case "$CHECK" in
   playback)  run_app_check playback ;;
   output)    run_app_check output ;;
   displays)  run_app_check displays ;;
+  analog)    run_app_check analog ;;
+  calibrate) run_app_check calibrate ;;
   all)
     run_offscreen
     run_midi
     run_app_check ui
     run_app_check playback
+    run_app_check analog
     run_loopback
+    run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, output, displays, loopback, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, displays, output, loopback, calibrate, all)" ;;
 esac

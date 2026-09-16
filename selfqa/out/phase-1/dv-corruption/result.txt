@@ -1,7 +1,7 @@
 check:    phase-1/dv-corruption
 verdict:  PASS
-when:     2026-09-16T05:35:01Z
-core:     0.2.0
+when:     2026-09-16T11:24:47Z
+core:     0.3.0
 
 notes:
   source: motion.dv frame 30, 179 frames total

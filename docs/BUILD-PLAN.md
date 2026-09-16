@@ -70,9 +70,9 @@ If the DVC100 loopback can't run (no hardware attached / permission not granted)
 
 ## Phase 3 — Analog character + feedback
 Detail: SPEC §9 (composite/NTSC), §10 (capture + feedback), §11 (CRT features).
-- [ ] CompositeCodec (NTSC encode/decode, dot crawl, chroma bleed, TBC wobble) as Metal/ISF passes.
-- [ ] Echo/trails; capture-in (DVC100/UVC); internal + external feedback with frame-delay and **measured round-trip latency calibration** (§10).
-- [ ] Safe zones, overscan, test-pattern source/output, BFI/grid seeding.
+- [x] CompositeCodec (NTSC encode/decode, dot crawl, chroma bleed, TBC wobble) as Metal/ISF passes.
+- [x] Echo/trails; capture-in (DVC100/UVC); internal + external feedback with frame-delay and **measured round-trip latency calibration** (§10).
+- [x] Safe zones, overscan, test-pattern source/output, BFI/grid seeding.
 
 **Acceptance:** `[HEADLESS]` codec + feedback math unit-tested on fixtures. `[SELF-VISUAL]` DVC100 loopback confirms the composite look and measures the feedback round-trip for calibration; save evidence.
 
@@ -108,3 +108,12 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   narrow widths (SPEC 14.4 defers density tuning, so this is expected, not a defect).
 - **MPEG bitstream corruptor.** SPEC 5 wants frame-drop / motion-vector / reference-hold
   alongside the DV DIF corruptor, sharing infrastructure but a separate module.
+- **Bus FX on Sub Mix TWO.** The composite/echo/feedback chain is built on ONE only;
+  TWO's panel shows the same effects disabled.
+- **External feedback through the physical loop.** `FeedbackNode` accepts a captured
+  frame as its history (input slot 1) and the round trip is measured, but the capture
+  is not yet routed into that slot live. Internal feedback works.
+- **MX-1 effect set** (freeze, negative, B&W, mosaic, posterize, flip/mirror) and the
+  Core Image passthrough from SPEC 9 — trivial shaders, not yet written.
+- **Overscan is a toggle, not a continuous control.** The 82A parameter exists and the
+  preview overlay reads it; the settings bar only offers on/off.

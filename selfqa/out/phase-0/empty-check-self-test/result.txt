@@ -1,7 +1,7 @@
 check:    phase-0/empty-check-self-test
 verdict:  FAIL
-when:     2026-09-16T05:35:08Z
-core:     0.2.0
+when:     2026-09-16T11:24:54Z
+core:     0.3.0
 
 notes:
   no assertions were recorded — a check that asserts nothing proves nothing
@@ -9,5 +9,5 @@ notes:
 assertions (0/0 passed):
 
 recent log:
-  1789536908.098 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
-  1789536908.099 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt
+  1789557894.520 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1789557894.521 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt

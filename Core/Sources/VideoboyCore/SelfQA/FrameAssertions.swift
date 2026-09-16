@@ -303,6 +303,29 @@ public enum FrameAssertions {
         return 0.299 * Double(pixel.r) + 0.587 * Double(pixel.g) + 0.114 * Double(pixel.b)
     }
 
+    // MARK: - Detail
+
+    /// Mean absolute horizontal luma gradient — how much fine detail a frame carries.
+    ///
+    /// This is the right way to measure generation loss. Raw pixel difference is not:
+    /// each pass of the composite codec low-passes the picture, so a heavily dubbed
+    /// frame converges toward a smooth average and can end up *closer* to the source
+    /// by pixel difference while obviously being more degraded. Lost detail is what
+    /// a dub actually costs, so lost detail is what gets measured.
+    public static func horizontalDetail(_ image: ImageBuffer) -> Double {
+        guard image.width >= 2 else { return 0 }
+        var total = 0.0
+        var counted = 0.0
+        for y in stride(from: 0, to: image.height, by: 2) {
+            for x in 1..<image.width {
+                total += abs(luma(image, x, y) - luma(image, x - 1, y))
+                counted += 1
+            }
+        }
+        guard counted > 0 else { return 0 }
+        return total / counted
+    }
+
     // MARK: - Difference
 
     /// Fraction of pixels (0...1) whose luma differs by more than `threshold`.

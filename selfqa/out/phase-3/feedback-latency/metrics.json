@@ -1,0 +1,9 @@
+{
+  "captureFrameRate" : 29.97,
+  "confidence" : 17.674848031141494,
+  "connector" : "svideo",
+  "negotiatedOutputMode" : "1280x1024@60.00",
+  "outputDisplay" : "MACROSILICON",
+  "roundTripFrames" : 3,
+  "roundTripMilliseconds" : 100.10010010010011
+}

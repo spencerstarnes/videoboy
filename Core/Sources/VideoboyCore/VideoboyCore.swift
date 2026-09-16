@@ -18,7 +18,7 @@ import Foundation
 /// Namespace for library-wide identity.
 public enum Videoboy {
     /// Semantic version of the Core library. Bumped per phase.
-    public static let version = "0.2.0"
+    public static let version = "0.3.0"
 
     /// Human-readable build banner, logged once at startup.
     public static var banner: String {
@@ -66,7 +66,9 @@ public struct FeatureFlags: Sendable {
         .bitstreamCorruptor,
         .musicalClock,
         .midiControl,
-        .displayOutput
+        .displayOutput,
+        .compositeCodec,
+        .feedback
     ]
 
     /// The process-wide flag set, resolved once from defaults + `VIDEOBOY_FLAGS`.

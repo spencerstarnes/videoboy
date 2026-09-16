@@ -40,36 +40,38 @@ enum PlaybackSelfQA {
             return check.finish()
         }
         check.note("A = motion.dv, B = bars.dv, through the engine's own graph")
+
+        // This check is about the mixer and the wedge, so the bus effects are held
+        // bypassed. The analog chain has its own check (phase-3/analog-chain); left
+        // engaged here it would change what PRIMARY looks like and this would be
+        // measuring two things at once.
+        for slot in [Engine.compositeSlot, Engine.echoSlot, Engine.feedbackSlot] {
+            engine.registry.setValue(0, slot: slot, code: .wetDry)
+        }
+
+        // Four sources, three mixers, three bus effects, capture and test pattern.
+        let expectedNodes = 12
         check.record(AssertionResult(
-            name: "graph shape", passed: engine.graph.nodeCount == 7,
-            detail: "\(engine.graph.nodeCount) nodes (4 sources, ONE, TWO, PRIMARY)"
+            name: "graph shape", passed: engine.graph.nodeCount == expectedNodes,
+            detail: "\(engine.graph.nodeCount) nodes, expected \(expectedNodes)"
         ))
 
-        /// Renders one frame of the live graph and reads PRIMARY back.
+        /// Renders one frame through the engine's own traversal and reads PRIMARY back.
         func renderFrame(_ frameIndex: Int) -> ImageBuffer? {
             let context = RenderContext(
                 frameIndex: frameIndex,
                 presentationTime: Double(frameIndex) / StandardDefinition.frameRate,
                 musicalPosition: nil
             )
-            var produced: [String: MTLTexture] = [:]
-            for identifier in engine.graph.evaluationOrder(from: GraphTopology.primary) {
-                guard let node = engine.graph.nodes[identifier] else { continue }
-                let inputs = engine.graph.inputs(of: identifier).compactMap { produced[$0] }
-                if let texture = node.render(inputs: inputs, context: context) {
-                    produced[identifier] = texture
-                }
+            guard let primary = engine.evaluateGraph(context: context)[GraphTopology.primary] else {
+                return nil
             }
-            guard let primary = produced[GraphTopology.primary] else { return nil }
             return renderer.readback(primary)
         }
 
         // 1. The fader hard over to A: PRIMARY must be motion.dv.
         engine.registry.setValue(0.0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
         engine.registry.setValue(0.0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
-        engine.subMixOne.applyParameters(from: engine.registry)
-        engine.primary.applyParameters(from: engine.registry)
-
         guard let atA = renderFrame(0) else {
             check.record(AssertionResult(name: "PRIMARY renders", passed: false, detail: "no texture came back"))
             return check.finish()
@@ -82,7 +84,6 @@ enum PlaybackSelfQA {
         //    bars.dv is generated from TestPattern.colorBars this can be asserted by
         //    actual colour — the end-to-end proof that the mixer routes correctly.
         engine.registry.setValue(1.0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
-        engine.subMixOne.applyParameters(from: engine.registry)
         guard let atB = renderFrame(1) else {
             check.record(AssertionResult(name: "fader to B renders", passed: false, detail: "no texture"))
             return check.finish()
@@ -99,7 +100,6 @@ enum PlaybackSelfQA {
 
         // 3. Halfway: a genuine blend, not a snap to one side.
         engine.registry.setValue(0.5, slot: GraphTopology.subMixOne, code: .crossfadeAB)
-        engine.subMixOne.applyParameters(from: engine.registry)
         guard let atMiddle = renderFrame(2) else {
             check.record(AssertionResult(name: "mid-fade renders", passed: false, detail: "no texture"))
             return check.finish()
@@ -114,7 +114,6 @@ enum PlaybackSelfQA {
 
         // 4. Playback advances: the picture must change over time.
         engine.registry.setValue(0.0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
-        engine.subMixOne.applyParameters(from: engine.registry)
         engine.setPlaying(true, channel: "A")
         let first = renderFrame(3)
         for frame in 4..<34 { _ = renderFrame(frame) }
@@ -133,7 +132,6 @@ enum PlaybackSelfQA {
         let beforeCorruption = renderFrame(35)
         engine.registry.setValue(0.9, slot: GraphTopology.sourceA, code: .corruptAmount)
         engine.registry.setValue(0.0, slot: GraphTopology.sourceA, code: .corruptMode)
-        engine.sources["A"]?.applyParameters(from: engine.registry)
         let afterCorruption = renderFrame(35)
         if let beforeCorruption, let afterCorruption {
             try? check.writeImage(beforeCorruption, named: "05-clean.png")

@@ -23,6 +23,9 @@ selfqa/out/**/*.raw
 !selfqa/out/phase-2/playback/*.png
 !selfqa/out/phase-2/beat-synced-corruption/*.png
 !selfqa/out/phase-2/ui-layout/*.png
+!selfqa/out/phase-3/composite-codec/*.png
+!selfqa/out/phase-3/analog-chain/*.png
+!selfqa/out/phase-3/feedback-latency/*.png
 
 # Local device identity (machine-specific)
 config/devices.json

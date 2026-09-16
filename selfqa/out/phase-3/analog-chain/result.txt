@@ -1,0 +1,21 @@
+check:    phase-3/analog-chain
+verdict:  PASS
+when:     2026-09-16T11:24:57Z
+core:     0.3.0
+
+notes:
+  A = bars.dv, through the engine's ONE bus: composite -> echo -> feedback
+  action-safe at SD: 648x432 at (36, 24)
+  all frames rendered through the engine's own nodes and Metal pipelines
+
+assertions (10/10 passed):
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  the composite codec changes the picture — 0.502 of sampled pixels differ, needed >= 0.05
+  PASS  signal present — luminance variance 4049.3, threshold 25.0
+  PASS  bars survive the composite codec — matched 6 of 6 saturated bars by channel signature (needed 5)
+  PASS  S-Video is cleaner than composite — composite departs by 0.502, S-Video by 0.014
+  PASS  signal present — luminance variance 4058.9, threshold 25.0
+  PASS  feedback changes the picture — 0.589 of sampled pixels differ, needed >= 0.05
+  PASS  feedback does not blow out to flat white — horizontal detail after 22 frames of feedback is 14.61
+  PASS  each generation costs detail — 1st generation detail 14.56, 4th 14.37
+  PASS  safe zones are the standard fractions — action-safe is 648x432, expected 648x432

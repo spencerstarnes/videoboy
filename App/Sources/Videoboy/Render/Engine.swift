@@ -34,6 +34,28 @@ final class Engine {
     private(set) var subMixTwo: CrossfadeNode!
     private(set) var primary: CrossfadeNode!
 
+    /// Bus effects on Sub Mix ONE (SPEC 2's `bus FX`). The composite codec is the
+    /// analog character; echo and feedback sit after it.
+    private(set) var compositeCodec: CompositeCodecNode!
+    private(set) var echo: EchoNode!
+    private(set) var feedback: FeedbackNode!
+
+    /// Live capture, available as a source (SPEC 10). Fed by the App's capture
+    /// session; nothing until then, which renders as the panel's empty state.
+    private(set) var capture: CaptureSourceNode!
+
+    /// Test pattern, routable as a source and straight to an output (SPEC 11).
+    private(set) var testPattern: TestPatternSourceNode!
+
+    /// Black-frame insertion on the program bus (SPEC 11).
+    var blackFrameInsertion = BlackFrameInsertion(everyNFrames: 0)
+
+    /// Overscan applied to the output, 0...1.
+    var overscan = 0.0
+
+    /// Round-trip latency of the physical feedback loop, once measured.
+    private(set) var measuredFeedbackLatency: FeedbackLatency?
+
     private let metal = MetalContext.shared
 
     // MARK: Frame state
@@ -83,12 +105,47 @@ final class Engine {
         graph.connect(from: GraphTopology.sourceB, to: GraphTopology.subMixOne, inputIndex: 1)
         graph.connect(from: GraphTopology.sourceC, to: GraphTopology.subMixTwo, inputIndex: 0)
         graph.connect(from: GraphTopology.sourceD, to: GraphTopology.subMixTwo, inputIndex: 1)
-        graph.connect(from: GraphTopology.subMixOne, to: GraphTopology.primary, inputIndex: 0)
+        // Bus FX on ONE, in order: composite codec, then echo, then feedback. The
+        // codec runs first on purpose — the analog character should be applied to the
+        // picture, and the trails and loop then act on the already-degraded signal,
+        // which is the order a real chain would have.
+        compositeCodec = CompositeCodecNode(identifier: Engine.compositeSlot, context: metal)
+        echo = EchoNode(identifier: Engine.echoSlot, context: metal)
+        feedback = FeedbackNode(identifier: Engine.feedbackSlot, context: metal)
+        graph.add(compositeCodec)
+        graph.add(echo)
+        graph.add(feedback)
+
+        graph.connect(from: GraphTopology.subMixOne, to: Engine.compositeSlot, inputIndex: 0)
+        graph.connect(from: Engine.compositeSlot, to: Engine.echoSlot, inputIndex: 0)
+        graph.connect(from: Engine.echoSlot, to: Engine.feedbackSlot, inputIndex: 0)
+        graph.connect(from: Engine.feedbackSlot, to: GraphTopology.primary, inputIndex: 0)
         graph.connect(from: GraphTopology.subMixTwo, to: GraphTopology.primary, inputIndex: 1)
 
+        // Sources that exist but are not wired into a channel until asked for.
+        capture = CaptureSourceNode(identifier: Engine.captureSlot, context: metal)
+        testPattern = TestPatternSourceNode(identifier: Engine.testPatternSlot, context: metal)
+        graph.add(capture)
+        graph.add(testPattern)
+
         graph.registerParameters(into: registry)
+
+        // The bus effects start bypassed so the app opens showing what was loaded
+        // rather than a processed version of it. Their switches in the FX panel are
+        // what turns them on, which keeps "what you see" traceable to a deliberate act.
+        for slot in [Engine.compositeSlot, Engine.echoSlot, Engine.feedbackSlot] {
+            registry.setValue(0, slot: slot, code: .wetDry)
+        }
         Log.info(.graph, "graph built: \(graph.nodeCount) nodes, max latency \(graph.maximumLatencyInFrames) frames")
     }
+
+    /// Slot names for the bus effects and the extra sources, so mappings and
+    /// templates can address them by a stable name.
+    static let compositeSlot = "fx.one.composite"
+    static let echoSlot = "fx.one.echo"
+    static let feedbackSlot = "fx.one.feedback"
+    static let captureSlot = "source.capture"
+    static let testPatternSlot = "source.testpattern"
 
     /// The mapping slot name for a channel letter.
     static func slot(forChannel letter: String) -> String {
@@ -150,10 +207,7 @@ final class Engine {
         scheduler.advance(to: now)
 
         // Parameters arrive from the UI, MIDI and templates through one path.
-        for node in sources.values { node.applyParameters(from: registry) }
-        subMixOne.applyParameters(from: registry)
-        subMixTwo.applyParameters(from: registry)
-        primary.applyParameters(from: registry)
+        applyAllParameters()
 
         let context = RenderContext(
             frameIndex: frameIndex,
@@ -165,8 +219,30 @@ final class Engine {
         onFrame?(self)
     }
 
-    /// Evaluates the graph to PRIMARY, in dependency order.
-    private func evaluate(context: RenderContext) {
+    /// Pushes every node's parameters from the registry into the node.
+    ///
+    /// One method rather than a list of calls at each site: a node left out of such a
+    /// list silently keeps its defaults and ignores the registry, which is a bug that
+    /// looks like the effect "not working" and is hard to spot. Anything that
+    /// evaluates the graph calls this first.
+    func applyAllParameters() {
+        for node in sources.values { node.applyParameters(from: registry) }
+        subMixOne.applyParameters(from: registry)
+        subMixTwo.applyParameters(from: registry)
+        primary.applyParameters(from: registry)
+        compositeCodec.applyParameters(from: registry)
+        echo.applyParameters(from: registry)
+        feedback.applyParameters(from: registry)
+    }
+
+    /// Evaluates the graph to PRIMARY, in dependency order, and returns every
+    /// texture produced along the way.
+    ///
+    /// Shared with the self-QA checks so they exercise the same traversal the live
+    /// render loop does, rather than a copy of it that can drift.
+    @discardableResult
+    func evaluateGraph(context: RenderContext) -> [String: MTLTexture] {
+        applyAllParameters()
         var produced: [String: MTLTexture] = [:]
         for identifier in graph.evaluationOrder(from: GraphTopology.primary) {
             guard let node = graph.nodes[identifier] else { continue }
@@ -175,7 +251,12 @@ final class Engine {
                 produced[identifier] = texture
             }
         }
-        currentTextures = produced
+        return produced
+    }
+
+    /// Evaluates the graph to PRIMARY, in dependency order.
+    private func evaluate(context: RenderContext) {
+        currentTextures = evaluateGraph(context: context)
     }
 
     /// The most recent texture from each node, for the previews to draw.
@@ -214,5 +295,20 @@ final class Engine {
     /// comparison against captured loopback metrics.
     func setNegotiatedOutputMode(_ mode: String) {
         negotiatedOutputMode = mode
+    }
+
+    /// Records a measured feedback round trip and tells the nodes that care.
+    ///
+    /// SPEC 10: once the physical loop's latency is known, beat-driven effects inside
+    /// it must be scheduled that much earlier or they play late.
+    func applyMeasuredFeedbackLatency(_ latency: FeedbackLatency) {
+        measuredFeedbackLatency = latency
+        capture.measuredLatencyFrames = latency.frames
+        Log.info(.render, "feedback round trip \(latency.frames) frames (\(String(format: "%.1f", latency.seconds * 1000)) ms); scheduling now compensates for it")
+    }
+
+    /// True when this frame should be blacked out for BFI.
+    func isBlackFrame() -> Bool {
+        blackFrameInsertion.isBlackFrame(frameIndex)
     }
 }
