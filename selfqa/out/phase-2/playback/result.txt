@@ -1,13 +1,13 @@
 check:    phase-2/playback
 verdict:  PASS
-when:     2026-09-16T21:37:27Z
+when:     2026-09-16T21:42:20Z
 core:     0.3.0
 
 notes:
   A = motion.dv, B = bars.dv, through the engine's own graph
   all frames rendered through the engine's own nodes and Metal pipelines
 
-assertions (9/9 passed):
+assertions (13/13 passed):
   PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (22 nodes)
   PASS  dimensions — expected 720x480, got 720x480
   PASS  signal present — luminance variance 4188.7, threshold 25.0
@@ -17,3 +17,7 @@ assertions (9/9 passed):
   PASS  playback advances the picture — 0.086 of sampled pixels differ, needed >= 0.05
   PASS  the corruptor damages PRIMARY through the live graph — 0.487 of sampled pixels differ, needed >= 0.05
   PASS  signal present — luminance variance 3898.0, threshold 25.0
+  PASS  ordinary video loads into a channel — motion.mov opened through AVFoundation
+  PASS  ordinary video offers no bitstream effects — family is None
+  PASS  signal present — luminance variance 3134.8, threshold 25.0
+  PASS  ordinary video advances through PRIMARY — 0.079 of sampled pixels differ, needed >= 0.05

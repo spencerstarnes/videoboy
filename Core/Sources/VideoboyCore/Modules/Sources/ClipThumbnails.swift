@@ -85,19 +85,20 @@ public final class ClipThumbnails {
     }
 
     private func decode(url: URL, step: Int) -> ImageBuffer? {
-        guard url.pathExtension.lowercased() == "dv" else {
-            // Everything else needs the AVFoundation source, which is not built. Not
-            // an error: the caller shows the badge instead, which is honest about
-            // what this build can read.
-            return nil
+        // The same decoders the sources use, so a clip that thumbnails is a clip that
+        // plays. A library that showed a picture for something the app then refused
+        // to load would be the worst of both.
+        let decoder: ClipDecoding?
+        if url.pathExtension.lowercased() == "dv" {
+            decoder = try? DVClipDecoder(url: url)
+        } else {
+            decoder = AVFClipDecoder(url: url)
         }
-        guard let reader = try? DVReader(url: url), reader.frameCount > 0,
-              let decoder = try? DVDecoder() else { return nil }
+        guard let decoder, decoder.frameCount > 0 else { return nil }
 
         let fraction = Double(step) / Double(max(Self.steps - 1, 1))
-        let index = Int(fraction * Double(reader.frameCount - 1))
-        guard let bytes = reader.frame(at: index),
-              let full = decoder.decode(frameBytes: bytes) else { return nil }
+        let index = Int(fraction * Double(decoder.frameCount - 1))
+        guard let full = decoder.image(at: index, corruption: .inert) else { return nil }
         return full.scaled(toWidth: Self.width)
     }
 

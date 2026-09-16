@@ -8,7 +8,7 @@
 //            and can offer nothing.
 //  Inputs  : a media file, or a bus's interchange setting.
 //  Outputs : a family, and the effects that family provides.
-//  Connects: DVSourceNode and BusCodecNode declare their family; the UI shows the
+//  Connects: ClipSourceNode and BusCodecNode declare their family; the UI shows the
 //            matching stack, or hides it entirely when there is none.
 //  Extend  : adding MPEG means adding its transforms and flipping `isImplemented`.
 //            Do not add a family that has no bitstream — that is what `.none` is for.

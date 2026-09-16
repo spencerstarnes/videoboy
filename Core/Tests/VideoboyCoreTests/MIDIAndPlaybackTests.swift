@@ -7,7 +7,7 @@
 //            physical controller, or the HDMI card.
 //  Inputs  : a virtual CoreMIDI source, and samples/motion.dv.
 //  Outputs : assertions plus PNGs under selfqa/out/phase-2/.
-//  Connects: MIDIInput, VirtualMIDISource, DVSourceNode, Transport, Scheduler.
+//  Connects: MIDIInput, VirtualMIDISource, ClipSourceNode, Transport, Scheduler.
 //  Extend  : a new control source should be provable the same way — drive it, assert
 //            the parameter moved.
 //
@@ -133,12 +133,12 @@ final class MIDIAndPlaybackTests: XCTestCase {
 
     // MARK: - Playback
 
-    private func openSource(_ name: String = "motion.dv") throws -> DVSourceNode {
+    private func openSource(_ name: String = "motion.dv") throws -> ClipSourceNode {
         let url = RepoPaths.samples.appendingPathComponent(name)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw XCTSkip("samples/\(name) is missing — run scripts/make-fixtures.sh")
         }
-        let node = DVSourceNode(identifier: GraphTopology.sourceA, context: nil)
+        let node = ClipSourceNode(identifier: GraphTopology.sourceA, context: nil)
         XCTAssertTrue(node.load(url: url), "the DV source must load its file")
         return node
     }
@@ -150,7 +150,7 @@ final class MIDIAndPlaybackTests: XCTestCase {
     }
 
     func testMissingFileLeavesTheSourceEmptyRatherThanCrashing() {
-        let node = DVSourceNode(identifier: "test", context: nil)
+        let node = ClipSourceNode(identifier: "test", context: nil)
         XCTAssertFalse(node.load(url: URL(fileURLWithPath: "/nonexistent/nope.dv")))
         XCTAssertEqual(node.frameCount, 0)
         XCTAssertNil(node.renderToImage(frameIndex: 0))

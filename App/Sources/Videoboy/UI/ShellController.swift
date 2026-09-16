@@ -59,9 +59,10 @@ final class ShellController {
             presentNotice(
                 "Could not load \(url.lastPathComponent)",
                 url.pathExtension.lowercased() == "dv"
-                    ? "The file could not be read as DV. It may be truncated or PAL."
-                    : "Only DV files play at the moment. Ordinary .mov and .mp4 need the "
-                        + "AVFoundation source, which is not built yet."
+                    ? "The file could not be read as DV. It may be truncated, or PAL — "
+                        + "this build reads NTSC."
+                    : "The file could not be opened. It may use a codec macOS cannot "
+                        + "read, or have no video track."
             )
             return
         }
@@ -321,7 +322,7 @@ final class ShellController {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = RepoPaths.samples
-        panel.message = "Choose a DV file for source \(letter)"
+        panel.message = "Choose a video file for source \(letter)"
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         loadClip(url, into: letter)

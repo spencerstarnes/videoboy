@@ -42,3 +42,21 @@ The corruptor is the best example because it is the app's reason to exist.
   get unit tests. UI does not.
 - **Prefer duplication to the wrong abstraction.** Two modules that rhyme today are
   not a shared base class.
+
+
+## Adding support for another video container
+
+A new container is a new `ClipDecoding`, not a new source module. Conform to it in
+`Core/Sources/VideoboyCore/Modules/Sources/`, report the frame count, the clip's own
+frame rate, and the data-effect family the codec can carry, then choose it by
+extension in `ClipSourceNode.load(url:)`.
+
+Everything about WHEN a frame is shown — the playhead, loop modes, ping-pong,
+one-shot, musical step playback, in and out points — stays in `ClipSourceNode` and is
+then true of the new format immediately. This is deliberate: those rules were written
+once and every playback bug fixed in them is fixed for every format at once.
+
+Report `.none` for `dataEffectFamily` unless the codec can genuinely be damaged before
+decode. The interface reads that value to decide whether to offer the bitstream
+controls at all, so claiming a family the decoder cannot honour puts a control on
+screen that does nothing.

@@ -7,7 +7,7 @@
 //  Inputs  : user actions from the UI, MIDI, and the display link.
 //  Outputs : textures into the previews and the output window; status for the bars.
 //  Connects: Core's RenderGraph, Transport, Scheduler, ParamRegistry, MIDIInput,
-//            DVSourceNode, CrossfadeNode; the UI panels; OutputWindowController.
+//            ClipSourceNode, CrossfadeNode; the UI panels; OutputWindowController.
 //  Extend  : a new node is added to `buildGraph` and given a slot name. The fixed
 //            A/B->ONE, C/D->TWO routing is not a variable and must not become one.
 //
@@ -47,7 +47,7 @@ final class Engine {
     private(set) lazy var midi = MIDIInput(registry: registry)
 
     /// The four source channels, by letter.
-    private(set) var sources: [String: DVSourceNode] = [:]
+    private(set) var sources: [String: ClipSourceNode] = [:]
     /// The three mixers: ONE, TWO and PRIMARY.
     private(set) var subMixOne: CrossfadeNode!
     private(set) var subMixTwo: CrossfadeNode!
@@ -144,7 +144,7 @@ final class Engine {
     private func buildGraph() {
         for letter in ["A", "B", "C", "D"] {
             let identifier = Engine.slot(forChannel: letter)
-            let node = DVSourceNode(identifier: identifier, context: metal)
+            let node = ClipSourceNode(identifier: identifier, context: metal)
             sources[letter] = node
             graph.add(node)
         }

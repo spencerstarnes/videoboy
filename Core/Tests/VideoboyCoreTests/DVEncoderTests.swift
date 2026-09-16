@@ -200,7 +200,7 @@ extension DVEncoderTests {
 
     func testAnEmptySourceOffersNoDataEffects() {
         // An empty channel must not advertise effects it cannot apply.
-        let node = DVSourceNode(identifier: "test", context: nil)
+        let node = ClipSourceNode(identifier: "test", context: nil)
         XCTAssertEqual(node.dataEffectFamily, .none)
     }
 

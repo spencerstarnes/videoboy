@@ -162,6 +162,52 @@ enum PlaybackSelfQA {
                 name: "corruption renders", passed: false, detail: "a frame failed to render"))
         }
 
+        // 6. Ordinary video through the same graph. "Only .dv plays" was the biggest
+        // functional gap in the app, so this checks a .mov actually reaches PRIMARY
+        // rather than that the decoder compiles.
+        let movie = RepoPaths.samples.appendingPathComponent("motion.mov")
+        if FileManager.default.fileExists(atPath: movie.path) {
+            if engine.load(url: movie, intoChannel: "A") {
+                check.record(AssertionResult(
+                    name: "ordinary video loads into a channel",
+                    passed: true, detail: "motion.mov opened through AVFoundation"))
+
+                // The wedge must NOT be on offer for it: there is no bitstream here
+                // that damage could mean anything to.
+                check.record(AssertionResult(
+                    name: "ordinary video offers no bitstream effects",
+                    passed: engine.dataEffectFamily(forChannel: "A") == .none,
+                    detail: "family is \(engine.dataEffectFamily(forChannel: "A").displayName)"
+                ))
+
+                engine.registry.setValue(0.0, slot: GraphTopology.sourceA, code: .corruptAmount)
+                engine.registry.setValue(0.0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+                engine.setPlaying(true, channel: "A")
+                let movieFirst = renderFrame(40)
+                for frame in 41..<70 { _ = renderFrame(frame) }
+                let movieLater = renderFrame(70)
+                engine.setPlaying(false, channel: "A")
+
+                if let movieFirst, let movieLater {
+                    try? check.writeImage(movieLater, named: "07-mov-playing.png")
+                    check.record(FrameAssertions.hasSignal(movieFirst))
+                    check.record(FrameAssertions.framesDiffer(
+                        movieFirst, movieLater, minimumFraction: 0.05,
+                        name: "ordinary video advances through PRIMARY"))
+                } else {
+                    check.record(AssertionResult(
+                        name: "ordinary video renders", passed: false,
+                        detail: "a frame failed to render"))
+                }
+            } else {
+                check.record(AssertionResult(
+                    name: "ordinary video loads into a channel",
+                    passed: false, detail: "motion.mov did not load"))
+            }
+        } else {
+            check.note("samples/motion.mov is missing; the AVFoundation path was not exercised")
+        }
+
         check.note("all frames rendered through the engine's own nodes and Metal pipelines")
         return check.finish()
     }

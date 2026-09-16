@@ -1,0 +1,204 @@
+//
+//  AVFClipDecoder.swift — ordinary video files, decoded to our own playhead.
+//
+//  Purpose : Everything AVFoundation can open — .mov, .mp4, ProRes, H.264 — so the
+//            app stops being a DV-only player. The wedge still needs DV, and that is
+//            fine: this is for the other 90% of footage people actually have, which
+//            until now showed a badge and no picture.
+//  Inputs  : a media URL and a frame index.
+//  Outputs : decoded RGBA frames.
+//  Connects: ClipSourceNode, through `ClipDecoding`.
+//  Extend  : nothing here knows about playback rules — loop modes, musical stepping
+//            and in/out points all live in the node and work identically for DV and
+//            for this. Only decoding belongs here.
+//
+//  Why AVAssetReader and not AVPlayer: the app's playhead is authoritative. Frames
+//  are shown because the render clock or the musical clock says so, and step playback
+//  holds a frame for a whole beat. An AVPlayer runs on its own clock and would have
+//  to be chased; a reader hands over frames when asked, which is the relationship we
+//  want. The cost is that seeking backwards means restarting the reader, so recently
+//  decoded frames are kept to make short steps and ping-pong turns free.
+//
+
+import AVFoundation
+import CoreVideo
+import Foundation
+
+/// Decodes an ordinary video file frame by frame.
+public final class AVFClipDecoder: ClipDecoding {
+
+    /// How many decoded frames are kept behind the playhead.
+    ///
+    /// Enough to cover a ping-pong turn and a handful of step-backs without a reader
+    /// restart. Each is a full RGBA frame, so this is a real memory cost and not a
+    /// number to raise casually — four channels of SD at 48 frames is about 66 MB.
+    private static let cacheSize = 48
+
+    /// How far ahead a requested frame can be before it is cheaper to restart the
+    /// reader than to decode everything in between.
+    private static let maximumForwardScan = 90
+
+    private let asset: AVAsset
+    private let track: AVAssetTrack
+
+    public let frameCount: Int
+    public let frameRate: Double
+
+    /// Ordinary video has no bitstream effects here. MPEG-family damage is a separate
+    /// module (SPEC 5) and saying `.none` is what stops the interface offering
+    /// controls that would do nothing.
+    public var dataEffectFamily: DataEffectFamily { .none }
+
+    private var reader: AVAssetReader?
+    private var output: AVAssetReaderTrackOutput?
+    /// The frame index the reader will produce next.
+    private var nextFrameIndex = 0
+
+    private var cache: [Int: ImageBuffer] = [:]
+    private var cacheOrder: [Int] = []
+
+    /// Opens a clip, or fails if it has no readable video track.
+    public init?(url: URL) {
+        let asset = AVURLAsset(url: url)
+        // Synchronous loading: this runs when a clip is loaded, not per frame, and
+        // the source panel is waiting for a yes or no answer.
+        guard let track = asset.tracks(withMediaType: .video).first else {
+            Log.error(.dv, "\(url.lastPathComponent) has no video track")
+            return nil
+        }
+        self.asset = asset
+        self.track = track
+
+        let rate = Double(track.nominalFrameRate)
+        self.frameRate = rate > 0 ? rate : StandardDefinition.frameRate
+
+        let duration = CMTimeGetSeconds(asset.duration)
+        guard duration.isFinite, duration > 0 else {
+            Log.error(.dv, "\(url.lastPathComponent) has no usable duration")
+            return nil
+        }
+        self.frameCount = max(Int((duration * self.frameRate).rounded()), 1)
+
+        Log.info(.dv, "opened \(url.lastPathComponent): \(frameCount) frames at "
+            + String(format: "%.2f", self.frameRate) + " fps, "
+            + "\(Int(track.naturalSize.width))x\(Int(track.naturalSize.height))")
+
+        guard restartReader(atFrame: 0) else { return nil }
+    }
+
+    public func image(at index: Int, corruption: CorruptionSettings) -> ImageBuffer? {
+        // Corruption is deliberately ignored: this family is `.none`, so nothing
+        // should be asking. Silently ignoring it is right — the alternative is
+        // failing a render because a control that is not offered was set anyway.
+        let wrapped = wrappedIndex(index)
+
+        if let cached = cache[wrapped] { return cached }
+
+        // Backwards, or a long way forward: start again at the right place. Reading
+        // a thousand frames to reach one is slower than a seek, and seeking to reach
+        // the very next frame is slower than reading it.
+        if wrapped < nextFrameIndex || wrapped > nextFrameIndex + Self.maximumForwardScan {
+            guard restartReader(atFrame: wrapped) else { return nil }
+        }
+
+        while nextFrameIndex <= wrapped {
+            guard let frame = readNextFrame() else {
+                // The reader ran dry before reaching the frame — a truncated file, or
+                // a frame count that over-estimated. Restart from the wanted frame
+                // once; if that fails too, give up rather than spin.
+                guard restartReader(atFrame: wrapped), let frame = readNextFrame() else {
+                    return cache[wrapped]
+                }
+                store(frame, at: wrapped)
+                return frame
+            }
+            store(frame, at: nextFrameIndex - 1)
+        }
+        return cache[wrapped]
+    }
+
+    /// Wraps an index into the clip.
+    public func wrappedIndex(_ index: Int) -> Int {
+        guard frameCount > 0 else { return 0 }
+        let remainder = index % frameCount
+        return remainder < 0 ? remainder + frameCount : remainder
+    }
+
+    // MARK: - Reading
+
+    private func restartReader(atFrame index: Int) -> Bool {
+        reader?.cancelReading()
+
+        guard let newReader = try? AVAssetReader(asset: asset) else {
+            Log.error(.dv, "could not create a reader for \(asset)")
+            return false
+        }
+        // BGRA because that is what Metal and ImageBuffer both want; letting
+        // AVFoundation convert is faster and more correct than doing it here.
+        let settings: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ]
+        let trackOutput = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
+        trackOutput.alwaysCopiesSampleData = false
+        guard newReader.canAdd(trackOutput) else { return false }
+        newReader.add(trackOutput)
+
+        if index > 0 {
+            let start = CMTime(seconds: Double(index) / frameRate, preferredTimescale: 600)
+            newReader.timeRange = CMTimeRange(start: start, duration: .positiveInfinity)
+        }
+        guard newReader.startReading() else {
+            Log.error(.dv, "reader refused to start: \(newReader.error?.localizedDescription ?? "unknown")")
+            return false
+        }
+
+        reader = newReader
+        output = trackOutput
+        nextFrameIndex = index
+        return true
+    }
+
+    private func readNextFrame() -> ImageBuffer? {
+        guard let output, let sample = output.copyNextSampleBuffer(),
+              let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { return nil }
+        nextFrameIndex += 1
+        return Self.imageBuffer(from: pixelBuffer)
+    }
+
+    /// Copies a BGRA pixel buffer into an RGBA `ImageBuffer`.
+    private static func imageBuffer(from pixelBuffer: CVPixelBuffer) -> ImageBuffer? {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let stride = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer), width > 0, height > 0
+        else { return nil }
+
+        let source = base.assumingMemoryBound(to: UInt8.self)
+        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        for y in 0..<height {
+            let row = y * stride
+            let destinationRow = y * width * 4
+            for x in 0..<width {
+                let sourceOffset = row + x * 4
+                let destination = destinationRow + x * 4
+                // BGRA to RGBA.
+                pixels[destination] = source[sourceOffset + 2]
+                pixels[destination + 1] = source[sourceOffset + 1]
+                pixels[destination + 2] = source[sourceOffset]
+                pixels[destination + 3] = source[sourceOffset + 3]
+            }
+        }
+        return ImageBuffer(width: width, height: height, pixels: pixels)
+    }
+
+    private func store(_ frame: ImageBuffer, at index: Int) {
+        cache[index] = frame
+        cacheOrder.append(index)
+        while cacheOrder.count > Self.cacheSize {
+            cache.removeValue(forKey: cacheOrder.removeFirst())
+        }
+    }
+}

@@ -1,23 +1,23 @@
 //
-//  DVSourceNode.swift — a DV file as a playable graph source, corruptor inline.
+//  ClipSourceNode.swift — a playable clip on one channel (SPEC 6).
 //
-//  Purpose : The wedge made playable. Reads a raw DV file, runs the Phase-1 DIF
-//            corruptor over the compressed bytes, decodes the result, and hands the
-//            graph a texture. The corruption happens between read and decode, which
-//            is the entire point (SPEC 5).
-//  Inputs  : a .dv file; parameters by param code; a RenderContext per frame.
-//  Outputs : an `MTLTexture` at the project size.
-//  Connects: DVReader, DIFCorruptor, DVDecoder, MetalContext; the Source A-D panels.
-//  Extend  : an MPEG source is a sibling type with the same shape, not a mode here.
+//  Purpose : One of A/B/C/D. Owns the playhead, the loop modes, the musical step
+//            playback, the in/out points and the pre-decode damage — everything about
+//            WHEN a frame is shown. What turns bytes into a picture is behind
+//            `ClipDecoding`, so DV and ordinary video share all of this rather than
+//            being two source modules with two sets of playback bugs.
+//  Inputs  : a media file, a param registry, and the render context's musical clock.
+//  Outputs : one `MTLTexture` per frame, plus the last decoded `ImageBuffer` for
+//            headless checks.
+//  Connects: ClipDecoding (DV or AVFoundation), DIFCorruptor via the DV decoder,
+//            Scheduler (beat-synced reseeds), the source panels.
+//  Extend  : a new container is a new `ClipDecoding`, not a new node. Playback rules
+//            added here are then true of every format at once, which is the point.
 //
-//  Parameters (SPEC 13):
-//    31B corrupt amount   0...1
-//    32B corrupt mode     0...1, quantised to a CorruptionMode
-//    33B corrupt rate     0...1, quantised to a beat subdivision
-//    34B corrupt seed     re-rolled by the scheduler on each subdivision boundary
-//    64A playback speed   0...2, where 1.0 is nominal
+//  It is still named for clips rather than for DV because it is no longer about DV:
+//  the wedge lives in `DVClipDecoder`, where it can only be applied to bytes that can
+//  carry it.
 //
-
 import Foundation
 import Metal
 
@@ -110,7 +110,7 @@ public enum LoopMode: String, CaseIterable, Codable, Sendable {
 }
 
 /// Plays a DV file into the render graph, corrupting it before decode.
-public final class DVSourceNode: Node, DataEffectProvider {
+public final class ClipSourceNode: Node, DataEffectProvider {
 
     public let identifier: String
     public let kind: NodeKind = .source
@@ -132,8 +132,12 @@ public final class DVSourceNode: Node, DataEffectProvider {
         ]
     }
 
-    /// The file being played, or nil when nothing is loaded.
-    public private(set) var reader: DVReader?
+    /// What is decoding the loaded clip, or nil when nothing is loaded.
+    ///
+    /// DV for the wedge, AVFoundation for everything else. Which one is in use is
+    /// the only thing that differs between a .dv and a .mov here — the playhead, the
+    /// loop modes, the musical stepping and the in/out points are the same code.
+    public private(set) var clipDecoder: ClipDecoding?
     /// The file's own path, for templates and the panel title.
     public private(set) var mediaURL: URL?
 
@@ -198,7 +202,6 @@ public final class DVSourceNode: Node, DataEffectProvider {
     public private(set) var lastImage: ImageBuffer?
 
     private let context: MetalContext?
-    private var decoder: DVDecoder?
     private var texture: MTLTexture?
     /// Frame index the current texture was produced from; avoids redundant decodes.
     private var textureFrameIndex = -1
@@ -211,15 +214,23 @@ public final class DVSourceNode: Node, DataEffectProvider {
     }
 
     /// Total frames in the loaded file, or 0.
-    public var frameCount: Int { reader?.frameCount ?? 0 }
+    public var frameCount: Int { clipDecoder?.frameCount ?? 0 }
 
-    /// DV footage offers the DV data effects; an empty channel offers nothing.
+    /// Wraps a frame index into the loaded clip.
+    private func wrappedIndex(_ index: Int) -> Int {
+        guard frameCount > 0 else { return 0 }
+        let remainder = index % frameCount
+        return remainder < 0 ? remainder + frameCount : remainder
+    }
+
+    /// Which data effects the loaded clip supports, if any.
     ///
     /// This is what the source panel's data stack reads to decide whether to appear
-    /// at all — and it must say `.none` when nothing is loaded, or an empty channel
-    /// would advertise effects it cannot apply.
+    /// at all. It says `.none` for an empty channel AND for ordinary video, because
+    /// neither can be damaged before decode — and offering the wedge on a .mov would
+    /// be advertising something that cannot happen.
     public var dataEffectFamily: DataEffectFamily {
-        reader == nil ? .none : .dv
+        clipDecoder?.dataEffectFamily ?? .none
     }
 
     /// Playback position as 0...1, for the shuttle's scrub track.
@@ -234,22 +245,33 @@ public final class DVSourceNode: Node, DataEffectProvider {
     /// render loop; the panel then shows its "no source" state (SPEC 1.5).
     @discardableResult
     public func load(url: URL) -> Bool {
-        do {
-            let reader = try DVReader(url: url)
-            if decoder == nil { decoder = try DVDecoder() }
-            self.reader = reader
-            self.mediaURL = url
-            self.playheadFrame = 0
-            self.isPlayingBackwards = false
-            self.textureFrameIndex = -1
-            Log.info(.dv, "\(identifier) loaded \(url.lastPathComponent)")
-            return true
-        } catch {
-            Log.error(.dv, "\(identifier) could not load \(url.lastPathComponent): \(error)")
-            self.reader = nil
+        // The extension chooses the decoder. DV goes down the bitstream path because
+        // that is the only path the wedge can work on; everything else goes through
+        // AVFoundation. A .dv that will not open is NOT retried as ordinary video —
+        // it would then play without the effects that are the reason to use DV.
+        let decoder: ClipDecoding?
+        if url.pathExtension.lowercased() == "dv" {
+            decoder = try? DVClipDecoder(url: url)
+        } else {
+            decoder = AVFClipDecoder(url: url)
+        }
+
+        guard let decoder, decoder.frameCount > 0 else {
+            Log.error(.dv, "\(identifier) could not load \(url.lastPathComponent)")
+            self.clipDecoder = nil
             self.mediaURL = nil
             return false
         }
+
+        self.clipDecoder = decoder
+        self.mediaURL = url
+        self.playheadFrame = 0
+        self.isPlayingBackwards = false
+        self.textureFrameIndex = -1
+        self.playbackRange = nil
+        Log.info(.dv, "\(identifier) loaded \(url.lastPathComponent) "
+            + "(\(decoder.dataEffectFamily.displayName) data effects)")
+        return true
     }
 
     /// Steps the playhead if a subdivision boundary has been crossed since the last one.
@@ -346,8 +368,8 @@ public final class DVSourceNode: Node, DataEffectProvider {
 
     /// Steps the playhead by whole frames (the shuttle's step buttons).
     public func step(by frames: Int) {
-        guard let reader else { return }
-        playheadFrame = Double(reader.wrappedIndex(Int(playheadFrame.rounded()) + frames))
+        guard clipDecoder != nil else { return }
+        playheadFrame = Double(wrappedIndex(Int(playheadFrame.rounded()) + frames))
     }
 
     /// Re-rolls the corruption seed. Called by the scheduler on a beat boundary, so
@@ -359,7 +381,7 @@ public final class DVSourceNode: Node, DataEffectProvider {
     // MARK: - Node
 
     public func render(inputs: [MTLTexture], context renderContext: RenderContext) -> MTLTexture? {
-        guard let reader, let decoder, let metal = context else { return texture }
+        guard let clipDecoder, let metal = context else { return texture }
 
         if isPlaying {
             switch timing {
@@ -367,8 +389,8 @@ public final class DVSourceNode: Node, DataEffectProvider {
                 // Advance at the source's own rate relative to the project rate, so a
                 // file is retimed to the clock rather than ad-hoc frame-dropped (SPEC 3).
                 let sourceFramesPerProjectFrame =
-                    (reader.standard.frameRate / StandardDefinition.frameRate) * playbackSpeed
-                advancePlayhead(by: sourceFramesPerProjectFrame, frameCount: reader.frameCount)
+                    (clipDecoder.frameRate / StandardDefinition.frameRate) * playbackSpeed
+                advancePlayhead(by: sourceFramesPerProjectFrame, frameCount: clipDecoder.frameCount)
 
             case .stepped(let subdivision, let frames):
                 // Hold the frame, and jump only when a subdivision boundary is
@@ -380,13 +402,13 @@ public final class DVSourceNode: Node, DataEffectProvider {
                         totalBeats: position.totalBeats,
                         subdivision: subdivision,
                         frames: frames,
-                        frameCount: reader.frameCount
+                        frameCount: clipDecoder.frameCount
                     )
                 }
             }
         }
 
-        let frameIndex = reader.wrappedIndex(Int(playheadFrame))
+        let frameIndex = wrappedIndex(Int(playheadFrame))
 
         // Re-decode only when the frame or the damage has actually changed. With the
         // transport stopped and no corruption this makes the preview free.
@@ -394,19 +416,7 @@ public final class DVSourceNode: Node, DataEffectProvider {
             return texture
         }
 
-        guard let cleanBytes = reader.frame(at: frameIndex) else { return texture }
-        let previousBytes = reader.frame(at: reader.wrappedIndex(frameIndex - 1))
-
-        // THE WEDGE: damage the compressed bytes, then decode them. Never the other
-        // way round — decoding first and damaging pixels would be an ordinary effect.
-        let bytes = DIFCorruptor.corrupt(
-            frame: cleanBytes,
-            settings: corruption,
-            standard: reader.standard,
-            previousFrame: previousBytes
-        )
-
-        guard let image = decoder.decode(frameBytes: bytes) else {
+        guard let image = clipDecoder.image(at: frameIndex, corruption: corruption) else {
             // A frame that will not decode at all keeps the previous picture on
             // screen rather than flashing black.
             Log.warn(.dv, "\(identifier) frame \(frameIndex) produced no picture; holding the last one")
@@ -425,15 +435,8 @@ public final class DVSourceNode: Node, DataEffectProvider {
     /// Same read/corrupt/decode path as `render`, stopping before the GPU upload, so
     /// a test can assert on pixels with no window server present.
     public func renderToImage(frameIndex requestedIndex: Int) -> ImageBuffer? {
-        guard let reader, let decoder else { return nil }
-        let frameIndex = reader.wrappedIndex(requestedIndex)
-        guard let cleanBytes = reader.frame(at: frameIndex) else { return nil }
-        let previousBytes = reader.frame(at: reader.wrappedIndex(frameIndex - 1))
-        let bytes = DIFCorruptor.corrupt(
-            frame: cleanBytes, settings: corruption,
-            standard: reader.standard, previousFrame: previousBytes
-        )
-        return decoder.decode(frameBytes: bytes)
+        guard let clipDecoder else { return nil }
+        return clipDecoder.image(at: wrappedIndex(requestedIndex), corruption: corruption)
     }
 
     /// Applies parameter values from the registry. Called once per frame by the app,
