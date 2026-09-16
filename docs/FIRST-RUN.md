@@ -51,6 +51,18 @@ DV bitstream before it is decoded* — libav is decoding genuinely damaged DIF b
 It is not a shader pretending. `mode` at the far left is block shuffle; drop is the
 classic DV dropout look.
 
+**The analog chain.** Below the corruptor in **Sub Mix 1 FX** are three effects that
+start switched **off** — flick their switches on:
+
+- **Composite · NTSC** — the reason the app exists. It encodes the picture to an NTSC
+  composite waveform and decodes it back, so dot crawl, rainbowing and chroma bleed
+  come out of the process rather than being drawn on. `path` toggles composite vs
+  S-Video (S-Video is visibly cleaner because Y and C never share a wire). `wobble`
+  and `head sw` are TBC-off jitter and the head-switching tear at the bottom. `gen`
+  runs the codec repeatedly for an Nth-generation dub.
+- **Echo / Trails** — frame-history trails with a luma key, so only bright things tail.
+- **Feedback** — the infinite tunnel. `zoom` just above centre pushes the image inward.
+
 **The faders.** A→B, C→D and ONE→TWO all work, with **Cut** (and **◆ Swap** on
 ONE→TWO). Drag them and Program Preview follows.
 
@@ -61,6 +73,10 @@ changes *on the beat*, latency-compensated so the visible change lands on time.
 **MIDI.** Any connected MIDI device is picked up at launch; the status bar names it.
 Mappings target param codes, so swapping a module keeps them.
 
+**The CRT toggles.** In the bottom bar: **Safe** draws the action-safe and title-safe
+rectangles over every preview, **Overscan** shows what a tube would actually cut off,
+and **BFI** inserts black frames on a clock.
+
 **Output.** The **Test Pat** switch in the bottom bar opens a borderless output window
 on the display named in `config/devices.json` (`MACROSILICON` here) and sends PROGRAM
 to it. Switch it off to close it and restore the display.
@@ -69,8 +85,11 @@ to it. Switch it off to close it and restore the display.
 
 Present, greyed, labelled — never hidden, so the shape of the app is legible:
 
-- **Composite · NTSC**, **Echo/Trails**, **Feedback**, **Color Ctrl**, **Layer Mask** — Phase 3.
+- **Color Ctrl** and **Layer Mask** — the MX-1 effect set and the Core Image
+  passthrough from SPEC §9 are not written yet.
 - **Record** and **Stream** sections — Phase 4.
+- **Sub Mix 2 FX** — the analog chain is built on the ONE bus only so far, so TWO's
+  panel shows the same effects disabled.
 - Asset Browser tabs, search, import, and the drag-to-load flow.
 - Clock sources other than Internal (audio detection, MIDI clock, Link).
 - **⇧ Learn** button: MIDI learn works in Core and is tested, but the shift-to-highlight
@@ -89,7 +108,12 @@ Present, greyed, labelled — never hidden, so the shape of the app is legible:
 - **The DVC100 is on S-Video, not composite**, on this rig. `config/devices.json`
   records it. Reading the wrong connector returns a valid, perfectly black picture.
 - **Only one process can hold the DVC100** — quit `DVC100.app` before the loopback.
-- **Sub Mix 1 FX drives Source A only.** Per-channel FX chains come later.
+- **Sub Mix 1 FX drives Source A only.** Per-channel FX chains come later. The three
+  bus effects act on the whole ONE bus, which is correct; the corruptor is per-source
+  because it has to run before decode.
+- **External feedback is not routed yet.** The loop's round trip is measured and the
+  node accepts a captured frame as its history, but capture is not wired into that
+  input live. Internal feedback works.
 - The settings bar panel carries an "Output" header the mockup doesn't have.
 
 ## Verifying it yourself
@@ -100,6 +124,8 @@ scripts/selfqa.sh offscreen    # render checks, no hardware
 scripts/selfqa.sh loopback     # DVC100 analog capture (quit DVC100.app first)
 ./build/Videoboy.app/Contents/MacOS/Videoboy --selfqa ui        # layout at 3 widths
 ./build/Videoboy.app/Contents/MacOS/Videoboy --selfqa playback  # the live graph
+scripts/selfqa.sh analog       # composite codec, echo and feedback, no hardware
+scripts/selfqa.sh calibrate    # measure the real feedback round trip (needs hardware)
 ./build/Videoboy.app/Contents/MacOS/Videoboy --selfqa output    # the HDMI output stage
 ```
 
@@ -110,6 +136,10 @@ The interesting ones to look at:
 - `selfqa/out/phase-2/beat-synced-corruption/` — one PNG per beat, same source frame.
 - `selfqa/out/phase-2/playback/` — the fader sweeping A to B through the real graph.
 - `selfqa/out/phase-2/ui-layout/` — the shell at wide, compact and narrow.
+- `selfqa/out/phase-3/composite-codec/` — the NTSC codec, clean through to 4th
+  generation and TBC-off wobble.
+- `selfqa/out/phase-3/feedback-latency/` — the marker frame going out and coming back;
+  the physical loop measures **3 frames / 100 ms** on this rig.
 - `selfqa/out/phase-2/loopback/` — **the real analog signal**, captured back off the
   DVC100 after going out the HDMI card and through the HDMI-to-RCA converter.
   30.000 fps, 0 dropped frames, 720x480, all six colour bars recovered.
