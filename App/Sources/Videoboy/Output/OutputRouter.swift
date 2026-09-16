@@ -90,6 +90,14 @@ final class OutputRouter {
     private var windows: [CGDirectDisplayID: OutputWindowController] = [:]
     /// The tiled texture for the four-up, reused so it is not reallocated per frame.
     private var tiledTarget: MTLTexture?
+    /// One streamer per streaming destination currently in use.
+    private var streamers: [String: MPEGTSStreamer] = [:]
+    /// Reads textures back to the CPU so they can be encoded. Made on first use,
+    /// because nothing needs it until something is actually being streamed.
+    private var readback: OffscreenRenderer?
+    /// Streaming destinations that failed to open, so a bad target is reported once
+    /// rather than retried on every frame.
+    private var failedStreams: Set<String> = []
 
     /// Called when the routes change, so the interface can restate them.
     var onRoutesChanged: (() -> Void)?
@@ -123,13 +131,20 @@ final class OutputRouter {
         }
 
         for destination in store.preferences.destinations {
+            // OBS is served now; the rest are listed with the specific piece that is
+            // still missing, so someone deciding whether to wait knows which.
+            let canServe = destination.kind == .obs && !destination.target.isEmpty
             options.append(RoutingOption(
                 destination: .configured(destination.id),
                 name: destination.name,
                 detail: destination.kind.displayName
                     + (destination.target.isEmpty ? "" : " · \(destination.target)"),
-                isAvailable: false,
-                unavailableReason: Self.reasonNotBuilt(destination.kind)
+                isAvailable: canServe,
+                unavailableReason: canServe
+                    ? nil
+                    : (destination.kind == .obs
+                        ? "Set a target, such as 9000, in Settings › Outputs."
+                        : Self.reasonNotBuilt(destination.kind))
             ))
         }
 
@@ -143,7 +158,7 @@ final class OutputRouter {
     /// know which thing is missing.
     private static func reasonNotBuilt(_ kind: OutputDestination.Kind) -> String {
         switch kind {
-        case .obs: "OBS streaming is not built yet."
+        case .obs: "Set a target, such as 9000, in Settings › Outputs."
         case .window: "Sending to another app's window is not built yet."
         case .feedbackSend: "Feedback sends are not wired to the feedback node's external input yet."
         case .captureCard: "Capture-card output needs the card's own SDK."
@@ -159,10 +174,11 @@ final class OutputRouter {
     /// A destination carries one picture at a time, which is what a screen is. A
     /// source can go to several destinations at once, which is what a send is.
     func route(_ source: RoutingSource, to destination: RoutingDestination) {
-        guard case .display(let displayID) = destination else {
-            Log.warn(.render, "destination is not a display; nothing to present to yet")
+        if case .configured(let id) = destination {
+            routeToStream(source, destinationID: id)
             return
         }
+        guard case .display(let displayID) = destination else { return }
         guard let display = DisplayRouter.availableDisplays().first(where: { $0.displayID == displayID })
         else {
             Log.error(.render, "display \(displayID) has gone away; not routing to it")
@@ -184,15 +200,58 @@ final class OutputRouter {
         onRoutesChanged?()
     }
 
-    /// Stops sending to a destination and closes its window.
+    /// Opens a stream to a configured destination.
+    private func routeToStream(_ source: RoutingSource, destinationID id: String) {
+        guard let configured = store.preferences.destinations.first(where: { $0.id == id }),
+              configured.kind == .obs else {
+            Log.warn(.render, "destination \(id) cannot be streamed to")
+            return
+        }
+        guard !configured.target.isEmpty else {
+            Log.warn(.render, "\(configured.name) has no target; nothing to stream to")
+            return
+        }
+
+        do {
+            streamers[id]?.close()
+            streamers[id] = try MPEGTSStreamer(target: configured.target)
+            failedStreams.remove(id)
+            routes[.configured(id)] = source
+            Log.info(.render, "streaming \(source.displayName) to \(configured.name)")
+            onRoutesChanged?()
+        } catch {
+            failedStreams.insert(id)
+            Log.error(.render, "could not open the stream to \(configured.name): \(error)")
+        }
+    }
+
+    /// Why the last attempt to open a stream failed, if it did.
+    func didFailToStream(to destination: RoutingDestination) -> Bool {
+        guard case .configured(let id) = destination else { return false }
+        return failedStreams.contains(id)
+    }
+
+    /// Stops sending to a destination and closes its window or stream.
     func clear(_ destination: RoutingDestination) {
         routes.removeValue(forKey: destination)
-        if case .display(let displayID) = destination {
+        switch destination {
+        case .display(let displayID):
             windows[displayID]?.dismiss()
             windows.removeValue(forKey: displayID)
+        case .configured(let id):
+            streamers[id]?.close()
+            streamers.removeValue(forKey: id)
         }
         Log.info(.render, "cleared a route")
         onRoutesChanged?()
+    }
+
+    /// How many frames each open stream has sent, for the status bar.
+    var streamSummary: String? {
+        guard let streamer = streamers.values.first else { return nil }
+        return streamers.count == 1
+            ? "\(streamer.url) · \(streamer.framesSent) frames"
+            : "\(streamers.count) streams"
     }
 
     /// Which destinations a source is currently going to.
@@ -212,9 +271,21 @@ final class OutputRouter {
     ///   happen when something is actually routed to it.
     func present(textureFor: (RoutingSource) -> MTLTexture?) {
         for (destination, source) in routes {
-            guard case .display(let displayID) = destination,
-                  let window = windows[displayID] else { continue }
-            window.present(texture: textureFor(source))
+            switch destination {
+            case .display(let displayID):
+                guard let window = windows[displayID] else { continue }
+                window.present(texture: textureFor(source))
+
+            case .configured(let id):
+                guard let streamer = streamers[id], let metal else { continue }
+                guard let texture = textureFor(source) else { continue }
+                if readback == nil { readback = OffscreenRenderer(context: metal) }
+                // A full CPU readback and an MPEG-2 encode per frame. Not free, and
+                // it only happens while something is actually being streamed — which
+                // is why the renderer is made on first use rather than at startup.
+                guard let readback, let image = readback.readback(texture) else { continue }
+                streamer.send(image: image)
+            }
         }
     }
 
@@ -235,6 +306,8 @@ final class OutputRouter {
     func closeAll() {
         for window in windows.values { window.dismiss() }
         windows.removeAll()
+        for streamer in streamers.values { streamer.close() }
+        streamers.removeAll()
         routes.removeAll()
     }
 }

@@ -18,6 +18,8 @@ what was asked for and has not been built.
   breathes on the beat.
 - **"Don't remind me again"** (§8) — save location on first open, save on quit, and
   the audio-clock warning. Reset from the Defaults pane.
+- **OBS streaming** (§12) — MPEG-TS over UDP from the app itself, read by an OBS
+  Media Source. Needs nothing installed on either side.
 - **Output routing** (§6, partly) — a send glyph under every preview, listing every
   display plus the destinations defined in preferences. Displays work, including the
   four-up tiled send. OBS, window, capture-card, IP and feedback-send destinations

@@ -96,10 +96,13 @@ final class SettingsBarPanelBody: NSView {
             labelled("DV", Controls.row([dvToggle, dvDetail], spacing: 1))
         ])
 
-        // STREAM — not built. Marked as such rather than left as live-looking popups.
-        let stream = section("Stream", views: [
-            Controls.label("not built", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
-        ])
+        // STREAM — what is going out to OBS, if anything. A readout rather than a
+        // control: the route is chosen from the send glyph under a preview, and a
+        // second way to start a stream would be a second thing to keep in step.
+        streamLabel.stringValue = "idle"
+        streamLabel.font = Theme.Font.tinyLabel
+        streamLabel.textColor = Theme.Color.textTertiary
+        let stream = section("Stream", views: [streamLabel])
 
         let row = Controls.row([
             output, divider(), toggles, divider(), emulation, divider(),
@@ -118,7 +121,15 @@ final class SettingsBarPanelBody: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
+    private let streamLabel = NSTextField(labelWithString: "idle")
     private var ntscDetailButton: NSButton?
+
+    /// Shows what is being streamed, or "idle".
+    func setStreamStatus(_ status: String?) {
+        streamLabel.stringValue = status ?? "idle"
+        streamLabel.textColor = status == nil
+            ? Theme.Color.textTertiary : Theme.Color.accent
+    }
     private var dvDetailButton: NSButton?
 
     @objc private func outputNTSCChanged(_ sender: NSSwitch) {

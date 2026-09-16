@@ -36,8 +36,16 @@ macOS dropped the QuickTime 7 codec path at 10.15, so AVFoundation cannot decode
 ### What is enabled
 
 Decoders `dvvideo, mpeg1video, mpeg2video, mpeg4, h264, rawvideo, pcm_s16le`;
-demuxers `dv, mov, mpegts, mpegps, m4v, h264, rawvideo`; `file` protocol only.
+encoders `dvvideo, rawvideo, mpeg2video, mjpeg`;
+demuxers `dv, mov, mpegts, mpegps, m4v, h264, rawvideo`;
+muxers `dv, rawvideo, mpegts, mjpeg`;
+protocols `file, udp, pipe`.
 Everything else is disabled — a smaller surface and an easier licence story.
+
+The `mpeg2video` encoder, the `mpegts` muxer and the `udp` protocol are there for the
+OBS send (`MPEGTSStreamer`). All three are LGPL; `--disable-gpl` and
+`--disable-nonfree` are still asserted and verified after configure, and the build
+fails loudly if either slips.
 
 ## The `ffmpeg` command-line tool
 

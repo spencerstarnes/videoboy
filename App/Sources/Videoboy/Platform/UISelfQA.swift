@@ -367,23 +367,35 @@ enum UISelfQA {
                 fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
                     .appendingPathComponent("videoboy-selfqa-routing.json"))
             store.preferences.destinations = [
-                OutputDestination(kind: .obs, name: "OBS", target: "127.0.0.1:9000")
+                OutputDestination(kind: .obs, name: "OBS ready", target: "127.0.0.1:9000"),
+                OutputDestination(kind: .obs, name: "OBS no target", target: ""),
+                OutputDestination(kind: .captureCard, name: "Black Magic", target: "card")
             ]
             let router = OutputRouter(store: store, metal: MetalContext.shared)
 
-            // Destinations that cannot be served must say so rather than being
-            // offered and then doing nothing — the failure this whole list exists to
-            // avoid is a menu item that looks live and is not.
             let options = router.availableOptions()
             let configured = options.filter {
                 if case .configured = $0.destination { return true }
                 return false
             }
+
+            // A destination that CAN be served is offered plainly.
             check.record(AssertionResult(
-                name: "destinations that cannot be served are offered greyed, with a reason",
-                passed: configured.allSatisfy { !$0.isAvailable && $0.unavailableReason != nil },
-                detail: "\(configured.count) configured destinations, "
-                    + "\(configured.filter { $0.unavailableReason != nil }.count) give a reason"
+                name: "a stream destination with a target is offered as available",
+                passed: configured.first(where: { $0.name == "OBS ready" })?.isAvailable == true,
+                detail: "OBS with a target is \(configured.first(where: { $0.name == "OBS ready" })?.isAvailable == true ? "available" : "greyed")"
+            ))
+
+            // One that cannot must say WHY rather than being offered and then doing
+            // nothing — a menu item that looks live and is not is the failure this
+            // whole list exists to avoid.
+            let unservable = configured.filter { !$0.isAvailable }
+            check.record(AssertionResult(
+                name: "destinations that cannot be served are greyed, each with its own reason",
+                passed: unservable.count == 2
+                    && unservable.allSatisfy { $0.unavailableReason != nil }
+                    && Set(unservable.compactMap(\.unavailableReason)).count == 2,
+                detail: unservable.compactMap(\.unavailableReason).joined(separator: " / ")
             ))
 
             // The main display must never be offered: the app is on it, and a

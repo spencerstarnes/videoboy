@@ -40,8 +40,14 @@ tar -xf "$TARBALL" -C "$WORK" --strip-components=1
 
 cd "$WORK"
 
-# Only what Videoboy actually decodes. A minimal build keeps the bundle small and,
-# more importantly, makes it obvious that no GPL-only component is being pulled in.
+# Only what Videoboy actually decodes and emits. A minimal build keeps the bundle
+# small and, more importantly, makes it obvious that no GPL-only component is being
+# pulled in.
+#
+# The mpeg2video/mjpeg encoders, the mpegts muxer and the udp protocol are here for
+# the OBS send (SPEC 15): OBS reads an MPEG-TS stream over UDP with its own Media
+# Source and needs nothing installed on either side. All four are LGPL — the
+# --disable-gpl assertion below still holds and is verified after configure.
 log "configuring (LGPL, arm64, DV + MPEG family only)"
 ./configure \
   --prefix="$VENDOR" \
@@ -59,11 +65,11 @@ log "configuring (LGPL, arm64, DV + MPEG family only)"
   --enable-avutil \
   --enable-swscale \
   --enable-decoder=dvvideo,mpeg1video,mpeg2video,mpeg4,h264,rawvideo,pcm_s16le \
-  --enable-encoder=dvvideo,rawvideo \
+  --enable-encoder=dvvideo,rawvideo,mpeg2video,mjpeg \
   --enable-demuxer=dv,mov,mpegts,mpegps,m4v,h264,rawvideo \
-  --enable-muxer=dv,rawvideo \
+  --enable-muxer=dv,rawvideo,mpegts,mjpeg \
   --enable-parser=dvbsub,h264,mpeg4video,mpegvideo \
-  --enable-protocol=file \
+  --enable-protocol=file,udp,pipe \
   --enable-neon \
   --disable-audiotoolbox \
   --disable-videotoolbox \

@@ -128,7 +128,7 @@ Present, greyed, labelled — never hidden, so the shape of the app is legible:
 
 - **Color Ctrl** and **Layer Mask** — the MX-1 effect set and the Core Image
   passthrough from SPEC §9 are not written yet.
-- **Record** and **Stream** sections — Phase 4.
+- **Record** — Phase 4. The **Stream** readout is live (see below).
 - **Modulation assignment is on the FX parameters only.** The badge columns on the
   faders and shuttles are still decorative.
 - **MX-1 effects** (negative, B&W, mosaic, posterize, mirror, flip, freeze) are built
@@ -192,3 +192,36 @@ The interesting ones to look at:
 - `docs/BLOCKED.md` — the three things needing you, one of which is a single action.
 - `docs/ARCHITECTURE.md` — the graph, the two clocks, the one extension point.
 - `docs/ADD-A-MODULE.md` — how to add a source or effect.
+
+
+## Sending Videoboy into OBS
+
+Videoboy publishes MPEG-TS over UDP, which OBS reads with its own Media Source. There
+is nothing to install on either side.
+
+1. In Videoboy, open **Settings › Outputs** (⌘,) and press **+**. Set **Kind** to
+   **OBS** and **Target** to `9000`. A bare port means localhost — sending video off
+   this machine has to be typed in deliberately, as `host:port`.
+2. Click the send glyph under any preview and choose the destination you just made.
+   The **Stream** readout in the Output bar shows the target and the frame count.
+3. In OBS, add a **Media Source**, untick **Local File**, and set **Input** to
+   `udp://127.0.0.1:9000`. Set **Input Format** to `mpegts`.
+
+Tips:
+
+- Untick **Restart playback when source becomes active** in OBS, or it will drop the
+  stream every time you switch scenes.
+- A keyframe goes out twice a second, so OBS shows a picture within about half a
+  second of being pointed at the stream.
+- Encoding costs about 7 ms a frame against a 33 ms budget at SD, so it keeps up
+  comfortably — but it is real CPU work and only runs while something is routed.
+
+## Sending previews to a display
+
+Every preview has a send glyph in its bottom-right corner. It lists every display
+attached to the machine plus anything defined in Settings › Outputs. The display
+Videoboy is running on is listed but greyed: a borderless output window there would
+cover the controls with no way back.
+
+Right-click the glyph under **Program Preview** for the **four-up preview**, which
+tiles all four sources onto one screen.

@@ -1242,6 +1242,7 @@ final class ShellController {
                 framesPerSecond: engine.measuredFramesPerSecond
             )
             shell.statusBar.setMIDIDevice(engine.midi.connectedSourceNames.first)
+            shell.grid.panels.settingsBarBody.setStreamStatus(router.streamSummary)
             if engine.transport.isRunning {
                 let position = engine.transport.position(atHostTime: CACurrentMediaTime())
                 shell.toolbar.setBeat(position.beat)
