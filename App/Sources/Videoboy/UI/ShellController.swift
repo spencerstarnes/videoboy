@@ -152,10 +152,36 @@ final class ShellController {
             (panels.subMixTwoBody, GraphTopology.subMixTwo),
             (panels.programBody, GraphTopology.primary)
         ]
+        // Which engine bus each preview's data controls drive.
+        let busNames: [String: String] = [
+            GraphTopology.subMixOne: "ONE",
+            GraphTopology.subMixTwo: "TWO",
+            GraphTopology.primary: "PROGRAM"
+        ]
+        let busSlots: [String: String] = [
+            GraphTopology.subMixOne: Engine.busCodecOneSlot,
+            GraphTopology.subMixTwo: Engine.busCodecTwoSlot,
+            GraphTopology.primary: Engine.busCodecProgramSlot
+        ]
+
         for composite in composites {
             composite.body.onBlendModeChanged = { [weak self] mode in
                 self?.engine.registry.setValue(
                     mode.normalisedPosition, slot: composite.slot, code: .blendMode)
+            }
+            composite.body.onInterchangeChanged = { [weak self] codec in
+                guard let self, let bus = busNames[composite.slot] else { return }
+                self.engine.setInterchange(codec, forBus: bus)
+            }
+            composite.body.onDataParameterChanged = { [weak self] code, value in
+                guard let self,
+                      let parameter = ParamCode(rawValue: code),
+                      let slot = busSlots[composite.slot],
+                      let declared = self.engine.graph.nodes[slot]?.parameters
+                        .first(where: { $0.code == parameter })
+                else { return }
+                self.engine.registry.setValue(
+                    declared.denormalise(value), slot: slot, code: parameter)
             }
         }
     }

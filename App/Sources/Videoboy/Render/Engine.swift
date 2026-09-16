@@ -62,6 +62,13 @@ final class Engine {
     private(set) var echoTwo: EchoNode!
     private(set) var feedbackTwo: FeedbackNode!
 
+    /// Bus data effects: re-encode the mix so its bitstream can be damaged.
+    /// One per bus plus one on PROGRAM, since the format leaving the mixer is its
+    /// own decision independent of what the sub-mixes carry.
+    private(set) var busCodecOne: BusCodecNode!
+    private(set) var busCodecTwo: BusCodecNode!
+    private(set) var busCodecProgram: BusCodecNode!
+
     /// Live capture, available as a source (SPEC 10). Fed by the App's capture
     /// session; nothing until then, which renders as the panel's empty state.
     private(set) var capture: CaptureSourceNode!
@@ -163,7 +170,18 @@ final class Engine {
         graph.connect(from: GraphTopology.subMixOne, to: Engine.compositeSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeSlot, to: Engine.echoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoSlot, to: Engine.feedbackSlot, inputIndex: 0)
-        graph.connect(from: Engine.feedbackSlot, to: GraphTopology.primary, inputIndex: 0)
+        // The bus data stage sits at the END of each chain, just before the mix:
+        // it re-encodes whatever the chain produced, so it damages the finished bus
+        // rather than something half-processed.
+        busCodecOne = BusCodecNode(identifier: Engine.busCodecOneSlot, context: metal)
+        busCodecTwo = BusCodecNode(identifier: Engine.busCodecTwoSlot, context: metal)
+        busCodecProgram = BusCodecNode(identifier: Engine.busCodecProgramSlot, context: metal)
+        graph.add(busCodecOne)
+        graph.add(busCodecTwo)
+        graph.add(busCodecProgram)
+
+        graph.connect(from: Engine.feedbackSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
+        graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
 
         // The same chain on TWO. Separate instances rather than a shared one: the two
         // buses must be able to carry different looks at once, which is the whole
@@ -178,7 +196,8 @@ final class Engine {
         graph.connect(from: GraphTopology.subMixTwo, to: Engine.compositeTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeTwoSlot, to: Engine.echoTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoTwoSlot, to: Engine.feedbackTwoSlot, inputIndex: 0)
-        graph.connect(from: Engine.feedbackTwoSlot, to: GraphTopology.primary, inputIndex: 1)
+        graph.connect(from: Engine.feedbackTwoSlot, to: Engine.busCodecTwoSlot, inputIndex: 0)
+        graph.connect(from: Engine.busCodecTwoSlot, to: GraphTopology.primary, inputIndex: 1)
 
         // A generator per channel, created up front so its parameters are registered
         // and mappable whether or not it is currently the channel's source.
@@ -215,6 +234,9 @@ final class Engine {
     static let compositeTwoSlot = "fx.two.composite"
     static let echoTwoSlot = "fx.two.echo"
     static let feedbackTwoSlot = "fx.two.feedback"
+    static let busCodecOneSlot = "data.one"
+    static let busCodecTwoSlot = "data.two"
+    static let busCodecProgramSlot = "data.program"
     static let captureSlot = "source.capture"
     static let testPatternSlot = "source.testpattern"
 
@@ -251,6 +273,16 @@ final class Engine {
                 // Seeding from the beat number keeps a performance reproducible.
                 node.rerollCorruptionSeed(using: UInt64(event.targetBeat * 1000) &+ 17)
                 Log.info(.clock, "source \(letter) reseeded for beat \(event.targetBeat)")
+            }
+        }
+
+        // Bus data effects re-roll on the beat too, so damage applied to a mix is as
+        // musical as damage applied to a source.
+        for (name, codec) in [("ONE", busCodecOne), ("TWO", busCodecTwo), ("PROGRAM", busCodecProgram)] {
+            guard let codec else { continue }
+            scheduler.subscribe(subdivision: .quarter, latencyInFrames: codec.latencyInFrames) { event in
+                codec.rerollCorruptionSeed(using: UInt64(event.targetBeat * 1000) &+ 29)
+                Log.info(.clock, "bus \(name) data effects reseeded for beat \(event.targetBeat)")
             }
         }
     }
@@ -325,6 +357,9 @@ final class Engine {
         echoTwo.applyParameters(from: registry)
         feedbackTwo.applyParameters(from: registry)
         for generator in generators.values { generator.applyParameters(from: registry) }
+        busCodecOne.applyParameters(from: registry)
+        busCodecTwo.applyParameters(from: registry)
+        busCodecProgram.applyParameters(from: registry)
     }
 
     /// Evaluates the graph to PRIMARY, in dependency order, and returns every
@@ -474,6 +509,32 @@ final class Engine {
         transport.beatsPerMinute = estimate.beatsPerMinute
     }
 
+    /// Sets a bus's interchange codec, which decides what data effects it offers.
+    func setInterchange(_ codec: InterchangeCodec, forBus bus: String) {
+        switch bus {
+        case "ONE": busCodecOne.interchange = codec
+        case "TWO": busCodecTwo.interchange = codec
+        default: busCodecProgram.interchange = codec
+        }
+    }
+
+    /// The data-effect family a bus currently offers.
+    func dataEffectFamily(forBus bus: String) -> DataEffectFamily {
+        switch bus {
+        case "ONE": busCodecOne.dataEffectFamily
+        case "TWO": busCodecTwo.dataEffectFamily
+        default: busCodecProgram.dataEffectFamily
+        }
+    }
+
+    /// The data-effect family a channel's loaded media offers.
+    func dataEffectFamily(forChannel letter: String) -> DataEffectFamily {
+        // A channel showing a generator has no bitstream, whatever file may also be
+        // loaded behind it.
+        if channelSourceKinds[letter] == .generator { return .none }
+        return sources[letter]?.dataEffectFamily ?? .none
+    }
+
     /// Whether the program bus carries the test pattern instead of the live mix.
     ///
     /// Routed at the graph, not painted over the preview, so what the CRT receives
@@ -489,7 +550,18 @@ final class Engine {
             graph.connect(from: Engine.testPatternSlot, to: GraphTopology.primary, inputIndex: 0)
             registry.setValue(0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
         } else {
-            graph.connect(from: Engine.feedbackSlot, to: GraphTopology.primary, inputIndex: 0)
+            // The bus data stage sits at the END of each chain, just before the mix:
+        // it re-encodes whatever the chain produced, so it damages the finished bus
+        // rather than something half-processed.
+        busCodecOne = BusCodecNode(identifier: Engine.busCodecOneSlot, context: metal)
+        busCodecTwo = BusCodecNode(identifier: Engine.busCodecTwoSlot, context: metal)
+        busCodecProgram = BusCodecNode(identifier: Engine.busCodecProgramSlot, context: metal)
+        graph.add(busCodecOne)
+        graph.add(busCodecTwo)
+        graph.add(busCodecProgram)
+
+        graph.connect(from: Engine.feedbackSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
+        graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
         }
         Log.info(.output, "program bus now carries \(showsPattern ? "the test pattern" : "the live mix")")
     }

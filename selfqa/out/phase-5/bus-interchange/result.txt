@@ -1,0 +1,15 @@
+check:    phase-5/bus-interchange
+verdict:  PASS
+when:     2026-09-16T13:50:23Z
+core:     0.3.0
+
+notes:
+  decoded footage re-encoded to DV, standing in for a mixed bus
+
+assertions (6/6 passed):
+  PASS  shuffleBlocks damages the re-encoded mix — 0.344 of sampled pixels differ, needed >= 0.02
+  PASS  duplicateBlocks damages the re-encoded mix — 0.300 of sampled pixels differ, needed >= 0.02
+  PASS  dropBlocks damages the re-encoded mix — 0.394 of sampled pixels differ, needed >= 0.02
+  PASS  flipCoefficients damages the re-encoded mix — 0.022 of sampled pixels differ, needed >= 0.02
+  PASS  swapSequences damages the re-encoded mix — 0.039 of sampled pixels differ, needed >= 0.02
+  PASS  holdSequences damages the re-encoded mix — 0.036 of sampled pixels differ, needed >= 0.02

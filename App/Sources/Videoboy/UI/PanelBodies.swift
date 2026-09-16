@@ -166,7 +166,14 @@ final class PreviewPanelBody: NSView {
 
     /// Called when the blend mode changes, with the chosen mode.
     var onBlendModeChanged: ((BlendMode) -> Void)?
+
+    /// Called when the bus's interchange codec changes.
+    var onInterchangeChanged: ((InterchangeCodec) -> Void)?
+    /// Called when a bus data-effect parameter moves: (param code, 0...1).
+    var onDataParameterChanged: ((String, Double) -> Void)?
     private var blendPopUp: NSPopUpButton?
+    private var interchangePopUp: NSPopUpButton?
+    private var dataEffectRow: NSStackView?
 
     /// - Parameter showsBlendControls: true for the composites that carry a blend
     ///   mode — the two sub-mixes and the program.
@@ -192,20 +199,58 @@ final class PreviewPanelBody: NSView {
             let hint = Controls.label(
                 "fader sets opacity", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
 
+            // The bus interchange codec. A mixed bus is a texture with no bitstream,
+            // so data effects on it are only possible if it is re-encoded first —
+            // this popup is that choice, and it decides which data effects appear.
+            let interchange = Controls.popUp(
+                InterchangeCodec.allCases.map(\.displayName),
+                target: self, action: #selector(interchangeChanged(_:))
+            )
+            interchangePopUp = interchange
+
             let row = Controls.row([
                 Controls.label("Blend", font: Theme.Font.tinyLabel,
                                color: Theme.Color.textTertiary, holdsWidth: true),
                 popUp,
+                Controls.label("Data", font: Theme.Font.tinyLabel,
+                               color: Theme.Color.textTertiary, holdsWidth: true),
+                interchange,
                 Controls.spacer(),
                 hint
             ], spacing: 4)
             row.translatesAutoresizingMaskIntoConstraints = false
             addSubview(row)
 
+            // The bus data-effect controls, hidden until an interchange is chosen.
+            // Hidden rather than disabled: with no interchange there is no bitstream,
+            // so these are not "not yet built", they are meaningless.
+            let dataAmount = Controls.fader(
+                value: 0, compact: true, accent: Theme.Color.recordActive,
+                target: self, action: #selector(dataAmountChanged(_:)))
+            let dataMode = Controls.fader(
+                value: 0, compact: true, accent: Theme.Color.recordActive,
+                target: self, action: #selector(dataModeChanged(_:)))
+            let dataRow = Controls.row([
+                Controls.label("dmg", font: Theme.Font.tinyLabel,
+                               color: Theme.Color.textTertiary, holdsWidth: true),
+                dataAmount,
+                Controls.label("mode", font: Theme.Font.tinyLabel,
+                               color: Theme.Color.textTertiary, holdsWidth: true),
+                dataMode
+            ], spacing: 4)
+            dataRow.translatesAutoresizingMaskIntoConstraints = false
+            dataRow.isHidden = true
+            addSubview(dataRow)
+            dataEffectRow = dataRow
+
             NSLayoutConstraint.activate([
+                dataRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Metrics.panelBodyPadding),
+                dataRow.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Metrics.panelBodyPadding),
+                dataRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
+
                 row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Metrics.panelBodyPadding),
                 row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Metrics.panelBodyPadding),
-                row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3)
+                row.bottomAnchor.constraint(equalTo: dataRow.topAnchor, constant: -2)
             ])
             bottomAnchorTarget = row.topAnchor
             bottomConstant = -3
@@ -221,6 +266,23 @@ final class PreviewPanelBody: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+
+    @objc private func interchangeChanged(_ sender: NSPopUpButton) {
+        let codec = InterchangeCodec.allCases[
+            min(sender.indexOfSelectedItem, InterchangeCodec.allCases.count - 1)]
+        // The data controls only exist when there is a bitstream for them to act on.
+        dataEffectRow?.isHidden = (codec == .none)
+        Log.info(.bitstream, "bus interchange set to \(codec.displayName)")
+        onInterchangeChanged?(codec)
+    }
+
+    @objc private func dataAmountChanged(_ sender: VBFader) {
+        onDataParameterChanged?(ParamCode.corruptAmount.rawValue, sender.value)
+    }
+
+    @objc private func dataModeChanged(_ sender: VBFader) {
+        onDataParameterChanged?(ParamCode.corruptMode.rawValue, sender.value)
+    }
 
     @objc private func blendModeChanged(_ sender: NSPopUpButton) {
         let mode = BlendMode.allCases[min(sender.indexOfSelectedItem, BlendMode.allCases.count - 1)]

@@ -1,11 +1,11 @@
 check:    audit
 verdict:  PASS
-when:     2026-09-16T13:45:59Z
+when:     2026-09-16T13:50:45Z
 core:     0.3.0
 
 notes:
-  447 controls found: 198 live, 249 disabled, 0 enabled-but-unwired
+  465 controls found: 207 live, 258 disabled, 0 enabled-but-unwired
 
 assertions (2/2 passed):
   PASS  no control is enabled but unwired — every enabled control has an action
-  PASS  the interface has controls at all — 447 found
+  PASS  the interface has controls at all — 465 found

@@ -46,7 +46,7 @@ public enum LoopMode: String, CaseIterable, Codable, Sendable {
 }
 
 /// Plays a DV file into the render graph, corrupting it before decode.
-public final class DVSourceNode: Node {
+public final class DVSourceNode: Node, DataEffectProvider {
 
     public let identifier: String
     public let kind: NodeKind = .source
@@ -109,6 +109,15 @@ public final class DVSourceNode: Node {
 
     /// Total frames in the loaded file, or 0.
     public var frameCount: Int { reader?.frameCount ?? 0 }
+
+    /// DV footage offers the DV data effects; an empty channel offers nothing.
+    ///
+    /// This is what the source panel's data stack reads to decide whether to appear
+    /// at all — and it must say `.none` when nothing is loaded, or an empty channel
+    /// would advertise effects it cannot apply.
+    public var dataEffectFamily: DataEffectFamily {
+        reader == nil ? .none : .dv
+    }
 
     /// Playback position as 0...1, for the shuttle's scrub track.
     public var normalisedPosition: Double {
