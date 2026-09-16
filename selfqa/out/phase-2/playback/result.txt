@@ -1,13 +1,14 @@
 check:    phase-2/playback
 verdict:  PASS
-when:     2026-09-16T22:11:52Z
+when:     2026-09-16T22:23:52Z
 core:     0.3.0
 
 notes:
   A = motion.dv, B = bars.dv, through the engine's own graph
+  MPEG damage at a fixed playhead: Frame Drop 0.971, Motion Vector Corrupt 0.564, Reference Hold 0.239
   all frames rendered through the engine's own nodes and Metal pipelines
 
-assertions (24/24 passed):
+assertions (29/29 passed):
   PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (25 nodes)
   PASS  dimensions — expected 720x480, got 720x480
   PASS  signal present — luminance variance 3785.7, threshold 25.0
@@ -32,3 +33,8 @@ assertions (24/24 passed):
   PASS  a bus fed back into its own loop keeps rendering — 20 of 20 frames rendered
   PASS  the feedback send changes the picture — 0.855 of sampled pixels differ, needed >= 0.02
   PASS  signal present — luminance variance 4204.7, threshold 25.0
+  PASS  MPEG footage offers the MPEG data effects — family is MPEG
+  PASS  every MPEG data effect changes what reaches the screen — Frame Drop 0.971, Motion Vector Corrupt 0.564, Reference Hold 0.239
+  PASS  Frame Drop leaves a picture, not a dead decoder — luminance variance 2419.6
+  PASS  Motion Vector Corrupt leaves a picture, not a dead decoder — luminance variance 1823.3
+  PASS  Reference Hold leaves a picture, not a dead decoder — luminance variance 2018.8

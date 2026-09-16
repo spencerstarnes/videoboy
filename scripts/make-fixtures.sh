@@ -66,6 +66,24 @@ if [ ! -f "$SAMPLES/motion.mov" ]; then
     -c:v libx264 -pix_fmt yuv420p -crf 18 "$SAMPLES/motion.mov"
 fi
 
+# An MPEG-2 elementary stream for the MPEG half of the wedge (SPEC 5). Raw ES rather
+# than a container: the corruptor works on the bitstream, and a fixture wrapped in
+# mpegts would be testing the demuxer instead of what is being tested.
+#
+# A short GOP with B-frames, because the whole point of MPEG damage is temporal —
+# dropping a predicted picture is only interesting when there are predicted pictures.
+if [ ! -f "$SAMPLES/motion.m2v" ]; then
+  log "generating samples/motion.m2v (MPEG-2 elementary stream, 6s)"
+  # Mandelbrot rather than the bar pattern: MPEG damage is displacement of detail
+  # along motion vectors, and a picture of large flat colour areas has almost no
+  # detail to displace. This zooms continuously and is dense everywhere, so what the
+  # effects do is actually visible rather than merely measurable.
+  ffmpeg -y -loglevel error \
+    -f lavfi -i "mandelbrot=size=720x480:rate=30000/1001" -t 6 \
+    -c:v mpeg2video -pix_fmt yuv420p -b:v 6000k -g 12 -bf 2 \
+    -f mpeg2video "$SAMPLES/motion.m2v"
+fi
+
 log "writing samples/manifest.json"
 python3 - "$SAMPLES" <<'PY'
 import json, os, sys

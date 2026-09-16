@@ -250,9 +250,15 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         // AVFoundation. A .dv that will not open is NOT retried as ordinary video —
         // it would then play without the effects that are the reason to use DV.
         let decoder: ClipDecoding?
-        if url.pathExtension.lowercased() == "dv" {
+        switch url.pathExtension.lowercased() {
+        case "dv":
             decoder = try? DVClipDecoder(url: url)
-        } else {
+        case "m2v", "mpg", "mpeg", "ts", "m2t", "m2ts", "vob":
+            // The MPEG families go through the bitstream decoder rather than
+            // AVFoundation, which could also play them but hands back finished
+            // pictures with no seam to damage. The wedge needs the packet.
+            decoder = MPEGStreamDecoder(url: url) ?? AVFClipDecoder(url: url)
+        default:
             decoder = AVFClipDecoder(url: url)
         }
 
@@ -447,6 +453,9 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         }
         if let mode = registry.value(slot: identifier, code: .corruptMode) {
             corruption.mode = CorruptionMode.from(normalised: mode)
+            // Kept alongside, so a family with a different mode list reads the
+            // fader rather than the DV enum it happens to have been quantised to.
+            corruption.modePosition = mode
         }
         if let speed = registry.value(slot: identifier, code: .playbackSpeed) {
             playbackSpeed = speed

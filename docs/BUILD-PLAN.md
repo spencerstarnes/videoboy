@@ -107,8 +107,12 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   composite path has only been exercised from ONE.
 - **Density pass on the FX panels.** Effect names truncate in the outer columns at
   narrow widths (SPEC 14.4 defers density tuning, so this is expected, not a defect).
-- **MPEG bitstream corruptor.** SPEC 5 wants frame-drop / motion-vector / reference-hold
-  alongside the DV DIF corruptor, sharing infrastructure but a separate module.
+- **Macroblock-level MPEG editing.** The MPEG corruptor (frame-drop, motion-vector,
+  reference-hold) is built and tested, but it edits BYTES. libavcodec conceals errors
+  well, so the result is a valid picture that is not the right one rather than the
+  blocky sliding look of datamoshing. Producing that reliably means parsing
+  macroblocks and editing motion vectors as vectors — variable-length codes, a layout
+  per picture type, and re-encoding. A decoder's worth of work, deliberately deferred.
 - **The PHYSICAL feedback loop.** `FeedbackNode` accepts a captured frame as its
   history (input slot 1) and the round trip is measured, but the live capture is not
   yet routed into that slot. Internal feedback and internal bus sends both work.

@@ -66,7 +66,7 @@ log "configuring (LGPL, arm64, DV + MPEG family only)"
   --enable-swscale \
   --enable-decoder=dvvideo,mpeg1video,mpeg2video,mpeg4,h264,rawvideo,pcm_s16le \
   --enable-encoder=dvvideo,rawvideo,mpeg2video,mjpeg \
-  --enable-demuxer=dv,mov,mpegts,mpegps,m4v,h264,rawvideo \
+  --enable-demuxer=dv,mov,mpegts,mpegps,m4v,h264,rawvideo,mpegvideo \
   --enable-muxer=dv,rawvideo,mpegts,mjpeg \
   --enable-parser=dvbsub,h264,mpeg4video,mpegvideo \
   --enable-protocol=file,udp,pipe \

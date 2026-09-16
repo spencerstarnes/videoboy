@@ -70,14 +70,35 @@ public struct CorruptionSettings: Equatable, Codable, Sendable {
     /// Reproducibility (param code `34B`). Re-rolled on a beat by the scheduler.
     public var seed: UInt64
 
-    public init(mode: CorruptionMode = .dropBlocks, amount: Double = 0, seed: UInt64 = 1) {
+    /// Where the mode fader sits, 0...1, independent of any one family's mode list.
+    ///
+    /// `mode` is the DV reading of this number. MPEG has three modes where DV has
+    /// six, so a decoder for another family reads the POSITION and picks its own —
+    /// which is why the position is carried rather than recomputed from the DV enum,
+    /// where six-into-three would quantise twice and lose the ends.
+    public var modePosition: Double
+
+    public init(
+        mode: CorruptionMode = .dropBlocks, amount: Double = 0, seed: UInt64 = 1,
+        modePosition: Double? = nil
+    ) {
         self.mode = mode
         self.amount = amount
         self.seed = seed
+        self.modePosition = modePosition ?? mode.normalisedPosition
     }
 
     /// Settings that do nothing, used as the default and as the "dry" end of a mix.
     public static let inert = CorruptionSettings(mode: .dropBlocks, amount: 0, seed: 1)
+
+    /// This damage as the MPEG family reads it.
+    public var asMPEG: MPEGCorruptionSettings {
+        MPEGCorruptionSettings(
+            amount: amount,
+            mode: MPEGCorruptionMode.from(normalised: modePosition),
+            seed: seed
+        )
+    }
 }
 
 /// Applies bitstream damage to DV frames.

@@ -35,15 +35,11 @@ public enum DataEffectFamily: String, CaseIterable, Codable, Sendable {
     }
 
     /// Whether this family's effects are actually built.
-    ///
-    /// MPEG is declared so the interface can say "this footage has data effects, but
-    /// they are not written yet" rather than silently offering nothing — which would
-    /// be indistinguishable from the footage having no bitstream at all.
     public var isImplemented: Bool {
         switch self {
         case .none: true
         case .dv: true
-        case .mpeg: false
+        case .mpeg: true
         }
     }
 
@@ -62,15 +58,14 @@ public enum DataEffectFamily: String, CaseIterable, Codable, Sendable {
                 )
             }
         case .mpeg:
-            // SPEC 5's MPEG list. Declared, not built.
-            return [
-                DataEffectDescriptor(identifier: "frameDrop", displayName: "Frame Drop",
-                                     family: .mpeg, isImplemented: false),
-                DataEffectDescriptor(identifier: "motionVector", displayName: "Motion Vector Corrupt",
-                                     family: .mpeg, isImplemented: false),
-                DataEffectDescriptor(identifier: "referenceHold", displayName: "Reference Hold",
-                                     family: .mpeg, isImplemented: false)
-            ]
+            return MPEGCorruptionMode.allCases.map { mode in
+                DataEffectDescriptor(
+                    identifier: mode.rawValue,
+                    displayName: mode.displayName,
+                    family: .mpeg,
+                    isImplemented: true
+                )
+            }
         }
     }
 

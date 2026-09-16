@@ -192,6 +192,9 @@ public final class BusCodecNode: Node, DataEffectProvider {
         }
         if let value = registry.value(slot: identifier, code: .corruptMode) {
             corruption.mode = CorruptionMode.from(normalised: value)
+            // Kept alongside, so a family with a different mode list reads the
+            // fader rather than the DV enum it happens to have been quantised to.
+            corruption.modePosition = value
         }
         if let value = registry.value(slot: identifier, code: .corruptSeed) {
             corruption.seed = UInt64(max(0, value))

@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-16T22:11:51Z
+when:     2026-09-16T22:23:51Z
 core:     0.3.0
 
 notes:
@@ -14,15 +14,15 @@ notes:
 
 assertions (31/31 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 1069.9
+  PASS  wide is not blank — luminance variance 1076.1
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 932.3
+  PASS  compact is not blank — luminance variance 943.0
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 1144.6
-  PASS  collapsed-left is not blank — luminance variance 893.5
-  PASS  collapsed-both-edges is not blank — luminance variance 694.6
-  PASS  collapsed-sources-only is not blank — luminance variance 1011.3
-  PASS  collapsed-effects-only is not blank — luminance variance 847.6
+  PASS  narrow is not blank — luminance variance 1144.7
+  PASS  collapsed-left is not blank — luminance variance 898.9
+  PASS  collapsed-both-edges is not blank — luminance variance 700.4
+  PASS  collapsed-sources-only is not blank — luminance variance 1017.8
+  PASS  collapsed-effects-only is not blank — luminance variance 853.6
   PASS  holding Shift lights the mappable faders — 43 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
@@ -36,7 +36,7 @@ assertions (31/31 passed):
   PASS  preferences midiMapping has content — luminance variance 137.0
   PASS  double-click fills a pair then comes back round — channels offered: A, B, A
   PASS  switching pair starts at that pair's first channel — offered C after switching to C/D
-  PASS  library thumbnails decode real frames — 9 of 27 thumbnails have a picture
+  PASS  library thumbnails decode real frames — 12 of 30 thumbnails have a picture
   PASS  ntsc emulation popover has content — 300x147
   PASS  dv emulation popover has content — 300x180
   PASS  a stream destination with a target is offered as available — OBS with a target is available

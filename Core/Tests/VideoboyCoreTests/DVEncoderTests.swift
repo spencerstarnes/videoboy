@@ -174,8 +174,7 @@ extension DVEncoderTests {
 
     func testOnlyImplementedFamiliesClaimToBeBuilt() {
         XCTAssertTrue(DataEffectFamily.dv.isImplemented)
-        XCTAssertFalse(DataEffectFamily.mpeg.isImplemented,
-                       "MPEG data effects are declared but not written; saying otherwise would lie to the UI")
+        XCTAssertTrue(DataEffectFamily.mpeg.isImplemented)
         // None offers nothing, so there is nothing to be unimplemented.
         XCTAssertTrue(DataEffectFamily.none.effects.isEmpty)
     }
@@ -192,10 +191,16 @@ extension DVEncoderTests {
         }
     }
 
-    func testMPEGFamilyIsDeclaredButNotBuilt() {
+    func testMPEGFamilyOffersEveryCorruptionMode() {
         let effects = DataEffectFamily.mpeg.effects
-        XCTAssertFalse(effects.isEmpty, "MPEG must still be listed, so the UI can say it is coming")
-        XCTAssertTrue(effects.allSatisfy { !$0.isImplemented })
+        XCTAssertEqual(effects.count, MPEGCorruptionMode.allCases.count)
+        XCTAssertTrue(effects.allSatisfy(\.isImplemented))
+        XCTAssertTrue(effects.allSatisfy { !$0.displayName.isEmpty })
+        // Identifiers must round-trip to a real mode, since that is how the UI's
+        // selection reaches the corruptor.
+        for effect in effects {
+            XCTAssertNotNil(MPEGCorruptionMode(rawValue: effect.identifier))
+        }
     }
 
     func testAnEmptySourceOffersNoDataEffects() {

@@ -451,6 +451,87 @@ enum PlaybackSelfQA {
         }
         engine.registry.setValue(0, slot: Engine.feedbackSlot, code: .wetDry)
 
+        // 12. The MPEG half of the wedge, through the live graph. DV damage is
+        // spatial; MPEG damage is temporal, and this is where that shows — the
+        // picture smears along motion paths that are no longer there.
+        let mpegSource = RepoPaths.samples.appendingPathComponent("motion.m2v")
+        if FileManager.default.fileExists(atPath: mpegSource.path),
+           engine.load(url: mpegSource, intoChannel: "A") {
+
+            check.record(AssertionResult(
+                name: "MPEG footage offers the MPEG data effects",
+                passed: engine.dataEffectFamily(forChannel: "A") == .mpeg,
+                detail: "family is \(engine.dataEffectFamily(forChannel: "A").displayName)"
+            ))
+
+            engine.registry.setValue(0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+            engine.registry.setValue(0, slot: GraphTopology.sourceA, code: .corruptAmount)
+
+            // The SAME playhead position throughout, with the transport stopped.
+            // Comparing a clean frame against a damaged one taken later measures
+            // playback as well as damage, and would pass with the corruptor doing
+            // nothing at all — which is exactly what it did on my first attempt.
+            engine.setPlaying(false, channel: "A")
+            engine.registry.setValue(
+                0.4, slot: GraphTopology.sourceA, code: .scrubPosition)
+            let mpegClean = renderFrame(190)
+
+            var damagedFrames: [(name: String, image: ImageBuffer)] = []
+            for mode in MPEGCorruptionMode.allCases {
+                engine.registry.setValue(
+                    mode.normalisedPosition, slot: GraphTopology.sourceA, code: .corruptMode)
+                engine.registry.setValue(0.9, slot: GraphTopology.sourceA, code: .corruptAmount)
+                if let image = renderFrame(191 + MPEGCorruptionMode.allCases.firstIndex(of: mode)!) {
+                    damagedFrames.append((mode.displayName, image))
+                }
+            }
+            engine.registry.setValue(0, slot: GraphTopology.sourceA, code: .corruptAmount)
+
+            if let mpegClean {
+                try? check.writeImage(mpegClean, named: "16-mpeg-clean.png")
+                for damaged in damagedFrames {
+                    let safeName = damaged.name.lowercased().replacingOccurrences(of: " ", with: "-")
+                    try? check.writeImage(damaged.image, named: "17-mpeg-\(safeName).png")
+                }
+
+                // Reported per mode, with the number, because the three are NOT the
+                // same kind of effect and one flat pass/fail would hide that.
+                let measured = damagedFrames.map {
+                    ($0.name, FrameAssertions.differingColourFraction(mpegClean, $0.image))
+                }
+                check.note("MPEG damage at a fixed playhead: "
+                    + measured.map { "\($0.0) \(String(format: "%.3f", $0.1))" }
+                        .joined(separator: ", "))
+
+                // All three change the picture, but not in the same way, which is why
+                // the numbers are noted above rather than hidden behind a pass. Frame
+                // drop lands on a different frame of the clip because the damaged
+                // stream is genuinely shorter; the other two damage the frame itself.
+                check.record(AssertionResult(
+                    name: "every MPEG data effect changes what reaches the screen",
+                    passed: measured.count == MPEGCorruptionMode.allCases.count
+                        && measured.allSatisfy { $0.1 >= 0.02 },
+                    detail: measured.map { "\($0.0) \(String(format: "%.3f", $0.1))" }
+                        .joined(separator: ", ")
+                ))
+
+                // Still a picture. The whole claim of the wedge is that a damaged
+                // bitstream still DECODES — a black frame would mean the decoder gave
+                // up, which is a bug rather than an effect.
+                for damaged in damagedFrames {
+                    check.record(AssertionResult(
+                        name: "\(damaged.name) leaves a picture, not a dead decoder",
+                        passed: FrameAssertions.signalPresent(
+                            damaged.image, varianceThreshold: 25.0),
+                        detail: "luminance variance " + String(
+                            format: "%.1f", FrameAssertions.luminanceVariance(damaged.image))
+                    ))
+                }
+            }
+        } else {
+            check.note("samples/motion.m2v is missing; the MPEG wedge was not exercised")
+        }
+
         check.note("all frames rendered through the engine's own nodes and Metal pipelines")
         return check.finish()
     }
