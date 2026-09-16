@@ -68,7 +68,12 @@ enum UISelfQA {
         // groups merely disappearing.
         let collapseCases: [(name: String, groups: [PanelGroup])] = [
             ("collapsed-left", [.sourcesLeft, .effectsLeft]),
-            ("collapsed-both-edges", [.sourcesLeft, .effectsLeft, .sourcesRight, .effectsRight])
+            ("collapsed-both-edges", [.sourcesLeft, .effectsLeft, .sourcesRight, .effectsRight]),
+            // The two partial cases, which reflow differently on purpose: folding the
+            // sources hands their rows to the effect chain below, folding the chains
+            // hands their width to the libraries and the browser.
+            ("collapsed-sources-only", [.sourcesLeft, .sourcesRight]),
+            ("collapsed-effects-only", [.effectsLeft, .effectsRight])
         ]
         for collapseCase in collapseCases {
             let shell = ShellView()
@@ -136,7 +141,77 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // Driven parameters. A mark that says "something is driving this" is only
+        // worth having if it appears when a driver is assigned and goes away when it
+        // is removed, so the check does both rather than rendering one state.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            var beforeCount = 0
+            countDrivenFaders(in: shell, into: &beforeCount)
+            check.record(AssertionResult(
+                name: "nothing is marked as driven before anything is assigned",
+                passed: beforeCount == 0,
+                detail: "\(beforeCount) faders marked"
+            ))
+
+            // An LFO on the programme crossfader and an audio tap on a corruptor:
+            // one outside the effect chains and one inside, because they are marked
+            // by different paths.
+            engine.lfos.assign(LFOBank.Assignment(
+                lfo: LFO(shape: .sine, rate: .subdivision(.whole), depth: 1.0),
+                slot: GraphTopology.primary, code: .crossfadeOneTwo, latencyInFrames: 0))
+            engine.audioReactivity.assign(ReactivityAssignment(
+                tap: .rms, shape: .direct,
+                slot: GraphTopology.sourceA, code: .corruptAmount))
+            controller.refreshDrivenParameters()
+
+            var afterCount = 0
+            countDrivenFaders(in: shell, into: &afterCount)
+            check.record(AssertionResult(
+                name: "assigning a driver marks exactly the parameters it drives",
+                passed: afterCount == 2,
+                detail: "\(afterCount) faders marked, expected 2"
+            ))
+
+            // Mid-beat, so the pulse is caught part way through its decay rather
+            // than at the peak where it would look the same as a static outline.
+            for fader in drivenFaders(in: shell) { fader.pulsePhase = 0.35 }
+            shell.displayIfNeeded()
+            if let image = render(view: shell) {
+                try? check.writeImage(image, named: "driven-parameters.png")
+            }
+
+            engine.lfos.remove(slot: GraphTopology.primary, code: .crossfadeOneTwo)
+            engine.audioReactivity.remove(slot: GraphTopology.sourceA, code: .corruptAmount)
+            controller.refreshDrivenParameters()
+            var clearedCount = 0
+            countDrivenFaders(in: shell, into: &clearedCount)
+            check.record(AssertionResult(
+                name: "removing the driver clears the mark",
+                passed: clearedCount == 0,
+                detail: "\(clearedCount) faders still marked"
+            ))
+            withExtendedLifetime(controller) {}
+        }
+
         return check.finish()
+    }
+
+    /// Counts faders marked as driven.
+    private static func countDrivenFaders(in view: NSView, into count: inout Int) {
+        if let fader = view as? VBFader, fader.isDriven { count += 1 }
+        for subview in view.subviews { countDrivenFaders(in: subview, into: &count) }
+    }
+
+    private static func drivenFaders(in view: NSView) -> [VBFader] {
+        var found: [VBFader] = []
+        if let fader = view as? VBFader, fader.isDriven { found.append(fader) }
+        return found + view.subviews.flatMap { drivenFaders(in: $0) }
     }
 
     /// Counts faders currently drawing the detect highlight.

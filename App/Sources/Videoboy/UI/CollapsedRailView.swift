@@ -21,6 +21,16 @@ final class CollapsedRailView: NSControl {
     /// Which side of the window this rail is on, which decides the chevron direction.
     let isLeadingEdge: Bool
 
+    /// Drawn as a strip across the top of a column rather than down its side.
+    ///
+    /// A rail is vertical because it is all that is left of a column. When the
+    /// sibling group has taken the column over there is no column left to run down,
+    /// so the same control lies on its side instead of being squeezed into a shape
+    /// its rotated title cannot fit.
+    var isHorizontal = false {
+        didSet { if isHorizontal != oldValue { needsDisplay = true } }
+    }
+
     private var isHovering = false
     private var trackingArea: NSTrackingArea?
 
@@ -66,6 +76,11 @@ final class CollapsedRailView: NSControl {
             yRadius: Theme.Metrics.panelCornerRadius
         ).fill()
 
+        if isHorizontal {
+            drawAsStrip()
+            return
+        }
+
         // The chevron points the way the group will come back from.
         let chevron = isLeadingEdge ? "›" : "‹"
         let chevronAttributes: [NSAttributedString.Key: Any] = [
@@ -100,6 +115,22 @@ final class CollapsedRailView: NSControl {
         transform.concat()
         titleText.draw(at: .zero, withAttributes: titleAttributes)
         NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// The lying-down form: a chevron and the title, read left to right.
+    private func drawAsStrip() {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: Theme.Font.tinyLabel,
+            .foregroundColor: isHovering ? Theme.Color.textSecondary : Theme.Color.textTertiary
+        ]
+        // Pointing down, because that is where the group will reappear from.
+        let text = "⌄  \(title)" as NSString
+        let size = text.size(withAttributes: attributes)
+        guard bounds.width > size.width + 12 else { return }
+        text.draw(
+            at: NSPoint(x: 8, y: (bounds.height - size.height) / 2),
+            withAttributes: attributes
+        )
     }
 
     override func mouseDown(with event: NSEvent) {

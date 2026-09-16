@@ -65,6 +65,39 @@ enum PanelGroup: String, CaseIterable {
 
     /// True for the groups on the left-hand edge.
     var isLeadingEdge: Bool { column == 0 }
+
+    /// Which rows of its column this group occupies.
+    var rows: ClosedRange<Int> {
+        switch self {
+        case .sourcesLeft, .sourcesRight: 0...1
+        case .effectsLeft, .effectsRight: 2...4
+        }
+    }
+
+    /// The other group sharing this group's column.
+    var sibling: PanelGroup {
+        switch self {
+        case .sourcesLeft: .effectsLeft
+        case .effectsLeft: .sourcesLeft
+        case .sourcesRight: .effectsRight
+        case .effectsRight: .sourcesRight
+        }
+    }
+}
+
+/// The two horizontal bands an outer column is divided into.
+///
+/// The outer columns hold two different things stacked — sources above, an effect
+/// chain below — and collapsing one of them should hand its cells to the other. Which
+/// neighbour takes them differs by band, so the two bands get their own column widths
+/// rather than the grid having one set for the whole window.
+enum RowBand {
+    /// Rows 0-1: the sources and the previews.
+    case sources
+    /// Rows 2-4: the effect chains, faders, libraries and settings bar.
+    case effects
+
+    static func containing(row: Int) -> RowBand { row <= 1 ? .sources : .effects }
 }
 
 /// Which edges of a panel are butted against a neighbour.
@@ -293,27 +326,44 @@ final class PanelGridView: NSView {
         let contentHeight = bounds.height - padding * 2
         guard contentWidth > 0, contentHeight > 0 else { return }
 
-        let columnEdges = edges(
-            weights: columnWeights(for: breakpoint),
-            total: contentWidth, gutter: gutter, origin: padding
-        )
+        // One set of column edges per band. With nothing collapsed the two are
+        // identical and the window looks like a plain grid; they diverge only when a
+        // group folds away and its cells are handed to a neighbour.
+        let bandEdges: [RowBand: [(start: CGFloat, end: CGFloat)]] = [
+            .sources: edges(
+                weights: columnWeights(for: breakpoint, band: .sources),
+                total: contentWidth, gutter: gutter, origin: padding),
+            .effects: edges(
+                weights: columnWeights(for: breakpoint, band: .effects),
+                total: contentWidth, gutter: gutter, origin: padding)
+        ]
         let rowEdges = edges(
             weights: Theme.Grid.rowWeights,
             total: contentHeight, gutter: gutter, origin: padding
         )
 
-        // Rails occupy their group's cells while it is folded away.
+        // Rails occupy their group's cells while it is folded away — except when the
+        // sibling has taken those cells over, in which case the rail becomes a thin
+        // strip along the top. The group still has to be restorable; it just must not
+        // cost a column of width to say so.
         for (group, rail) in rails where !rail.isHidden {
-            guard let cells = placedPanels.first(where: { $0.group == group })?.placement else { continue }
-            let spanned = placedPanels.filter { $0.group == group }.map(\.placement)
-            let firstRow = spanned.map(\.row).min() ?? cells.row
-            let lastRow = spanned.map { $0.row + $0.rowSpan - 1 }.max() ?? cells.row
-            let left = columnEdges[cells.column].start
-            let right = columnEdges[cells.column].end
-            let top = rowEdges[min(firstRow, rowEdges.count - 1)].start
-            let bottom = rowEdges[min(lastRow, rowEdges.count - 1)].end
-            rail.frame = NSRect(
-                x: left, y: top, width: max(right - left, 0), height: max(bottom - top, 0))
+            let band = RowBand.containing(row: group.rows.lowerBound)
+            let columnEdges = bandEdges[band] ?? bandEdges[.effects]!
+            let left = columnEdges[group.column].start
+            let right = columnEdges[group.column].end
+            let top = rowEdges[group.rows.lowerBound].start
+            let bottom = rowEdges[min(group.rows.upperBound, rowEdges.count - 1)].end
+
+            if siblingHasTakenOver(group) {
+                rail.isHorizontal = true
+                rail.frame = NSRect(
+                    x: left, y: top,
+                    width: max(right - left, 0), height: Theme.Grid.railStripHeight)
+            } else {
+                rail.isHorizontal = false
+                rail.frame = NSRect(
+                    x: left, y: top, width: max(right - left, 0), height: max(bottom - top, 0))
+            }
         }
 
         for placed in placedPanels {
@@ -322,11 +372,21 @@ final class PanelGridView: NSView {
             // simply not drawn, so the remaining columns keep their proportions.
             guard !placed.panel.isHidden else { continue }
 
+            let columnEdges = bandEdges[RowBand.containing(row: placement.row)]!
             let left = columnEdges[placement.column].start
             let lastColumn = min(placement.column + placement.columnSpan - 1, columnEdges.count - 1)
             let right = columnEdges[lastColumn].end
 
-            let top = rowEdges[placement.row].start
+            // A group whose sibling has folded away grows into the vacated rows,
+            // leaving room for the strip that brings the sibling back.
+            var firstRow = placement.row
+            var topInset: CGFloat = 0
+            if let group = placed.group, siblingHasTakenOver(group.sibling) {
+                firstRow = min(firstRow, group.sibling.rows.lowerBound)
+                topInset = Theme.Grid.railStripHeight + gutter / 2
+            }
+
+            let top = rowEdges[firstRow].start + topInset
             let lastRow = min(placement.row + placement.rowSpan - 1, rowEdges.count - 1)
             let bottom = rowEdges[lastRow].end
 
@@ -349,8 +409,21 @@ final class PanelGridView: NSView {
         }
     }
 
-    /// Column weights for a breakpoint, after user collapsing is taken into account.
-    private func columnWeights(for breakpoint: LayoutBreakpoint) -> [CGFloat] {
+    /// True when this group is collapsed and its sibling has spread over its cells.
+    ///
+    /// Only the sources band is given away this way. Folding the sources leaves the
+    /// effect chain wanting height, which is what a long chain is short of; folding
+    /// the chain leaves the libraries and the browser wanting width, which they get
+    /// from the column narrowing instead. The two halves of the column want opposite
+    /// things, so they are not treated the same.
+    private func siblingHasTakenOver(_ group: PanelGroup) -> Bool {
+        collapsedGroups.contains(group)
+            && !collapsedGroups.contains(group.sibling)
+            && group.rows.lowerBound == 0
+    }
+
+    /// Column weights for a breakpoint and band, after collapsing is accounted for.
+    private func columnWeights(for breakpoint: LayoutBreakpoint, band: RowBand) -> [CGFloat] {
         var weights = Theme.Grid.columnWeights
         switch breakpoint {
         case .wide:
@@ -366,11 +439,25 @@ final class PanelGridView: NSView {
             weights[4] = 0
         }
 
-        // A column whose groups are ALL folded away shrinks to a rail, whatever the
-        // breakpoint. This is what makes collapsing worth doing: the width goes to
-        // the monitors and the library rather than being left empty.
+        // A column whose groups are ALL folded away shrinks to a rail in both bands,
+        // whatever the breakpoint. This is what makes collapsing worth doing: the
+        // width goes to the monitors and the library rather than being left empty.
         for column in [0, 4] where columnIsFullyCollapsed(column) && weights[column] > 0 {
             weights[column] = Theme.Grid.railWeight
+            continue
+        }
+
+        // Otherwise a band narrows only if the group occupying THAT band is folded
+        // away and its sibling has not taken the cells over. Folding the effect chain
+        // is the case this serves: the libraries, browser and settings bar widen into
+        // the space, while the sources above keep their full column.
+        for column in [0, 4] where weights[column] > Theme.Grid.railWeight {
+            guard let group = groups(inColumn: column).first(where: {
+                RowBand.containing(row: $0.rows.lowerBound) == band
+            }) else { continue }
+            if collapsedGroups.contains(group) && !siblingHasTakenOver(group) {
+                weights[column] = Theme.Grid.railWeight
+            }
         }
         return weights
     }

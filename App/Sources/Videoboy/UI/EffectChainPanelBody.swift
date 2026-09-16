@@ -83,6 +83,9 @@ final class EffectChainPanelBody: NSView {
         for subview in view.subviews { refreshMappingAddresses(in: subview) }
     }
 
+    /// Called after the card views are rebuilt, so their state can be restored.
+    var onChainRebuilt: (() -> Void)?
+
     /// Called when a parameter fader moves: (param code, new 0...1 value).
     var onParameterChanged: ((String, Double) -> Void)?
 
@@ -184,6 +187,8 @@ final class EffectChainPanelBody: NSView {
             cardViews.append(card)
             card.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -8).isActive = true
         }
+
+        onChainRebuilt?()
     }
 
     /// Builds one effect card.

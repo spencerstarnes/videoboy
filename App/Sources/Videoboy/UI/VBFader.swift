@@ -53,6 +53,21 @@ final class VBFader: NSControl {
         didSet { needsDisplay = true }
     }
 
+    /// True when MIDI, audio or an LFO is driving this parameter.
+    ///
+    /// A driven parameter moves on its own, and a control that moves on its own with
+    /// nothing to say why is alarming. Marking it says the movement is intended and,
+    /// just as usefully, says which controls are already spoken for when you are
+    /// deciding where to put the next mapping.
+    var isDriven = false {
+        didSet { if isDriven != oldValue { needsDisplay = true } }
+    }
+
+    /// Beat phase, 0 at the beat and rising to 1 before the next one.
+    var pulsePhase: Double = 0 {
+        didSet { if isDriven { needsDisplay = true } }
+    }
+
     /// What this fader controls, so shift-clicking it can arm a mapping.
     ///
     /// Every fader carries its own address rather than the panel remembering which
@@ -234,6 +249,23 @@ final class VBFader: NSControl {
         )
         Theme.Color.faderCapLine.withAlphaComponent(dimmed).setFill()
         NSBezierPath(rect: lineRect).fill()
+
+        // A driven parameter carries a standing outline that breathes on the beat.
+        // The outline is what says "something is driving this" at a glance; the
+        // breathing is what ties it to the music rather than leaving it a static
+        // decoration. Drawn BELOW the detect highlight so holding Shift still reads
+        // clearly over the top of it.
+        if isDriven {
+            let decay = pow(1.0 - min(max(pulsePhase, 0), 1), 2.0)
+            let alpha = Theme.Pulse.drivenBaseAlpha
+                + decay * (1.0 - Theme.Pulse.drivenBaseAlpha)
+            Theme.Color.accent.withAlphaComponent(alpha * dimmed).setStroke()
+            let outline = NSBezierPath(roundedRect: trackRect.insetBy(dx: -1.5, dy: -1.5),
+                                       xRadius: trackRect.height / 2 + 1.5,
+                                       yRadius: trackRect.height / 2 + 1.5)
+            outline.lineWidth = Theme.Pulse.drivenLineWidth
+            outline.stroke()
+        }
 
         if isDetectHighlighted {
             Theme.Color.detectHighlight.setStroke()

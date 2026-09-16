@@ -409,8 +409,11 @@ final class FaderPanelBody: NSView {
         self.fader = Controls.fader(value: 0.5, fillsFromCentre: true, accent: leftColor)
         fader.leadingTint = leftColor
         fader.trailingTint = rightColor
-        // The ONE/TWO fader is the programme cut — the heaviest control in the window.
-        if includesSwap { fader.trackHeightOverride = Theme.Fader.primaryTrackHeight }
+        // All three crossfaders carry the heavy track. They are the controls the
+        // hands live on, and making only the programme cut thick meant A/B and C/D
+        // read as lesser controls than they are — they are the same gesture, one
+        // stage earlier.
+        fader.trackHeightOverride = Theme.Fader.primaryTrackHeight
         super.init(frame: .zero)
 
         fader.target = self

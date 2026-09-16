@@ -36,6 +36,7 @@ final class ShellController {
         wireSettingsBar()
         wireRecordIndicators()
         wireDetect()
+        refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
             self?.shell.flashTempoChange()
             self?.shell.toolbar.setTempo(tempo)
@@ -83,6 +84,12 @@ final class ShellController {
         // on each bus.
         panels.effectsOneBody.mappingSlotForCode = { Self.subMixOneSlots[$0] }
         panels.effectsTwoBody.mappingSlotForCode = { Self.subMixTwoSlots[$0] }
+        // Adding, removing or reordering an effect builds new fader views, which
+        // start unmarked. Without this the pulse would quietly disappear from a
+        // parameter that is still very much being driven.
+        for panel in [panels.effectsOneBody, panels.effectsTwoBody] {
+            panel.onChainRebuilt = { [weak self] in self?.refreshDrivenParameters() }
+        }
 
         let session = DetectSession(root: shell)
         session.onDetectRequested = { [weak self] slot, code in
@@ -98,6 +105,34 @@ final class ShellController {
             )
         }
         detectSession = session
+    }
+
+    /// Faders with something driving them, cached so the beat pulse does not walk
+    /// the view tree on every frame.
+    private var drivenFaders: [VBFader] = []
+
+    /// Re-reads which parameters have a driver and marks their faders.
+    ///
+    /// Asks the engine rather than keeping a parallel record of what has been mapped.
+    /// A second copy of that list would be one more thing to forget to update, and
+    /// the failure would be a fader claiming a driver it does not have — which is
+    /// worse than no mark at all, because it would be believed.
+    func refreshDrivenParameters() {
+        drivenFaders.removeAll()
+        markDriven(in: shell)
+        Log.info(.param, "\(drivenFaders.count) parameters have a driver")
+    }
+
+    private func markDriven(in view: NSView) {
+        if let fader = view as? VBFader,
+           let slot = fader.mappingSlot, let code = fader.mappingCode {
+            let driven = engine.registry.bindings.contains { $0.slot == slot && $0.code == code }
+                || engine.audioReactivity.isDriven(slot: slot, code: code)
+                || engine.lfos.isDriven(slot: slot, code: code)
+            fader.isDriven = driven
+            if driven { drivenFaders.append(fader) }
+        }
+        for subview in view.subviews { markDriven(in: subview) }
     }
 
     /// Which graph slot a channel letter is.
@@ -123,6 +158,7 @@ final class ShellController {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.shell.statusBar.setMIDIDevice(self.engine.midi.connectedSourceNames.first)
+                self.refreshDrivenParameters()
                 // Light the badge if this parameter has one, on the bus it belongs
                 // to. Faders outside the effect chains have no badge, and that is
                 // fine — the mapping is no less real for having nowhere to show
@@ -713,6 +749,13 @@ final class ShellController {
             indicator.isRecording = isRecording
             indicator.pulsePhase = phase
         }
+        // Driven parameters breathe on the BEAT, like the window chrome, rather than
+        // on the record pulse's two beats.
+        let drivenPhase = engine.transport.isRunning
+            ? { let b = engine.transport.beats(atHostTime: CACurrentMediaTime())
+                return b - b.rounded(.down) }()
+            : 0
+        for fader in drivenFaders { fader.pulsePhase = drivenPhase }
     }
 
     /// Opens the MIDI / audio / LFO menu for a parameter and applies the choice.
@@ -775,6 +818,8 @@ final class ShellController {
                 }
                 panel.setBadgeActive(code: code, badge: badge, isActive: false)
             }
+            // Whatever was chosen, the set of driven parameters may have changed.
+            self.refreshDrivenParameters()
         }
     }
 

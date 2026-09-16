@@ -101,6 +101,14 @@ enum Theme {
         static let flashStrength: Double = 0.22
         /// How fast that flash fades, per 30 Hz tick. About two-thirds of a second.
         static let flashDecayPerFrame: Double = 0.05
+
+        /// How visible a driven parameter's outline is between beats.
+        ///
+        /// Never zero: the mark must say "this is driven" while the transport is
+        /// stopped, and a parameter that only shows its driver while the music runs
+        /// would be silent exactly when you are setting the patch up.
+        static let drivenBaseAlpha: Double = 0.34
+        static let drivenLineWidth: CGFloat = 1.5
     }
 
     // MARK: - Record
@@ -182,6 +190,11 @@ enum Theme {
 
         /// Column weight of a folded-away column — just enough for its rail.
         static let railWeight: CGFloat = 0.14
+
+        /// Height of the horizontal strip a folded group leaves behind when its
+        /// sibling has taken its cells. Tall enough to click without aiming, short
+        /// enough that handing the space over was still worth doing.
+        static let railStripHeight: CGFloat = 20
     }
 
     // MARK: - Breakpoints

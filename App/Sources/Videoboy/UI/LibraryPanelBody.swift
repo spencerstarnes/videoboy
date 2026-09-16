@@ -43,9 +43,14 @@ final class LibraryItemView: NSView {
         thumbnail.layer?.borderColor = Theme.Color.panelBorder.cgColor
         thumbnail.translatesAutoresizingMaskIntoConstraints = false
 
+        // holdsWidth: the badge is two or three characters naming what the asset IS.
+        // Left to truncate it becomes "…", which names nothing — and a two-character
+        // badge truncating while a three-character one survives looks like a bug in
+        // the thumbnail rather than a layout squeeze.
         let badge = Controls.monoLabel(
             item.badge,
-            color: item.isAvailable ? Theme.Color.accent : Theme.Color.textTertiary
+            color: item.isAvailable ? Theme.Color.accent : Theme.Color.textTertiary,
+            holdsWidth: true
         )
         badge.translatesAutoresizingMaskIntoConstraints = false
         thumbnail.addSubview(badge)
