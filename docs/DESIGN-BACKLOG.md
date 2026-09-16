@@ -18,6 +18,9 @@ what was asked for and has not been built.
   breathes on the beat.
 - **"Don't remind me again"** (§8) — save location on first open, save on quit, and
   the audio-clock warning. Reset from the Defaults pane.
+- **FCP X library behaviour** (§10) — hover-scrub with real decoded frames, in/out
+  points that actually trim playback, drag-and-drop (which genuinely was not there),
+  and double-click-to-channel with the A/B ↔ C/D auto-advance.
 
 - **Scopes** (SPEC §19) — waveform, RGB parade, histogram, vectorscope; tab cycles
   quad-overlay → histogram → parade → quad-over-black → off.

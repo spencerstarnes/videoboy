@@ -241,6 +241,58 @@ enum UISelfQA {
             try? FileManager.default.removeItem(at: store.fileURL)
         }
 
+        // The library: hover-scrub, in/out marks, and double-click-to-channel with its
+        // auto-advance. The advance is the part worth checking mechanically — it is
+        // stateful, and getting it wrong means clips quietly overwriting each other.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            let library = shell.grid.panels.libraryOneBody
+            let first = library.destination.takeNextChannel()
+            let second = library.destination.takeNextChannel()
+            let third = library.destination.takeNextChannel()
+            check.record(AssertionResult(
+                name: "double-click fills a pair then comes back round",
+                passed: [first, second, third] == ["A", "B", "A"],
+                detail: "channels offered: \(first), \(second), \(third)"
+            ))
+
+            library.setDestinationPair(.cd)
+            let afterSwitch = library.destination.takeNextChannel()
+            check.record(AssertionResult(
+                name: "switching pair starts at that pair's first channel",
+                passed: afterSwitch == "C",
+                detail: "offered \(afterSwitch) after switching to C/D"
+            ))
+
+            // Scrub every thumbnail to a different position and mark one with in/out,
+            // so the render shows the filmstrip working rather than one poster frame
+            // repeated.
+            let thumbnails = HoverScrubView.all(in: shell)
+            for (index, thumbnail) in thumbnails.enumerated() {
+                thumbnail.scrub(to: Double(index % 5) / 4.0)
+            }
+            thumbnails.first?.setInOut(inPoint: 0.25, outPoint: 0.75)
+
+            let decoded = thumbnails.filter(\.hasDecodedFrame).count
+            check.record(AssertionResult(
+                name: "library thumbnails decode real frames",
+                passed: decoded > 0,
+                detail: "\(decoded) of \(thumbnails.count) thumbnails have a picture"
+            ))
+
+            shell.layoutSubtreeIfNeeded()
+            shell.displayIfNeeded()
+            if let image = render(view: shell) {
+                try? check.writeImage(image, named: "library-scrubbing.png")
+            }
+            withExtendedLifetime(controller) {}
+        }
+
         return check.finish()
     }
 

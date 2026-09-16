@@ -195,6 +195,66 @@ final class MIDIAndPlaybackTests: XCTestCase {
             "a moved scrub parameter should land the playhead at the end of the clip")
     }
 
+    // MARK: - In and out points
+
+    /// Trimmed playback must loop inside the marks, not around the whole file.
+    ///
+    /// This is what makes in and out points real rather than drawn. A clip that shows
+    /// brackets and then plays straight through them is worse than one with no marks,
+    /// because it says something untrue about what will happen on air.
+    func testLoopingStaysInsideTheInAndOutPoints() throws {
+        let node = try openSource()
+        node.playbackRange = 0.25...0.5
+        let firstFrame = Int(0.25 * Double(node.frameCount - 1))
+        let lastFrame = Int((0.5 * Double(node.frameCount - 1)).rounded())
+
+        node.seek(toNormalised: 0)
+        for _ in 0..<(node.frameCount * 2) {
+            node.advancePlayhead(by: 1, frameCount: node.frameCount)
+            let frame = Int(node.normalisedPosition * Double(node.frameCount - 1))
+            XCTAssertTrue(
+                (firstFrame - 1...lastFrame + 1).contains(frame),
+                "the playhead left the trimmed range at frame \(frame)")
+        }
+    }
+
+    /// One-shot stops at the out point rather than at the end of the file.
+    func testOneShotStopsAtTheOutPoint() throws {
+        let node = try openSource()
+        node.playbackRange = 0...0.5
+        node.loopMode = .oneShot
+        node.isPlaying = true
+        node.seek(toNormalised: 0)
+
+        for _ in 0..<(node.frameCount * 2) where node.isPlaying {
+            node.advancePlayhead(by: 1, frameCount: node.frameCount)
+        }
+        XCTAssertFalse(node.isPlaying, "one shot should have stopped")
+        XCTAssertEqual(
+            node.normalisedPosition, 0.5, accuracy: 0.02,
+            "it should have stopped at the out point, not at the end of the file")
+    }
+
+    /// The shuttle spans the trimmed clip, so it cannot scrub past the marks.
+    func testSeekingIsRelativeToTheTrimmedRange() throws {
+        let node = try openSource()
+        node.playbackRange = 0.4...0.6
+        node.seek(toNormalised: 0)
+        XCTAssertEqual(node.normalisedPosition, 0.4, accuracy: 0.02)
+        node.seek(toNormalised: 1)
+        XCTAssertEqual(node.normalisedPosition, 0.6, accuracy: 0.02)
+    }
+
+    /// Setting a range while the playhead is outside it pulls it in.
+    func testSettingARangePullsTheStrandedPlayheadInside() throws {
+        let node = try openSource()
+        node.seek(toNormalised: 0.9)
+        node.playbackRange = 0...0.25
+        XCTAssertLessThanOrEqual(
+            node.normalisedPosition, 0.26,
+            "a playhead left outside the new range would look like frozen playback")
+    }
+
     func testSeekAndStepMoveThePlayhead() throws {
         let node = try openSource()
         node.seek(toNormalised: 0.5)

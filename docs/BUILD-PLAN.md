@@ -94,7 +94,8 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   SPEC 14.2 describes one chain per sub-mix; per-channel chains (SPEC 2's `chFX`) are
   a separate piece of work.
 - **AVFoundation source for non-DV formats.** Only `.dv` plays today. Ordinary
-  `.mov`/`.mp4` need the AVPlayerItemVideoOutput path from SPEC 1.
+  `.mov`/`.mp4` need the AVPlayerItemVideoOutput path from SPEC 1. The library shows
+  them with a badge and no thumbnail, which is honest but is the biggest gap left.
 - **Integrate libdvc100 as a capture *source*** (SPEC 10, Phase 3), not just as the
   self-QA loopback. It is GPL v2, so it must stay out-of-process — the same rule as
   the libretro cores. The out-of-process shell-out in `DVC100CaptureSource` is the

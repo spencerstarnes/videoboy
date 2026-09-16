@@ -1,6 +1,6 @@
 check:    phase-3/composite-codec
 verdict:  PASS
-when:     2026-09-16T21:29:59Z
+when:     2026-09-16T21:37:10Z
 core:     0.3.0
 
 notes:

@@ -37,6 +37,7 @@ final class ShellController {
         wireToolbar()
         wireSettingsBar()
         wireRecordIndicators()
+        wireLibraries()
         wireDetect()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
@@ -44,6 +45,58 @@ final class ShellController {
             self?.shell.toolbar.setTempo(tempo)
         }
         engine.onFrame = { [weak self] engine in self?.refresh(from: engine) }
+    }
+
+    /// Loads a clip into a channel and says what happened.
+    ///
+    /// The single path for every way a file arrives — double-clicked in a library,
+    /// dragged onto a source, or chosen from the Load button — so a file that loads
+    /// one way cannot silently fail another.
+    private func loadClip(
+        _ url: URL, into channel: String, range: ClosedRange<Double>? = nil
+    ) {
+        guard engine.load(url: url, intoChannel: channel) else {
+            presentNotice(
+                "Could not load \(url.lastPathComponent)",
+                url.pathExtension.lowercased() == "dv"
+                    ? "The file could not be read as DV. It may be truncated or PAL."
+                    : "Only DV files play at the moment. Ordinary .mov and .mp4 need the "
+                        + "AVFoundation source, which is not built yet."
+            )
+            return
+        }
+        engine.sources[channel]?.playbackRange = range
+        shell.grid.panels.sourceBodies[channel]?.setMediaName(
+            range == nil
+                ? url.lastPathComponent
+                : "\(url.lastPathComponent) [trimmed]")
+        if preferences.preferences.playOnLoad {
+            engine.setPlaying(true, channel: channel)
+        }
+        Log.info(.dv, "loaded \(url.lastPathComponent) into channel \(channel)")
+    }
+
+    /// Wires the libraries: double-click loads into the pair's next channel.
+    private func wireLibraries() {
+        let panels = shell.grid.panels
+        // Each sub-mix library defaults to the pair it feeds. The browser starts on
+        // A/B and can be pointed anywhere.
+        panels.libraryOneBody.setDestinationPair(.ab)
+        panels.libraryTwoBody.setDestinationPair(.cd)
+        panels.assetBrowserBody.setDestinationPair(.ab)
+
+        for library in [panels.libraryOneBody, panels.libraryTwoBody, panels.assetBrowserBody] {
+            library.onItemOpened = { [weak self] item, channel, range in
+                guard let url = item.url else {
+                    self?.presentNotice(
+                        "\(item.name) is not a file",
+                        "Generators and the other source kinds are loaded from their own "
+                            + "panels, not from the library.")
+                    return
+                }
+                self?.loadClip(url, into: channel, range: range)
+            }
+        }
     }
 
     // MARK: - Shift-to-detect
@@ -211,6 +264,9 @@ final class ShellController {
             body.onTimingChanged = { [weak self] timing in
                 self?.engine.sources[letter]?.timing = timing
             }
+            body.onFileDropped = { [weak self] url in
+                self?.loadClip(url, into: letter)
+            }
             body.onLoopModeChanged = { [weak self] mode in
                 self?.engine.sources[letter]?.loopMode = mode
                 Log.info(.dv, "source \(letter) loop mode is now \(mode.displayName)")
@@ -268,16 +324,7 @@ final class ShellController {
         panel.message = "Choose a DV file for source \(letter)"
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard url.pathExtension.lowercased() == "dv" else {
-            presentNotice(
-                "Only DV files play so far",
-                "\(url.lastPathComponent) is not a .dv file. The AVFoundation path for ordinary video formats is not wired up yet — the DV bitstream path is what this build does."
-            )
-            return
-        }
-        if !engine.load(url: url, intoChannel: letter) {
-            presentNotice("Could not load that file", "See the log for why. The channel is unchanged.")
-        }
+        loadClip(url, into: letter)
     }
 
     /// A plain alert. Used instead of silently doing nothing (SPEC 1.5).

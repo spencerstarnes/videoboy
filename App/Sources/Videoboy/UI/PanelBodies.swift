@@ -38,6 +38,49 @@ final class SourcePanelBody: NSView {
     /// A nil kind means "go back to the file".
     var onGeneratorSelected: ((GeneratorKind?) -> Void)?
 
+    /// Shows which file this channel is playing, beside the channel letter.
+    ///
+    /// The channel letter alone is what a preview shows when empty; once something is
+    /// loaded the useful question is WHICH clip, because four panels of moving
+    /// pictures look alike at thumbnail size.
+    func setMediaName(_ name: String?) {
+        preview.caption = name.map { "\(channel) · \($0)" } ?? channel
+    }
+
+    // MARK: - Drop target
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard droppedURL(from: sender) != nil else { return [] }
+        isDropTarget = true
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        isDropTarget = false
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        isDropTarget = false
+        guard let url = droppedURL(from: sender) else { return false }
+        onFileDropped?(url)
+        return true
+    }
+
+    /// The first file URL on the pasteboard, if there is one.
+    private func droppedURL(from sender: NSDraggingInfo) -> URL? {
+        let pasteboard = sender.draggingPasteboard
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
+           let first = urls.first {
+            return first
+        }
+        // The library writes the URL as a string, which is what NSPasteboardItem
+        // supports without file promises.
+        if let string = pasteboard.string(forType: .fileURL) {
+            return URL(string: string)
+        }
+        return nil
+    }
+
     /// Jump to the start or the end of the clip.
     var onSeekToStart: (() -> Void)?
     var onSeekToEnd: (() -> Void)?
@@ -48,6 +91,19 @@ final class SourcePanelBody: NSView {
     var onScrub: ((Double) -> Void)?
     /// Loop behaviour changed.
     var onLoopModeChanged: ((LoopMode) -> Void)?
+
+    /// A file was dropped on this source, from the library or from the Finder.
+    var onFileDropped: ((URL) -> Void)?
+
+    /// Highlighted while a drop is hovering, so the target is obvious before release.
+    private var isDropTarget = false {
+        didSet {
+            guard isDropTarget != oldValue else { return }
+            preview.layer?.borderWidth = isDropTarget ? 2 : Theme.Metrics.hairline
+            preview.layer?.borderColor = isDropTarget
+                ? Theme.Color.accent.cgColor : Theme.Color.panelBorder.cgColor
+        }
+    }
     /// Playback timing changed — live, or stepped on a subdivision.
     var onTimingChanged: ((PlaybackTiming) -> Void)?
 
@@ -58,6 +114,11 @@ final class SourcePanelBody: NSView {
 
         preview.translatesAutoresizingMaskIntoConstraints = false
         addSubview(preview)
+
+        // Accepts clips dragged from a library AND files dragged from the Finder.
+        // The same type, so there is one drop path rather than a private one for the
+        // library that would work while the obvious gesture did not.
+        registerForDraggedTypes([.fileURL])
 
         // Shuttle strip: transport buttons, a scrub track, and the loop-mode toggle.
         // Every source gets one (SPEC 14.2).

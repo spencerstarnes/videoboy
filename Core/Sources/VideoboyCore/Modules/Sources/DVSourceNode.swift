@@ -149,6 +149,36 @@ public final class DVSourceNode: Node, DataEffectProvider {
     /// What happens at the end of the clip.
     public var loopMode: LoopMode = .loop
 
+    /// In and out points as 0...1 fractions, set from the library.
+    ///
+    /// Nil means the whole clip. Every end-of-clip rule works over this range rather
+    /// than over the file, so a trimmed clip loops, ping-pongs and one-shots within
+    /// its marks — which is the only reading of "in and out" that is worth having.
+    /// Marks the library only DREW would be decoration.
+    public var playbackRange: ClosedRange<Double>? {
+        didSet {
+            guard let range = playbackRange, frameCount > 0 else { return }
+            // Pull the playhead inside the new range rather than leaving it stranded
+            // outside, where playback would appear frozen until it wrapped.
+            let first = Double(rangeFirstFrame(range))
+            let last = Double(rangeLastFrame(range))
+            playheadFrame = min(max(playheadFrame, first), last)
+        }
+    }
+
+    /// First frame index of the active range.
+    private func rangeFirstFrame(_ range: ClosedRange<Double>?) -> Int {
+        guard let range, frameCount > 0 else { return 0 }
+        return min(max(Int(range.lowerBound * Double(frameCount - 1)), 0), frameCount - 1)
+    }
+
+    /// Last frame index of the active range, inclusive.
+    private func rangeLastFrame(_ range: ClosedRange<Double>?) -> Int {
+        guard let range, frameCount > 0 else { return max(frameCount - 1, 0) }
+        let index = Int((range.upperBound * Double(frameCount - 1)).rounded())
+        return min(max(index, rangeFirstFrame(range)), frameCount - 1)
+    }
+
     /// Whether playback runs with the render clock or steps on the musical one.
     public var timing: PlaybackTiming = .continuous {
         didSet { lastSteppedBoundary = nil }
@@ -259,37 +289,45 @@ public final class DVSourceNode: Node, DataEffectProvider {
     /// own rather than buried in a render path.
     func advancePlayhead(by frames: Double, frameCount: Int) {
         guard frameCount > 0 else { return }
-        let last = Double(frameCount)
+
+        // The ends are the in and out points when there are any, and the ends of the
+        // file when there are not. Everything below is written against these two
+        // numbers so there is one set of rules rather than a trimmed variant of each.
+        let first = Double(rangeFirstFrame(playbackRange))
+        let lastFrame = Double(rangeLastFrame(playbackRange))
+        let span = lastFrame - first + 1
+
         playheadFrame += isPlayingBackwards ? -frames : frames
 
         switch loopMode {
         case .loop:
-            // Wrap at both ends: playing backwards past zero comes round to the end.
-            if playheadFrame >= last {
-                playheadFrame -= last
-            } else if playheadFrame < 0 {
-                playheadFrame += last
+            // Wrap at both ends: playing backwards past the in point comes round to
+            // the out point.
+            if playheadFrame >= first + span {
+                playheadFrame -= span
+            } else if playheadFrame < first {
+                playheadFrame += span
             }
 
         case .pingPong:
             // Turn around rather than wrap. The overshoot is reflected back so the
             // motion stays smooth at the turn instead of pausing on the end frame.
-            if playheadFrame >= last - 1 {
-                playheadFrame = max(last - 1 - (playheadFrame - (last - 1)), 0)
+            if playheadFrame >= lastFrame {
+                playheadFrame = max(lastFrame - (playheadFrame - lastFrame), first)
                 isPlayingBackwards = true
-            } else if playheadFrame <= 0 {
-                playheadFrame = -playheadFrame
+            } else if playheadFrame <= first {
+                playheadFrame = first + (first - playheadFrame)
                 isPlayingBackwards = false
             }
 
         case .oneShot:
-            // Stop on the last frame and stay there.
-            if playheadFrame >= last - 1 {
-                playheadFrame = last - 1
+            // Stop on the out point and stay there.
+            if playheadFrame >= lastFrame {
+                playheadFrame = lastFrame
                 isPlaying = false
                 Log.info(.dv, "\(identifier) reached the end of its clip (one shot)")
-            } else if playheadFrame < 0 {
-                playheadFrame = 0
+            } else if playheadFrame < first {
+                playheadFrame = first
                 isPlaying = false
             }
         }
@@ -298,7 +336,12 @@ public final class DVSourceNode: Node, DataEffectProvider {
     /// Moves the playhead to a 0...1 position (the shuttle scrub).
     public func seek(toNormalised position: Double) {
         guard frameCount > 0 else { return }
-        playheadFrame = min(max(position, 0), 1) * Double(frameCount - 1)
+        // Relative to the in/out range, so the shuttle spans the TRIMMED clip. A
+        // scrub that could land outside the marks would make them advisory, and the
+        // first thing anyone would do is scrub straight past them.
+        let first = Double(rangeFirstFrame(playbackRange))
+        let lastFrame = Double(rangeLastFrame(playbackRange))
+        playheadFrame = first + min(max(position, 0), 1) * (lastFrame - first)
     }
 
     /// Steps the playhead by whole frames (the shuttle's step buttons).

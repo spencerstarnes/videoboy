@@ -62,6 +62,43 @@ public struct ImageBuffer {
         return (pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3])
     }
 
+    /// A smaller copy, keeping the aspect ratio.
+    ///
+    /// Box-averaged rather than nearest-neighbour: a thumbnail of interlaced SD made
+    /// by point-sampling shows every other field line and reads as flicker, which is
+    /// a poor advertisement for a clip that is actually fine. Averaging costs a few
+    /// milliseconds once per cached frame.
+    public func scaled(toWidth newWidth: Int) -> ImageBuffer {
+        guard newWidth > 0, width > 0, height > 0, newWidth < width else { return self }
+        let newHeight = max(1, Int((Double(height) * Double(newWidth) / Double(width)).rounded()))
+        var output = ImageBuffer(width: newWidth, height: newHeight)
+
+        for y in 0..<newHeight {
+            let sourceTop = y * height / newHeight
+            let sourceBottom = max(sourceTop + 1, (y + 1) * height / newHeight)
+            for x in 0..<newWidth {
+                let sourceLeft = x * width / newWidth
+                let sourceRight = max(sourceLeft + 1, (x + 1) * width / newWidth)
+
+                var red = 0, green = 0, blue = 0, count = 0
+                for sourceY in sourceTop..<min(sourceBottom, height) {
+                    for sourceX in sourceLeft..<min(sourceRight, width) {
+                        let sample = pixel(x: sourceX, y: sourceY)
+                        red += Int(sample.r)
+                        green += Int(sample.g)
+                        blue += Int(sample.b)
+                        count += 1
+                    }
+                }
+                guard count > 0 else { continue }
+                output.setPixel(
+                    x: x, y: y,
+                    r: UInt8(red / count), g: UInt8(green / count), b: UInt8(blue / count))
+            }
+        }
+        return output
+    }
+
     /// Writes the pixel at (x, y).
     public mutating func setPixel(x: Int, y: Int, r: UInt8, g: UInt8, b: UInt8, a: UInt8 = 255) {
         precondition(x >= 0 && x < width && y >= 0 && y < height, "setPixel(\(x),\(y)) out of bounds")

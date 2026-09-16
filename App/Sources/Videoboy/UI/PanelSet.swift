@@ -56,6 +56,9 @@ final class PanelSet {
     let settingsBarBody: SettingsBarPanelBody
     let effectsOneBody: EffectChainPanelBody
     let effectsTwoBody: EffectChainPanelBody
+    let libraryOneBody: LibraryPanelBody
+    let libraryTwoBody: LibraryPanelBody
+    let assetBrowserBody: LibraryPanelBody
 
     init() {
         // MARK: Sources
@@ -232,18 +235,15 @@ final class PanelSet {
         // The sub-mix libraries start from what is actually in samples/; the central
         // browser shows the full inventory of source kinds, with unbuilt ones greyed.
         let sampleItems = PanelSet.sampleLibraryItems()
+        libraryOneBody = LibraryPanelBody(items: sampleItems, columns: 3, showsTabs: false)
+        libraryTwoBody = LibraryPanelBody(items: sampleItems, columns: 3, showsTabs: false)
+        assetBrowserBody = LibraryPanelBody(
+            items: sampleItems + PanelSet.futureSourceKinds(), columns: 6, showsTabs: true)
         libraryOne = PanelView(
-            title: "Sub Mix 1 Library", subtitle: "A/B",
-            body: LibraryPanelBody(items: sampleItems, columns: 3, showsTabs: false)
-        )
+            title: "Sub Mix 1 Library", subtitle: "A/B", body: libraryOneBody)
         libraryTwo = PanelView(
-            title: "Sub Mix 2 Library", subtitle: "C/D",
-            body: LibraryPanelBody(items: sampleItems, columns: 3, showsTabs: false)
-        )
-        assetBrowser = PanelView(
-            title: "Asset Browser",
-            body: LibraryPanelBody(items: sampleItems + PanelSet.futureSourceKinds(), columns: 6, showsTabs: true)
-        )
+            title: "Sub Mix 2 Library", subtitle: "C/D", body: libraryTwoBody)
+        assetBrowser = PanelView(title: "Asset Browser", body: assetBrowserBody)
 
         // MARK: Settings bar
         settingsBarBody = SettingsBarPanelBody(negotiatedMode: "not yet negotiated")
@@ -265,7 +265,9 @@ final class PanelSet {
             let badge = (entry["kind"] as? String) == "dv"
                 ? "DV"
                 : (file as NSString).pathExtension.uppercased()
-            return LibraryItem(name: file, badge: badge, isAvailable: true)
+            return LibraryItem(
+                name: file, badge: badge, isAvailable: true,
+                url: RepoPaths.samples.appendingPathComponent(file))
         }
     }
 
