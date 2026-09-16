@@ -1,9 +1,14 @@
 //
 //  TransportToolbarView.swift — the unified toolbar above the grid.
 //
-//  Purpose : SPEC 14.1 is explicit that this toolbar holds *only* transport and
-//            clock: tempo, tap, play, phase, clock source, sync, subdivision, and
-//            the detect/learn button. Record and output live in the bottom bar.
+//  Purpose : Transport and clock on the left — tempo, tap, play, phase, clock source,
+//            sync, subdivision — and the record controls on the right.
+//
+//            SPEC 14.1 originally said this toolbar held transport and clock ONLY,
+//            with record in the bottom bar. That was changed on the owner's
+//            instruction: record is the one control that has to be hit without
+//            hunting for it and read from across a room, and the bottom bar is
+//            neither. SPEC 14 has been updated to match rather than left in conflict.
 //  Inputs  : transport state pushed in by the app.
 //  Outputs : user intent, via its callbacks.
 //  Connects: Core's Transport (BPM, phase) and DetectSession (shift-to-detect).
@@ -30,6 +35,12 @@ final class TransportToolbarView: NSView {
 
     private var isRunning = false
     private var clockSourcePopUp: NSPopUpButton?
+
+    /// The record button, top right.
+    let recordButton = RecordButton(frame: .zero)
+
+    /// Called when record is pressed, with the new recording state.
+    var onRecordToggled: ((Bool) -> Void)?
 
     /// Called when the clock source changes. The app answers false if it could not
     /// switch, and the popup snaps back.
@@ -75,6 +86,20 @@ final class TransportToolbarView: NSView {
         // Shift-to-detect (SPEC 7): held Shift highlights mappable controls.
         let detect = Controls.button("⇧ Learn", enabled: false)
 
+        // Record, top right. The codec and stream selection sit beside the button so
+        // the whole recording decision is in one place.
+        let codecPopUp = Controls.popUp(["ProRes 422", "ProRes HQ", "DV"], enabled: false)
+        let streamsPopUp = Controls.popUp(["PRIMARY", "PRI + A/B/C/D"], enabled: false)
+        recordButton.translatesAutoresizingMaskIntoConstraints = false
+        recordButton.target = self
+        recordButton.action = #selector(recordPressed)
+        recordButton.isEnabled = FeatureFlag.recording.isOn
+
+        let recordGroup = Controls.row([
+            group("Record", Controls.row([codecPopUp, streamsPopUp], spacing: 4)),
+            recordButton
+        ], spacing: 8)
+
         let row = Controls.row([
             group("Tempo", tempoLabel),
             tapButton,
@@ -84,7 +109,9 @@ final class TransportToolbarView: NSView {
             group("Sync", syncLabel),
             group("Subdiv", subdivision),
             Controls.spacer(),
-            group("Detect", detect)
+            group("Detect", detect),
+            separator(),
+            recordGroup
         ], spacing: 12)
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
@@ -98,6 +125,22 @@ final class TransportToolbarView: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+
+    /// A vertical hairline, used to separate the transport from the record controls.
+    ///
+    /// A rule rather than more empty space: the two groups are different concerns and
+    /// should read that way, but spreading them apart would waste the width.
+    private func separator() -> NSView {
+        let line = NSView()
+        line.wantsLayer = true
+        line.layer?.backgroundColor = Theme.Color.separator.cgColor
+        line.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            line.widthAnchor.constraint(equalToConstant: Theme.Metrics.hairline),
+            line.heightAnchor.constraint(equalToConstant: 26)
+        ])
+        return line
+    }
 
     /// A caption above its control, as the mockup groups them.
     private func group(_ caption: String, _ control: NSView) -> NSStackView {
@@ -138,6 +181,12 @@ final class TransportToolbarView: NSView {
     }
 
     @objc private func tapPressed() { onTap?() }
+
+    @objc private func recordPressed() {
+        recordButton.isRecording.toggle()
+        Log.info(.app, "record \(recordButton.isRecording ? "started" : "stopped")")
+        onRecordToggled?(recordButton.isRecording)
+    }
 
     @objc private func subdivisionChanged(_ sender: NSPopUpButton) {
         onSubdivisionChanged?(sender.titleOfSelectedItem ?? "1/4")

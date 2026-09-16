@@ -49,7 +49,7 @@ final class SourcePanelBody: NSView {
         let back = Controls.button("◀", enabled: false)
         let play = Controls.button("▶", target: self, action: #selector(playPressed))
         let toEnd = Controls.button("⇥", enabled: false)
-        let scrub = Controls.slider(value: 0, enabled: false)
+        let scrub = Controls.fader(value: 0, enabled: false, compact: true)
         // Loop / ping-pong / one-shot, per SPEC 12.
         let loopMode = Controls.segmented(["↻", "⇄", "1"], selected: 0, enabled: false)
 
@@ -58,7 +58,8 @@ final class SourcePanelBody: NSView {
         scrub.setContentHuggingPriority(.init(1), for: .horizontal)
         addSubview(shuttle)
 
-        let load = Controls.button("Load…", target: self, action: #selector(loadPressed))
+        let load = Controls.button("Load", target: self, action: #selector(loadPressed))
+        load.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         // A generator is an alternative source for the channel, not a separate panel:
         // SPEC 6A says generators are selectable anywhere A/B/C/D.
@@ -151,7 +152,7 @@ final class PreviewPanelBody: NSView {
                 target: self, action: #selector(blendModeChanged(_:))
             )
             blendPopUp = popUp
-            let opacity = Controls.slider(
+            let opacity = Controls.fader(
                 value: 1.0, target: self, action: #selector(opacityChanged(_:)))
             opacity.setContentHuggingPriority(.init(1), for: .horizontal)
 
@@ -190,8 +191,8 @@ final class PreviewPanelBody: NSView {
         onBlendModeChanged?(mode)
     }
 
-    @objc private func opacityChanged(_ sender: NSSlider) {
-        onLayerOpacityChanged?(sender.doubleValue)
+    @objc private func opacityChanged(_ sender: VBFader) {
+        onLayerOpacityChanged?(sender.value)
     }
 }
 
@@ -202,7 +203,7 @@ final class PreviewPanelBody: NSView {
 final class FaderPanelBody: NSView {
 
     /// The crossfader. 0 is the left source, 1 is the right.
-    let fader: NSSlider
+    let fader: VBFader
     /// Live numeric readout beside the fader.
     private let valueLabel = Controls.monoLabel("0.50")
 
@@ -222,7 +223,7 @@ final class FaderPanelBody: NSView {
         leftColor: NSColor, rightColor: NSColor,
         includesSwap: Bool
     ) {
-        self.fader = Controls.slider(value: 0.5)
+        self.fader = Controls.fader(value: 0.5, fillsFromCentre: true, accent: leftColor)
         super.init(frame: .zero)
 
         fader.target = self
@@ -237,37 +238,60 @@ final class FaderPanelBody: NSView {
         buttons.append(Controls.button("Fade", enabled: false))
         // Cut-on-beat needs the musical clock scheduler to be wired to the mixer.
         buttons.append(Controls.segmented(["Beat"], selected: -1, enabled: false))
+        // The mapping badges ride on this row rather than getting a line of their
+        // own. This is the shortest panel in the grid and a fourth line does not fit
+        // at the compact breakpoint — it clipped instead of laying out.
+        buttons.append(Controls.mappingBadges(includesSwap ? ["M", "S", "C", "Slo"] : ["M", "S", "Slo"]))
         buttons.append(Controls.spacer())
         buttons.append(Controls.button("Auto", enabled: false))
         let buttonRow = Controls.row(buttons, spacing: 4)
 
-        // M(IDI) / S(audio-react) / C(lock) / Slo(w-fade) badges, per the mockup.
-        let badges = Controls.mappingBadges(includesSwap ? ["M", "S", "C", "Slo"] : ["M", "S", "Slo"])
-
-        let left = Controls.label(leftLabel, font: Theme.Font.tinyLabel, color: leftColor)
-        let right = Controls.label(rightLabel, font: Theme.Font.tinyLabel, color: rightColor)
-        let ends = Controls.row([left, Controls.spacer(), right], spacing: 2)
-
-        let faderColumn = Controls.column([ends, fader, valueLabel], spacing: 2)
-        faderColumn.alignment = .leading
-        ends.translatesAutoresizingMaskIntoConstraints = false
+        let left = Controls.label(leftLabel, font: Theme.Font.tinyLabel, color: leftColor,
+                                  holdsWidth: true)
+        let right = Controls.label(rightLabel, font: Theme.Font.tinyLabel, color: rightColor,
+                                   holdsWidth: true)
+        left.translatesAutoresizingMaskIntoConstraints = false
+        right.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
         fader.translatesAutoresizingMaskIntoConstraints = false
 
-        let middle = Controls.row([badges, faderColumn], spacing: 8)
-        let stack = Controls.column([buttonRow, middle], spacing: 6)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        // The crossfader is the panel's main control, so it gets the full width and
+        // more height than a parameter fader — it is the one a hand reaches for
+        // without looking. Everything else arranges around it rather than competing
+        // with it for width, which is what squeezed it to nothing before.
+        addSubview(left)
+        addSubview(right)
+        addSubview(valueLabel)
+        addSubview(fader)
+        buttonRow.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(buttonRow)
 
         let padding = Theme.Metrics.panelBodyPadding
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: padding),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -padding),
-            buttonRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            middle.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            ends.widthAnchor.constraint(equalTo: faderColumn.widthAnchor),
-            fader.widthAnchor.constraint(equalTo: faderColumn.widthAnchor)
+            buttonRow.topAnchor.constraint(equalTo: topAnchor, constant: padding),
+            buttonRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
+            buttonRow.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -padding),
+
+            // End labels and the live value sit on one line above the fader. The
+            // gaps are tight because this panel is the shortest in the grid (row
+            // weight 0.6) and the content has to fit at the compact breakpoint —
+            // anything looser and the rows overlap instead of just being close.
+            left.topAnchor.constraint(equalTo: buttonRow.bottomAnchor, constant: 3),
+            left.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
+
+            valueLabel.centerYAnchor.constraint(equalTo: left.centerYAnchor),
+            valueLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            valueLabel.widthAnchor.constraint(equalToConstant: Theme.Metrics.valueReadoutWidth),
+
+            right.centerYAnchor.constraint(equalTo: left.centerYAnchor),
+            right.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding),
+
+            // The fader spans the panel.
+            fader.topAnchor.constraint(equalTo: left.bottomAnchor, constant: 2),
+            fader.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
+            fader.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding),
+            fader.heightAnchor.constraint(equalToConstant: Theme.Fader.crossfaderHeight),
+            fader.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -padding)
         ])
     }
 
@@ -276,25 +300,25 @@ final class FaderPanelBody: NSView {
 
     /// Moves the fader programmatically (from a MIDI mapping or a scheduled cut).
     func setPosition(_ position: Double) {
-        fader.doubleValue = position
+        fader.value = position
         valueLabel.stringValue = String(format: "%.2f", position)
     }
 
     @objc private func faderMoved() {
-        valueLabel.stringValue = String(format: "%.2f", fader.doubleValue)
-        onFaderMoved?(fader.doubleValue)
+        valueLabel.stringValue = String(format: "%.2f", fader.value)
+        onFaderMoved?(fader.value)
     }
 
     @objc private func cutPressed() {
         // A hard cut snaps to whichever end is further from the current position.
-        let target: Double = fader.doubleValue < 0.5 ? 1.0 : 0.0
+        let target: Double = fader.value < 0.5 ? 1.0 : 0.0
         setPosition(target)
         onFaderMoved?(target)
         onCut?()
     }
 
     @objc private func swapPressed() {
-        let target = 1.0 - fader.doubleValue.rounded()
+        let target = 1.0 - fader.value.rounded()
         setPosition(target)
         onFaderMoved?(target)
         onSwap?()

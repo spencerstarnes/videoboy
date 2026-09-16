@@ -1,0 +1,270 @@
+//
+//  VBFader.swift — the custom fader used everywhere a value is set.
+//
+//  Purpose : `NSSlider` does not read at a glance on a dense control surface: the
+//            track is a hairline, there is no fill to show travel, and the knob is a
+//            small circle that disappears against the panel. This is the replacement
+//            — a thick track, a filled portion showing position, and a cap that
+//            overhangs the track the way a DJ fader's does.
+//  Inputs  : a value and a range; mouse drags and clicks.
+//  Outputs : `doubleValue`, and target/action on every change, so it drops in where
+//            an `NSSlider` was.
+//  Connects: Controls.fader builds these; every panel uses them.
+//  Extend  : geometry lives in Theme.Fader, never here. If a size needs changing it
+//            is a token change, not an edit to this file.
+//
+//  It is an `NSControl` subclass rather than a styled `NSSlider` because the parts
+//  that matter — track thickness, fill, cap overhang — are exactly the parts
+//  `NSSlider` does not expose. Subclassing it would mean fighting its drawing on
+//  every OS update.
+//
+
+import AppKit
+import VideoboyCore
+
+/// A horizontal fader with a filled track and an overhanging cap.
+final class VBFader: NSControl {
+
+    /// Current value, clamped to the range. Setting it redraws but does not fire
+    /// the action — programmatic changes are not user changes.
+    var value: Double = 0.5 {
+        didSet {
+            value = min(max(value, minimum), maximum)
+            needsDisplay = true
+        }
+    }
+
+    var minimum: Double = 0
+    var maximum: Double = 1
+
+    /// Drawn behind the fill. Used to tint a fader with its bus identity.
+    var accentColor: NSColor = Theme.Color.accent {
+        didSet { needsDisplay = true }
+    }
+
+    /// When true the fill grows from the centre rather than from the left. Right for
+    /// a bipolar control such as a crossfader, where the middle is the neutral point.
+    var fillsFromCentre = false {
+        didSet { needsDisplay = true }
+    }
+
+    /// Highlighted while Shift is held, to show it is mappable (SPEC 7).
+    var isDetectHighlighted = false {
+        didSet { needsDisplay = true }
+    }
+
+    /// True while the user is dragging, so the cap can grow slightly.
+    private var isDragging = false
+
+    /// A shorter, thinner variant for places where the fader is more readout than
+    /// control — a shuttle's scrub track, for instance.
+    var isCompact = false {
+        didSet {
+            invalidateIntrinsicContentSize()
+            needsDisplay = true
+        }
+    }
+
+    private var trackHeight: CGFloat {
+        isCompact ? Theme.Fader.trackHeight * 0.6 : Theme.Fader.trackHeight
+    }
+
+    private var capWidth: CGFloat {
+        isCompact ? Theme.Fader.capWidth * 0.7 : Theme.Fader.capWidth
+    }
+
+    private var capBaseHeight: CGFloat {
+        isCompact ? Theme.Fader.compactHeight : Theme.Fader.capHeight
+    }
+
+    override var isEnabled: Bool {
+        didSet { needsDisplay = true }
+    }
+
+    /// Position as 0...1 along the track.
+    private var normalisedValue: Double {
+        let span = maximum - minimum
+        guard span > 0 else { return 0 }
+        return (value - minimum) / span
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+
+    /// The control is as tall as its cap, so the overhang is never clipped.
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: capBaseHeight)
+    }
+
+    // MARK: - Geometry
+
+    /// The track, centred vertically and inset so the cap never runs off the ends.
+    private var trackRect: NSRect {
+        let inset = capWidth / 2
+        return NSRect(
+            x: inset,
+            y: (bounds.height - trackHeight) / 2,
+            width: max(bounds.width - inset * 2, 1),
+            height: trackHeight
+        )
+    }
+
+    /// Centre x of the cap for the current value.
+    private var capCentreX: CGFloat {
+        trackRect.minX + trackRect.width * CGFloat(normalisedValue)
+    }
+
+    // MARK: - Drawing
+
+    override func draw(_ dirtyRect: NSRect) {
+        let track = trackRect
+        let radius = trackHeight / 2
+        let dimmed = isEnabled ? 1.0 : Theme.Fader.disabledAlpha
+
+        // Track.
+        let trackPath = NSBezierPath(roundedRect: track, xRadius: radius, yRadius: radius)
+        Theme.Color.faderTrack.withAlphaComponent(
+            Theme.Color.faderTrack.alphaComponent * dimmed).setFill()
+        trackPath.fill()
+
+        // Fill. From the left normally; from the centre for a bipolar control, so a
+        // crossfader shows how far it has been pushed from neutral rather than how
+        // far it is from one end.
+        let fillRect: NSRect
+        if fillsFromCentre {
+            let centre = track.midX
+            let x = min(centre, capCentreX)
+            fillRect = NSRect(x: x, y: track.minY, width: abs(capCentreX - centre), height: track.height)
+        } else {
+            fillRect = NSRect(
+                x: track.minX, y: track.minY,
+                width: max(capCentreX - track.minX, 0), height: track.height)
+        }
+        if fillRect.width > 0.5 {
+            let fillPath = NSBezierPath(roundedRect: fillRect, xRadius: radius, yRadius: radius)
+            accentColor.withAlphaComponent(dimmed).setFill()
+            fillPath.fill()
+        }
+
+        // Cap. Taller than the track on purpose — that overhang is what makes the
+        // position readable in peripheral vision, which is the whole point.
+        let capHeight = capBaseHeight + (isDragging ? Theme.Fader.capDragGrowth : 0)
+        let capRect = NSRect(
+            x: capCentreX - capWidth / 2,
+            y: (bounds.height - capHeight) / 2,
+            width: capWidth,
+            height: capHeight
+        )
+        let capPath = NSBezierPath(
+            roundedRect: capRect,
+            xRadius: Theme.Fader.capCornerRadius,
+            yRadius: Theme.Fader.capCornerRadius
+        )
+
+        // A shadow under the cap lifts it off the track. Without it the cap reads as
+        // a gap in the fill rather than as an object sitting on top of it.
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.55 * dimmed)
+        shadow.shadowBlurRadius = 2.5
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.set()
+        Theme.Color.faderCap.withAlphaComponent(dimmed).setFill()
+        capPath.fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        // A centre line down the cap, as a real fader cap has.
+        let lineRect = NSRect(
+            x: capRect.midX - Theme.Fader.capLineWidth / 2,
+            y: capRect.minY + Theme.Fader.capLineInset,
+            width: Theme.Fader.capLineWidth,
+            height: capRect.height - Theme.Fader.capLineInset * 2
+        )
+        Theme.Color.faderCapLine.withAlphaComponent(dimmed).setFill()
+        NSBezierPath(rect: lineRect).fill()
+
+        if isDetectHighlighted {
+            Theme.Color.detectHighlight.setStroke()
+            let highlight = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+                                         xRadius: 3, yRadius: 3)
+            highlight.lineWidth = 1
+            highlight.stroke()
+        }
+    }
+
+    // MARK: - Interaction
+
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        isDragging = true
+        setValue(fromPoint: convert(event.locationInWindow, from: nil))
+
+        // Track the drag here rather than relying on mouseDragged, so the fader keeps
+        // following the pointer even when it leaves the control's bounds — which it
+        // will, constantly, on a fader this thin.
+        var keepGoing = true
+        while keepGoing {
+            guard let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) else { break }
+            switch next.type {
+            case .leftMouseDragged:
+                setValue(fromPoint: convert(next.locationInWindow, from: nil))
+            case .leftMouseUp:
+                keepGoing = false
+            default:
+                break
+            }
+        }
+        isDragging = false
+        needsDisplay = true
+    }
+
+    /// Sets the value from a point in this view's coordinates and fires the action.
+    private func setValue(fromPoint point: NSPoint) {
+        let track = trackRect
+        guard track.width > 0 else { return }
+        let fraction = Double((point.x - track.minX) / track.width)
+        let newValue = minimum + min(max(fraction, 0), 1) * (maximum - minimum)
+        guard newValue != value else { return }
+        value = newValue
+        sendAction(action, to: target)
+    }
+
+    // MARK: - NSControl bridging
+    //
+    // Panels were written against NSSlider's `doubleValue`, so the same name means
+    // they do not all have to change at once.
+
+    override var doubleValue: Double {
+        get { value }
+        set { value = newValue }
+    }
+
+    override var floatValue: Float {
+        get { Float(value) }
+        set { value = Double(newValue) }
+    }
+
+    /// Faders are keyboard-reachable like any other control.
+    override var acceptsFirstResponder: Bool { isEnabled }
+
+    override func keyDown(with event: NSEvent) {
+        guard isEnabled else { return super.keyDown(with: event) }
+        // A fine step, so arrow keys are useful for trimming rather than jumping.
+        let step = (maximum - minimum) * Theme.Fader.keyboardStep
+        switch event.keyCode {
+        case 123, 125:  // left, down
+            value -= step
+            sendAction(action, to: target)
+        case 124, 126:  // right, up
+            value += step
+            sendAction(action, to: target)
+        default:
+            super.keyDown(with: event)
+        }
+    }
+}

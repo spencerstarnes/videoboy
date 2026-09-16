@@ -31,6 +31,16 @@ The full canonical layout from SPEC §14 — the 5×5 grid, every panel present:
 Panels collapse by clicking their header. They never move — that's deliberate.
 Resize the window narrower and the outer columns collapse to rails, then disappear.
 
+Source A sits directly on B, and C on D, sharing a hairline rather than floating
+apart: they feed the same bus and are never used separately. Recording lives at the
+**top right** — the big red button — not in the bottom bar.
+
+Every continuous control is a custom fader with a thick track, a fill showing travel,
+and a cap that overhangs the slot like a DJ fader. Effect parameters take two lines so
+the fader gets the full panel width; drag the **three-dash grip** on an effect card to
+reorder the chain, which reads like Photoshop layers — the top card is applied last,
+so it is what you see on top.
+
 ## What actually works
 
 **Play a DV file.** Click **Load…** on Source A, pick `samples/motion.dv`, then press

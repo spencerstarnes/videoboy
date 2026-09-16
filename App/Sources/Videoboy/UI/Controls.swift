@@ -20,18 +20,29 @@ enum Controls {
 
     /// A label. `secondary` and `tertiary` follow the mockup's text tiers.
     static func label(
-        _ text: String, font: NSFont = Theme.Font.label, color: NSColor = Theme.Color.textSecondary
+        _ text: String, font: NSFont = Theme.Font.label,
+        color: NSColor = Theme.Color.textSecondary,
+        holdsWidth: Bool = false
     ) -> NSTextField {
         let field = NSTextField(labelWithString: text)
         field.font = font
         field.textColor = color
         field.lineBreakMode = .byTruncatingTail
+        if holdsWidth {
+            // Short, load-bearing text — a section heading, a bus letter — must not be
+            // what gets sacrificed when a row runs out of room. Something longer
+            // beside it should truncate first.
+            field.setContentCompressionResistancePriority(.required, for: .horizontal)
+            field.setContentHuggingPriority(.required, for: .horizontal)
+        }
         return field
     }
 
     /// A monospaced readout: param codes, negotiated modes, fps counters.
-    static func monoLabel(_ text: String, color: NSColor = Theme.Color.textSecondary) -> NSTextField {
-        label(text, font: Theme.Font.mono, color: color)
+    static func monoLabel(
+        _ text: String, color: NSColor = Theme.Color.textSecondary, holdsWidth: Bool = false
+    ) -> NSTextField {
+        label(text, font: Theme.Font.mono, color: color, holdsWidth: holdsWidth)
     }
 
     /// A push button. `enabled: false` is how an unbuilt feature is shown — present
@@ -78,16 +89,33 @@ enum Controls {
         return control
     }
 
-    /// A continuous slider for any parameter or crossfader.
-    static func slider(
+    /// A continuous fader for any parameter or crossfader.
+    ///
+    /// This is `VBFader`, not `NSSlider`: a hairline track with a small round knob
+    /// does not read at a glance on a control surface, and the parts that fix that —
+    /// track thickness, a fill showing travel, an overhanging cap — are exactly the
+    /// parts `NSSlider` does not expose.
+    static func fader(
         value: Double = 0.5, minimum: Double = 0, maximum: Double = 1,
-        enabled: Bool = true, target: AnyObject? = nil, action: Selector? = nil
-    ) -> NSSlider {
-        let slider = NSSlider(value: value, minValue: minimum, maxValue: maximum, target: target, action: action)
-        slider.controlSize = .small
-        slider.isContinuous = true
-        slider.isEnabled = enabled
-        return slider
+        enabled: Bool = true, fillsFromCentre: Bool = false, compact: Bool = false,
+        accent: NSColor = Theme.Color.accent,
+        target: AnyObject? = nil, action: Selector? = nil
+    ) -> VBFader {
+        let fader = VBFader(frame: .zero)
+        fader.isCompact = compact
+        fader.minimum = minimum
+        fader.maximum = maximum
+        fader.value = value
+        fader.isEnabled = enabled
+        fader.fillsFromCentre = fillsFromCentre
+        fader.accentColor = accent
+        fader.target = target
+        fader.action = action
+        fader.translatesAutoresizingMaskIntoConstraints = false
+        fader.heightAnchor.constraint(
+            equalToConstant: compact ? Theme.Fader.compactHeight : Theme.Fader.capHeight
+        ).isActive = true
+        return fader
     }
 
     /// A search field for the libraries and the asset browser.

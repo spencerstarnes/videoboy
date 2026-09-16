@@ -25,14 +25,22 @@ enum Theme {
     // expected. Changing these numbers is how that happens.
 
     enum Metrics {
-        /// Corner radius of a panel box (`.box` in the mockup).
-        static let panelCornerRadius: CGFloat = 8
+        /// Corner radius of a panel box.
+        ///
+        /// Tighter than the mockup's 8: SPEC 14.4 says the mockup's radii are larger
+        /// than ideal and expects them dialled in, and a smaller radius is what lets
+        /// adjacent panels butt together without a visible pinch at the seam.
+        static let panelCornerRadius: CGFloat = 5
         /// Corner radius of a push button (`.pb`).
-        static let buttonCornerRadius: CGFloat = 6
-        /// Gap between panels in the grid (`.panes { gap }`).
-        static let panelGutter: CGFloat = 7
-        /// Padding around the whole panel grid (`.panes { padding }`).
-        static let gridPadding: CGFloat = 8
+        static let buttonCornerRadius: CGFloat = 5
+        /// Gap between panel GROUPS in the grid.
+        ///
+        /// Panels that belong together have no gap at all and share a hairline
+        /// instead — the Resolve/FCP approach, where space means "these are separate
+        /// things" rather than being sprinkled everywhere. See PanelGridView.
+        static let panelGutter: CGFloat = 5
+        /// Padding around the whole panel grid.
+        static let gridPadding: CGFloat = 5
         /// Horizontal and vertical padding inside a panel header (`.boxh`).
         static let panelHeaderPaddingX: CGFloat = 8
         static let panelHeaderPaddingY: CGFloat = 4
@@ -55,7 +63,65 @@ enum Theme {
         /// Video previews are 4:3 — standard definition, not 16:9 (SPEC 3).
         static let previewAspectRatio: CGFloat = 4.0 / 3.0
         /// Side of a thumbnail in the library and browser grids.
-        static let thumbnailSide: CGFloat = 54
+        ///
+        /// Every item is exactly this wide, so the grid is a grid: items of differing
+        /// widths read as clutter however neatly they are spaced.
+        static let thumbnailSide: CGFloat = 52
+        /// Height of a thumbnail's image area. 4:3, matching the video it stands for.
+        static let thumbnailImageHeight: CGFloat = 39
+        /// Gap between items in a library grid. Tight on purpose.
+        static let thumbnailGap: CGFloat = 3
+        /// Height of a caption under a thumbnail.
+        static let thumbnailCaptionHeight: CGFloat = 11
+        /// Width of the drag handle that reorders effects.
+        static let dragHandleWidth: CGFloat = 12
+        /// Width of a numeric readout beside a fader.
+        ///
+        /// Fixed rather than fitted: a readout that resizes as its digits change
+        /// makes the whole row twitch while a fader is being dragged, which is
+        /// exactly when it needs to be readable.
+        static let valueReadoutWidth: CGFloat = 32
+    }
+
+    // MARK: - Record
+    //
+    // Recording lives at the top right (not in the bottom bar as the original mockup
+    // had it): it is the control you must be able to hit without hunting, and the one
+    // whose state you must be able to read from across the room.
+
+    enum Record {
+        static let buttonDiameter: CGFloat = 26
+    }
+
+    // MARK: - Fader
+    //
+    // The custom fader's geometry (VBFader). A DJ fader reads at a glance because the
+    // cap is a solid object overhanging a visible slot; these numbers are what produce
+    // that, and they are the ones to change if it wants to be chunkier still.
+
+    enum Fader {
+        /// Thickness of the slot. Thick enough to see the fill from across a room.
+        static let trackHeight: CGFloat = 6
+        /// Cap width, across the direction of travel.
+        static let capWidth: CGFloat = 11
+        /// Cap height. Deliberately larger than `trackHeight` — the overhang is the
+        /// whole point, and it is what `NSSlider` will not give.
+        static let capHeight: CGFloat = 17
+        /// How much the cap grows while being dragged, for feedback under the finger.
+        static let capDragGrowth: CGFloat = 2
+        static let capCornerRadius: CGFloat = 2.5
+        /// The line down the middle of the cap, as a real fader cap has.
+        static let capLineWidth: CGFloat = 1
+        static let capLineInset: CGFloat = 3.5
+        /// Opacity of the whole control when disabled.
+        static let disabledAlpha: CGFloat = 0.35
+        /// Fraction of the range one arrow-key press moves.
+        static let keyboardStep: Double = 0.01
+        /// Height of the taller crossfader used in the fader panels.
+        static let crossfaderHeight: CGFloat = 20
+        /// Height of the compact fader used in a shuttle strip, where the scrub track
+        /// is a readout more than a control and must not dominate the row.
+        static let compactHeight: CGFloat = 11
     }
 
     // MARK: - Grid proportions
@@ -65,7 +131,11 @@ enum Theme {
 
     enum Grid {
         /// Column weights, left to right: sources, ONE, program, TWO, sources.
-        static let columnWeights: [CGFloat] = [0.9, 2.0, 2.1, 2.0, 0.9]
+        ///
+        /// The outer columns are a little wider than the mockup's 0.9: they carry the
+        /// FX chains, whose parameter names and codes were truncating. Joining the
+        /// A/B and C/D panels reclaimed the gutters that pay for it.
+        static let columnWeights: [CGFloat] = [1.05, 2.0, 2.05, 2.0, 1.05]
         /// Row weights, top to bottom.
         static let rowWeights: [CGFloat] = [1.05, 1.05, 0.6, 1.75, 0.55]
     }
@@ -122,6 +192,23 @@ enum Theme {
 
         /// Fill behind a video preview that has no source yet.
         static let previewEmpty = NSColor(white: 0.07, alpha: 1)
+
+        /// The fader's unfilled slot.
+        static let faderTrack = NSColor(white: 0, alpha: 0.45)
+        /// The fader's cap. Near-white so it stands off the track at any fill level.
+        static let faderCap = NSColor(white: 0.90, alpha: 1)
+        /// The line down the middle of the cap.
+        static let faderCapLine = NSColor(white: 0.45, alpha: 1)
+
+        /// Hairline drawn where two panels in the same group meet.
+        static let groupSeam = NSColor(white: 1.0, alpha: 0.07)
+
+        /// The record button, idle, hovered, running, and unavailable.
+        static let recordIdle = NSColor(srgbRed: 0.85, green: 0.16, blue: 0.16, alpha: 1)
+        static let recordHover = NSColor(srgbRed: 1.0, green: 0.25, blue: 0.25, alpha: 1)
+        static let recordActive = NSColor(srgbRed: 1.0, green: 0.19, blue: 0.19, alpha: 1)
+        static let recordDisabled = NSColor(white: 0.4, alpha: 1)
+        static let recordRing = NSColor(white: 1.0, alpha: 0.28)
     }
 
     // MARK: - Type

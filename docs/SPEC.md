@@ -274,7 +274,14 @@ Serialize codes in templates (§16).
 
 ## 14. UI / UX — CANONICAL LAYOUT (build exactly this)
 
-This section is normative. The window is one fixed grid; panels collapse but never move. Reference mockup: `docs/mockups/layout-v6.html` (open it — it is the visual source of truth for arrangement and control choice).
+This section is normative. The window is one fixed grid; panels collapse but never move. Reference mockup: `docs/mockups/layout-v6.html` — the source of truth for **arrangement**. Where the notes below say otherwise, the notes win: they record changes the owner made after using the built interface, and the mockup has not been redrawn.
+
+**Owner revisions (2026-09-16), after a review of the running app:**
+
+1. **Record moved to the toolbar, top right** — a large round red button with its codec and stream selectors beside it, separated from the transport by a hairline. This overrides the "toolbar holds *only* transport/clock" rule in §14.1 and the "Record lives in the bottom bar" rule in §14.2. Reason: recording is the one control that must be hit without hunting and read from across a room. The bottom bar keeps Stream, Output and Toggles.
+2. **Faders are custom, not `NSSlider`** (see §14.3). A hairline track with a small round knob does not read at a glance on a control surface.
+3. **Effect parameters take two lines** (see §14.2).
+4. **Panels that always appear together are joined**, not gapped (see §14.4).
 
 ### 14.1 The grid
 One window, 5 columns × 5 rows, everything aligned top-to-bottom:
@@ -299,17 +306,33 @@ Every panel is an `NSBox`-style group with a clickable header (disclosure chevro
 - **Source A/B/C/D** (4 panels, outer columns). Each: a 4:3 preview of that channel's source, plus its own **shuttle strip** — ⇤ ◀ ▶ ⇥ transport buttons, a scrub track, and a loop-mode toggle (loop / ping-pong / one-shot, per §12). All four sources get a shuttle. Assigning a source = drag from a library/browser onto the panel, or pick from its header menu.
 - **Sub Mix One / Sub Mix Two** previews. 4:3, safe-zone overlay, NTSC IRE readout. Header subtitle shows its feed (`A ▸ B`, `C ▸ D`) and blend mode.
 - **Program Preview** (center, largest). Safe/test/overscan affordances, blend mode for ONE▸TWO, and the swap-cut. Shows the real output format (`720×480 · 480i`).
-- **Sub Mix 1 FX / Sub Mix 2 FX** (tall outer). Ordered effect chain per sub-mix: Load Asset / Save row, then effect cards — disclosure triangle, name, `NSSwitch` enable, remove ✕, Wet/Dry slider with blend popup, and parameter rows. Each parameter row: M/S/C mapping badges (MIDI / audio-react / clock-LFO), label with its **param code** (§13), slider, numeric value. Reorderable within the chain.
+- **Sub Mix 1 FX / Sub Mix 2 FX** (tall outer). Ordered effect chain per sub-mix: Load Asset / Save row, then effect cards. Each card header: a **three-dash drag grip**, the name, an `NSSwitch` enable, and remove ✕.
+
+  **Each parameter takes two lines, not one:**
+
+  ```
+  M S C   amount·31B                              0.42
+  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬●▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+  ```
+
+  Badges, name-with-param-code and the numeric value share the top line; the fader gets the full panel width to itself. One line left the control roughly forty points of travel in a column this narrow, which is unusable. The numeric readout is a **fixed width**, so the row does not twitch as digits change under a drag.
+
+  **Order reads like Photoshop layers**: the card at the *top* is the last thing applied, so it is what you see on top. Signal therefore flows up the list. Drag the grip to reorder.
 - **A→B Fader / ONE→TWO Fader / C→D Fader**. Each: Cut, Fade, Cut-on-beat toggle, Auto; an M/S/C/Slo column; labeled crossfader with numeric value. ONE→TWO additionally carries the swap-cut.
 - **Sub Mix 1 Library / Sub Mix 2 Library.** Per-sub-mix working sets (the clips/generators staged for that side), thumbnail grid, page popup, search. Drag to a source panel to load.
 - **Asset Browser** (center). Global library, tabbed: **Sources · Generators · VSTs · Graphics · Clips · Images** (plus Emulators when §18.2 ships). Search, Import, grid/list toggle. Items carry a type badge (DV, MOV, MPG, GEN, SVG, SCR, IP, CAP, EMU, IMG).
 - **Record / Stream / Output / Toggles bar** (bottom, spans center). Four labeled sections: **Record** (codec, which streams — PRIMARY and/or discrete A/B/C/D, REC button), **Stream** (protocol, bitrate, Go Live), **Output** (per-destination routing popups showing negotiated mode, e.g. `PRI→HDMI-1 480i`), **Toggles** (safe zones, overscan, BFI, test pattern).
 
 ### 14.3 Cocoa control mapping (use real AppKit controls; don't reinvent)
-`NSPopUpButton` for every selector (blend, codec, routing, page, clock source). `NSSegmentedControl` for tab strips and mutually-exclusive toggles (browser tabs, safe/test/overscan, grid/list). `NSSwitch` for effect enable and the boolean toggles in the settings bar. `NSSlider` for all continuous params and crossfaders. `NSSearchField` for searches. `NSCollectionView` for library/browser grids. `NSOutlineView`/custom stack for effect chains. `NSBox`/custom `NSView` groups for panels. System accent color for active/selected state; amber/cyan used **only** as ONE/TWO bus identity, never as chrome. Standard dark-mode materials and vibrancy; hairline separators.
+`NSPopUpButton` for every selector (blend, codec, routing, page, clock source). `NSSegmentedControl` for tab strips and mutually-exclusive toggles (browser tabs, safe/test/overscan, grid/list). `NSSwitch` for effect enable and the boolean toggles in the settings bar. `NSSearchField` for searches.
+
+**Continuous parameters and crossfaders use `VBFader`, not `NSSlider`.** `NSSlider` gives a hairline track, no fill showing travel, and a small round knob that vanishes against a dark panel — none of which reads at a glance on a dense control surface, and none of which it lets you change. `VBFader` is a thick track, a filled portion showing position, and a cap that **overhangs the track**, as a DJ fader's does; the overhang is what makes position readable in peripheral vision. A compact variant is used where a fader is more readout than control (a shuttle's scrub track). All of its geometry lives in `Theme.Fader`.
+
+**Library and browser grids use fixed-size cells.** Every item is exactly one thumbnail wide with a fixed image height and caption height, packed tightly. Cells that size themselves to their captions read as clutter however neatly they are spaced. `NSOutlineView`/custom stack for effect chains. `NSBox`/custom `NSView` groups for panels. System accent color for active/selected state; amber/cyan used **only** as ONE/TWO bus identity, never as chrome. Standard dark-mode materials and vibrancy; hairline separators.
 
 ### 14.4 Behavior
 - **Docked, collapsible, never movable.** No floating/undocking/reordering (this is the deliberate break from VDMX). Collapse state and split ratios serialize into the plain-text template (§16); because panels can't move, that serialization stays trivial.
+- **Panels that always appear together are joined, not gapped.** Source A sits directly on Source B, and C on D; the libraries sit directly on the settings bar. Joined panels share a hairline and square off the corners on that edge, so the pair reads as one block. This is the Resolve/FCP reading of space — a gap means "these are separate concerns", so putting one between every panel makes all the gaps meaningless and the window busier than it needs to be. Gutters and radii are tighter than the mockup's for the same reason (§14.4 already anticipated this).
 - **Width-reactive** for full-screen and macOS Split View: wide shows everything; compact auto-collapses the outer columns (sources + FX) to labeled rails; narrow keeps Program + faders + the settings bar. Reflow and auto-collapse rather than horizontal scrolling. Implement with `NSSplitView` (fixed, non-rearrangeable dividers), `NSStackView`, Auto Layout priorities, and a width observer driving breakpoint states. Set a minimum window width and drop to narrow instead of clipping.
 - **Detect affordance:** holding Shift highlights every mappable control (§7).
 - Previews are Metal-backed; never block the render thread for UI.

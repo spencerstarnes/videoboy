@@ -50,6 +50,12 @@ final class PanelView: NSView {
     /// The view filling the panel body.
     private let body: NSView
 
+    /// Which corners stay rounded. A panel butted against a neighbour squares off the
+    /// shared edge so the two read as one block (see PanelGridView.GroupEdge).
+    var squaredEdges: GroupEdge = [] {
+        didSet { applyCornerMask() }
+    }
+
     /// - Parameters:
     ///   - title: header text.
     ///   - bus: bus identity, which colours the header dot.
@@ -66,6 +72,7 @@ final class PanelView: NSView {
         layer?.borderWidth = Theme.Metrics.hairline
         layer?.cornerRadius = Theme.Metrics.panelCornerRadius
         layer?.masksToBounds = true
+        applyCornerMask()
 
         buildHeader(bus: bus, subtitle: subtitle)
         buildBody()
@@ -74,6 +81,33 @@ final class PanelView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("PanelView is created in code, never from a nib")
+    }
+
+    /// Rounds only the corners that are not against a neighbour.
+    private func applyCornerMask() {
+        guard let layer else { return }
+        var corners: CACornerMask = [
+            .layerMinXMinYCorner, .layerMaxXMinYCorner,
+            .layerMinXMaxYCorner, .layerMaxXMaxYCorner
+        ]
+        // AppKit layers are bottom-left origin, so MinY is the BOTTOM of the panel.
+        if squaredEdges.contains(.top) {
+            corners.remove(.layerMinXMaxYCorner)
+            corners.remove(.layerMaxXMaxYCorner)
+        }
+        if squaredEdges.contains(.bottom) {
+            corners.remove(.layerMinXMinYCorner)
+            corners.remove(.layerMaxXMinYCorner)
+        }
+        if squaredEdges.contains(.leading) {
+            corners.remove(.layerMinXMinYCorner)
+            corners.remove(.layerMinXMaxYCorner)
+        }
+        if squaredEdges.contains(.trailing) {
+            corners.remove(.layerMaxXMinYCorner)
+            corners.remove(.layerMaxXMaxYCorner)
+        }
+        layer.maskedCorners = corners
     }
 
     // MARK: - Construction

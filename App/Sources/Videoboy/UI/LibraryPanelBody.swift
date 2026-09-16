@@ -24,16 +24,23 @@ struct LibraryItem {
     let isAvailable: Bool
 }
 
-/// The view for one library item: a thumbnail box with a badge and a caption.
+/// The view for one library item: a fixed-size thumbnail with a badge and a caption.
+///
+/// Every item is exactly the same size. Items that size themselves to their caption
+/// read as clutter however neatly they are spaced, and a grid whose cells differ is
+/// not really a grid.
 final class LibraryItemView: NSView {
 
     init(item: LibraryItem) {
         super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
 
         let thumbnail = NSView()
         thumbnail.wantsLayer = true
         thumbnail.layer?.backgroundColor = Theme.Color.previewEmpty.cgColor
-        thumbnail.layer?.cornerRadius = 3
+        thumbnail.layer?.cornerRadius = 2
+        thumbnail.layer?.borderWidth = Theme.Metrics.hairline
+        thumbnail.layer?.borderColor = Theme.Color.panelBorder.cgColor
         thumbnail.translatesAutoresizingMaskIntoConstraints = false
 
         let badge = Controls.monoLabel(
@@ -48,22 +55,29 @@ final class LibraryItemView: NSView {
             color: item.isAvailable ? Theme.Color.textSecondary : Theme.Color.textTertiary
         )
         caption.translatesAutoresizingMaskIntoConstraints = false
+        caption.lineBreakMode = .byTruncatingMiddle
+        caption.alignment = .center
+        // The caption must never widen the cell — a long filename truncates instead.
+        caption.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         addSubview(thumbnail)
         addSubview(caption)
 
         NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: Theme.Metrics.thumbnailSide),
+
             thumbnail.topAnchor.constraint(equalTo: topAnchor),
             thumbnail.leadingAnchor.constraint(equalTo: leadingAnchor),
             thumbnail.trailingAnchor.constraint(equalTo: trailingAnchor),
-            thumbnail.heightAnchor.constraint(equalTo: thumbnail.widthAnchor, multiplier: 3.0 / 4.0),
+            thumbnail.heightAnchor.constraint(equalToConstant: Theme.Metrics.thumbnailImageHeight),
 
             badge.topAnchor.constraint(equalTo: thumbnail.topAnchor, constant: 2),
             badge.leadingAnchor.constraint(equalTo: thumbnail.leadingAnchor, constant: 3),
 
-            caption.topAnchor.constraint(equalTo: thumbnail.bottomAnchor, constant: 2),
+            caption.topAnchor.constraint(equalTo: thumbnail.bottomAnchor, constant: 1),
             caption.leadingAnchor.constraint(equalTo: leadingAnchor),
             caption.trailingAnchor.constraint(equalTo: trailingAnchor),
+            caption.heightAnchor.constraint(equalToConstant: Theme.Metrics.thumbnailCaptionHeight),
             caption.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
     }
@@ -105,27 +119,27 @@ final class LibraryPanelBody: NSView {
         headerRow.translatesAutoresizingMaskIntoConstraints = false
         addSubview(headerRow)
 
-        // A plain grid of item views inside a scroll view. NSCollectionView's
-        // selection and drag machinery arrives with drag-to-load; until then this
-        // is the same layout with far less ceremony.
-        let itemsStack = NSGridView()
-        itemsStack.rowSpacing = 5
-        itemsStack.columnSpacing = 5
+        // A uniform grid: fixed-width cells, tight gaps, left-aligned rows. Built
+        // from stacks rather than NSGridView because NSGridView sizes columns to
+        // their content, which is exactly the inconsistency being removed.
+        let itemsStack = NSStackView()
+        itemsStack.orientation = .vertical
+        itemsStack.alignment = .leading
+        itemsStack.spacing = Theme.Metrics.thumbnailGap
+
         var row: [NSView] = []
         for item in items {
             row.append(LibraryItemView(item: item))
             if row.count == columns {
-                itemsStack.addRow(with: row)
+                itemsStack.addArrangedSubview(Controls.row(row, spacing: Theme.Metrics.thumbnailGap))
                 row = []
             }
         }
         if !row.isEmpty {
-            // Pad the final row so the grid stays rectangular.
-            while row.count < columns { row.append(NSView()) }
-            itemsStack.addRow(with: row)
-        }
-        for index in 0..<max(columns, 1) {
-            itemsStack.column(at: index).width = Theme.Metrics.thumbnailSide
+            // The final row is left-aligned, not stretched: padding it with spacers
+            // would space the real items out differently from every row above.
+            let rowStack = Controls.row(row + [Controls.spacer()], spacing: Theme.Metrics.thumbnailGap)
+            itemsStack.addArrangedSubview(rowStack)
         }
 
         // A flipped document view keeps the grid anchored to the top of the panel.

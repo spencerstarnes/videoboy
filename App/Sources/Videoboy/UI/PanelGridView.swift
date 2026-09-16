@@ -23,6 +23,20 @@
 import AppKit
 import VideoboyCore
 
+/// Which edges of a panel are butted against a neighbour.
+///
+/// Panels that are always shown together — A above B, C above D — are joined rather
+/// than floated apart. This is the Resolve/FCP reading of space: a gap means "these
+/// are separate concerns", so putting one everywhere makes the gaps meaningless and
+/// the window busier than it needs to be.
+struct GroupEdge: OptionSet {
+    let rawValue: Int
+    static let top = GroupEdge(rawValue: 1 << 0)
+    static let bottom = GroupEdge(rawValue: 1 << 1)
+    static let leading = GroupEdge(rawValue: 1 << 2)
+    static let trailing = GroupEdge(rawValue: 1 << 3)
+}
+
 /// Where a panel sits in the grid, in cells.
 struct GridPlacement {
     let column: Int
@@ -63,6 +77,8 @@ final class PanelGridView: NSView {
         let placement: GridPlacement
         /// True for the outer source and FX columns, which respond to breakpoints.
         let isOuterColumn: Bool
+        /// Edges butted against a neighbour, which take no gutter.
+        let joined: GroupEdge
     }
 
     private var placedPanels: [PlacedPanel] = []
@@ -100,17 +116,24 @@ final class PanelGridView: NSView {
     private func placePanels() {
         let set = panels
 
-        func place(_ panel: PanelView, _ placement: GridPlacement, outer: Bool = false) {
+        func place(
+            _ panel: PanelView, _ placement: GridPlacement,
+            outer: Bool = false, joined: GroupEdge = []
+        ) {
             panel.translatesAutoresizingMaskIntoConstraints = true
+            panel.squaredEdges = joined
             addSubview(panel)
-            placedPanels.append(PlacedPanel(panel: panel, placement: placement, isOuterColumn: outer))
+            placedPanels.append(PlacedPanel(
+                panel: panel, placement: placement, isOuterColumn: outer, joined: joined))
         }
 
-        // Row 0-1, outer columns: the four source panels.
-        place(set.sourceA, GridPlacement(column: 0, row: 0), outer: true)
-        place(set.sourceB, GridPlacement(column: 0, row: 1), outer: true)
-        place(set.sourceC, GridPlacement(column: 4, row: 0), outer: true)
-        place(set.sourceD, GridPlacement(column: 4, row: 1), outer: true)
+        // Row 0-1, outer columns: the four source panels. A sits directly on B and
+        // C on D — they feed the same bus and are never used apart, so they are one
+        // block with a hairline between rather than two floating boxes.
+        place(set.sourceA, GridPlacement(column: 0, row: 0), outer: true, joined: .bottom)
+        place(set.sourceB, GridPlacement(column: 0, row: 1), outer: true, joined: .top)
+        place(set.sourceC, GridPlacement(column: 4, row: 0), outer: true, joined: .bottom)
+        place(set.sourceD, GridPlacement(column: 4, row: 1), outer: true, joined: .top)
 
         // Row 0-1, inner columns: the three previews, each spanning two rows.
         place(set.subMixOne, GridPlacement(column: 1, row: 0, rowSpan: 2))
@@ -126,13 +149,14 @@ final class PanelGridView: NSView {
         place(set.effectsOne, GridPlacement(column: 0, row: 2, rowSpan: 3), outer: true)
         place(set.effectsTwo, GridPlacement(column: 4, row: 2, rowSpan: 3), outer: true)
 
-        // Row 3: the two libraries and the central asset browser.
-        place(set.libraryOne, GridPlacement(column: 1, row: 3))
-        place(set.assetBrowser, GridPlacement(column: 2, row: 3))
-        place(set.libraryTwo, GridPlacement(column: 3, row: 3))
+        // Row 3: the two libraries and the central asset browser. The settings bar
+        // sits directly beneath them, so those edges join too.
+        place(set.libraryOne, GridPlacement(column: 1, row: 3), joined: .bottom)
+        place(set.assetBrowser, GridPlacement(column: 2, row: 3), joined: .bottom)
+        place(set.libraryTwo, GridPlacement(column: 3, row: 3), joined: .bottom)
 
         // Row 4: the settings bar, spanning the three inner columns.
-        place(set.settingsBar, GridPlacement(column: 1, row: 4, columnSpan: 3))
+        place(set.settingsBar, GridPlacement(column: 1, row: 4, columnSpan: 3), joined: .top)
 
         Log.info(.app, "panel grid built with \(placedPanels.count) panels")
     }
@@ -177,9 +201,22 @@ final class PanelGridView: NSView {
             let lastRow = min(placement.row + placement.rowSpan - 1, rowEdges.count - 1)
             let bottom = rowEdges[lastRow].end
 
-            placed.panel.frame = NSRect(
+            // A joined edge reclaims its half of the gutter, so the two panels meet.
+            let halfGutter = gutter / 2
+            var frame = NSRect(
                 x: left, y: top, width: max(right - left, 0), height: max(bottom - top, 0)
             )
+            if placed.joined.contains(.bottom) { frame.size.height += halfGutter + 0.5 }
+            if placed.joined.contains(.top) {
+                frame.origin.y -= halfGutter + 0.5
+                frame.size.height += halfGutter + 0.5
+            }
+            if placed.joined.contains(.trailing) { frame.size.width += halfGutter + 0.5 }
+            if placed.joined.contains(.leading) {
+                frame.origin.x -= halfGutter + 0.5
+                frame.size.width += halfGutter + 0.5
+            }
+            placed.panel.frame = frame
         }
     }
 

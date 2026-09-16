@@ -32,12 +32,9 @@ final class SettingsBarPanelBody: NSView {
         self.outputPopUp = Controls.popUp(["PRI → \(negotiatedMode)"])
         super.init(frame: .zero)
 
-        // Record: needs AVAssetWriter and the discrete-channel plumbing (SPEC 15).
-        let record = section("Record", views: [
-            Controls.popUp(["ProRes 422"], enabled: false),
-            Controls.popUp(["PRI+A/B/C/D"], enabled: false),
-            Controls.button("● REC", enabled: false)
-        ])
+        // Record used to live here. It is in the toolbar now, top right, because it
+        // is the one control that must be found without hunting — see
+        // TransportToolbarView and the note in SPEC 14.1.
 
         // Stream: needs the encoder and an egress path (SPEC 15).
         let stream = section("Stream", views: [
@@ -64,7 +61,7 @@ final class SettingsBarPanelBody: NSView {
             labelled("Test Pat", testToggle)
         ])
 
-        let row = Controls.row([record, stream, output, toggles, Controls.spacer()], spacing: 14)
+        let row = Controls.row([stream, output, toggles, Controls.spacer()], spacing: 14)
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
 
@@ -86,7 +83,8 @@ final class SettingsBarPanelBody: NSView {
 
     /// One labelled section of the bar.
     private func section(_ title: String, views: [NSView]) -> NSStackView {
-        let heading = Controls.label(title, font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
+        let heading = Controls.label(
+            title, font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary, holdsWidth: true)
         return Controls.row([heading] + views, spacing: 5)
     }
 
