@@ -27,6 +27,7 @@ final class SourcePanelBody: NSView {
     let channel: String
 
     private var generatorPopUp: NSPopUpButton?
+    private var scrubFader: VBFader?
 
     /// Loads a file into this channel. Wired by the app; nil until then.
     var onLoadRequested: (() -> Void)?
@@ -34,6 +35,17 @@ final class SourcePanelBody: NSView {
     /// Switches this channel to a generator, or back to its file.
     /// A nil kind means "go back to the file".
     var onGeneratorSelected: ((GeneratorKind?) -> Void)?
+
+    /// Jump to the start or the end of the clip.
+    var onSeekToStart: (() -> Void)?
+    var onSeekToEnd: (() -> Void)?
+    /// Step one frame back or forward.
+    var onStepBack: (() -> Void)?
+    var onStepForward: (() -> Void)?
+    /// Scrub to a 0...1 position.
+    var onScrub: ((Double) -> Void)?
+    /// Loop behaviour changed.
+    var onLoopModeChanged: ((LoopMode) -> Void)?
 
     init(channel: String) {
         self.channel = channel
@@ -45,13 +57,19 @@ final class SourcePanelBody: NSView {
 
         // Shuttle strip: transport buttons, a scrub track, and the loop-mode toggle.
         // Every source gets one (SPEC 14.2).
-        let toStart = Controls.button("⇤", enabled: false)
-        let back = Controls.button("◀", enabled: false)
+        let toStart = Controls.button("⇤", target: self, action: #selector(seekStartPressed))
+        let back = Controls.button("◀", target: self, action: #selector(stepBackPressed))
         let play = Controls.button("▶", target: self, action: #selector(playPressed))
-        let toEnd = Controls.button("⇥", enabled: false)
-        let scrub = Controls.fader(value: 0, enabled: false, compact: true)
+        let toEnd = Controls.button("⇥", target: self, action: #selector(seekEndPressed))
+        let scrub = Controls.fader(
+            value: 0, compact: true, target: self, action: #selector(scrubbed(_:)))
+        self.scrubFader = scrub
         // Loop / ping-pong / one-shot, per SPEC 12.
-        let loopMode = Controls.segmented(["↻", "⇄", "1"], selected: 0, enabled: false)
+        let loopMode = Controls.segmented(
+            ["↻", "⇄", "1"], selected: 0, target: self, action: #selector(loopModeChanged(_:)))
+        loopMode.setToolTip("Loop", forSegment: 0)
+        loopMode.setToolTip("Ping-pong", forSegment: 1)
+        loopMode.setToolTip("One shot", forSegment: 2)
 
         let shuttle = Controls.row([toStart, back, play, toEnd, scrub, loopMode], spacing: 2)
         shuttle.translatesAutoresizingMaskIntoConstraints = false
@@ -107,6 +125,24 @@ final class SourcePanelBody: NSView {
     @objc private func playPressed() {
         Log.info(.app, "play toggled on source \(channel)")
         onPlayToggled?()
+    }
+
+    @objc private func seekStartPressed() { onSeekToStart?() }
+    @objc private func seekEndPressed() { onSeekToEnd?() }
+    @objc private func stepBackPressed() { onStepBack?() }
+    @objc private func stepForwardPressed() { onStepForward?() }
+
+    @objc private func scrubbed(_ sender: VBFader) {
+        onScrub?(sender.value)
+    }
+
+    @objc private func loopModeChanged(_ sender: NSSegmentedControl) {
+        onLoopModeChanged?(LoopMode.from(index: sender.selectedSegment))
+    }
+
+    /// Moves the scrub track to follow playback, without firing its action.
+    func setScrubPosition(_ position: Double) {
+        scrubFader?.value = position
     }
 
     @objc private func generatorChanged(_ sender: NSPopUpButton) {

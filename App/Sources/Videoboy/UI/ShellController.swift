@@ -46,6 +46,25 @@ final class ShellController {
             body.onGeneratorSelected = { [weak self] kind in
                 self?.setGenerator(kind, channel: letter)
             }
+            body.onSeekToStart = { [weak self] in
+                self?.engine.sources[letter]?.seek(toNormalised: 0)
+            }
+            body.onSeekToEnd = { [weak self] in
+                self?.engine.sources[letter]?.seek(toNormalised: 1)
+            }
+            body.onStepBack = { [weak self] in
+                self?.engine.sources[letter]?.step(by: -1)
+            }
+            body.onStepForward = { [weak self] in
+                self?.engine.sources[letter]?.step(by: 1)
+            }
+            body.onScrub = { [weak self] position in
+                self?.engine.sources[letter]?.seek(toNormalised: position)
+            }
+            body.onLoopModeChanged = { [weak self] mode in
+                self?.engine.sources[letter]?.loopMode = mode
+                Log.info(.dv, "source \(letter) loop mode is now \(mode.displayName)")
+            }
         }
     }
 
@@ -556,6 +575,11 @@ final class ShellController {
             let slot = Engine.slot(forChannel: letter)
             panels.sourceBodies[letter]?.preview.texture = engine.texture(for: slot)
             panels.sourceBodies[letter]?.preview.present()
+            // The scrub track follows playback, so it reads as a position indicator
+            // as well as a control.
+            if let source = engine.sources[letter], source.isPlaying {
+                panels.sourceBodies[letter]?.setScrubPosition(source.normalisedPosition)
+            }
         }
 
         panels.subMixOneBody.preview.texture = engine.texture(for: GraphTopology.subMixOne)
