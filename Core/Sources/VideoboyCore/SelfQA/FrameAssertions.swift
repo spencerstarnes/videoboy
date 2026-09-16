@@ -358,6 +358,39 @@ public enum FrameAssertions {
         return differing / counted
     }
 
+    /// Fraction of sampled pixels whose COLOUR differs, across all three channels.
+    ///
+    /// `differingPixelFraction` compares luma, which is right for motion, corruption
+    /// and cuts — and blind to anything that changes only colour. A luma-weighted
+    /// desaturation preserves luma by definition, so black-and-white reads as "no
+    /// change" to it; so do chroma bleed and DV's 4:1:1 subsampling. Those are real
+    /// effects and the harness has to be able to see them.
+    public static func differingColourFraction(
+        _ first: ImageBuffer, _ second: ImageBuffer, threshold: Double = 8.0
+    ) -> Double {
+        guard first.width == second.width, first.height == second.height else {
+            Log.warn(.selfqa, "differingColourFraction on mismatched sizes "
+                + "\(first.width)x\(first.height) vs \(second.width)x\(second.height)")
+            return 1.0
+        }
+        var differing = 0.0
+        var counted = 0.0
+        for y in stride(from: 0, to: first.height, by: 2) {
+            for x in stride(from: 0, to: first.width, by: 2) {
+                let a = first.pixel(x: x, y: y)
+                let b = second.pixel(x: x, y: y)
+                let delta = max(
+                    abs(Double(a.r) - Double(b.r)),
+                    max(abs(Double(a.g) - Double(b.g)), abs(Double(a.b) - Double(b.b)))
+                )
+                if delta > threshold { differing += 1 }
+                counted += 1
+            }
+        }
+        guard counted > 0 else { return 0 }
+        return differing / counted
+    }
+
     /// Asserts two frames differ over at least `minimumFraction` of the picture.
     /// Used to prove a corruption or a cut genuinely changed the output.
     public static func framesDiffer(

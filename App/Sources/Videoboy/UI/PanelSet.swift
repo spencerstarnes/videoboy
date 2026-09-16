@@ -178,6 +178,17 @@ final class PanelSet {
                                          value: 0.5, activeBadges: [], enabled: true)
                 ]
             ),
+            EffectCardModel(
+                name: "MX-1",
+                isEnabled: false,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "effect", code: ParamCode.mx1Effect.rawValue,
+                                         value: 0.0, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
+                                         value: 0.5, activeBadges: [], enabled: true)
+                ]
+            ),
             EffectCardModel(name: "Color Ctrl", isEnabled: false, isImplemented: false, parameters: [
                 EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
                                      value: 0.62, activeBadges: [], enabled: false)
@@ -223,6 +234,17 @@ final class PanelSet {
                                          value: 0.0, activeBadges: [], enabled: true),
                     EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
                                          value: 0.52, activeBadges: [], enabled: true)
+                ]
+            ),
+            EffectCardModel(
+                name: "MX-1",
+                isEnabled: false,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "effect", code: ParamCode.mx1Effect.rawValue,
+                                         value: 0.0, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
+                                         value: 0.5, activeBadges: [], enabled: true)
                 ]
             ),
             EffectCardModel(name: "Layer Mask", isEnabled: false, isImplemented: false, parameters: [])

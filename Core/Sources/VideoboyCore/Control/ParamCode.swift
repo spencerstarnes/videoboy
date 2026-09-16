@@ -98,6 +98,15 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case blendMode = "65A"
     /// Per-layer opacity of the blend layer in a composite.
     case layerOpacity = "66A"
+    /// Which MX-1 effect is applied, as a 0...1 sweep across the set.
+    ///
+    /// A sweep rather than a menu because that is what makes it playable: a fader or
+    /// a knob can run through the whole set mid-phrase, which is the entire reason
+    /// the MX-1 is worth emulating.
+    case mx1Effect = "91A"
+    /// Strength of the MX-1 effect, where the meaning depends on which one.
+    case mx1Amount = "92A"
+
     /// Playhead position within a clip, 0...1 — what the shuttle scrubs.
     ///
     /// Separate from `playbackSpeed`: speed is how fast the clip runs, position is
@@ -157,6 +166,8 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .crossfadeOneTwo: "ONE/TWO crossfade"
         case .playbackSpeed: "speed"
         case .scrubPosition: "position"
+        case .mx1Effect: "MX-1 effect"
+        case .mx1Amount: "MX-1 amount"
         case .blendMode: "blend mode"
         case .layerOpacity: "layer opacity"
         case .compositeCrawl: "dot crawl"

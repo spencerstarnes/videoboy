@@ -302,6 +302,112 @@ enum PlaybackSelfQA {
         }
         engine.isOutputDVEnabled = false
 
+        // 10. The MX-1 set, through the live graph. It was built and unit-tested but
+        // was not in any chain, so nothing could reach it — the same shape of gap as
+        // the programme data stage, and invisible for the same reason: every part of
+        // it was correct except its place in the graph.
+        engine.load(url: fileA, intoChannel: "A")
+        engine.registry.setValue(0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+        engine.registry.setValue(0, slot: Engine.mx1OneSlot, code: .wetDry)
+        let mx1Bypassed = renderFrame(100)
+
+        engine.registry.setValue(1, slot: Engine.mx1OneSlot, code: .wetDry)
+        // Full strength. At the default of 0.5, posterize gives 17 levels, which
+        // shifts a flat colour bar by about four — genuinely invisible, and on this
+        // material that is the truth rather than a fault. "Does this effect do
+        // anything" is a question about the effect, so it is asked at full amount.
+        engine.registry.setValue(1, slot: Engine.mx1OneSlot, code: .mx1Amount)
+        var sweptFrames: [(name: String, image: ImageBuffer)] = []
+        for effect in MX1Effect.allCases {
+            // The middle of each effect's band, so the sweep lands squarely on it
+            // rather than on a boundary.
+            let position = (Double(effect.rawValue) + 0.5) / Double(MX1Effect.allCases.count)
+            engine.registry.setValue(position, slot: Engine.mx1OneSlot, code: .mx1Effect)
+            if let image = renderFrame(101 + effect.rawValue) {
+                sweptFrames.append((effect.displayName, image))
+            }
+        }
+
+        if let mx1Bypassed, sweptFrames.count == MX1Effect.allCases.count {
+            try? check.writeImage(mx1Bypassed, named: "12-mx1-bypassed.png")
+            for swept in sweptFrames {
+                let safeName = swept.name.lowercased()
+                    .replacingOccurrences(of: " ", with: "-")
+                    .replacingOccurrences(of: "&", with: "and")
+                try? check.writeImage(swept.image, named: "13-mx1-\(safeName).png")
+            }
+
+            // Colour-aware, not luma. Black and white is a luma-weighted
+            // desaturation, so it preserves luma exactly and a luma comparison calls
+            // it "no change" — which is how three working effects first read as
+            // broken here.
+            //
+            // Freeze is excluded on purpose: the transport is stopped for this sweep
+            // so the effects can be compared against each other rather than against a
+            // moving picture, and a frozen frame of a still clip is the same frame.
+            // It is checked separately below, where it can mean something.
+            let inert = sweptFrames.filter {
+                $0.name != MX1Effect.freeze.displayName
+                    && FrameAssertions.differingColourFraction(mx1Bypassed, $0.image) < 0.02
+            }
+            check.record(AssertionResult(
+                name: "every MX-1 effect changes the picture",
+                passed: inert.isEmpty,
+                detail: inert.isEmpty
+                    ? "\(sweptFrames.count) effects, all visible"
+                    : "inert: " + inert.map(\.name).joined(separator: ", ")
+            ))
+
+            // And they must differ from EACH OTHER, or the sweep is selecting one
+            // effect and relabelling it.
+            var identicalPairs: [String] = []
+            for first in 0..<sweptFrames.count {
+                for second in (first + 1)..<sweptFrames.count {
+                    let difference = FrameAssertions.differingColourFraction(
+                        sweptFrames[first].image, sweptFrames[second].image)
+                    if difference < 0.005 {
+                        identicalPairs.append(
+                            "\(sweptFrames[first].name)/\(sweptFrames[second].name)")
+                    }
+                }
+            }
+            check.record(AssertionResult(
+                name: "the MX-1 sweep selects a different effect at each position",
+                passed: identicalPairs.isEmpty,
+                detail: identicalPairs.isEmpty
+                    ? "all \(sweptFrames.count) are distinct"
+                    : "indistinguishable: " + identicalPairs.joined(separator: ", ")
+            ))
+        } else {
+            check.record(AssertionResult(
+                name: "the MX-1 set renders", passed: false,
+                detail: "\(sweptFrames.count) of \(MX1Effect.allCases.count) effects rendered"))
+        }
+        // Freeze, where it means something: with the clip running, the picture must
+        // stop while everything else carries on.
+        engine.registry.setValue(1, slot: Engine.mx1OneSlot, code: .wetDry)
+        let freezePosition =
+            (Double(MX1Effect.freeze.rawValue) + 0.5) / Double(MX1Effect.allCases.count)
+        engine.registry.setValue(freezePosition, slot: Engine.mx1OneSlot, code: .mx1Effect)
+        engine.setPlaying(true, channel: "A")
+        _ = renderFrame(120)
+        let frozenFirst = renderFrame(121)
+        for frame in 122..<140 { _ = renderFrame(frame) }
+        let frozenLater = renderFrame(140)
+        engine.setPlaying(false, channel: "A")
+
+        if let frozenFirst, let frozenLater {
+            try? check.writeImage(frozenLater, named: "14-mx1-freeze-held.png")
+            check.record(AssertionResult(
+                name: "MX-1 freeze holds the picture while the clip runs on",
+                passed: FrameAssertions.differingColourFraction(frozenFirst, frozenLater) < 0.02,
+                detail: String(
+                    format: "%.3f of pixels changed over 19 frames of playback",
+                    FrameAssertions.differingColourFraction(frozenFirst, frozenLater))
+            ))
+        }
+        engine.registry.setValue(0, slot: Engine.mx1OneSlot, code: .wetDry)
+
         check.note("all frames rendered through the engine's own nodes and Metal pipelines")
         return check.finish()
     }

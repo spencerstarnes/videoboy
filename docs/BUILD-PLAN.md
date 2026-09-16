@@ -117,8 +117,6 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   audio-tap and LFO menus are still only on the effect parameters' S and C badges.
 - **Core Image / AU passthrough** from SPEC 9 — enumerate the useful CI filters and
   expose the video-rate ones as mappable modules. Not started.
-- **MX-1 effects are not in a chain yet.** `MX1EffectNode` exists and is tested, but
-  it is not instantiated in the engine's graph, so there is no UI for it.
 - **Generator colours are not editable.** Each generator has two colours with an
   out-of-gamut check, but no colour well in the UI.
 - **Audio does not drive transport phase, only tempo.** SPEC 4c mentions phase; the

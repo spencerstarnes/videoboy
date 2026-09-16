@@ -67,8 +67,9 @@ public final class MX1EffectNode: Node {
 
     public var parameters: [Parameter] {
         [
-            Parameter(code: .wetDry, range: 0...1, defaultValue: 1),
-            Parameter(code: .contrast, range: 0...1, defaultValue: 0.5)
+            Parameter(code: .wetDry, range: 0...1, defaultValue: 0),
+            Parameter(code: .mx1Effect, range: 0...1, defaultValue: 0),
+            Parameter(code: .mx1Amount, range: 0...1, defaultValue: 0.5)
         ]
     }
 
@@ -95,6 +96,21 @@ public final class MX1EffectNode: Node {
         frozen = nil
     }
 
+    /// Takes a private copy of a texture, so later writes to the original cannot
+    /// change it.
+    private func copy(_ source: MTLTexture, label: String) -> MTLTexture? {
+        guard let metal = context else { return nil }
+        guard let destination = metal.makeRenderTarget(
+            width: source.width, height: source.height, label: label) else { return nil }
+        guard let commandBuffer = metal.commandQueue.makeCommandBuffer(),
+              let blit = commandBuffer.makeBlitCommandEncoder() else { return nil }
+        blit.copy(from: source, to: destination)
+        blit.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        return destination
+    }
+
     public func render(inputs: [MTLTexture], context renderContext: RenderContext) -> MTLTexture? {
         guard let metal = context, let input = inputs.first else { return inputs.first }
         guard wetDry > 0.001 else {
@@ -106,8 +122,13 @@ public final class MX1EffectNode: Node {
 
         // Freeze is not a shading operation — it is a choice of which texture to
         // hand on, so it is handled before the pass rather than inside it.
+        //
+        // The frame is COPIED, not referenced. Upstream nodes render into the same
+        // MTLTexture every frame, so holding a reference holds a view of whatever is
+        // currently in it — the picture carried on moving and freeze did nothing at
+        // all. The copy is what makes it a held frame rather than a held pointer.
         if effect == .freeze {
-            if frozen == nil { frozen = input }
+            if frozen == nil { frozen = copy(input, label: "\(identifier)-frozen") }
             return frozen ?? input
         }
         frozen = nil
@@ -165,6 +186,9 @@ public final class MX1EffectNode: Node {
     /// Pulls settings from the registry.
     public func applyParameters(from registry: ParamRegistry) {
         if let value = registry.value(slot: identifier, code: .wetDry) { wetDry = value }
-        if let value = registry.value(slot: identifier, code: .contrast) { amount = value }
+        if let value = registry.value(slot: identifier, code: .mx1Amount) { amount = value }
+        if let value = registry.value(slot: identifier, code: .mx1Effect) {
+            effect = MX1Effect.from(normalised: value)
+        }
     }
 }

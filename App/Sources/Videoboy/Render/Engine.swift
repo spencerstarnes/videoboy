@@ -69,6 +69,8 @@ final class Engine {
     private(set) var busCodecTwo: BusCodecNode!
     private(set) var busCodecProgram: BusCodecNode!
     private(set) var compositeProgram: CompositeCodecNode!
+    private(set) var mx1One: MX1EffectNode!
+    private(set) var mx1Two: MX1EffectNode!
 
     /// Live capture, available as a source (SPEC 10). Fed by the App's capture
     /// session; nothing until then, which renders as the panel's empty state.
@@ -179,6 +181,13 @@ final class Engine {
         graph.connect(from: GraphTopology.subMixOne, to: Engine.compositeSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeSlot, to: Engine.echoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoSlot, to: Engine.feedbackSlot, inputIndex: 0)
+
+        // The MX-1 set sits at the end of the picture chain, after feedback: these
+        // are the whole-frame gestures — negative, mirror, freeze — and they read as
+        // something done TO the bus rather than as another layer inside it.
+        mx1One = MX1EffectNode(identifier: Engine.mx1OneSlot, context: metal)
+        graph.add(mx1One)
+        graph.connect(from: Engine.feedbackSlot, to: Engine.mx1OneSlot, inputIndex: 0)
         // The bus data stage sits at the END of each chain, just before the mix:
         // it re-encodes whatever the chain produced, so it damages the finished bus
         // rather than something half-processed.
@@ -189,7 +198,7 @@ final class Engine {
         graph.add(busCodecTwo)
         graph.add(busCodecProgram)
 
-        graph.connect(from: Engine.feedbackSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
+        graph.connect(from: Engine.mx1OneSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
         graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
 
         // The same chain on TWO. Separate instances rather than a shared one: the two
@@ -205,7 +214,10 @@ final class Engine {
         graph.connect(from: GraphTopology.subMixTwo, to: Engine.compositeTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeTwoSlot, to: Engine.echoTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoTwoSlot, to: Engine.feedbackTwoSlot, inputIndex: 0)
-        graph.connect(from: Engine.feedbackTwoSlot, to: Engine.busCodecTwoSlot, inputIndex: 0)
+        mx1Two = MX1EffectNode(identifier: Engine.mx1TwoSlot, context: metal)
+        graph.add(mx1Two)
+        graph.connect(from: Engine.feedbackTwoSlot, to: Engine.mx1TwoSlot, inputIndex: 0)
+        graph.connect(from: Engine.mx1TwoSlot, to: Engine.busCodecTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.busCodecTwoSlot, to: GraphTopology.primary, inputIndex: 1)
 
         // PROGRAM's own data stage, after the ONE/TWO mix. It was created and added
@@ -262,6 +274,8 @@ final class Engine {
     static let busCodecTwoSlot = "data.two"
     static let busCodecProgramSlot = "data.program"
     static let compositeProgramSlot = "fx.program.composite"
+    static let mx1OneSlot = "fx.one.mx1"
+    static let mx1TwoSlot = "fx.two.mx1"
 
     /// The last node in the graph — what output and the programme preview show.
     ///
@@ -274,8 +288,8 @@ final class Engine {
 
     /// Every bus-effect slot, both chains.
     static let busEffectSlots = [
-        compositeSlot, echoSlot, feedbackSlot,
-        compositeTwoSlot, echoTwoSlot, feedbackTwoSlot
+        compositeSlot, echoSlot, feedbackSlot, mx1OneSlot,
+        compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot
     ]
 
     /// The generator slot name for a channel letter.
@@ -386,6 +400,8 @@ final class Engine {
         echo.applyParameters(from: registry)
         feedback.applyParameters(from: registry)
         compositeProgram.applyParameters(from: registry)
+        mx1One.applyParameters(from: registry)
+        mx1Two.applyParameters(from: registry)
         compositeCodecTwo.applyParameters(from: registry)
         echoTwo.applyParameters(from: registry)
         feedbackTwo.applyParameters(from: registry)
@@ -640,7 +656,7 @@ final class Engine {
         graph.add(busCodecTwo)
         graph.add(busCodecProgram)
 
-        graph.connect(from: Engine.feedbackSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
+        graph.connect(from: Engine.mx1OneSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
         graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
         }
         Log.info(.output, "program bus now carries \(showsPattern ? "the test pattern" : "the live mix")")

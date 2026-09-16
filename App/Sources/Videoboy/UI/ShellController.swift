@@ -701,7 +701,9 @@ final class ShellController {
         .feedbackDelayFrames: Engine.feedbackSlot,
         .feedbackZoom: Engine.feedbackSlot,
         .feedbackRotate: Engine.feedbackSlot,
-        .feedbackThreshold: Engine.feedbackSlot
+        .feedbackThreshold: Engine.feedbackSlot,
+        .mx1Effect: Engine.mx1OneSlot,
+        .mx1Amount: Engine.mx1OneSlot
     ]
 
     /// Which slot each param code in the Sub Mix 2 chain belongs to.
@@ -724,14 +726,17 @@ final class ShellController {
         .feedbackDelayFrames: Engine.feedbackTwoSlot,
         .feedbackZoom: Engine.feedbackTwoSlot,
         .feedbackRotate: Engine.feedbackTwoSlot,
-        .feedbackThreshold: Engine.feedbackTwoSlot
+        .feedbackThreshold: Engine.feedbackTwoSlot,
+        .mx1Effect: Engine.mx1TwoSlot,
+        .mx1Amount: Engine.mx1TwoSlot
     ]
 
     /// Effect card names to the slot they bypass, per bus.
     private static let effectNameToSlot: [String: (one: String, two: String)] = [
         "Composite · NTSC": (Engine.compositeSlot, Engine.compositeTwoSlot),
         "Echo / Trails": (Engine.echoSlot, Engine.echoTwoSlot),
-        "Feedback": (Engine.feedbackSlot, Engine.feedbackTwoSlot)
+        "Feedback": (Engine.feedbackSlot, Engine.feedbackTwoSlot),
+        "MX-1": (Engine.mx1OneSlot, Engine.mx1TwoSlot)
     ]
 
     private func wireEffectChains() {

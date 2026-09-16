@@ -1,14 +1,14 @@
 check:    phase-2/playback
 verdict:  PASS
-when:     2026-09-16T22:03:45Z
+when:     2026-09-16T22:09:21Z
 core:     0.3.0
 
 notes:
   A = motion.dv, B = bars.dv, through the engine's own graph
   all frames rendered through the engine's own nodes and Metal pipelines
 
-assertions (17/17 passed):
-  PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (23 nodes)
+assertions (20/20 passed):
+  PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (25 nodes)
   PASS  dimensions — expected 720x480, got 720x480
   PASS  signal present — luminance variance 3785.7, threshold 25.0
   PASS  fader at B shows source B — worst bar 5 off by 9.0 (tolerance 45.0)
@@ -25,3 +25,6 @@ assertions (17/17 passed):
   PASS  NTSC output emulation changes the picture, subtly — 0.787 of sampled pixels differ
   PASS  the DV round trip runs rather than passing through — 0.0027 of sampled pixels differ at one generation — small because flat colour bars survive 4:1:1 well
   PASS  each DV generation costs more than the last — 1 generation differs by 0.003, 4 by 0.017
+  PASS  every MX-1 effect changes the picture — 8 effects, all visible
+  PASS  the MX-1 sweep selects a different effect at each position — all 8 are distinct
+  PASS  MX-1 freeze holds the picture while the clip runs on — 0.000 of pixels changed over 19 frames of playback
