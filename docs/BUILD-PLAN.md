@@ -1,0 +1,91 @@
+# BUILD-PLAN.md
+
+Operational plan for Claude Code. Execute phases in order. One phase per work session. Do not skip ahead. Full feature detail is in `docs/SPEC.md` — read the referenced section when you start a phase; don't load the whole file.
+
+**Legend:** `[HEADLESS]` = verify via build/test. `[SELF-VISUAL]` = verify yourself via the self-QA harness (offscreen PNG, DVC100 loopback metrics, or virtual MIDI) — see `docs/SELF-QA-HARNESS.md`. `[HUMAN]` = genuinely needs the person (there are almost none until the clickable-app milestone). `[FLAG]` = ship behind a feature flag.
+
+**Definition of done (every phase):** `scripts/verify.sh` exits 0, `[HEADLESS]` + `[SELF-VISUAL]` acceptance met with saved evidence in `selfqa/out/<phase>/`, docs/checkboxes updated, one commit. Run across phases without pausing for permission; only stop at the clickable-app milestone or a true blocker (`docs/BLOCKED.md`).
+
+**Clickable-app milestone = end of Phase 2.** This is the human's first touch: a launchable `.app` they can open, click, and play a sample through. Everything up to here is autonomous and self-verified.
+
+---
+
+## Phase 0 — Repo, toolchain, headless skeleton
+Goal: a project that builds and tests from terminal on the Mac Studio with nothing real in it yet.
+
+- [ ] Detect toolchain (`sw_vers`, `xcodebuild -version`, `swift --version`); record versions in `docs/ENVIRONMENT.md`.
+- [ ] Create the split: `Core/` SwiftPM package + `App/` Xcode target linking it (see SPEC §1.5 folder layout).
+- [ ] Write `scripts/bootstrap.sh`, `build.sh`, `test.sh`, `run.sh`, `verify.sh`. Idempotent, arm64.
+- [ ] Add `.claudeignore`, `.claude/settings.json` (deny destructive shell + non-registry network), `.gitignore` (`build/`, vendored binaries, media).
+- [ ] `Core` exposes a trivial version function with a passing unit test. `App` launches to an empty window.
+- [ ] Seed `/Docs`: `ARCHITECTURE.md` (graph + two clocks, one diagram), `ADD-A-MODULE.md` (stub), per-folder READMEs.
+- [ ] **Build the self-QA harness first (your eyes — see `docs/SELF-QA-HARNESS.md`):**
+  - Offscreen render: any texture → PNG in `selfqa/out/`.
+  - Capture tool: read a UVC/AVCapture device (the DVC100) → PNG frames + `metrics.json` (effective fps, dropped/dup, combing score, signal-present). Behind a protocol with a mock so it builds without hardware.
+  - Frame assertions: dimensions, dominant color, signal-present, byte-diff vs a fixture, fps-within-tolerance.
+  - Virtual CoreMIDI source helper for detect self-tests.
+  - `scripts/selfqa.sh` runs a named check and writes artifacts under `selfqa/out/<name>/`.
+  - Prove it: render a known test pattern offscreen, dump PNG, assert its dimensions/colors in a test.
+
+**Acceptance:** `[HEADLESS]` `scripts/verify.sh` exits 0; `scripts/run.sh` opens an empty window; `[SELF-VISUAL]` offscreen PNG of a test pattern is produced and its assertions pass. Commit `phase-0: skeleton + self-qa`.
+
+---
+
+## Phase 1 — The wedge core (headless, no UI)
+Goal: the competitive heart, fully unit-tested without hardware. This is the most important phase; spend the most care here. Detail: SPEC §5 (DV/MPEG), §4 (clocks), §13 (param codes), §16 (templates), §2 (graph model).
+
+- [ ] Vendor FFmpeg as an **LGPL** arm64 xcframework (`scripts/bootstrap.sh` fetches/builds it). Record version + license in `docs/THIRD-PARTY.md`. If only GPL is achievable, STOP and report.
+- [ ] DV path: demux + decode DV via libav → raw frames in memory (no display yet). Test against a sample `.dv` fixture.
+- [ ] **Bitstream corruptor (the wedge):** operate on compressed packets *before* decode — DIF block drop/dup/shuffle, DCT-coefficient zero/flip, sequence hold/reseed for DV; frame-drop / motion-vector / reference-hold for MPEG. Pure functions over byte buffers. Unit-test each transform on fixtures (deterministic given a seed).
+- [ ] Musical clock: transport (BPM, phase, PPQN), subdivision scheduler with **lookahead + latency compensation** (schedule at `T − latency`). Unit-test that scheduled events land on target ticks given fake module latencies.
+- [ ] Param-code registry (§13): stable codes (`11A` etc.), mapping resolves to codes not instances. Unit-test that swapping a module preserves mappings whose codes persist.
+- [ ] Template read/write (§16): serialize the graph model + mappings to plain-text TOML/JSON and back. Unit-test round-trip equality; unknown keys are non-fatal.
+- [ ] Render-graph model (nodes + typed edges) as data — no rendering yet.
+
+**Acceptance:** `[HEADLESS]` all of the above green under `swift test`; a fixture DV file can be loaded, corrupted deterministically, and the corrupted bytes still decode. Commit `phase-1: bitstream core`.
+
+---
+
+## Phase 2 — Minimal playable app = CLICKABLE-APP MILESTONE `[FLAG]` per unfinished bit
+Goal: the smallest thing that plays, is clickable, and outputs a real SD signal — self-verified end to end. Detail: SPEC §3 (output), §6 (sources), §7 (MIDI detect), §12 (mix), §9 (composite — minimal).
+
+- [ ] Metal render loop: decoded/corrupted frames → `MTLTexture` → composite → present.
+- [ ] Two players (A, B) → one bus → PRIMARY. Crossfade + hard cut. Real clickable UI controls (buttons, a fader) — the human must have something to click.
+- [ ] **Build the canonical UI shell from the start (SPEC §14 — normative; open `docs/mockups/layout-v6.html` first).** The full 5×5 grid with every panel present, real AppKit controls (§14.3), docked/collapsible/never-movable, width-reactive. Panels whose features aren't built yet render with their controls disabled and a "not yet implemented" state — do NOT omit them, and do NOT build a throwaway simpler shell. Put all radii/padding/gutter values in one `Theme` token file (§14.4). Verify reflow at wide/compact/narrow via offscreen PNGs at three window sizes.
+- [ ] DV-stream source with the Phase-1 corruptor inline, clock-schedulable, mappable, with on-screen controls.
+- [ ] Output stage: borderless window on the chosen external display (the HDMI card); enumerate displays; **negotiate and log** the mode (SPEC §3). Default SD 480i/480p; expose the interlace/pulldown choice — never guess silently.
+- [ ] Core MIDI in + shift-to-detect learn for the mixer + corruptor params.
+- [ ] App is a proper `.app` bundle, `NSCameraUsageDescription` set, runs unsigned (ad-hoc). No ADP/notarization.
+
+**Acceptance (all self-verified — do NOT wait for the human):**
+- `[HEADLESS]` app builds, launches, plays a `samples/` file to an on-screen preview; MIDI-learn maps a virtual-MIDI control in a test.
+- `[SELF-VISUAL]` offscreen PNGs confirm playback + beat-synced corruption changing frames on the beat.
+- `[SELF-VISUAL]` **DVC100 loopback:** send PRIMARY to the HDMI card, capture via the DVC100, and from `metrics.json` assert (a) a stable SD frame rate within tolerance, no runaway drops, (b) the negotiated/logged output mode matches the captured signal, (c) captured PNG frames show the expected content. Save evidence to `selfqa/out/phase-2/`.
+
+Commit `phase-2: clickable mvp`. **This is where you stop and present to the human** — a launchable app plus the `selfqa/out/phase-2/` evidence of what works. Write a short `docs/FIRST-RUN.md`: how to launch it, what's clickable, what's stubbed, known bugs.
+
+If the DVC100 loopback can't run (no hardware attached / permission not granted), still deliver the clickable app, mark the loopback checks `blocked` in `docs/BLOCKED.md`, and rely on offscreen-PNG evidence — do not block the whole milestone on it.
+
+---
+
+## Phase 3 — Analog character + feedback
+Detail: SPEC §9 (composite/NTSC), §10 (capture + feedback), §11 (CRT features).
+- [ ] CompositeCodec (NTSC encode/decode, dot crawl, chroma bleed, TBC wobble) as Metal/ISF passes.
+- [ ] Echo/trails; capture-in (DVC100/UVC); internal + external feedback with frame-delay and **measured round-trip latency calibration** (§10).
+- [ ] Safe zones, overscan, test-pattern source/output, BFI/grid seeding.
+
+**Acceptance:** `[HEADLESS]` codec + feedback math unit-tested on fixtures. `[SELF-VISUAL]` DVC100 loopback confirms the composite look and measures the feedback round-trip for calibration; save evidence.
+
+---
+
+## Phase 4+ — Backlog (post-MVP; do not start without explicit go-ahead)
+Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
+- [ ] Generators + transport LFO (SPEC §6A) and audio-reactivity bus (§4c, §13).
+- [ ] ISF host (parser → Metal) + FFGL (SPEC §8); MX-1 effect set; CI/AU passthrough.
+- [ ] Clean Core Text character generator + period preset (SPEC §18.1).
+- [ ] Emulated titler library — out-of-process GPL libretro host, save-state landing, genlock key (SPEC §18.2).
+- [ ] NTSC scopes (§19); SVG/PS1 source (§17); IP in/out (§6, §15); discrete A/B/C/D recording (§15); routing/send panel; full four-channel mix (C/D→TWO, layer compositing).
+- [ ] Optional: expose PRIMARY (and the wedge sources) over Syphon so the app can also feed VDMX/TouchDesigner rigs.
+
+## Backlog notes / deferred ideas
+(Claude Code: append out-of-scope ideas here instead of building them mid-phase.)

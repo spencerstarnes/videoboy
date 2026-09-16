@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Videoboy — layout v6</title>
+<style>
+  :root{
+    --desk1:#3a4a63;--desk2:#232a38;
+    --win:#2c2c2e;--bar:#3a3a3c;--content:#1e1e20;
+    --box:rgba(255,255,255,.045);--box2:rgba(255,255,255,.028);--boxln:rgba(255,255,255,.10);--sep:rgba(255,255,255,.10);
+    --t1:rgba(255,255,255,.88);--t2:rgba(255,255,255,.56);--t3:rgba(255,255,255,.30);
+    --ctl1:#59595c;--ctl2:#48484b;--ctlln:rgba(0,0,0,.45);
+    --accent:#0a84ff;--one:#e3a53a;--two:#54c2cf;
+    --rl:#ff5f57;--yl:#febc2e;--gl:#28c840;
+    --sf:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:var(--sf);color:var(--t1);background:linear-gradient(160deg,var(--desk1),var(--desk2))}
+  .screen{min-height:100vh;display:flex;flex-direction:column}
+  .mono{font-family:var(--mono)}.t2{color:var(--t2)}.t3{color:var(--t3)}
+
+  .sysbar{height:24px;background:rgba(20,20,22,.55);display:flex;align-items:center;gap:16px;padding:0 12px;font-size:12.5px;color:rgba(255,255,255,.9)}
+  .sysbar b{font-weight:600}.sysbar .m{color:rgba(255,255,255,.82)}
+  .sysbar .right{margin-left:auto;display:flex;gap:14px;align-items:center;font-size:12px}
+
+  .deskpad{flex:1;display:flex;justify-content:center;align-items:flex-start;padding:14px 12px 20px}
+  .window{width:min(1460px,calc(100vw - 20px));aspect-ratio:16/10;background:var(--win);border-radius:11px;overflow:hidden;
+    box-shadow:0 22px 60px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.5);display:flex;flex-direction:column;font-size:11.5px}
+
+  .titlebar{height:30px;background:linear-gradient(var(--bar),#333335);display:flex;align-items:center;padding:0 12px;border-bottom:1px solid rgba(0,0,0,.5);position:relative;flex:0 0 auto}
+  .lights{display:flex;gap:8px;z-index:2}.lights i{width:12px;height:12px;border-radius:50%}
+  .lights .r{background:var(--rl)}.lights .y{background:var(--yl)}.lights .g{background:var(--gl)}
+  .wtitle{position:absolute;left:0;right:0;text-align:center;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.72)}
+  .wtitle small{font-weight:400;color:var(--t3)}
+
+  .toolbar{background:linear-gradient(#333335,#2e2e30);border-bottom:1px solid rgba(0,0,0,.5);display:flex;align-items:center;gap:12px;padding:6px 12px;flex:0 0 auto}
+  .tgrp{display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+  .cap{font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--t3)}
+  .bpm{font-family:var(--mono);font-size:17px;font-weight:600;line-height:1}
+  .beats{display:flex;gap:3px}.beat{width:9px;height:9px;border-radius:2px;background:rgba(255,255,255,.14)}.beat.a{background:var(--accent)}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+
+  /* cocoa controls */
+  .pb{background:linear-gradient(var(--ctl1),var(--ctl2));border:.5px solid var(--ctlln);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff;box-shadow:0 .5px 0 rgba(255,255,255,.12) inset,0 1px 1.5px rgba(0,0,0,.3);cursor:pointer;white-space:nowrap}
+  .pb.sm{padding:2px 7px;font-size:10px;border-radius:5px}
+  .pb.pri{background:linear-gradient(#3a97ff,var(--accent));border-color:#0768cf}
+  .pb.rec{background:linear-gradient(#e0564c,#c8392f);border-color:#9c2a22}
+  .pop{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(var(--ctl1),var(--ctl2));border:.5px solid var(--ctlln);border-radius:6px;padding:2px 3px 2px 8px;font-size:10.5px;color:#fff;white-space:nowrap;cursor:pointer;box-shadow:0 1px 1.5px rgba(0,0,0,.28)}
+  .pop.sm{font-size:9.5px;padding:1px 3px 1px 6px;border-radius:5px}
+  .pop .cv{background:var(--accent);border-radius:4px;color:#fff;font-size:8px;padding:2px}
+  .segc{display:inline-flex;background:rgba(255,255,255,.08);border:.5px solid rgba(0,0,0,.35);border-radius:6px;padding:1.5px}
+  .segc .s{padding:2px 9px;font-size:10px;color:var(--t2);border-radius:5px;cursor:pointer;white-space:nowrap}
+  .segc .s.on{background:linear-gradient(#5b5b5e,#4d4d50);color:#fff;box-shadow:0 1px 1.5px rgba(0,0,0,.3)}
+  .segc.blue .s.on{background:linear-gradient(#3a97ff,var(--accent));color:#fff}
+  .segc.xs .s{padding:1px 6px;font-size:9px}
+  .sw{width:26px;height:15px;border-radius:8px;background:rgba(255,255,255,.16);position:relative;cursor:pointer;flex:0 0 auto}
+  .sw.on{background:var(--accent)}
+  .sw::after{content:"";position:absolute;top:1.5px;left:1.5px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .sw.on::after{left:12.5px}
+  .fld{background:#141416;border:.5px solid rgba(0,0,0,.5);border-radius:6px;padding:3px 8px;font-size:10.5px;color:var(--t2);flex:1;min-width:0}
+  .msl{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.16);position:relative;min-width:12px}
+  .msl .f{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:2px}
+  .msl .k{position:absolute;top:50%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:#f4f4f6;box-shadow:0 1px 2.5px rgba(0,0,0,.5)}
+
+  /* panes grid — matches wireframe */
+  .panes{flex:1;display:grid;gap:7px;padding:8px;min-height:0;background:var(--content);
+    grid-template-columns:0.9fr 2fr 2.1fr 2fr 0.9fr;
+    grid-template-rows:1.05fr 1.05fr 0.6fr 1.75fr 0.55fr;
+    grid-template-areas:
+      "srcA one  prog two  srcC"
+      "srcB one  prog two  srcD"
+      "fxL  fdA  fdP  fdC  fxR"
+      "fxL  libA brow libC fxR"
+      "fxL  set  set  set  fxR";}
+  .a-srcA{grid-area:srcA}.a-srcB{grid-area:srcB}.a-srcC{grid-area:srcC}.a-srcD{grid-area:srcD}
+  .a-one{grid-area:one}.a-prog{grid-area:prog}.a-two{grid-area:two}
+  .a-fxL{grid-area:fxL}.a-fxR{grid-area:fxR}
+  .a-fdA{grid-area:fdA}.a-fdP{grid-area:fdP}.a-fdC{grid-area:fdC}
+  .a-libA{grid-area:libA}.a-brow{grid-area:brow}.a-libC{grid-area:libC}.a-set{grid-area:set}
+
+  .box{background:var(--box);border:.5px solid var(--boxln);border-radius:8px;display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
+  .boxh{display:flex;align-items:center;gap:6px;padding:4px 8px;flex:0 0 auto;cursor:pointer;user-select:none}
+  .boxh .ttl{font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .boxh .sub{margin-left:auto;font-size:9px;color:var(--t3);font-family:var(--mono);white-space:nowrap}
+  .boxh .chev{color:var(--t3);font-size:8px;width:8px}
+  .bbody{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;border-top:.5px solid var(--sep)}
+
+  .pv{flex:1;position:relative;min-height:0;display:flex;align-items:center;justify-content:center;padding:5px;
+    background:conic-gradient(rgba(255,255,255,.05) 90deg,transparent 0 180deg,rgba(255,255,255,.05) 0 270deg,transparent 0),#141416;background-size:15px 15px}
+  .pvc{aspect-ratio:4/3;max-width:100%;max-height:100%;position:relative;overflow:hidden;border-radius:2px;box-shadow:0 0 0 .5px rgba(0,0,0,.6);
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 1px,transparent 1px 3px),radial-gradient(120% 90% at 35% 25%,#3a4048,#20242a 45%,#0e1114 100%)}
+  .pvc.b{background:repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 1px,transparent 1px 3px),radial-gradient(120% 90% at 70% 30%,#4a4436,#241f18 55%,#100d0a 100%)}
+  .pvc.c{background:repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 1px,transparent 1px 3px),radial-gradient(120% 90% at 40% 60%,#26363b,#16242a 55%,#0a1315 100%)}
+  .pvc.d{background:repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 1px,transparent 1px 3px),radial-gradient(120% 90% at 60% 40%,#3a2f3a,#231b23 55%,#0f0a0f 100%)}
+  .pvc.one{background:repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 1px,transparent 1px 3px),radial-gradient(120% 95% at 40% 30%,#4a5240,#2b3122 50%,#12160e 100%)}
+  .pvc.big{background:repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 1px,transparent 1px 3px),radial-gradient(120% 100% at 45% 35%,#5b6a4a,#38432c 45%,#141a10 100%)}
+  .pvc .safe{position:absolute;inset:8% 7%;border:1px dashed rgba(255,255,255,.3)}
+  .pvc .ntsc{position:absolute;bottom:2px;right:4px;font-family:var(--mono);font-size:8px;color:var(--gl)}
+
+  /* shuttle strip */
+  .shuttle{display:flex;align-items:center;gap:5px;padding:3px 6px;flex:0 0 auto;border-top:.5px solid var(--sep);background:var(--box2)}
+  .shuttle .sc{font-size:7px;letter-spacing:.05em;color:var(--t3);text-transform:uppercase}
+  .shuttle .btns{display:flex;gap:2px}
+  .shuttle .btns b{font-size:9px;color:var(--t2);cursor:pointer;padding:0 1px}
+  .shtrk{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.16);position:relative;min-width:10px}
+  .shtrk .k{position:absolute;top:50%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:#e6e6e8}
+
+  /* faders */
+  .fdbody{padding:6px 8px;display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;border-top:.5px solid var(--sep)}
+  .fdbtns{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+  .fdmid{display:flex;gap:8px;align-items:center;flex:1;min-height:0}
+  .msccol{display:flex;flex-direction:column;gap:2px}
+  .msccol b{font-size:7px;color:var(--t3);border:.5px solid var(--boxln);border-radius:3px;padding:1px 3px;text-align:center;font-weight:500}
+  .msccol b.on{color:#fff;background:var(--accent);border-color:var(--accent)}
+  .xfwrap{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
+  .xfends{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px}
+  .xf{height:5px;border-radius:3px;position:relative;background:rgba(255,255,255,.16)}
+  .xf .k{position:absolute;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:#f4f4f6;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+  .xfval{text-align:center;font-family:var(--mono);font-size:9px;color:var(--t2)}
+
+  /* library / browser bins */
+  .binbar{display:flex;align-items:center;gap:4px;padding:4px 7px;flex:0 0 auto;border-top:.5px solid var(--sep);flex-wrap:wrap}
+  .grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:6px;align-content:start;background:var(--box2)}
+  .grid.g3{grid-template-columns:repeat(3,1fr)}
+  .grid.g6{grid-template-columns:repeat(6,1fr)}
+  .clip{border:.5px solid var(--boxln);border-radius:5px;overflow:hidden;background:rgba(255,255,255,.03)}
+  .clip .th{aspect-ratio:4/3;background:repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 1px,transparent 1px 3px),linear-gradient(135deg,#37414d,#14171a);position:relative}
+  .clip .th.g{background:conic-gradient(from 0deg,#c33,#3c3,#33c,#c33)}.clip .th.h{background:radial-gradient(circle at 50% 45%,#e2503a 20%,#1a1113 60%)}.clip .th.p{background:linear-gradient(135deg,#5a2f6e,#241b23)}
+  .clip .th .bd{position:absolute;top:2px;left:2px;font-size:6.5px;font-family:var(--mono);background:rgba(0,0,0,.6);padding:0 3px;border-radius:2px;color:#7fd0ff}
+  .clip .cc{padding:1px 4px;font-size:7.5px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* fx (sub mix effects, tall edges) */
+  .fxscroll{flex:1;overflow:auto;padding:6px;display:flex;flex-direction:column;gap:6px}
+  .loadrow{display:flex;gap:3px;align-items:center}
+  .fxeff{border:.5px solid var(--boxln);border-radius:6px;overflow:hidden;background:var(--box2)}
+  .fxtop{display:flex;align-items:center;gap:5px;padding:3px 6px;background:rgba(255,255,255,.05)}
+  .fxtop .tri{color:var(--t3);font-size:7px}.fxtop .en{flex:1;font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fxtop .x{color:var(--t3);font-size:9px}
+  .prow{display:flex;align-items:center;gap:6px;padding:2px 6px}
+  .prow .pl{font-size:9px;color:var(--t2);width:42px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .prow .pv2{width:26px;text-align:right;font-family:var(--mono);font-size:8.5px;color:var(--t2)}
+  .msc{display:flex;gap:2px}.msc b{font-size:7px;color:var(--t3);border:.5px solid var(--boxln);border-radius:3px;padding:0 2px;font-weight:500}.msc b.on{color:#fff;background:var(--accent);border-color:var(--accent)}
+
+  /* settings bar */
+  .setrow{flex:1;display:flex;align-items:center;gap:0;overflow:auto;border-top:.5px solid var(--sep)}
+  .setsec{display:flex;align-items:center;gap:6px;padding:5px 12px;border-right:1px solid var(--sep);height:100%;white-space:nowrap}
+  .setsec .sl{font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:var(--t3);margin-right:2px}
+  .toggle-lbl{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--t2)}
+
+  .statusbar{height:22px;background:linear-gradient(#2e2e30,#292a2c);border-top:1px solid rgba(0,0,0,.5);display:flex;align-items:center;gap:14px;padding:0 12px;font-size:9.5px;color:var(--t2);flex:0 0 auto}
+</style>
+</head>
+<body>
+<div class="screen">
+
+  <div class="sysbar"><span></span><b>Videoboy</b>
+    <span class="m">File</span><span class="m">Edit</span><span class="m">Workspace</span><span class="m">Templates</span><span class="m">Window</span><span class="m">Help</span>
+    <div class="right"><span class="mono">HDMI-1 · 480i</span><span>◔</span><span>Wed 3:14</span></div>
+  </div>
+
+  <div class="deskpad"><div class="window">
+
+    <div class="titlebar">
+      <div class="lights"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+      <div class="wtitle">Videoboy &nbsp;<small>— latenight_vhs.vbt</small></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="tgrp"><span class="cap">Tempo</span><span class="bpm" style="color:var(--t1)">124.0</span></div>
+      <button class="pb sm">Tap</button><button class="pb sm pri">▶</button>
+      <div class="tgrp"><span class="cap">Phase</span><div class="beats"><span class="beat a"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span></div></div>
+      <div class="tgrp"><span class="cap">Clock</span><span class="pop sm">Audio<span class="cv">⌄</span></span></div>
+      <div class="tgrp"><span class="cap">Sync</span><span class="mono" style="display:flex;gap:4px;align-items:center;font-size:10px"><span class="dot" style="background:var(--gl)"></span>Locked</span></div>
+      <div class="tgrp"><span class="cap">Subdiv</span><span class="pop sm">1/4<span class="cv">⌄</span></span></div>
+      <div class="tgrp" style="margin-left:auto"><span class="cap">Detect</span><span class="pb sm">⇧ Learn</span></div>
+    </div>
+
+    <div class="panes">
+
+      <!-- SOURCES A/B (left edge) with shuttle -->
+      <div class="box a-srcA">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--one)"></span><span class="ttl">Source: A</span></div>
+        <div class="bbody"><div class="pv" style="padding:4px"><div class="pvc"><span class="ntsc">A</span></div></div>
+          <div class="shuttle"><span class="sc">shuttle</span><div class="btns"><b>⇤</b><b>◀</b><b>▶</b><b>⇥</b></div><div class="shtrk"><span class="k" style="left:30%"></span></div><span class="segc xs"><span class="s on">⇄</span></span></div>
+        </div>
+      </div>
+      <div class="box a-srcB">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--one)"></span><span class="ttl">Source: B</span></div>
+        <div class="bbody"><div class="pv" style="padding:4px"><div class="pvc b"><span class="ntsc">B</span></div></div>
+          <div class="shuttle"><span class="sc">shuttle</span><div class="btns"><b>⇤</b><b>◀</b><b>▶</b><b>⇥</b></div><div class="shtrk"><span class="k" style="left:60%"></span></div><span class="segc xs"><span class="s">⇄</span></span></div>
+        </div>
+      </div>
+
+      <!-- SUB MIX ONE preview -->
+      <div class="box a-one">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--one)"></span><span class="ttl">Sub Mix One</span><span class="sub">A ▸ B</span></div>
+        <div class="bbody"><div class="pv"><div class="pvc one"><span class="safe"></span><span class="ntsc">100 IRE</span></div></div></div>
+      </div>
+
+      <!-- PROGRAM PREVIEW -->
+      <div class="box a-prog">
+        <div class="boxh"><span class="chev">▾</span><span class="ttl">Program Preview</span><span class="sub">ONE ▸ TWO</span></div>
+        <div class="bbody"><div class="pv" style="background-size:17px 17px"><div class="pvc big"><span class="safe"></span><span class="ntsc">720×480 · 480i</span></div></div></div>
+      </div>
+
+      <!-- SUB MIX TWO preview -->
+      <div class="box a-two">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--two)"></span><span class="ttl">Sub Mix Two</span><span class="sub">C ▸ D</span></div>
+        <div class="bbody"><div class="pv"><div class="pvc c"><span class="safe"></span><span class="ntsc">7.5 IRE</span></div></div></div>
+      </div>
+
+      <!-- SOURCES C/D (right edge) -->
+      <div class="box a-srcC">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--two)"></span><span class="ttl">Source: C</span></div>
+        <div class="bbody"><div class="pv" style="padding:4px"><div class="pvc c"><span class="ntsc">C</span></div></div>
+          <div class="shuttle"><span class="sc">shuttle</span><div class="btns"><b>⇤</b><b>◀</b><b>▶</b><b>⇥</b></div><div class="shtrk"><span class="k" style="left:45%"></span></div><span class="segc xs"><span class="s">⇄</span></span></div>
+        </div>
+      </div>
+      <div class="box a-srcD">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--two)"></span><span class="ttl">Source: D</span></div>
+        <div class="bbody"><div class="pv" style="padding:4px"><div class="pvc d"><span class="ntsc">D</span></div></div>
+          <div class="shuttle"><span class="sc">shuttle</span><div class="btns"><b>⇤</b><b>◀</b><b>▶</b><b>⇥</b></div><div class="shtrk"><span class="k" style="left:20%"></span></div><span class="segc xs"><span class="s on">⇄</span></span></div>
+        </div>
+      </div>
+
+      <!-- SUB MIX EFFECTS (left tall) -->
+      <div class="box a-fxL">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--one)"></span><span class="ttl">Sub Mix 1 FX</span></div>
+        <div class="bbody"><div class="fxscroll">
+          <div class="loadrow"><span class="pop sm" style="flex:1">Load Asset<span class="cv" style="margin-left:auto">⌄</span></span><button class="pb sm">Save</button></div>
+          <div class="fxeff"><div class="fxtop"><span class="tri">▾</span><span class="en">Composite · NTSC</span><span class="sw on"></span><span class="x">✕</span></div>
+            <div class="prow"><span class="pl t2">Wet/Dry</span><div class="msl"><div class="f" style="width:100%"></div><div class="k" style="left:100%"></div></div><span class="pv2">1.00</span></div>
+            <div class="prow"><span class="msc"><b class="on">M</b><b>S</b></span><span class="pl mono">crawl·07A</span><div class="msl"><div class="f" style="width:60%"></div><div class="k" style="left:60%"></div></div><span class="pv2">.60</span></div></div>
+          <div class="fxeff"><div class="fxtop"><span class="tri">▾</span><span class="en">DV · DIF drop</span><span class="sw on"></span><span class="x">✕</span></div>
+            <div class="prow"><span class="msc"><b>M</b><b class="on">S</b></span><span class="pl mono">rate·33B</span><div class="msl"><div class="f" style="width:33%"></div><div class="k" style="left:33%"></div></div><span class="pv2">¼</span></div></div>
+          <div class="fxeff"><div class="fxtop"><span class="tri">▸</span><span class="en">Color Ctrl</span><span class="sw on"></span><span class="x">✕</span></div>
+            <div class="prow"><span class="pl">contrast</span><div class="msl"><div class="f" style="width:62%"></div><div class="k" style="left:62%"></div></div><span class="pv2">1.0</span></div></div>
+          <div class="fxeff"><div class="fxtop"><span class="tri">▸</span><span class="en">Layer Mask</span><span class="sw"></span><span class="x">✕</span></div></div>
+        </div></div>
+      </div>
+
+      <!-- SUB MIX EFFECTS (right tall) -->
+      <div class="box a-fxR">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--two)"></span><span class="ttl">Sub Mix 2 FX</span></div>
+        <div class="bbody"><div class="fxscroll">
+          <div class="loadrow"><span class="pop sm" style="flex:1">Load Asset<span class="cv" style="margin-left:auto">⌄</span></span><button class="pb sm">Save</button></div>
+          <div class="fxeff"><div class="fxtop"><span class="tri">▾</span><span class="en">Echo / Trails</span><span class="sw on"></span><span class="x">✕</span></div>
+            <div class="prow"><span class="pl t2">Wet/Dry</span><div class="msl"><div class="f" style="width:70%"></div><div class="k" style="left:70%"></div></div><span class="pv2">.70</span></div>
+            <div class="prow"><span class="msc"><b class="on">M</b><b>S</b></span><span class="pl mono">decay·21A</span><div class="msl"><div class="f" style="width:55%"></div><div class="k" style="left:55%"></div></div><span class="pv2">.55</span></div></div>
+          <div class="fxeff"><div class="fxtop"><span class="tri">▾</span><span class="en">Feedback</span><span class="sw on"></span><span class="x">✕</span></div>
+            <div class="prow"><span class="msc"><b>M</b><b>S</b></span><span class="pl mono">delay·44C</span><div class="msl"><div class="f" style="width:20%"></div><div class="k" style="left:20%"></div></div><span class="pv2">2fr</span></div></div>
+          <div class="fxeff"><div class="fxtop"><span class="tri">▸</span><span class="en">Color Invert</span><span class="sw"></span><span class="x">✕</span></div></div>
+          <div class="fxeff"><div class="fxtop"><span class="tri">▸</span><span class="en">Layer Mask</span><span class="sw"></span><span class="x">✕</span></div></div>
+        </div></div>
+      </div>
+
+      <!-- FADERS -->
+      <div class="box a-fdA">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--one)"></span><span class="ttl">A → B Fader</span></div>
+        <div class="fdbody">
+          <div class="fdbtns"><button class="pb sm">Cut</button><button class="pb sm">Fade</button><span class="segc xs"><span class="s on">Beat</span></span><button class="pb sm" style="margin-left:auto">Auto</button></div>
+          <div class="fdmid"><div class="msccol"><b>M</b><b>S</b><b class="on">Slo</b></div>
+            <div class="xfwrap"><div class="xfends"><span style="color:var(--one)">A</span><span class="t2">B</span></div><div class="xf"><span class="k" style="left:42%"></span></div><div class="xfval">0.42</div></div></div>
+        </div>
+      </div>
+      <div class="box a-fdP">
+        <div class="boxh"><span class="chev">▾</span><span class="ttl">ONE → TWO Fader</span></div>
+        <div class="fdbody">
+          <div class="fdbtns"><button class="pb sm">◆ Swap</button><button class="pb sm">Fade</button><span class="segc xs"><span class="s on">Beat</span></span><button class="pb sm" style="margin-left:auto">Auto</button></div>
+          <div class="fdmid"><div class="msccol"><b>M</b><b>S</b><b>C</b><b class="on">Slo</b></div>
+            <div class="xfwrap"><div class="xfends"><span style="color:var(--one)">ONE</span><span style="color:var(--two)">TWO</span></div><div class="xf"><span class="k" style="left:50%"></span></div><div class="xfval">0.50</div></div></div>
+        </div>
+      </div>
+      <div class="box a-fdC">
+        <div class="boxh"><span class="chev">▾</span><span class="dot" style="background:var(--two)"></span><span class="ttl">C → D Fader</span></div>
+        <div class="fdbody">
+          <div class="fdbtns"><button class="pb sm">Cut</button><button class="pb sm">Fade</button><span class="segc xs"><span class="s">Beat</span></span><button class="pb sm" style="margin-left:auto">Auto</button></div>
+          <div class="fdmid"><div class="msccol"><b>M</b><b>S</b><b>Slo</b></div>
+            <div class="xfwrap"><div class="xfends"><span style="color:var(--two)">C</span><span class="t2">D</span></div><div class="xf"><span class="k" style="left:56%"></span></div><div class="xfval">0.56</div></div></div>
+        </div>
+      </div>
+
+      <!-- LIBRARIES + CENTRAL BROWSER -->
+      <div class="box a-libA">
+        <div class="boxh"><span class="chev">▾</span><span class="ttl">Sub Mix 1 Library</span><span class="sub">A/B</span></div>
+        <div class="bbody">
+          <div class="binbar"><span class="pop sm">Page<span class="cv">⌄</span></span><span class="fld">Search…</span></div>
+          <div class="grid g3">
+            <div class="clip"><div class="th g"><span class="bd">DV</span></div><div class="cc">glitch.dv</div></div>
+            <div class="clip"><div class="th"><span class="bd">MOV</span></div><div class="cc">tape_01</div></div>
+            <div class="clip"><div class="th"></div><div class="cc">frames¼</div></div>
+            <div class="clip"><div class="th p"></div><div class="cc">Tapestry</div></div>
+            <div class="clip"><div class="th h"></div><div class="cc">Heart</div></div>
+            <div class="clip"><div class="th"><span class="bd">IP</span></div><div class="cc">cam2</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="box a-brow">
+        <div class="boxh" style="padding:3px 8px"><span class="segc blue"><span class="s on">Sources</span><span class="s">Generators</span><span class="s">VSTs</span><span class="s">Graphics</span><span class="s">Clips</span><span class="s">Images</span></span></div>
+        <div class="bbody">
+          <div class="binbar" style="border-top:none"><span class="fld" style="max-width:180px">Search library…</span><button class="pb sm">Import…</button><span class="segc xs"><span class="s on">⊞</span><span class="s">≣</span></span></div>
+          <div class="grid g6">
+            <div class="clip"><div class="th"><span class="bd">DV</span></div><div class="cc">glitch.dv</div></div>
+            <div class="clip"><div class="th"><span class="bd">MOV</span></div><div class="cc">tape_01</div></div>
+            <div class="clip"><div class="th"><span class="bd">DV</span></div><div class="cc">vhs_dump</div></div>
+            <div class="clip"><div class="th"><span class="bd">GEN</span></div><div class="cc">plasma</div></div>
+            <div class="clip"><div class="th"><span class="bd">GEN</span></div><div class="cc">checker</div></div>
+            <div class="clip"><div class="th"><span class="bd">SVG</span></div><div class="cc">logo ps1</div></div>
+            <div class="clip"><div class="th"><span class="bd">SCR</span></div><div class="cc">screencap</div></div>
+            <div class="clip"><div class="th"><span class="bd">IP</span></div><div class="cc">cam2</div></div>
+            <div class="clip"><div class="th"><span class="bd">CAP</span></div><div class="cc">DVC100</div></div>
+            <div class="clip"><div class="th"><span class="bd">EMU</span></div><div class="cc">amiga titler</div></div>
+            <div class="clip"><div class="th"><span class="bd">MPG</span></div><div class="cc">datamosh</div></div>
+            <div class="clip"><div class="th"><span class="bd">IMG</span></div><div class="cc">frame_grab</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="box a-libC">
+        <div class="boxh"><span class="chev">▾</span><span class="ttl">Sub Mix 2 Library</span><span class="sub">C/D</span></div>
+        <div class="bbody">
+          <div class="binbar"><span class="pop sm">Page<span class="cv">⌄</span></span><span class="fld">Search…</span></div>
+          <div class="grid g3">
+            <div class="clip"><div class="th"></div><div class="cc">RandShape</div></div>
+            <div class="clip"><div class="th"><span class="bd">SVG</span></div><div class="cc">logo.svg</div></div>
+            <div class="clip"><div class="th"></div><div class="cc">GridZoom</div></div>
+            <div class="clip"><div class="th h"></div><div class="cc">Heart</div></div>
+            <div class="clip"><div class="th"><span class="bd">EMU</span></div><div class="cc">titler</div></div>
+            <div class="clip"><div class="th"><span class="bd">IP</span></div><div class="cc">cam4</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RECORD / STREAM / OUTPUT / TOGGLES bar -->
+      <div class="box a-set">
+        <div class="setrow">
+          <div class="setsec"><span class="sl">Record</span><span class="pop sm">ProRes 422<span class="cv">⌄</span></span><span class="pop sm">PRI+A/B/C/D<span class="cv">⌄</span></span><button class="pb sm rec">● REC</button></div>
+          <div class="setsec"><span class="sl">Stream</span><span class="pop sm">RTMP<span class="cv">⌄</span></span><span class="pop sm">2500k<span class="cv">⌄</span></span><button class="pb sm">◉ Go Live</button></div>
+          <div class="setsec"><span class="sl">Output</span><span class="pop sm">PRI→HDMI-1 480i<span class="cv">⌄</span></span><span class="pop sm">ONE→HDMI-2<span class="cv">⌄</span></span><span class="pop sm">TWO→NDI<span class="cv">⌄</span></span></div>
+          <div class="setsec"><span class="sl">Toggles</span><span class="toggle-lbl"><span class="sw on"></span>Safe</span><span class="toggle-lbl"><span class="sw"></span>Overscan</span><span class="toggle-lbl"><span class="sw"></span>BFI</span><span class="toggle-lbl"><span class="sw on"></span>Test Pat</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="statusbar">
+      <span class="mono" style="display:flex;gap:5px;align-items:center"><span class="dot" style="background:var(--gl)"></span>MIDI: APC mini</span>
+      <span class="mono">OSC :9000</span><span class="mono">18 nodes</span><span class="mono">drop 0 · 59.94</span>
+      <span class="t3" style="margin-left:auto">A/B → Sub Mix One · C/D → Sub Mix Two · ONE↔TWO → Program</span>
+    </div>
+
+  </div></div>
+</div>
+
+<script>
+  document.querySelectorAll('.box > .boxh').forEach(function(h){
+    h.addEventListener('click',function(e){ if(e.target.closest('.segc,.pop,.pb'))return; h.parentElement.classList.toggle('collapsed'); });
+  });
+  document.querySelectorAll('.box.collapsed').forEach(function(){});
+  document.querySelectorAll('.segc').forEach(function(g){
+    g.querySelectorAll('.s').forEach(function(s){ s.addEventListener('click',function(e){e.stopPropagation();
+      if(g.querySelectorAll('.s').length<2)return; g.querySelectorAll('.s').forEach(function(x){x.classList.remove('on')}); s.classList.add('on'); }); });
+  });
+  document.querySelectorAll('.sw').forEach(function(s){ s.addEventListener('click',function(e){e.stopPropagation();s.classList.toggle('on')}); });
+  // collapse hides body only; grid area stays (keeps alignment)
+  var st=document.createElement('style');st.textContent='.box.collapsed .bbody,.box.collapsed .fdbody{display:none}.box.collapsed{flex:0 0 auto}';document.head.appendChild(st);
+</script>
+</body>
+</html>

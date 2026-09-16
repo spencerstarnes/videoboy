@@ -1,0 +1,17 @@
+{
+  "_comment": "Copy to config/devices.json and fill real values, or run the app once and let Claude read enumerated names in. Never hardcode these in source; read them from here.",
+  "output_display": {
+    "match_by": "name",
+    "name": "HDMI OUTPUT CARD NAME AS macOS REPORTS IT",
+    "fallback_index": 1,
+    "target_mode": { "width": 720, "height": 480, "fps": 29.97, "interlaced": true, "note": "SD 480i default; log the actually-negotiated mode" }
+  },
+  "loopback_capture": {
+    "_comment": "The DVC100 as macOS enumerates it (UVC/AVCapture, shows up like a camera).",
+    "match_by": "name",
+    "name": "DVC100 DEVICE NAME AS macOS REPORTS IT",
+    "expected_format": { "width": 720, "height": 480, "fps": 29.97, "standard": "NTSC" }
+  },
+  "samples_dir": "samples",
+  "selfqa_out": "selfqa/out"
+}
