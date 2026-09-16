@@ -29,6 +29,11 @@ final class TransportToolbarView: NSView {
     var onSubdivisionChanged: ((String) -> Void)?
 
     private var isRunning = false
+    private var clockSourcePopUp: NSPopUpButton?
+
+    /// Called when the clock source changes. The app answers false if it could not
+    /// switch, and the popup snaps back.
+    var onClockSourceChanged: ((String) -> Bool)?
 
     override init(frame frameRect: NSRect) {
         // Four beat lights, one per beat of a 4/4 bar, as in the mockup.
@@ -56,9 +61,12 @@ final class TransportToolbarView: NSView {
         let tapButton = Controls.button("Tap", target: self, action: #selector(tapPressed))
 
         let beats = Controls.row(beatLights, spacing: 3)
-        // Clock source: only the internal transport exists so far; audio detection,
-        // MIDI clock and Link are later work (SPEC 4b).
-        let clockSource = Controls.popUp(["Internal", "Audio", "MIDI Clock", "Link"], enabled: false)
+        // Internal and audio detection work; MIDI clock and Link are later work
+        // (SPEC 4b), so they are present and selectable but report unavailable.
+        let clockSource = Controls.popUp(
+            ["Internal", "Audio", "MIDI Clock", "Link"],
+            target: self, action: #selector(clockSourceChanged(_:)))
+        self.clockSourcePopUp = clockSource
         let subdivision = Controls.popUp(
             ["1/1", "1/2", "1/4", "1/8", "1/16"], target: self, action: #selector(subdivisionChanged(_:))
         )
@@ -133,5 +141,19 @@ final class TransportToolbarView: NSView {
 
     @objc private func subdivisionChanged(_ sender: NSPopUpButton) {
         onSubdivisionChanged?(sender.titleOfSelectedItem ?? "1/4")
+    }
+
+    @objc private func clockSourceChanged(_ sender: NSPopUpButton) {
+        let choice = sender.titleOfSelectedItem ?? "Internal"
+        // Snapping back on failure matters: a popup reading "Audio" with no audio
+        // behind it is a lie the performer would only discover mid-set.
+        if onClockSourceChanged?(choice) == false {
+            sender.selectItem(withTitle: "Internal")
+        }
+    }
+
+    /// Updates the sync readout with what the clock is actually doing.
+    func setSyncStatus(_ text: String) {
+        syncLabel.stringValue = text
     }
 }

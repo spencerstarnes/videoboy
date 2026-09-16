@@ -22,6 +22,19 @@ enum ChannelSourceKind {
     case generator
 }
 
+/// Where the musical clock's tempo comes from (SPEC 4b).
+enum ClockSource: String {
+    case internalTransport
+    case audio
+
+    var displayName: String {
+        switch self {
+        case .internalTransport: "Internal"
+        case .audio: "Audio"
+        }
+    }
+}
+
 /// The running instrument.
 final class Engine {
 
@@ -65,6 +78,18 @@ final class Engine {
 
     /// Transport-locked oscillators driving parameters (SPEC 6A).
     private(set) lazy var lfos = LFOBank(transport: transport)
+
+    /// Audio measurements driving parameters (SPEC 4c, SPEC 13).
+    let audioReactivity = AudioReactivityBus()
+
+    /// The live audio tap. Nil until audio is switched on.
+    private var audioInput: AudioInput?
+
+    /// Where the transport gets its tempo from.
+    private(set) var clockSource: ClockSource = .internalTransport
+
+    /// The most recent tempo estimate from audio, for the toolbar's sync indicator.
+    private(set) var latestTempoEstimate: TempoEstimate?
 
     /// Black-frame insertion on the program bus (SPEC 11).
     var blackFrameInsertion = BlackFrameInsertion(everyNFrames: 0)
@@ -245,6 +270,8 @@ final class Engine {
     func stop() {
         displayLink?.invalidate()
         displayLink = nil
+        audioInput?.stop()
+        audioInput = nil
     }
 
     /// One frame: advance the clocks, apply parameters, evaluate the graph.
@@ -388,6 +415,63 @@ final class Engine {
         graph.connect(from: newUpstream, to: subMix, inputIndex: inputIndex)
         channelSourceKinds[letter] = kind
         Log.info(.graph, "channel \(letter) now sourced from \(kind == .file ? "a file" : "a generator")")
+    }
+
+    /// Switches the clock source, starting or stopping audio analysis as needed.
+    ///
+    /// - Returns: false when audio was requested but could not be started, in which
+    ///   case the source stays internal and the UI should say so rather than
+    ///   silently showing "Audio" with nothing behind it.
+    @discardableResult
+    func setClockSource(_ source: ClockSource) -> Bool {
+        guard source != clockSource else { return true }
+        switch source {
+        case .internalTransport:
+            audioInput?.stop()
+            audioInput = nil
+            audioReactivity.isRunning = false
+            audioReactivity.reset()
+            clockSource = .internalTransport
+            return true
+
+        case .audio:
+            let input = AudioInput()
+            input.onFrame = { [weak self] frame in
+                guard let self else { return }
+                // Analysis arrives on the audio thread; parameter state and the UI
+                // both live on the main thread.
+                DispatchQueue.main.async {
+                    self.audioReactivity.update(with: frame, into: self.registry)
+                }
+            }
+            input.onTempo = { [weak self] estimate in
+                DispatchQueue.main.async {
+                    self?.applyDetectedTempo(estimate)
+                }
+            }
+            guard input.start() else {
+                Log.warn(.clock, "audio clock requested but unavailable; staying on the internal clock")
+                return false
+            }
+            audioInput = input
+            audioReactivity.isRunning = true
+            clockSource = .audio
+            return true
+        }
+    }
+
+    /// Takes a detected tempo, if it is confident enough to be worth taking.
+    ///
+    /// A low-confidence estimate is worse than none: it drags the transport around
+    /// on speech, drones and applause. The threshold is what keeps the clock steady
+    /// through a quiet passage rather than chasing noise.
+    private func applyDetectedTempo(_ estimate: TempoEstimate) {
+        latestTempoEstimate = estimate
+        guard clockSource == .audio, estimate.confidence > 0.25 else { return }
+        // Ignore tiny corrections: nudging the tempo every window would make
+        // everything locked to it jitter.
+        guard abs(estimate.beatsPerMinute - transport.beatsPerMinute) > 0.5 else { return }
+        transport.beatsPerMinute = estimate.beatsPerMinute
     }
 
     /// True when this frame should be blacked out for BFI.

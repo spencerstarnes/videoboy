@@ -63,6 +63,23 @@ start switched **off** — flick their switches on:
 - **Echo / Trails** — frame-history trails with a luma key, so only bright things tail.
 - **Feedback** — the infinite tunnel. `zoom` just above centre pushes the image inward.
 
+**Generators.** Each source panel has a popup next to **Load…** listing twelve
+synthetic sources — plasma, checkerboard, noise fields, gradients, halftone,
+scanlines and the rest. Pick one and that channel switches from its file to the
+generator, with a slow transport-locked ramp already driving its phase so it moves
+on the bar rather than sitting still.
+
+**Blend modes.** Sub Mix One, Sub Mix Two and Program Preview each carry a blend
+popup and a layer-opacity slider — all thirteen Photoshop-style modes. The blend and
+the fader are independent, so "screen at 40% opacity with the fader at 70%" is a
+thing you can set.
+
+**The audio clock.** Set **Clock** to **Audio** in the toolbar and Videoboy listens
+to the default input, estimates tempo by autocorrelating the onset envelope, and
+drives the transport from it. The **Sync** readout shows detection confidence; below
+25% it ignores the estimate rather than dragging the tempo around on speech or
+applause. It will ask for microphone access the first time.
+
 **The faders.** A→B, C→D and ONE→TWO all work, with **Cut** (and **◆ Swap** on
 ONE→TWO). Drag them and Program Preview follows.
 
@@ -88,8 +105,13 @@ Present, greyed, labelled — never hidden, so the shape of the app is legible:
 - **Color Ctrl** and **Layer Mask** — the MX-1 effect set and the Core Image
   passthrough from SPEC §9 are not written yet.
 - **Record** and **Stream** sections — Phase 4.
-- **Sub Mix 2 FX** — the analog chain is built on the ONE bus only so far, so TWO's
-  panel shows the same effects disabled.
+- **LFO and audio assignment.** Both engines are complete and tested — an LFO can
+  drive any parameter, and audio taps (RMS, seven bands, onsets) can too, with pulse
+  / envelope / gate / sample-hold shaping. But there is no UI for assigning them to
+  an arbitrary parameter yet; the `C` and `S` badges on each parameter row are where
+  that belongs.
+- **MX-1 effects** (negative, B&W, mosaic, posterize, mirror, flip, freeze) are built
+  and tested but not yet placed in a chain, so they have no controls.
 - Asset Browser tabs, search, import, and the drag-to-load flow.
 - Clock sources other than Internal (audio detection, MIDI clock, Link).
 - **⇧ Learn** button: MIDI learn works in Core and is tested, but the shift-to-highlight

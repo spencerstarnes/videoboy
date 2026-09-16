@@ -265,6 +265,30 @@ final class ShellController {
             self?.engine.setTransportRunning(running)
         }
         shell.toolbar.onTap = { [weak self] in self?.tapTempo() }
+        shell.toolbar.onClockSourceChanged = { [weak self] choice in
+            guard let self else { return false }
+            switch choice {
+            case "Audio":
+                let started = self.engine.setClockSource(.audio)
+                if !started {
+                    self.presentNotice(
+                        "Audio clock unavailable",
+                        "Videoboy could not open an audio input. Check that an input device is connected and that microphone access is allowed in System Settings ▸ Privacy & Security ▸ Microphone."
+                    )
+                }
+                return started
+            case "Internal":
+                return self.engine.setClockSource(.internalTransport)
+            default:
+                // MIDI clock and Ableton Link are not built yet. Saying so is better
+                // than selecting them and quietly doing nothing.
+                self.presentNotice(
+                    "\(choice) is not built yet",
+                    "The clock currently runs from its internal transport or from audio beat detection. MIDI clock and Link are later work."
+                )
+                return false
+            }
+        }
     }
 
     /// Tap tempo: average the intervals between the last few taps.
@@ -374,6 +398,21 @@ final class ShellController {
             if engine.transport.isRunning {
                 let position = engine.transport.position(atHostTime: CACurrentMediaTime())
                 shell.toolbar.setBeat(position.beat)
+            }
+
+            // The sync readout says what the clock is actually doing, including how
+            // confident audio detection is — a number the performer needs when
+            // deciding whether to trust it or tap the tempo in by hand.
+            if engine.clockSource == .audio {
+                if let estimate = engine.latestTempoEstimate {
+                    shell.toolbar.setTempo(engine.transport.beatsPerMinute)
+                    shell.toolbar.setSyncStatus(
+                        String(format: "audio %.0f%%", estimate.confidence * 100))
+                } else {
+                    shell.toolbar.setSyncStatus("listening")
+                }
+            } else {
+                shell.toolbar.setSyncStatus(engine.transport.isRunning ? "running" : "stopped")
             }
         }
     }
