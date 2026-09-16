@@ -42,6 +42,12 @@ final class TransportToolbarView: NSView {
     /// Which panel groups are shown.
     private let panelsControl = NSSegmentedControl()
 
+    /// The Shift-to-detect reminder, which lights while Shift is held.
+    private let detectButton = Controls.button("⇧ Learn")
+
+    /// Called when the Learn reminder is clicked, to explain the gesture.
+    var onDetectExplainRequested: (() -> Void)?
+
     /// Called when a panel group is shown or hidden.
     var onPanelGroupToggled: ((PanelGroup, Bool) -> Void)?
 
@@ -51,6 +57,16 @@ final class TransportToolbarView: NSView {
     /// Called when the clock source changes. The app answers false if it could not
     /// switch, and the popup snaps back.
     var onClockSourceChanged: ((String) -> Bool)?
+
+    /// Lights the Learn reminder while Shift is held, so the key and the highlighted
+    /// controls are visibly the same thing.
+    func setDetectArmed(_ armed: Bool) {
+        detectButton.contentTintColor = armed ? Theme.Color.detectHighlight : nil
+    }
+
+    @objc private func detectPressed() {
+        onDetectExplainRequested?()
+    }
 
     override init(frame frameRect: NSRect) {
         playButton = Controls.button("▶")
@@ -66,7 +82,13 @@ final class TransportToolbarView: NSView {
 
 
         // Shift-to-detect (SPEC 7): held Shift highlights mappable controls.
-        let detect = Controls.button("⇧ Learn", enabled: false)
+        // A reminder of the gesture rather than a button that starts a mode — there
+        // is no mode to start, which is the nice thing about it. It lights with the
+        // controls so the connection between the key and the highlights is stated
+        // rather than left to be inferred.
+        detectButton.target = self
+        detectButton.action = #selector(detectPressed)
+        detectButton.toolTip = "Hold Shift to see every mappable control, then click one to map it"
 
         // Record, top right. The codec and stream selection sit beside the button so
         // the whole recording decision is in one place.
@@ -115,7 +137,7 @@ final class TransportToolbarView: NSView {
         ], spacing: 10)
 
         let rightGroup = Controls.row([
-            group("Detect", detect),
+            group("Detect", detectButton),
             separator(),
             recordGroup
         ], spacing: 10)

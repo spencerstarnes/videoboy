@@ -53,6 +53,17 @@ final class VBFader: NSControl {
         didSet { needsDisplay = true }
     }
 
+    /// What this fader controls, so shift-clicking it can arm a mapping.
+    ///
+    /// Every fader carries its own address rather than the panel remembering which
+    /// is which: that is the whole point of param codes, and it means shift-detect
+    /// works on a fader without the panel having to know about detect at all.
+    var mappingSlot: String?
+    var mappingCode: ParamCode?
+
+    /// Called when the fader is shift-clicked while detect is available.
+    var onDetectRequested: ((String, ParamCode) -> Void)?
+
     /// True while the user is dragging, so the cap can grow slightly.
     private var isDragging = false
 
@@ -237,6 +248,16 @@ final class VBFader: NSControl {
 
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
+
+        // Shift-click arms a mapping instead of moving the fader. Holding shift
+        // already highlights every mappable control, so this is the second half of
+        // the same gesture (SPEC 7).
+        if event.modifierFlags.contains(.shift),
+           let slot = mappingSlot, let code = mappingCode {
+            onDetectRequested?(slot, code)
+            return
+        }
+
         isDragging = true
         setValue(fromPoint: convert(event.locationInWindow, from: nil))
 

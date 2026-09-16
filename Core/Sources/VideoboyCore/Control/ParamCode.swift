@@ -98,6 +98,11 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case blendMode = "65A"
     /// Per-layer opacity of the blend layer in a composite.
     case layerOpacity = "66A"
+    /// Playhead position within a clip, 0...1 — what the shuttle scrubs.
+    ///
+    /// Separate from `playbackSpeed`: speed is how fast the clip runs, position is
+    /// where it is. A jog wheel wants the second one.
+    case scrubPosition = "67A"
 
     // MARK: Composite emulation (7xA)
 
@@ -151,6 +156,7 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .crossfadeCD: "C/D crossfade"
         case .crossfadeOneTwo: "ONE/TWO crossfade"
         case .playbackSpeed: "speed"
+        case .scrubPosition: "position"
         case .blendMode: "blend mode"
         case .layerOpacity: "layer opacity"
         case .compositeCrawl: "dot crawl"

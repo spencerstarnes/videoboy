@@ -1,11 +1,12 @@
 check:    audit
 verdict:  PASS
-when:     2026-09-16T21:09:21Z
+when:     2026-09-16T21:17:13Z
 core:     0.3.0
 
 notes:
-  509 controls found: 229 live, 280 disabled, 0 enabled-but-unwired
+  505 controls found: 230 live, 275 disabled, 0 enabled-but-unwired
 
-assertions (2/2 passed):
+assertions (3/3 passed):
+  PASS  every fader can be mapped by Shift-clicking it — 39 enabled faders, all carrying a slot and a param code
   PASS  no control is enabled but unwired — every enabled control has an action
-  PASS  the interface has controls at all — 509 found
+  PASS  the interface has controls at all — 505 found

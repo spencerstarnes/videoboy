@@ -95,9 +95,6 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   a separate piece of work.
 - **AVFoundation source for non-DV formats.** Only `.dv` plays today. Ordinary
   `.mov`/`.mp4` need the AVPlayerItemVideoOutput path from SPEC 1.
-- **Shift-to-detect UI affordance.** MIDI learn works and is tested in Core; the
-  toolbar's "⇧ Learn" button and the hold-Shift highlight of mappable controls are
-  not wired to it yet.
 - **Integrate libdvc100 as a capture *source*** (SPEC 10, Phase 3), not just as the
   self-QA loopback. It is GPL v2, so it must stay out-of-process — the same rule as
   the libretro cores. The out-of-process shell-out in `DVC100CaptureSource` is the
@@ -111,9 +108,9 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 - **External feedback through the physical loop.** `FeedbackNode` accepts a captured
   frame as its history (input slot 1) and the round trip is measured, but the capture
   is not yet routed into that slot live. Internal feedback works.
-- **Modulation assignment covers the FX chains only.** The M/S/C badges are live on
-  every effect parameter, but the faders, shuttles and generator controls have badge
-  columns that are still decorative.
+- **Modulation assignment beyond MIDI covers the FX chains only.** Shift-to-detect
+  now reaches every enabled fader, including the crossfaders and shuttles, but the
+  audio-tap and LFO menus are still only on the effect parameters' S and C badges.
 - **Core Image / AU passthrough** from SPEC 9 — enumerate the useful CI filters and
   expose the video-rate ones as mappable modules. Not started.
 - **MX-1 effects are not in a chain yet.** `MX1EffectNode` exists and is tested, but

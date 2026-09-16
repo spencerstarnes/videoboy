@@ -156,6 +156,45 @@ final class MIDIAndPlaybackTests: XCTestCase {
         XCTAssertNil(node.renderToImage(frameIndex: 0))
     }
 
+    /// A held scrub value must not pin the playhead.
+    ///
+    /// Every other parameter is applied on every frame, and position cannot be:
+    /// re-seeking to the same place each frame would stop the clip dead while the
+    /// transport claimed to be running — a mapped jog wheel would work and the play
+    /// button would not. That is the bug the guard exists to prevent, so it is the
+    /// one worth a test.
+    func testHeldScrubValueDoesNotPinThePlayhead() throws {
+        let node = try openSource()
+        let registry = ParamRegistry()
+        registry.register(slot: node.identifier, parameters: node.parameters)
+        registry.setValue(0, slot: node.identifier, code: .scrubPosition)
+        node.applyParameters(from: registry)
+
+        for _ in 0..<5 {
+            node.applyParameters(from: registry)
+            node.advancePlayhead(by: 1, frameCount: node.frameCount)
+        }
+
+        XCTAssertGreaterThan(
+            node.normalisedPosition, 0,
+            "the playhead should advance while the scrub parameter sits still")
+    }
+
+    /// Moving the parameter does seek — the whole point of making it mappable.
+    func testMovingTheScrubParameterSeeks() throws {
+        let node = try openSource()
+        let registry = ParamRegistry()
+        registry.register(slot: node.identifier, parameters: node.parameters)
+        registry.setValue(0, slot: node.identifier, code: .scrubPosition)
+        node.applyParameters(from: registry)
+        registry.setValue(1, slot: node.identifier, code: .scrubPosition)
+        node.applyParameters(from: registry)
+
+        XCTAssertEqual(
+            node.normalisedPosition, 1.0, accuracy: 0.01,
+            "a moved scrub parameter should land the playhead at the end of the clip")
+    }
+
     func testSeekAndStepMoveThePlayhead() throws {
         let node = try openSource()
         node.seek(toNormalised: 0.5)

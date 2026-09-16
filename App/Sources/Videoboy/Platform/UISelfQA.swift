@@ -97,7 +97,52 @@ enum UISelfQA {
             check.note("\(collapseCase.name): folded \(collapseCase.groups.map(\.displayName).joined(separator: ", "))")
         }
 
+        // Shift-to-detect, rendered. The audit proves every enabled fader carries a
+        // mapping address; this proves holding Shift actually reaches them, which is
+        // a different claim and the one the performer experiences.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            controller.detectSession?.setArmed(true)
+            shell.layoutSubtreeIfNeeded()
+            shell.displayIfNeeded()
+
+            var highlighted = 0
+            countHighlightedFaders(in: shell, into: &highlighted)
+            check.record(AssertionResult(
+                name: "holding Shift lights the mappable faders",
+                passed: highlighted >= 39,
+                detail: "\(highlighted) faders highlighted"
+            ))
+
+            if let image = render(view: shell) {
+                try? check.writeImage(image, named: "detect-armed.png")
+            }
+
+            // And releasing it puts them back — a highlight that sticks would be
+            // worse than none, because it would stop meaning anything.
+            controller.detectSession?.setArmed(false)
+            var stillLit = 0
+            countHighlightedFaders(in: shell, into: &stillLit)
+            check.record(AssertionResult(
+                name: "releasing Shift clears the highlights",
+                passed: stillLit == 0,
+                detail: "\(stillLit) faders still highlighted"
+            ))
+            withExtendedLifetime(controller) {}
+        }
+
         return check.finish()
+    }
+
+    /// Counts faders currently drawing the detect highlight.
+    private static func countHighlightedFaders(in view: NSView, into count: inout Int) {
+        if let fader = view as? VBFader, fader.isDetectHighlighted { count += 1 }
+        for subview in view.subviews { countHighlightedFaders(in: subview, into: &count) }
     }
 
     /// Draws a view hierarchy into an `ImageBuffer` with no window involved.

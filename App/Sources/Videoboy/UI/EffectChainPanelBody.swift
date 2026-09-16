@@ -57,6 +57,32 @@ final class EffectChainPanelBody: NSView {
     private var cardViews: [NSView] = []
     private(set) var effects: [EffectCardModel]
 
+    /// Which graph slot a param code belongs to, so a Shift-click on a parameter's
+    /// fader can arm a mapping without the panel knowing anything about MIDI.
+    /// Set by the shell, which owns the slot tables.
+    var mappingSlotForCode: ((ParamCode) -> String?)? {
+        // The rows are built in init, before the shell has anything to resolve with,
+        // so setting the resolver has to reach back and address the faders that
+        // already exist. Without this every FX fader stays dark under Shift, which
+        // looks exactly like a deliberate decision not to make them mappable.
+        didSet { refreshMappingAddresses() }
+    }
+
+    /// Gives every parameter fader beneath this panel its slot, from the resolver.
+    func refreshMappingAddresses() {
+        refreshMappingAddresses(in: self)
+    }
+
+    private func refreshMappingAddresses(in view: NSView) {
+        if let fader = view as? VBFader,
+           let raw = fader.identifier?.rawValue,
+           let code = ParamCode(rawValue: raw) {
+            fader.mappingCode = code
+            fader.mappingSlot = mappingSlotForCode?(code)
+        }
+        for subview in view.subviews { refreshMappingAddresses(in: subview) }
+    }
+
     /// Called when a parameter fader moves: (param code, new 0...1 value).
     var onParameterChanged: ((String, Double) -> Void)?
 
@@ -271,6 +297,10 @@ final class EffectChainPanelBody: NSView {
             target: self, action: #selector(faderMoved(_:))
         )
         fader.identifier = NSUserInterfaceItemIdentifier(parameter.code)
+        if let code = ParamCode(rawValue: parameter.code) {
+            fader.mappingCode = code
+            fader.mappingSlot = mappingSlotForCode?(code)
+        }
 
         return [topLine, fader]
     }

@@ -127,7 +127,8 @@ public final class DVSourceNode: Node, DataEffectProvider {
             Parameter(code: .corruptMode, range: 0...1, defaultValue: 0),
             Parameter(code: .corruptRate, range: 0...1, defaultValue: 0.25),
             Parameter(code: .corruptSeed, range: 0...65535, defaultValue: 1),
-            Parameter(code: .playbackSpeed, range: 0...2, defaultValue: 1)
+            Parameter(code: .playbackSpeed, range: 0...2, defaultValue: 1),
+            Parameter(code: .scrubPosition, range: 0...1, defaultValue: 0)
         ]
     }
 
@@ -407,5 +408,20 @@ public final class DVSourceNode: Node, DataEffectProvider {
         if let seed = registry.value(slot: identifier, code: .corruptSeed) {
             corruption.seed = UInt64(max(0, seed))
         }
+        // Position only seeks when the parameter MOVES. Applying it every frame the
+        // way the others are applied would pin the playhead to wherever the fader
+        // was last left, and the clip would never advance — a jog wheel would work
+        // and the play button would not. Only a deliberate change counts.
+        if let position = registry.value(slot: identifier, code: .scrubPosition) {
+            if let last = lastAppliedScrub, abs(last - position) < 1e-6 {
+                // Unchanged: leave the playhead where playback has carried it.
+            } else {
+                seek(toNormalised: position)
+            }
+            lastAppliedScrub = position
+        }
     }
+
+    /// The last scrub value seen from the registry, to tell a move from a repeat.
+    private var lastAppliedScrub: Double?
 }

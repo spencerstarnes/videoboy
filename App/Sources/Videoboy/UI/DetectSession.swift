@@ -1,0 +1,90 @@
+//
+//  DetectSession.swift — hold Shift to see what is mappable, click to map it.
+//
+//  Purpose : MIDI learn has worked in Core since Phase 2, but reaching it meant
+//            finding a parameter's M badge and picking "Learn" from a menu. That is
+//            fine for an effect parameter you are configuring at leisure and wrong
+//            for the question a performer actually asks, which is "what on this
+//            window can I put under my hands?". Holding Shift answers it: every
+//            mappable control lights at once, and clicking one arms it (SPEC 7).
+//  Inputs  : Shift key state, via a local event monitor.
+//  Outputs : highlight state on every VBFader that carries a slot and a param code;
+//            a detect request when one is Shift-clicked.
+//  Connects: ShellController (which owns the engine and answers the request),
+//            VBFader (which draws the highlight and reports the click).
+//  Extend  : to make a NEW kind of control mappable, give it `mappingSlot` and
+//            `mappingCode` and teach `apply(to:)` to recognise it. Do not add a
+//            second highlight mechanism — the point is that one gesture reveals
+//            everything, and that only holds if everything answers to it.
+//
+
+import AppKit
+import VideoboyCore
+
+/// Watches the Shift key and lights up every mappable control beneath a root view.
+final class DetectSession {
+
+    /// Called when a mappable control is Shift-clicked.
+    var onDetectRequested: ((String, ParamCode) -> Void)?
+
+    /// Called when the Shift state changes, so the toolbar can show it is armed.
+    var onArmedChanged: ((Bool) -> Void)?
+
+    /// True while Shift is held.
+    private(set) var isArmed = false
+
+    private weak var root: NSView?
+    private var monitor: Any?
+
+    init(root: NSView) {
+        self.root = root
+        // A local monitor rather than `flagsChanged` on a view: the performer should
+        // not have to click the right thing first to make Shift mean something.
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.setArmed(event.modifierFlags.contains(.shift))
+            return event
+        }
+    }
+
+    deinit {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+    }
+
+    /// Re-applies the current state, for controls built after the key went down.
+    func refresh() {
+        guard let root else { return }
+        apply(to: root)
+    }
+
+    /// Arms or disarms without a key press, for the self-QA render.
+    ///
+    /// Not a back door: "armed" is a real state of this object and the Shift key is
+    /// only one way into it. The alternative is for the check to set the highlights
+    /// itself, which would prove the highlights can be drawn and nothing about
+    /// whether this class ever reaches them.
+    func setArmed(_ armed: Bool) {
+        guard armed != isArmed else { return }
+        isArmed = armed
+        refresh()
+        onArmedChanged?(armed)
+    }
+
+    /// Walks the tree rather than keeping a register of controls.
+    ///
+    /// Panels rebuild their rows as effects are added, reordered and bypassed, so a
+    /// register would go stale in exactly the situations where being wrong is most
+    /// annoying. The tree is a few hundred views and this runs on a key press, not
+    /// per frame.
+    private func apply(to view: NSView) {
+        if let fader = view as? VBFader {
+            let mappable = fader.mappingSlot != nil && fader.mappingCode != nil
+            fader.isDetectHighlighted = isArmed && mappable
+            if mappable && fader.onDetectRequested == nil {
+                fader.onDetectRequested = { [weak self] slot, code in
+                    self?.onDetectRequested?(slot, code)
+                }
+            }
+        }
+        for subview in view.subviews { apply(to: subview) }
+    }
+}

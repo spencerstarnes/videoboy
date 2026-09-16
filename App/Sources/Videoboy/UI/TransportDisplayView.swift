@@ -140,7 +140,10 @@ final class TransportDisplayView: NSView {
 }
 
 /// A caption above a value, where clicking the value advances it.
-private final class CyclingField: NSControl {
+private final class CyclingField: NSControl, AuditableControl {
+
+    /// Clicking cycles the value, so being wired means having somewhere to report to.
+    var isWiredForAudit: Bool { onClick != nil }
 
     var onClick: (() -> Void)?
 

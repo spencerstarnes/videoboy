@@ -115,6 +115,7 @@ enum Controls {
         value: Double = 0.5, minimum: Double = 0, maximum: Double = 1,
         enabled: Bool = true, fillsFromCentre: Bool = false, compact: Bool = false,
         accent: NSColor = Theme.Color.accent,
+        mappingSlot: String? = nil, mappingCode: ParamCode? = nil,
         target: AnyObject? = nil, action: Selector? = nil
     ) -> VBFader {
         let fader = VBFader(frame: .zero)
@@ -125,6 +126,8 @@ enum Controls {
         fader.isEnabled = enabled
         fader.fillsFromCentre = fillsFromCentre
         fader.accentColor = accent
+        fader.mappingSlot = mappingSlot
+        fader.mappingCode = mappingCode
         fader.target = target
         fader.action = action
         fader.translatesAutoresizingMaskIntoConstraints = false

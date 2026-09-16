@@ -22,6 +22,25 @@ import VideoboyCore
 /// Audits the interface's controls.
 enum ControlAuditSelfQA {
 
+    /// Walks the tree for faders and whether each one carries a mapping address.
+    private static func collectFaders(
+        from view: NSView, panel: String,
+        into faders: inout [(label: String, isMappable: Bool, isEnabled: Bool)]
+    ) {
+        let panelName = (view as? PanelView)?.title ?? panel
+        if let fader = view as? VBFader {
+            let label = fader.identifier?.rawValue ?? "unnamed"
+            faders.append((
+                label: "\(panelName)/\(label)",
+                isMappable: fader.mappingSlot != nil && fader.mappingCode != nil,
+                isEnabled: fader.isEnabled
+            ))
+        }
+        for subview in view.subviews {
+            collectFaders(from: subview, panel: panelName, into: &faders)
+        }
+    }
+
     /// One control found in the tree.
     private struct Finding {
         let panel: String
@@ -102,6 +121,25 @@ enum ControlAuditSelfQA {
         } catch {
             Log.error(.selfqa, "could not write the control audit: \(error)")
         }
+
+        // Shift-to-detect coverage. A fader with no mapping address stays dark when
+        // Shift is held, which reads as "this one cannot be mapped" — so an address
+        // left off by accident is indistinguishable from a deliberate limit. Counting
+        // them is the only way to keep that honest.
+        // Only enabled faders are held to it: a fader belonging to an effect that is
+        // not built yet is disabled, and having no mapping address is the truth
+        // about it rather than an oversight.
+        var faders: [(label: String, isMappable: Bool, isEnabled: Bool)] = []
+        collectFaders(from: shell, panel: "window", into: &faders)
+        let unmappable = faders.filter { $0.isEnabled && !$0.isMappable }
+        check.record(AssertionResult(
+            name: "every fader can be mapped by Shift-clicking it",
+            passed: unmappable.isEmpty,
+            detail: unmappable.isEmpty
+                ? "\(faders.filter(\.isEnabled).count) enabled faders, all carrying a slot and a param code"
+                : "\(unmappable.count) of \(faders.count) have no mapping address: "
+                    + unmappable.map(\.label).joined(separator: ", ")
+        ))
 
         // The failing condition is a control that is enabled and wired to nothing.
         // A disabled control is fine — it is honest about not being built.
@@ -187,12 +225,21 @@ enum ControlAuditSelfQA {
             return Finding(panel: panel, kind: kind, label: label, isEnabled: false, hasAction: true)
         }
 
+        // A closure-driven control answers for itself; target/action says nothing
+        // useful about it. Everything else is judged the AppKit way.
+        let wired: Bool
+        if let auditable = control as? AuditableControl {
+            wired = auditable.isWiredForAudit
+        } else {
+            wired = control.action != nil && control.target != nil
+        }
+
         return Finding(
             panel: panel,
             kind: kind,
             label: label,
             isEnabled: control.isEnabled,
-            hasAction: control.action != nil && control.target != nil
+            hasAction: wired
         )
     }
 }

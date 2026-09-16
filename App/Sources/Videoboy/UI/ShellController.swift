@@ -19,6 +19,8 @@ final class ShellController {
     private let shell: ShellView
     private let engine: Engine
     private var outputWindow: OutputWindowController?
+    /// Shift-to-detect. Exposed so the self-QA render can arm it.
+    private(set) var detectSession: DetectSession?
 
     /// Channel letters in the order their previews appear.
     private static let channels = ["A", "B", "C", "D"]
@@ -33,11 +35,109 @@ final class ShellController {
         wireToolbar()
         wireSettingsBar()
         wireRecordIndicators()
+        wireDetect()
         engine.onTempoChanged = { [weak self] tempo in
             self?.shell.flashTempoChange()
             self?.shell.toolbar.setTempo(tempo)
         }
         engine.onFrame = { [weak self] engine in self?.refresh(from: engine) }
+    }
+
+    // MARK: - Shift-to-detect
+
+    /// Which slot the crossfaders, shuttles and bus data effects belong to.
+    ///
+    /// The effect chains have their own tables because a code there means different
+    /// slots on different buses. These are one-to-one, so they live here plainly
+    /// rather than being bent to fit the same shape.
+    private func wireDetect() {
+        let panels = shell.grid.panels
+
+        panels.faderABBody.fader.mappingSlot = GraphTopology.subMixOne
+        panels.faderABBody.fader.mappingCode = .crossfadeAB
+        panels.faderCDBody.fader.mappingSlot = GraphTopology.subMixTwo
+        panels.faderCDBody.fader.mappingCode = .crossfadeCD
+        panels.faderOneTwoBody.fader.mappingSlot = GraphTopology.primary
+        panels.faderOneTwoBody.fader.mappingCode = .crossfadeOneTwo
+
+        // Each shuttle scrubs its own source, so the slot is the channel itself.
+        for (channel, body) in panels.sourceBodies {
+            body.scrubFader?.mappingSlot = Self.slot(forChannel: channel)
+            body.scrubFader?.mappingCode = .scrubPosition
+        }
+
+        // The bus data effects: the wedge on the interchange codec, per bus.
+        let busData: [(PreviewPanelBody, String)] = [
+            (panels.subMixOneBody, Engine.busCodecOneSlot),
+            (panels.subMixTwoBody, Engine.busCodecTwoSlot),
+            (panels.programBody, Engine.busCodecProgramSlot)
+        ]
+        for (body, slot) in busData {
+            body.dataAmountFader?.mappingSlot = slot
+            body.dataAmountFader?.mappingCode = .corruptAmount
+            body.dataModeFader?.mappingSlot = slot
+            body.dataModeFader?.mappingCode = .corruptMode
+        }
+
+        // The effect chains answer per code, because a code names a different slot
+        // on each bus.
+        panels.effectsOneBody.mappingSlotForCode = { Self.subMixOneSlots[$0] }
+        panels.effectsTwoBody.mappingSlotForCode = { Self.subMixTwoSlots[$0] }
+
+        let session = DetectSession(root: shell)
+        session.onDetectRequested = { [weak self] slot, code in
+            self?.armDetect(slot: slot, code: code)
+        }
+        session.onArmedChanged = { [weak self] armed in
+            self?.shell.toolbar.setDetectArmed(armed)
+        }
+        shell.toolbar.onDetectExplainRequested = { [weak self] in
+            self?.presentNotice(
+                "Hold Shift to map a control",
+                "Every control that can be driven by MIDI lights up while Shift is held. Shift-click one, then move the knob or fader on your controller."
+            )
+        }
+        detectSession = session
+    }
+
+    /// Which graph slot a channel letter is.
+    private static func slot(forChannel channel: String) -> String {
+        switch channel {
+        case "A": GraphTopology.sourceA
+        case "B": GraphTopology.sourceB
+        case "C": GraphTopology.sourceC
+        default:  GraphTopology.sourceD
+        }
+    }
+
+    /// Arms MIDI learn for a parameter and says so, from wherever it was asked for.
+    ///
+    /// The status bar is the only report for controls with no badge of their own —
+    /// a crossfader has nowhere to light up — so arming must be visible there or a
+    /// mis-click looks like nothing happened.
+    private func armDetect(slot: String, code: ParamCode) {
+        engine.midi.beginDetect(slot: slot, code: code)
+        shell.statusBar.setMIDIDevice("learning \(code.displayName)…")
+        Log.info(.midi, "detect armed for \(slot)/\(code.rawValue)")
+        engine.midi.onDetectCompleted = { [weak self] binding in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.shell.statusBar.setMIDIDevice(self.engine.midi.connectedSourceNames.first)
+                // Light the badge if this parameter has one, on the bus it belongs
+                // to. Faders outside the effect chains have no badge, and that is
+                // fine — the mapping is no less real for having nowhere to show
+                // itself; the status bar reported it.
+                if Self.subMixOneSlots[code] == slot {
+                    self.shell.grid.panels.effectsOneBody
+                        .setBadgeActive(code: code.rawValue, badge: "M", isActive: true)
+                }
+                if Self.subMixTwoSlots[code] == slot {
+                    self.shell.grid.panels.effectsTwoBody
+                        .setBadgeActive(code: code.rawValue, badge: "M", isActive: true)
+                }
+                Log.info(.midi, "learned \(binding.source.description) for \(binding.slot)/\(binding.code.rawValue)")
+            }
+        }
     }
 
     // MARK: - Wiring
@@ -63,7 +163,12 @@ final class ShellController {
                 self?.engine.sources[letter]?.step(by: 1)
             }
             body.onScrub = { [weak self] position in
-                self?.engine.sources[letter]?.seek(toNormalised: position)
+                // Through the registry, not straight to the node: the shuttle and a
+                // mapped jog wheel then move the same parameter rather than fighting
+                // over the playhead from two directions.
+                guard let self, let node = self.engine.sources[letter] else { return }
+                self.engine.registry.setValue(
+                    position, slot: node.identifier, code: .scrubPosition)
             }
             body.onTimingChanged = { [weak self] timing in
                 self?.engine.sources[letter]?.timing = timing
@@ -631,18 +736,10 @@ final class ShellController {
             guard let self else { return }
             switch choice {
             case .learnMIDI:
-                self.engine.midi.beginDetect(slot: slot, code: parameter)
-                self.shell.statusBar.setMIDIDevice("learning \(parameter.displayName)…")
-                // The badge lights once something actually arrives, not on arming —
-                // otherwise it would claim a mapping that may never be made.
-                self.engine.midi.onDetectCompleted = { [weak self] binding in
-                    DispatchQueue.main.async {
-                        panel.setBadgeActive(code: code, badge: "M", isActive: true)
-                        self?.shell.statusBar.setMIDIDevice(
-                            self?.engine.midi.connectedSourceNames.first)
-                        Log.info(.midi, "learned \(binding.source.description) for \(binding.slot)/\(binding.code.rawValue)")
-                    }
-                }
+                // The same act as Shift-clicking the fader, so it takes the same
+                // path: the badge lights once something actually arrives, not on
+                // arming, or it would claim a mapping that may never be made.
+                self.armDetect(slot: slot, code: parameter)
 
             case .audio(let tap, let shape):
                 self.engine.audioReactivity.assign(ReactivityAssignment(

@@ -27,7 +27,8 @@ final class SourcePanelBody: NSView {
     let channel: String
 
     private var generatorPopUp: NSPopUpButton?
-    private var scrubFader: VBFader?
+    /// The shuttle scrub track. Exposed so the shell can give it a mapping address.
+    private(set) var scrubFader: VBFader?
     private var timingPopUp: NSPopUpButton?
 
     /// Loads a file into this channel. Wired by the app; nil until then.
@@ -218,6 +219,9 @@ final class PreviewPanelBody: NSView {
     private var blendPopUp: NSPopUpButton?
     private var interchangePopUp: NSPopUpButton?
     private var dataEffectRow: NSStackView?
+    /// The bus data-effect faders, exposed so the shell can address them for MIDI.
+    private(set) var dataAmountFader: VBFader?
+    private(set) var dataModeFader: VBFader?
 
     /// - Parameter showsBlendControls: true for the composites that carry a blend
     ///   mode — the two sub-mixes and the program.
@@ -290,6 +294,8 @@ final class PreviewPanelBody: NSView {
             let dataMode = Controls.fader(
                 value: 0, compact: true, accent: Theme.Color.recordActive,
                 target: self, action: #selector(dataModeChanged(_:)))
+            dataAmountFader = dataAmount
+            dataModeFader = dataMode
             let dataRow = Controls.row([
                 Controls.label("dmg", font: Theme.Font.tinyLabel,
                                color: Theme.Color.textTertiary, holdsWidth: true),
