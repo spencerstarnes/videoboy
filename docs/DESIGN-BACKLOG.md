@@ -16,6 +16,8 @@ what was asked for and has not been built.
   FX columns gives the libraries and browser their width.
 - **Driven-parameter marks** — anything with a MIDI, audio or LFO driver outlines and
   breathes on the beat.
+- **"Don't remind me again"** (§8) — save location on first open, save on quit, and
+  the audio-clock warning. Reset from the Defaults pane.
 
 - **Scopes** (SPEC §19) — waveform, RGB parade, histogram, vectorscope; tab cycles
   quad-overlay → histogram → parade → quad-over-black → off.

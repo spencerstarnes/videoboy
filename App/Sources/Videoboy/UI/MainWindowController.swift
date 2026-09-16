@@ -20,11 +20,16 @@ final class MainWindowController: NSWindowController {
     /// The running instrument this window drives.
     let engine = Engine()
 
+    /// Settings that outlive a patch, handed down from the app delegate so there is
+    /// one store rather than one per window.
+    let preferences: PreferenceStore
+
     /// Keeps the views and the engine connected for the window's lifetime.
     private var shellController: ShellController?
 
     /// Builds the window at a size that shows the full wide layout on first run.
-    init() {
+    init(preferences: PreferenceStore) {
+        self.preferences = preferences
         let initialSize = NSSize(width: 1460, height: 912)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
@@ -52,7 +57,7 @@ final class MainWindowController: NSWindowController {
 
         let shell = ShellView()
         window.contentView = shell
-        shellController = ShellController(shell: shell, engine: engine)
+        shellController = ShellController(shell: shell, engine: engine, preferences: preferences)
         // The render clock follows the display this window is on, so moving the
         // window between screens retimes it automatically (SPEC 4a).
         engine.start(drivenBy: shell)

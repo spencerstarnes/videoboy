@@ -18,6 +18,7 @@ final class ShellController {
 
     private let shell: ShellView
     private let engine: Engine
+    private let preferences: PreferenceStore
     private var outputWindow: OutputWindowController?
     /// Shift-to-detect. Exposed so the self-QA render can arm it.
     private(set) var detectSession: DetectSession?
@@ -25,9 +26,10 @@ final class ShellController {
     /// Channel letters in the order their previews appear.
     private static let channels = ["A", "B", "C", "D"]
 
-    init(shell: ShellView, engine: Engine) {
+    init(shell: ShellView, engine: Engine, preferences: PreferenceStore = PreferenceStore()) {
         self.shell = shell
         self.engine = engine
+        self.preferences = preferences
         wireSources()
         wireFaders()
         wireBlendControls()
@@ -790,10 +792,15 @@ final class ShellController {
                 panel.setBadgeActive(code: code, badge: "S", isActive: true)
                 if self.engine.clockSource != .audio {
                     // An audio mapping with no audio running would silently do
-                    // nothing, which is the kind of thing found out mid-set.
-                    self.presentNotice(
-                        "Audio input is not running",
-                        "The mapping is saved, but nothing will move until you set Clock to Audio in the toolbar."
+                    // nothing, which is the kind of thing found out mid-set. Worth
+                    // saying once; not worth saying to someone who maps ten of them
+                    // in a row and already knows.
+                    ReminderAlert.show(
+                        .audioMappingWithoutAudioClock,
+                        store: self.preferences,
+                        title: "Audio input is not running",
+                        detail: "The mapping is saved, but nothing will move until you set Clock to Audio in the toolbar.",
+                        buttons: ["OK"]
                     )
                 }
 

@@ -53,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         buildMenuBar()
 
-        let controller = MainWindowController()
+        let controller = MainWindowController(preferences: preferences)
         launch.complete(.graph)
         launch.complete(.clock)
 
@@ -82,6 +82,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
             self?.launchWindowController?.dismiss()
             self?.launchWindowController = nil
+            self?.remindAboutSaveLocationIfNeeded()
+        }
+    }
+
+    /// Asks once where work should be saved, on a launch where nowhere is set.
+    ///
+    /// After the launch screen has gone, not during it: a modal over a progress
+    /// window is a jarring way to meet an app for the first time. Only when there is
+    /// genuinely no location — someone who has set one is never asked again whatever
+    /// they answered here.
+    private func remindAboutSaveLocationIfNeeded() {
+        guard preferences.preferences.saveLocation == nil else { return }
+        let response = ReminderAlert.show(
+            .setSaveLocation,
+            store: preferences,
+            title: "Where should Videoboy save your work?",
+            detail: "Pick a folder for your templates now, or set it later in Settings. "
+                + "Until one is chosen you will be asked each time you save.",
+            buttons: ["Choose Folder…", "Later"]
+        )
+        guard response == .primary else { return }
+
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Use This Folder"
+        if panel.runModal() == .OK, let url = panel.url {
+            preferences.preferences.saveLocation = url
+            Log.info(.app, "save location set to \(url.path)")
+        }
+    }
+
+    /// Offers to save before quitting.
+    ///
+    /// Returns `.terminateLater` only while the prompt is up; the answer is given
+    /// back to AppKit as soon as it is known. Cancel really cancels — a quit prompt
+    /// whose Cancel does not cancel is worse than no prompt.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let response = ReminderAlert.show(
+            .saveOnQuit,
+            store: preferences,
+            title: "Save before quitting?",
+            detail: preferences.preferences.saveLocation == nil
+                ? "No save location is set, so you will be asked where to put it."
+                : "Your work will be saved to \(preferences.preferences.saveLocation?.lastPathComponent ?? "your folder").",
+            buttons: ["Save", "Don't Save", "Cancel"],
+            style: .warning
+        )
+
+        switch response {
+        case .notShown, .secondary:
+            return .terminateNow
+        case .tertiary:
+            return .terminateCancel
+        case .primary:
+            // Saving templates is not built yet. Saying so plainly and quitting is
+            // more honest than a silent no-op that looks like a successful save.
+            Log.warn(.app, "save on quit requested, but template saving is not built")
+            let alert = NSAlert()
+            alert.messageText = "Saving is not built yet"
+            alert.informativeText = "Template save and load is still to come. Your settings are "
+                + "already saved; the patch is not."
+            alert.addButton(withTitle: "Quit Anyway")
+            alert.addButton(withTitle: "Cancel")
+            return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
         }
     }
 
