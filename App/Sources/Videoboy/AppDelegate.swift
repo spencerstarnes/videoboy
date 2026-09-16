@@ -17,17 +17,67 @@ import VideoboyCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var mainWindowController: MainWindowController?
+    private var launchWindowController: LaunchWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // The launch screen goes up first and reports each subsystem as it comes up.
+        // Startup is not instant — Metal compiles its shaders, the DV codec opens,
+        // MIDI enumerates — and showing what is happening turns that pause into
+        // information rather than a hang.
+        let launch = LaunchWindowController()
+        launch.showWindow(nil)
+        launchWindowController = launch
+
         logEnvironment()
+
+        if MetalContext.shared != nil {
+            launch.complete(.metal)
+            launch.complete(.shaders)
+        } else {
+            launch.skip(.metal, reason: "unavailable")
+            launch.skip(.shaders, reason: "no device")
+        }
+
+        // The codec is checked rather than assumed: a missing DV decoder is the kind
+        // of thing that should be visible at launch, not when a file fails to open.
+        if (try? DVDecoder()) != nil {
+            launch.complete(.codecs)
+        } else {
+            launch.skip(.codecs, reason: "DV decoder missing")
+        }
+
         buildMenuBar()
 
         let controller = MainWindowController()
+        launch.complete(.graph)
+        launch.complete(.clock)
+
+        if controller.engine.midi.connectedSourceNames.isEmpty {
+            launch.skip(.midi, reason: "no devices")
+        } else {
+            launch.complete(.midi)
+        }
+
+        let displays = DisplayRouter.availableDisplays()
+        if displays.isEmpty {
+            launch.skip(.displays, reason: "none found")
+        } else {
+            launch.complete(.displays)
+        }
+
         controller.showWindow(nil)
         mainWindowController = controller
+        launch.complete(.interface)
 
         NSApp.activate(ignoringOtherApps: true)
         Log.info(.app, "main window shown")
+
+        // Leave it up just long enough to be read, then fade. Not padding: by this
+        // point the app is fully live behind it.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            self?.launchWindowController?.dismiss()
+            self?.launchWindowController = nil
+        }
     }
 
     /// Quitting when the window closes is right for a single-window instrument.

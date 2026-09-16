@@ -236,6 +236,10 @@ enum Theme {
         /// Highlight drawn over every mappable control while Shift is held (SPEC 7).
         static let detectHighlight = NSColor.systemYellow
 
+        /// The launch screen's backdrop — darker than the window, so it reads as
+        /// something in front of the app rather than part of it.
+        static let launchBackground = NSColor(srgbRed: 0.09, green: 0.09, blue: 0.10, alpha: 1)
+
         /// Fill behind a video preview that has no source yet.
         static let previewEmpty = NSColor(white: 0.07, alpha: 1)
 
