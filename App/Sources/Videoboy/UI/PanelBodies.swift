@@ -381,7 +381,13 @@ final class FaderPanelBody: NSView {
     var onFaderMoved: ((Double) -> Void)?
     /// Called when Cut is pressed.
     var onCut: (() -> Void)?
+    /// Called when Fade is pressed, with the chosen rate.
+    var onFade: ((FadeRate) -> Void)?
+    /// Called when cut-on-beat is switched on or off.
+    var onBeatCutToggled: ((Bool) -> Void)?
     private var cutButton: NSButton?
+    private var beatCutButton: NSButton?
+    private var rateControl: NSSegmentedControl?
     private var leftName = ""
     private var rightName = ""
 
@@ -416,9 +422,28 @@ final class FaderPanelBody: NSView {
         self.leftName = leftLabel
         self.rightName = rightLabel
         buttons.append(cutButton)
-        buttons.append(Controls.button("Fade", enabled: false))
-        // Cut-on-beat needs the musical clock scheduler to be wired to the mixer.
-        buttons.append(Controls.segmented(["Beat"], selected: -1, enabled: false))
+        let fadeButton = Controls.button("Fade", target: self, action: #selector(fadePressed))
+        fadeButton.toolTip = "Auto-fade to the other source at the chosen rate"
+        buttons.append(fadeButton)
+
+        // Cut-on-beat. With this on, a cut waits for the next subdivision and is
+        // taken early by the graph's latency so the picture changes ON the beat.
+        let beatToggle = Controls.button("Beat", target: self, action: #selector(beatCutPressed))
+        beatToggle.setButtonType(.pushOnPushOff)
+        beatToggle.toolTip = "Cut on the next beat instead of immediately"
+        self.beatCutButton = beatToggle
+        buttons.append(beatToggle)
+
+        // The rate control: three positions, turtle to rabbit. A performance wants
+        // "slow" without choosing a number, and the exact seconds matter far less
+        // than the feel — which is why this is not a continuous slider.
+        let rateControl = Controls.segmented(
+            ["🐢", "•", "🐇"], selected: 1, target: self, action: #selector(rateChanged(_:)))
+        rateControl.setToolTip("Slow fade", forSegment: 0)
+        rateControl.setToolTip("Medium fade", forSegment: 1)
+        rateControl.setToolTip("Fast fade", forSegment: 2)
+        self.rateControl = rateControl
+        buttons.append(rateControl)
         // The mapping badges ride on this row rather than getting a line of their
         // own. This is the shortest panel in the grid and a fourth line does not fit
         // at the compact breakpoint — it clipped instead of laying out.
@@ -490,6 +515,24 @@ final class FaderPanelBody: NSView {
         valueLabel.stringValue = String(format: "%.2f", fader.value)
         updateCutLabel()
         onFaderMoved?(fader.value)
+    }
+
+    @objc private func fadePressed() {
+        onFade?(currentRate)
+    }
+
+    @objc private func beatCutPressed(_ sender: NSButton) {
+        sender.contentTintColor = sender.state == .on ? Theme.Color.accent : nil
+        onBeatCutToggled?(sender.state == .on)
+    }
+
+    @objc private func rateChanged(_ sender: NSSegmentedControl) {
+        Log.info(.app, "fade rate: \(currentRate.displayName)")
+    }
+
+    /// The rate the three-position control is set to.
+    private var currentRate: FadeRate {
+        FadeRate.from(index: rateControl?.selectedSegment ?? 1)
     }
 
     @objc private func cutPressed() {

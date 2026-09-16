@@ -199,17 +199,131 @@ final class ShellController {
         }
     }
 
+    /// Fades in flight, and cuts waiting for a beat, by bus slot.
+    private var activeFades: [String: FadeAutomation] = [:]
+    private var pendingCuts: [String: PendingCut] = [:]
+    private var beatCutEnabled: [String: Bool] = [:]
+
+    /// Advances any fade or pending cut. Called once per frame.
+    ///
+    /// A cut waiting on a beat is taken at `fireHostTime`, which is the beat's time
+    /// LESS the graph's latency — that is what makes the picture change on the beat
+    /// rather than a few frames after it (SPEC 21).
+    private func updateFadesAndCuts(from engine: Engine) {
+        let now = CACurrentMediaTime()
+
+        for (slot, cut) in pendingCuts where cut.isDue(atHostTime: now) {
+            applyFaderPosition(cut.target, to: slot)
+            pendingCuts.removeValue(forKey: slot)
+            Log.info(.clock, "cut on beat \(String(format: "%.2f", cut.targetBeat)) taken for \(slot)")
+        }
+
+        for (slot, fade) in activeFades {
+            applyFaderPosition(fade.position(atHostTime: now), to: slot)
+            if fade.isFinished(atHostTime: now) {
+                activeFades.removeValue(forKey: slot)
+            }
+        }
+    }
+
+    /// Writes a fader position into the registry and back into its panel.
+    private func applyFaderPosition(_ position: Double, to slot: String) {
+        guard let code = Self.faderCode(for: slot) else { return }
+        engine.registry.setValue(position, slot: slot, code: code)
+        Self.faderBody(for: slot, panels: shell.grid.panels)?.setPosition(position)
+    }
+
+    /// The crossfade param code for a bus slot.
+    private static func faderCode(for slot: String) -> ParamCode? {
+        switch slot {
+        case GraphTopology.subMixOne: .crossfadeAB
+        case GraphTopology.subMixTwo: .crossfadeCD
+        case GraphTopology.primary: .crossfadeOneTwo
+        default: nil
+        }
+    }
+
+    /// The panel body for a bus slot.
+    private static func faderBody(for slot: String, panels: PanelSet) -> FaderPanelBody? {
+        switch slot {
+        case GraphTopology.subMixOne: panels.faderABBody
+        case GraphTopology.subMixTwo: panels.faderCDBody
+        case GraphTopology.primary: panels.faderOneTwoBody
+        default: nil
+        }
+    }
+
+    /// Starts a fade, or schedules a cut, for one bus.
+    private func beginMove(on slot: String, isCut: Bool, rate: FadeRate) {
+        guard let code = Self.faderCode(for: slot),
+              let current = engine.registry.value(slot: slot, code: code) else { return }
+        // Always travel to the far end from where the fader is now.
+        let target: Double = current < 0.5 ? 1.0 : 0.0
+        let now = CACurrentMediaTime()
+
+        if isCut {
+            guard engine.transport.isRunning else {
+                // With the transport stopped there are no beats to wait for, so a
+                // beat-cut is just a cut. Waiting forever would look like a dead button.
+                applyFaderPosition(target, to: slot)
+                return
+            }
+            pendingCuts[slot] = PendingCut.scheduled(
+                target: target,
+                transport: engine.transport,
+                subdivision: .quarter,
+                hostTime: now,
+                latencyInFrames: engine.graph.maximumLatencyInFrames
+            )
+        } else {
+            activeFades[slot] = FadeAutomation(
+                from: current, to: target, duration: rate.seconds, startedAt: now)
+        }
+    }
+
     private func wireFaders() {
         let panels = shell.grid.panels
         // Each fader writes straight into the registry, so a MIDI move and a mouse
         // drag land in exactly the same place.
+        // A hand on a fader cancels whatever it was doing on its own.
+        let buses: [(body: FaderPanelBody, slot: String)] = [
+            (panels.faderABBody, GraphTopology.subMixOne),
+            (panels.faderCDBody, GraphTopology.subMixTwo),
+            (panels.faderOneTwoBody, GraphTopology.primary)
+        ]
+        for bus in buses {
+            bus.body.onFade = { [weak self] rate in
+                guard let self else { return }
+                self.beginMove(
+                    on: bus.slot,
+                    isCut: self.beatCutEnabled[bus.slot] ?? false,
+                    rate: rate)
+            }
+            bus.body.onBeatCutToggled = { [weak self] on in
+                self?.beatCutEnabled[bus.slot] = on
+            }
+            bus.body.onCut = { [weak self] in
+                guard let self else { return }
+                // Cut-on-beat turns an immediate cut into a scheduled one.
+                if self.beatCutEnabled[bus.slot] == true {
+                    self.beginMove(on: bus.slot, isCut: true, rate: .fast)
+                }
+            }
+        }
+
         panels.faderABBody.onFaderMoved = { [weak self] position in
+            self?.activeFades.removeValue(forKey: GraphTopology.subMixOne)
+            self?.pendingCuts.removeValue(forKey: GraphTopology.subMixOne)
             self?.engine.registry.setValue(position, slot: GraphTopology.subMixOne, code: .crossfadeAB)
         }
         panels.faderCDBody.onFaderMoved = { [weak self] position in
+            self?.activeFades.removeValue(forKey: GraphTopology.subMixTwo)
+            self?.pendingCuts.removeValue(forKey: GraphTopology.subMixTwo)
             self?.engine.registry.setValue(position, slot: GraphTopology.subMixTwo, code: .crossfadeCD)
         }
         panels.faderOneTwoBody.onFaderMoved = { [weak self] position in
+            self?.activeFades.removeValue(forKey: GraphTopology.primary)
+            self?.pendingCuts.removeValue(forKey: GraphTopology.primary)
             self?.engine.registry.setValue(position, slot: GraphTopology.primary, code: .crossfadeOneTwo)
         }
     }
@@ -762,6 +876,7 @@ final class ShellController {
         panels.programBody.preview.present()
         outputWindow?.present(texture: program)
 
+        updateFadesAndCuts(from: engine)
         updateScopesAndZebra(from: engine)
 
         // The status and transport readouts are cheap, but not free; once a second is
