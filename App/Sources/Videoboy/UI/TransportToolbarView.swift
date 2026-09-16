@@ -21,10 +21,7 @@ import VideoboyCore
 /// The transport/clock toolbar.
 final class TransportToolbarView: NSView {
 
-    private let tempoLabel = Controls.label("120.0", font: Theme.Font.tempo, color: Theme.Color.textPrimary)
     private let playButton: NSButton
-    private let beatLights: [NSView]
-    private let syncLabel = Controls.monoLabel("stopped", color: Theme.Color.textSecondary)
 
     /// Called when Tap is pressed.
     var onTap: (() -> Void)?
@@ -34,7 +31,10 @@ final class TransportToolbarView: NSView {
     var onSubdivisionChanged: ((String) -> Void)?
 
     private var isRunning = false
-    private var clockSourcePopUp: NSPopUpButton?
+    /// The recessed cluster: tempo, clock and subdivision.
+    let display = TransportDisplayView(frame: .zero)
+    private var clockSourceName = "Internal"
+    private var subdivisionName = "1/4"
 
     /// The record button, top right.
     let recordButton = RecordButton(frame: .zero)
@@ -53,19 +53,6 @@ final class TransportToolbarView: NSView {
     var onClockSourceChanged: ((String) -> Bool)?
 
     override init(frame frameRect: NSRect) {
-        // Four beat lights, one per beat of a 4/4 bar, as in the mockup.
-        beatLights = (0..<4).map { _ in
-            let light = NSView()
-            light.wantsLayer = true
-            light.layer?.cornerRadius = 2
-            light.layer?.backgroundColor = Theme.Color.textTertiary.cgColor
-            light.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                light.widthAnchor.constraint(equalToConstant: 9),
-                light.heightAnchor.constraint(equalToConstant: 9)
-            ])
-            return light
-        }
         playButton = Controls.button("▶")
         super.init(frame: frameRect)
 
@@ -77,17 +64,6 @@ final class TransportToolbarView: NSView {
 
         let tapButton = Controls.button("Tap", target: self, action: #selector(tapPressed))
 
-        let beats = Controls.row(beatLights, spacing: 3)
-        // Internal and audio detection work; MIDI clock and Link are later work
-        // (SPEC 4b), so they are present and selectable but report unavailable.
-        let clockSource = Controls.popUp(
-            ["Internal", "Audio", "MIDI Clock", "Link"],
-            target: self, action: #selector(clockSourceChanged(_:)))
-        self.clockSourcePopUp = clockSource
-        let subdivision = Controls.popUp(
-            ["1/1", "1/2", "1/4", "1/8", "1/16"], target: self, action: #selector(subdivisionChanged(_:))
-        )
-        subdivision.selectItem(withTitle: "1/4")
 
         // Shift-to-detect (SPEC 7): held Shift highlights mappable controls.
         let detect = Controls.button("⇧ Learn", enabled: false)
@@ -125,30 +101,68 @@ final class TransportToolbarView: NSView {
             panelsControl.setToolTip("Show or hide \(panelGroup.longName)", forSegment: index)
         }
 
-        let row = Controls.row([
+        // The cluster is CENTRED, with panels on the left and record on the right.
+        // Tempo and clock are what a performer glances at constantly, so they belong
+        // in the middle of the window rather than tucked into a corner of a toolbar.
+        display.onClockSourceCycled = { [weak self] in self?.cycleClockSource() }
+        display.onSubdivisionCycled = { [weak self] in self?.cycleSubdivision() }
+        display.translatesAutoresizingMaskIntoConstraints = false
+
+        let leftGroup = Controls.row([
             group("Panels", panelsControl),
-            separator(),
-            group("Tempo", tempoLabel),
             tapButton,
-            playButton,
-            group("Phase", beats),
-            group("Clock", clockSource),
-            group("Sync", syncLabel),
-            group("Subdiv", subdivision),
-            Controls.spacer(),
+            playButton
+        ], spacing: 10)
+
+        let rightGroup = Controls.row([
             group("Detect", detect),
             separator(),
             recordGroup
-        ], spacing: 12)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
+        ], spacing: 10)
+
+        leftGroup.translatesAutoresizingMaskIntoConstraints = false
+        rightGroup.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(leftGroup)
+        addSubview(display)
+        addSubview(rightGroup)
 
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            row.centerYAnchor.constraint(equalTo: centerYAnchor)
+            leftGroup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            leftGroup.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            display.centerXAnchor.constraint(equalTo: centerXAnchor),
+            display.centerYAnchor.constraint(equalTo: centerYAnchor),
+            display.leadingAnchor.constraint(
+                greaterThanOrEqualTo: leftGroup.trailingAnchor, constant: 12),
+
+            rightGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            rightGroup.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rightGroup.leadingAnchor.constraint(
+                greaterThanOrEqualTo: display.trailingAnchor, constant: 12)
         ])
     }
+
+    /// Advances the clock source, reporting back if the app refuses the change.
+    private func cycleClockSource() {
+        let sources = ["Internal", "Audio", "MIDI Clock", "Link"]
+        let currentIndex = sources.firstIndex(of: clockSourceName) ?? 0
+        let next = sources[(currentIndex + 1) % sources.count]
+        if onClockSourceChanged?(next) == true {
+            clockSourceName = next
+            display.setClockSource(next)
+        }
+    }
+
+    /// Advances the subdivision.
+    private func cycleSubdivision() {
+        let all = Subdivision.allCases
+        let currentIndex = all.firstIndex(where: { $0.rawValue == subdivisionName }) ?? 0
+        let next = all[(currentIndex + 1) % all.count]
+        subdivisionName = next.rawValue
+        display.setSubdivision(next.rawValue)
+        onSubdivisionChanged?(next.rawValue)
+    }
+
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
@@ -185,23 +199,19 @@ final class TransportToolbarView: NSView {
 
     /// Updates the tempo readout.
     func setTempo(_ beatsPerMinute: Double) {
-        tempoLabel.stringValue = String(format: "%.1f", beatsPerMinute)
+        display.setTempo(beatsPerMinute)
     }
 
     /// Lights the beat corresponding to the current position in the bar.
     func setBeat(_ beatInBar: Int) {
-        for (index, light) in beatLights.enumerated() {
-            light.layer?.backgroundColor = (index == beatInBar)
-                ? Theme.Color.accent.cgColor
-                : Theme.Color.textTertiary.cgColor
-        }
+        display.setBeat(beatInBar)
     }
 
     /// Updates the running indicator.
     func setRunning(_ running: Bool) {
         isRunning = running
         playButton.title = running ? "■" : "▶"
-        syncLabel.stringValue = running ? "running" : "stopped"
+        display.setSyncStatus(running ? "running" : "stopped")
     }
 
     // MARK: - Actions
@@ -232,21 +242,12 @@ final class TransportToolbarView: NSView {
         onRecordToggled?(recordButton.isRecording)
     }
 
-    @objc private func subdivisionChanged(_ sender: NSPopUpButton) {
-        onSubdivisionChanged?(sender.titleOfSelectedItem ?? "1/4")
-    }
 
-    @objc private func clockSourceChanged(_ sender: NSPopUpButton) {
-        let choice = sender.titleOfSelectedItem ?? "Internal"
-        // Snapping back on failure matters: a popup reading "Audio" with no audio
-        // behind it is a lie the performer would only discover mid-set.
-        if onClockSourceChanged?(choice) == false {
-            sender.selectItem(withTitle: "Internal")
-        }
-    }
+
+
 
     /// Updates the sync readout with what the clock is actually doing.
     func setSyncStatus(_ text: String) {
-        syncLabel.stringValue = text
+        display.setSyncStatus(text)
     }
 }

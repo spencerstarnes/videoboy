@@ -1,6 +1,6 @@
 check:    phase-0/empty-check-self-test
 verdict:  FAIL
-when:     2026-09-16T21:09:27Z
+when:     2026-09-16T21:11:58Z
 core:     0.3.0
 
 notes:
@@ -9,33 +9,5 @@ notes:
 assertions (0/0 passed):
 
 recent log:
-  1789592966.856 INFO [template] loaded template 'hand-edit-me' (0 nodes, 0 mappings)
-  1789592966.857 INFO [template] saved template 'latenight_vhs' -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-template-CE89CF91-C472-4F53-AF00-490369C4F5A3.vbt
-  1789592966.857 INFO [template] loaded template 'latenight_vhs' (2 nodes, 2 mappings)
-  1789592966.858 WARN [template] template is version 99 but this build understands 1; loading anyway
-  1789592966.858 INFO [template] loaded template 'from-the-future' (1 nodes, 1 mappings)
-  1789592966.858 INFO [param] slot 'source.a' now exposes 1 params (0 values carried, 0 dropped)
-  1789592966.858 WARN [template] template holds unknown param code '99Z' on 'source.a'; keeping it but not applying
-  1789592966.858 WARN [template] template maps midi cc 1/3 to unknown code '99Z'; preserved but inactive
-  1789592966.858 INFO [template] saved template 'from-the-future' -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-future2-5823F699-777F-4660-ABFD-578F5B26C0F1.vbt
-  1789592966.858 WARN [template] template is version 99 but this build understands 1; loading anyway
-  1789592966.858 INFO [template] loaded template 'from-the-future' (1 nodes, 1 mappings)
-  1789592967.263 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/00-source.png
-  1789592967.301 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/waveform.png
-  1789592967.301 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789592967.317 INFO [selfqa] phase-5/scopes: PASS  Waveform draws a trace — variance 437
-  1789592967.356 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/parade.png
-  1789592967.356 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789592967.371 INFO [selfqa] phase-5/scopes: PASS  RGB Parade draws a trace — variance 432
-  1789592967.397 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/histogram.png
-  1789592967.397 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789592967.412 INFO [selfqa] phase-5/scopes: PASS  Histogram draws a trace — variance 409
-  1789592967.492 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/vectorscope.png
-  1789592967.492 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789592967.508 INFO [selfqa] phase-5/scopes: PASS  Vectorscope draws a trace — variance 185
-  1789592967.733 INFO [selfqa] wrote 640x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/quad.png
-  1789592967.884 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/zebra.png
-  1789592967.906 INFO [selfqa] phase-5/scopes: colour bars read: 12.5% crushed
-  1789592967.906 INFO [selfqa] phase-5/scopes: PASS -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/result.txt
-  1789592967.927 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
-  1789592967.928 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt
+  1789593118.838 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1789593118.839 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt

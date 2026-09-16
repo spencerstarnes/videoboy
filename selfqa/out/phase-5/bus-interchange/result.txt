@@ -1,6 +1,6 @@
 check:    phase-5/bus-interchange
 verdict:  PASS
-when:     2026-09-16T21:09:25Z
+when:     2026-09-16T21:11:50Z
 core:     0.3.0
 
 notes:

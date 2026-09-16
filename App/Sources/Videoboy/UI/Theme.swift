@@ -49,7 +49,9 @@ enum Theme {
         /// Spacing between controls sitting on one row.
         static let controlSpacing: CGFloat = 6
         /// Height of the transport toolbar above the grid.
-        static let toolbarHeight: CGFloat = 44
+        static let toolbarHeight: CGFloat = 52
+        /// Height of the recessed transport cluster inside it.
+        static let transportDisplayHeight: CGFloat = 42
         /// Height of the status bar below the grid.
         static let statusBarHeight: CGFloat = 22
         /// Height of a panel header.
@@ -235,6 +237,14 @@ enum Theme {
 
         /// Highlight drawn over every mappable control while Shift is held (SPEC 7).
         static let detectHighlight = NSColor.systemYellow
+
+        /// The transport cluster's recessed readout — darker than the toolbar, so it
+        /// reads as an inset instrument panel rather than another button.
+        static let displayBackground = NSColor(srgbRed: 0.07, green: 0.075, blue: 0.08, alpha: 1)
+        static let displayBorder = NSColor(white: 1.0, alpha: 0.12)
+        static let displayText = NSColor(srgbRed: 0.85, green: 0.92, blue: 1.0, alpha: 1)
+        static let displayDimText = NSColor(srgbRed: 0.85, green: 0.92, blue: 1.0, alpha: 0.45)
+        static let displayHighlight = NSColor(white: 1.0, alpha: 0.10)
 
         /// The launch screen's backdrop — darker than the window, so it reads as
         /// something in front of the app rather than part of it.
