@@ -42,10 +42,39 @@ final class ShellController {
             guard let body = shell.grid.panels.sourceBodies[letter] else { continue }
             body.onLoadRequested = { [weak self] in self?.presentOpenPanel(forChannel: letter) }
             body.onPlayToggled = { [weak self] in self?.togglePlayback(channel: letter) }
+            body.onGeneratorSelected = { [weak self] kind in
+                self?.setGenerator(kind, channel: letter)
+            }
         }
     }
 
     private var playingChannels: Set<String> = []
+
+    /// Points a channel at a generator, or back at its file.
+    ///
+    /// Also puts a transport-locked LFO on the generator's phase, because a static
+    /// generator is not what any of them are for — a checkerboard that does not flip
+    /// and a plasma that does not drift are wallpaper (SPEC 6A).
+    private func setGenerator(_ kind: GeneratorKind?, channel letter: String) {
+        guard let kind else {
+            engine.setChannelSource(.file, channel: letter)
+            engine.lfos.remove(
+                slot: Engine.generatorSlot(forChannel: letter), code: .positionX)
+            return
+        }
+        engine.generators[letter]?.generator = kind
+        engine.setChannelSource(.generator, channel: letter)
+
+        // A slow ramp on phase by default: it drifts on the bar rather than
+        // strobing, which is the sane starting point. The shape and rate are
+        // ordinary parameters the performer can change or map.
+        engine.lfos.assign(LFOBank.Assignment(
+            lfo: LFO(shape: .rampUp, rate: .subdivision(.whole), depth: 1.0),
+            slot: Engine.generatorSlot(forChannel: letter),
+            code: .positionX,
+            latencyInFrames: engine.generators[letter]?.latencyInFrames ?? 0
+        ))
+    }
 
     private func togglePlayback(channel letter: String) {
         if playingChannels.contains(letter) {

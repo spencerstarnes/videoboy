@@ -1,6 +1,6 @@
 check:    phase-1/dv-corruption
 verdict:  PASS
-when:     2026-09-16T11:41:22Z
+when:     2026-09-16T11:45:19Z
 core:     0.3.0
 
 notes:
@@ -9,7 +9,7 @@ notes:
 
 assertions (14/14 passed):
   PASS  dimensions — expected 720x480, got 720x480
-  PASS  signal present — luminance variance 4196.4, threshold 25.0
+  PASS  signal present — luminance variance 4196.8, threshold 25.0
   PASS  shuffleBlocks decodes to full size — got 720x480
   PASS  shuffleBlocks changes the picture — 0.350 of sampled pixels differ, needed >= 0.02
   PASS  duplicateBlocks decodes to full size — got 720x480

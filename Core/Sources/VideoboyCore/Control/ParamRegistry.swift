@@ -110,6 +110,13 @@ public final class ParamRegistry {
         Log.info(.param, "slot '\(slot)' now exposes \(parameters.count) params (\(carried) values carried, \(dropped) dropped)")
     }
 
+    /// The declared parameter for a code in a slot, or nil when the slot does not
+    /// expose it. Callers that need the parameter's range — an LFO scaling its
+    /// output, for instance — go through this rather than guessing at 0...1.
+    public func parameter(slot: String, code: ParamCode) -> Parameter? {
+        parametersBySlot[slot]?[code]
+    }
+
     /// Parameter codes a slot currently exposes.
     public func codes(inSlot slot: String) -> Set<ParamCode> {
         Set((parametersBySlot[slot] ?? [:]).keys)

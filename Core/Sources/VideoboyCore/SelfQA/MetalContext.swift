@@ -317,6 +317,148 @@ enum ShaderSource {
     }
 
     // ---------------------------------------------------------------------------
+    // Generators (SPEC 6A).
+    //
+    // No-input producers. One shader with a mode switch rather than a dozen tiny
+    // pipelines: they share all their plumbing and differ only in a few lines each,
+    // so a dozen pipelines would be a dozen places to keep in step.
+    // ---------------------------------------------------------------------------
+
+    struct GeneratorParams {
+        int mode;
+        float scale;     // 0..1, size of the feature (cells, stripes, noise scale)
+        float phase;     // 0..1, animation position — usually driven by an LFO
+        float amount;    // 0..1, mode-specific: octaves, line weight, duty
+        float4 colorA;
+        float4 colorB;
+        float width;
+        float height;
+    };
+
+    // A cheap stable hash. Deterministic for a coordinate, which is what lets a noise
+    // field be re-evaluated at any time without keeping state.
+    static inline float hash21(float2 p) {
+        float3 p3 = fract(float3(p.xyx) * 0.1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+    }
+
+    // Value noise: hashed lattice with a smoothstep between the corners.
+    static inline float valueNoise(float2 p) {
+        float2 cell = floor(p);
+        float2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash21(cell);
+        float b = hash21(cell + float2(1.0, 0.0));
+        float c = hash21(cell + float2(0.0, 1.0));
+        float d = hash21(cell + float2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    }
+
+    // Fractal noise: octaves of value noise at halving amplitude. `turbulent` takes
+    // the absolute value of each octave about zero, which is what produces the
+    // creased "difference clouds" look rather than smooth cloud.
+    static inline float fractalNoise(float2 p, int octaves, bool turbulent) {
+        float sum = 0.0;
+        float amplitude = 0.5;
+        float total = 0.0;
+        for (int i = 0; i < octaves; ++i) {
+            float n = valueNoise(p);
+            if (turbulent) { n = abs(n * 2.0 - 1.0); }
+            sum += n * amplitude;
+            total += amplitude;
+            p *= 2.0;
+            amplitude *= 0.5;
+        }
+        return total > 0.0 ? sum / total : 0.0;
+    }
+
+    fragment float4 generator_fragment(VertexOut in [[stage_in]],
+                                       constant GeneratorParams &p [[buffer(0)]]) {
+        float2 uv = in.uv;
+        // Correct for the 4:3 frame so circles are round and cells are square.
+        float aspect = p.width / max(p.height, 1.0);
+        float2 centred = float2((uv.x - 0.5) * aspect, uv.y - 0.5);
+
+        float3 a = p.colorA.rgb;
+        float3 b = p.colorB.rgb;
+        float t = 0.0;
+
+        switch (p.mode) {
+            case 0:  // solid
+                t = 0.0;
+                break;
+            case 1: { // linear gradient, angle from phase
+                float angle = p.phase * 6.28318530718;
+                float2 direction = float2(cos(angle), sin(angle));
+                t = clamp(dot(centred, direction) + 0.5, 0.0, 1.0);
+                break;
+            }
+            case 2: { // radial gradient
+                t = clamp(length(centred) / max(p.scale, 0.01), 0.0, 1.0);
+                break;
+            }
+            case 3: { // checkerboard
+                float cells = mix(2.0, 64.0, p.scale);
+                float2 grid = floor((uv + p.phase) * cells);
+                t = fmod(grid.x + grid.y, 2.0);
+                break;
+            }
+            case 4: { // stripes, angle from amount
+                float angle = p.amount * 3.14159265359;
+                float2 direction = float2(cos(angle), sin(angle));
+                float bands = mix(2.0, 80.0, p.scale);
+                t = step(0.5, fract(dot(centred, direction) * bands + p.phase));
+                break;
+            }
+            case 5: { // grid / crosshatch
+                float spacing = mix(4.0, 64.0, p.scale);
+                float weight = mix(0.02, 0.3, p.amount);
+                float2 g = fract((uv + p.phase) * spacing);
+                t = (min(g.x, 1.0 - g.x) < weight || min(g.y, 1.0 - g.y) < weight) ? 1.0 : 0.0;
+                break;
+            }
+            case 6: { // concentric rings / target
+                float rings = mix(2.0, 40.0, p.scale);
+                t = step(0.5, fract(length(centred) * rings - p.phase));
+                break;
+            }
+            case 7: { // white noise — reseeded by phase so it can crackle on a beat
+                t = hash21(uv * float2(p.width, p.height) + p.phase * 1000.0);
+                break;
+            }
+            case 8: { // smooth noise field, drifting with phase
+                float scale = mix(2.0, 40.0, p.scale);
+                t = valueNoise(uv * scale + float2(p.phase * 4.0, p.phase * 2.0));
+                break;
+            }
+            case 9: { // difference clouds / plasma
+                int octaves = int(mix(1.0, 6.0, p.amount));
+                float scale = mix(1.0, 12.0, p.scale);
+                t = fractalNoise(uv * scale + p.phase * 2.0, octaves, true);
+                break;
+            }
+            case 10: { // dot / halftone field
+                float cells = mix(4.0, 80.0, p.scale);
+                float2 cell = fract(uv * cells) - 0.5;
+                float radius = mix(0.05, 0.5, p.amount);
+                t = 1.0 - smoothstep(radius - 0.05, radius, length(cell));
+                break;
+            }
+            case 11: { // scanline / CRT bar
+                float lines = mix(20.0, float(p.height), p.scale);
+                t = step(0.5, fract(uv.y * lines + p.phase));
+                break;
+            }
+            default:
+                t = 0.0;
+                break;
+        }
+
+        return float4(clamp(mix(a, b, clamp(t, 0.0, 1.0)), 0.0, 1.0), 1.0);
+    }
+
+    // ---------------------------------------------------------------------------
     // The MX-1 effect set (SPEC 9).
     //
     // SPEC 9 is blunt that these are "trivial shaders" and not where the analog
@@ -478,6 +620,8 @@ public final class MetalContext {
     public let blendPipeline: MTLRenderPipelineState
     /// The MX-1 effect set: negative, B&W, mosaic, posterize, flip/mirror.
     public let mx1Pipeline: MTLRenderPipelineState
+    /// Synthetic generators: solids, gradients, patterns and noise fields.
+    public let generatorPipeline: MTLRenderPipelineState
     /// Echo/trails: blends a frame with the decaying history behind it.
     public let echoPipeline: MTLRenderPipelineState
     /// Feedback: the previous output, transformed, mixed back in.
@@ -523,6 +667,7 @@ public final class MetalContext {
               let composite = makePipeline(vertex: "fullscreen_vertex", fragment: "composite_fragment"),
               let blend = makePipeline(vertex: "fullscreen_vertex", fragment: "composite_blend_fragment"),
               let mx1 = makePipeline(vertex: "fullscreen_vertex", fragment: "mx1_fragment"),
+              let generator = makePipeline(vertex: "fullscreen_vertex", fragment: "generator_fragment"),
               let echo = makePipeline(vertex: "fullscreen_vertex", fragment: "echo_fragment"),
               let feedback = makePipeline(vertex: "fullscreen_vertex", fragment: "feedback_fragment") else {
             return nil
@@ -536,6 +681,7 @@ public final class MetalContext {
         self.compositePipeline = composite
         self.blendPipeline = blend
         self.mx1Pipeline = mx1
+        self.generatorPipeline = generator
         self.echoPipeline = echo
         self.feedbackPipeline = feedback
         Log.info(.render, "Metal ready on \(device.name)")

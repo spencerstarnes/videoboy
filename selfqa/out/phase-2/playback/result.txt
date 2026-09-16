@@ -1,6 +1,6 @@
 check:    phase-2/playback
 verdict:  PASS
-when:     2026-09-16T11:41:32Z
+when:     2026-09-16T11:45:31Z
 core:     0.3.0
 
 notes:
@@ -8,12 +8,12 @@ notes:
   all frames rendered through the engine's own nodes and Metal pipelines
 
 assertions (9/9 passed):
-  PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (15 nodes)
+  PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (19 nodes)
   PASS  dimensions — expected 720x480, got 720x480
-  PASS  signal present — luminance variance 4188.1, threshold 25.0
+  PASS  signal present — luminance variance 4188.7, threshold 25.0
   PASS  fader at B shows source B — worst bar 0 off by 2.1 (tolerance 45.0)
   PASS  moving the fader changes PRIMARY — 0.997 of sampled pixels differ, needed >= 0.2
   PASS  mid-fade is a blend of both — differs from A by 0.93 and from B by 0.99
   PASS  playback advances the picture — 0.086 of sampled pixels differ, needed >= 0.05
   PASS  the corruptor damages PRIMARY through the live graph — 0.487 of sampled pixels differ, needed >= 0.05
-  PASS  signal present — luminance variance 3898.5, threshold 25.0
+  PASS  signal present — luminance variance 3898.0, threshold 25.0

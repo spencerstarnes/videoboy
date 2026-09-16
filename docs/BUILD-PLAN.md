@@ -80,7 +80,7 @@ Detail: SPEC §9 (composite/NTSC), §10 (capture + feedback), §11 (CRT features
 
 ## Phase 4+ — Backlog (post-MVP; do not start without explicit go-ahead)
 Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
-- [ ] Generators + transport LFO (SPEC §6A) and audio-reactivity bus (§4c, §13).
+- [ ] Audio-reactivity bus (§4c, §13). **Generators and the transport LFO are done.**
 - [ ] ISF host (parser → Metal) + FFGL (SPEC §8); CI/AU passthrough. **MX-1 effect set is done.**
 - [ ] Clean Core Text character generator + period preset (SPEC §18.1).
 - [ ] Emulated titler library — out-of-process GPL libretro host, save-state landing, genlock key (SPEC §18.2).
@@ -115,5 +115,11 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   expose the video-rate ones as mappable modules. Not started.
 - **MX-1 effects are not in a chain yet.** `MX1EffectNode` exists and is tested, but
   it is not instantiated in the engine's graph, so there is no UI for it.
+- **LFO assignment is not exposed in the UI.** `LFOBank` is complete and tested, and
+  selecting a generator attaches one to its phase automatically, but there is no way
+  to put an LFO on an arbitrary parameter from the interface yet. The `C` mapping
+  badge on each parameter row is where that belongs.
+- **Generator colours are not editable.** Each generator has two colours with an
+  out-of-gamut check, but no colour well in the UI.
 - **Overscan is a toggle, not a continuous control.** The 82A parameter exists and the
   preview overlay reads it; the settings bar only offers on/off.

@@ -232,9 +232,16 @@ public enum FrameAssertions {
         var sum = 0.0
         var sumOfSquares = 0.0
         var counted = 0.0
-        // Sampling every 4th pixel is plenty for a variance estimate and keeps
-        // full-frame capture analysis fast enough to run per frame.
-        for y in stride(from: 0, to: image.height, by: 2) {
+        // EVERY row, and every other column.
+        //
+        // Skipping rows would be faster, but this app's output is full of 2-row
+        // patterns — interlaced fields, scanline overlays, comb artefacts — and a
+        // row stride of 2 aliases with them perfectly, sampling only the identical
+        // rows and reporting a strongly patterned frame as flat black. A "signal
+        // present" check that can miss a scanline pattern is worse than useless here.
+        // Columns are safe to skip: nothing in the signal path is 2-px periodic
+        // horizontally.
+        for y in 0..<image.height {
             for x in stride(from: 0, to: image.width, by: 2) {
                 let pixel = image.pixel(x: x, y: y)
                 // Rec.601 luma, matching the standard-definition colour space.

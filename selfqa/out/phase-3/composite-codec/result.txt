@@ -1,6 +1,6 @@
 check:    phase-3/composite-codec
 verdict:  PASS
-when:     2026-09-16T11:41:23Z
+when:     2026-09-16T11:45:21Z
 core:     0.3.0
 
 notes:
@@ -10,9 +10,9 @@ assertions (10/10 passed):
   PASS  dimensions — expected 720x480, got 720x480
   PASS  01-clean-svideo carries picture — luminance variance 4065
   PASS  dimensions — expected 720x480, got 720x480
-  PASS  02-composite-default carries picture — luminance variance 4167
+  PASS  02-composite-default carries picture — luminance variance 4160
   PASS  dimensions — expected 720x480, got 720x480
-  PASS  03-composite-heavy-bleed carries picture — luminance variance 4035
+  PASS  03-composite-heavy-bleed carries picture — luminance variance 4037
   PASS  dimensions — expected 720x480, got 720x480
   PASS  04-tbc-off-wobble carries picture — luminance variance 4156
   PASS  dimensions — expected 720x480, got 720x480

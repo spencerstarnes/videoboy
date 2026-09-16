@@ -16,6 +16,12 @@ import AppKit
 import Metal
 import VideoboyCore
 
+/// What a channel is currently playing.
+enum ChannelSourceKind {
+    case file
+    case generator
+}
+
 /// The running instrument.
 final class Engine {
 
@@ -49,6 +55,16 @@ final class Engine {
 
     /// Test pattern, routable as a source and straight to an output (SPEC 11).
     private(set) var testPattern: TestPatternSourceNode!
+
+    /// One generator per channel, so any channel can produce a synthetic source
+    /// instead of playing a file (SPEC 6A).
+    private(set) var generators: [String: GeneratorSourceNode] = [:]
+
+    /// Which kind of source each channel is currently showing.
+    private(set) var channelSourceKinds: [String: ChannelSourceKind] = [:]
+
+    /// Transport-locked oscillators driving parameters (SPEC 6A).
+    private(set) lazy var lfos = LFOBank(transport: transport)
 
     /// Black-frame insertion on the program bus (SPEC 11).
     var blackFrameInsertion = BlackFrameInsertion(everyNFrames: 0)
@@ -139,6 +155,16 @@ final class Engine {
         graph.connect(from: Engine.echoTwoSlot, to: Engine.feedbackTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.feedbackTwoSlot, to: GraphTopology.primary, inputIndex: 1)
 
+        // A generator per channel, created up front so its parameters are registered
+        // and mappable whether or not it is currently the channel's source.
+        for letter in ["A", "B", "C", "D"] {
+            let generator = GeneratorSourceNode(
+                identifier: Engine.generatorSlot(forChannel: letter), context: metal)
+            generators[letter] = generator
+            graph.add(generator)
+            channelSourceKinds[letter] = .file
+        }
+
         // Sources that exist but are not wired into a channel until asked for.
         capture = CaptureSourceNode(identifier: Engine.captureSlot, context: metal)
         testPattern = TestPatternSourceNode(identifier: Engine.testPatternSlot, context: metal)
@@ -172,6 +198,11 @@ final class Engine {
         compositeSlot, echoSlot, feedbackSlot,
         compositeTwoSlot, echoTwoSlot, feedbackTwoSlot
     ]
+
+    /// The generator slot name for a channel letter.
+    static func generatorSlot(forChannel letter: String) -> String {
+        "generator.\(letter.lowercased())"
+    }
 
     /// The mapping slot name for a channel letter.
     static func slot(forChannel letter: String) -> String {
@@ -232,6 +263,10 @@ final class Engine {
         // The musical clock advances independently of frame production (SPEC 4).
         scheduler.advance(to: now)
 
+        // Oscillators write into the registry BEFORE parameters are applied, so an
+        // LFO and a MIDI knob reach a node by exactly the same route.
+        lfos.update(atHostTime: now, into: registry)
+
         // Parameters arrive from the UI, MIDI and templates through one path.
         applyAllParameters()
 
@@ -262,6 +297,7 @@ final class Engine {
         compositeCodecTwo.applyParameters(from: registry)
         echoTwo.applyParameters(from: registry)
         feedbackTwo.applyParameters(from: registry)
+        for generator in generators.values { generator.applyParameters(from: registry) }
     }
 
     /// Evaluates the graph to PRIMARY, in dependency order, and returns every
@@ -334,6 +370,24 @@ final class Engine {
         measuredFeedbackLatency = latency
         capture.measuredLatencyFrames = latency.frames
         Log.info(.render, "feedback round trip \(latency.frames) frames (\(String(format: "%.1f", latency.seconds * 1000)) ms); scheduling now compensates for it")
+    }
+
+    /// Switches a channel between playing a file and running a generator.
+    ///
+    /// This is a module swap in the sense SPEC 13 means: the graph edge moves, and
+    /// any mapping whose param code exists on the new source keeps working. That is
+    /// the whole reason mappings target codes rather than node pointers.
+    func setChannelSource(_ kind: ChannelSourceKind, channel letter: String) {
+        let subMix = GraphTopology.subMix(forChannel: Engine.slot(forChannel: letter))
+        // A and C are the lower layer of their bus; B and D the upper.
+        let inputIndex = (letter == "A" || letter == "C") ? 0 : 1
+        let newUpstream = kind == .file
+            ? Engine.slot(forChannel: letter)
+            : Engine.generatorSlot(forChannel: letter)
+
+        graph.connect(from: newUpstream, to: subMix, inputIndex: inputIndex)
+        channelSourceKinds[letter] = kind
+        Log.info(.graph, "channel \(letter) now sourced from \(kind == .file ? "a file" : "a generator")")
     }
 
     /// True when this frame should be blacked out for BFI.

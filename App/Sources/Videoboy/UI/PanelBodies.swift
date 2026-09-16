@@ -26,8 +26,14 @@ final class SourcePanelBody: NSView {
     /// Channel letter, A-D.
     let channel: String
 
+    private var generatorPopUp: NSPopUpButton?
+
     /// Loads a file into this channel. Wired by the app; nil until then.
     var onLoadRequested: (() -> Void)?
+
+    /// Switches this channel to a generator, or back to its file.
+    /// A nil kind means "go back to the file".
+    var onGeneratorSelected: ((GeneratorKind?) -> Void)?
 
     init(channel: String) {
         self.channel = channel
@@ -53,8 +59,19 @@ final class SourcePanelBody: NSView {
         addSubview(shuttle)
 
         let load = Controls.button("Load…", target: self, action: #selector(loadPressed))
-        load.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(load)
+
+        // A generator is an alternative source for the channel, not a separate panel:
+        // SPEC 6A says generators are selectable anywhere A/B/C/D.
+        let generatorPopUp = Controls.popUp(
+            ["File"] + GeneratorKind.allCases.map(\.displayName),
+            target: self, action: #selector(generatorChanged(_:))
+        )
+        self.generatorPopUp = generatorPopUp
+
+        let sourceRow = Controls.row([load, generatorPopUp], spacing: 4)
+        sourceRow.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(sourceRow)
+        let loadRowForConstraints = sourceRow
 
         let padding = Theme.Metrics.panelBodyPadding
         NSLayoutConstraint.activate([
@@ -66,9 +83,12 @@ final class SourcePanelBody: NSView {
             shuttle.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
             shuttle.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding),
 
-            load.topAnchor.constraint(equalTo: shuttle.bottomAnchor, constant: 2),
-            load.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
-            load.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -padding)
+            loadRowForConstraints.topAnchor.constraint(equalTo: shuttle.bottomAnchor, constant: 2),
+            loadRowForConstraints.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
+            loadRowForConstraints.trailingAnchor.constraint(
+                lessThanOrEqualTo: trailingAnchor, constant: -padding),
+            loadRowForConstraints.bottomAnchor.constraint(
+                lessThanOrEqualTo: bottomAnchor, constant: -padding)
         ])
     }
 
@@ -86,6 +106,16 @@ final class SourcePanelBody: NSView {
     @objc private func playPressed() {
         Log.info(.app, "play toggled on source \(channel)")
         onPlayToggled?()
+    }
+
+    @objc private func generatorChanged(_ sender: NSPopUpButton) {
+        // Item 0 is "File"; the rest are the generator kinds in order.
+        let index = sender.indexOfSelectedItem
+        guard index > 0, index - 1 < GeneratorKind.allCases.count else {
+            onGeneratorSelected?(nil)
+            return
+        }
+        onGeneratorSelected?(GeneratorKind.allCases[index - 1])
     }
 }
 

@@ -1,0 +1,21 @@
+check:    phase-4/generators
+verdict:  PASS
+when:     2026-09-16T11:45:22Z
+core:     0.3.0
+
+notes:
+  the SPEC 6A base set, each at 720x480
+
+assertions (12/12 passed):
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
