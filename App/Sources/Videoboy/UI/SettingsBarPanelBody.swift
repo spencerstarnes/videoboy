@@ -24,6 +24,7 @@ final class SettingsBarPanelBody: NSView {
     private let destinationLabel = Controls.monoLabel("no display")
     /// The mode actually negotiated with that display.
     private let modeLabel = Controls.monoLabel("—")
+
     /// Whether output is live.
     private let outputSwitch: NSSwitch
 
@@ -118,7 +119,10 @@ final class SettingsBarPanelBody: NSView {
 
     /// A toggle with its caption, as the mockup pairs them.
     private func labelled(_ title: String, _ control: NSView) -> NSStackView {
-        Controls.row([control, Controls.label(title, font: Theme.Font.tinyLabel)], spacing: 3)
+        Controls.row([
+            control,
+            Controls.label(title, font: Theme.Font.tinyLabel, holdsWidth: true)
+        ], spacing: 3)
     }
 
     /// A vertical rule between sections — a rule rather than more space, so the bar

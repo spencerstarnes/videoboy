@@ -21,6 +21,70 @@
 import Foundation
 import Metal
 
+/// How playback is timed.
+///
+/// Continuous is ordinary playback: frames advance with the render clock, retimed to
+/// the project rate. Stepped advances a fixed number of frames on each musical
+/// subdivision and holds in between, so a 30 fps clip becomes a slideshow locked to
+/// the music — one frame per beat, or per half beat, or four frames per beat.
+public enum PlaybackTiming: Equatable, Codable, Sendable {
+    /// Normal playback, retimed to the project clock.
+    case continuous
+    /// Advance `frames` every `subdivision`, and hold in between.
+    case stepped(subdivision: Subdivision, frames: Int)
+
+    /// The step presets offered in the shuttle, from slowest to fastest.
+    ///
+    /// Spread across subdivision AND step size on purpose: 1 frame per beat and 4
+    /// frames per beat are musically different ideas, not the same idea twice.
+    public static let presets: [PlaybackTiming] = [
+        .stepped(subdivision: .whole, frames: 1),        // one frame per bar
+        .stepped(subdivision: .half, frames: 1),         // one frame per two beats
+        .stepped(subdivision: .quarter, frames: 1),      // one frame per beat
+        .stepped(subdivision: .eighth, frames: 1),       // half time
+        .stepped(subdivision: .sixteenth, frames: 1),    // quarter time
+        .stepped(subdivision: .quarter, frames: 2),      // double
+        .stepped(subdivision: .quarter, frames: 4)       // quad
+    ]
+
+    /// Short label for the shuttle's picker.
+    public var displayName: String {
+        switch self {
+        case .continuous:
+            return "Live"
+        case .stepped(let subdivision, let frames):
+            return frames == 1 ? subdivision.rawValue : "\(subdivision.rawValue)×\(frames)"
+        }
+    }
+
+    /// A sentence for the tooltip, because "1/8×4" needs explaining once.
+    public var explanation: String {
+        switch self {
+        case .continuous:
+            return "Normal playback, retimed to the project rate."
+        case .stepped(let subdivision, let frames):
+            let plural = frames == 1 ? "frame" : "frames"
+            return "Advance \(frames) \(plural) every \(subdivision.rawValue) note, holding in between."
+        }
+    }
+
+    /// Beats between steps, or nil when playback is continuous.
+    public var beatsPerStep: Double? {
+        switch self {
+        case .continuous: nil
+        case .stepped(let subdivision, _): subdivision.beats
+        }
+    }
+
+    /// Frames advanced per step.
+    public var framesPerStep: Int {
+        switch self {
+        case .continuous: 0
+        case .stepped(_, let frames): frames
+        }
+    }
+}
+
 /// How a clip behaves when it reaches its end (SPEC 12).
 public enum LoopMode: String, CaseIterable, Codable, Sendable {
     /// Wrap back to the start and keep going.
@@ -83,6 +147,14 @@ public final class DVSourceNode: Node, DataEffectProvider {
 
     /// What happens at the end of the clip.
     public var loopMode: LoopMode = .loop
+
+    /// Whether playback runs with the render clock or steps on the musical one.
+    public var timing: PlaybackTiming = .continuous {
+        didSet { lastSteppedBoundary = nil }
+    }
+
+    /// The musical position of the last step taken, so each boundary steps once.
+    private var lastSteppedBoundary: Double?
 
     /// Direction of travel. Only ping-pong ever makes this negative.
     private(set) public var isPlayingBackwards = false
@@ -147,6 +219,36 @@ public final class DVSourceNode: Node, DataEffectProvider {
             self.mediaURL = nil
             return false
         }
+    }
+
+    /// Steps the playhead if a subdivision boundary has been crossed since the last one.
+    ///
+    /// Boundary-crossing rather than "is the phase near zero": at slow subdivisions a
+    /// phase test would fire for several frames running, and at fast ones it could
+    /// miss a boundary entirely between two render frames. Comparing which step
+    /// interval we are in does neither.
+    func advanceIfBoundaryCrossed(
+        totalBeats: Double, subdivision: Subdivision, frames: Int, frameCount: Int
+    ) {
+        let beatsPerStep = subdivision.beats
+        guard beatsPerStep > 0, frameCount > 0 else { return }
+
+        let currentInterval = (totalBeats / beatsPerStep).rounded(.down)
+        guard let previous = lastSteppedBoundary else {
+            // First frame after arming: take the current position as the reference
+            // rather than stepping immediately, so enabling it mid-bar does not jump.
+            lastSteppedBoundary = currentInterval
+            return
+        }
+        guard currentInterval != previous else { return }
+
+        // Step once per boundary crossed, so a late frame catches up rather than
+        // silently losing steps and drifting out of phase with the music.
+        let crossings = Int(abs(currentInterval - previous))
+        for _ in 0..<max(crossings, 1) {
+            advancePlayhead(by: Double(frames), frameCount: frameCount)
+        }
+        lastSteppedBoundary = currentInterval
     }
 
     /// Advances the playhead and applies the loop mode at the ends.
@@ -216,11 +318,28 @@ public final class DVSourceNode: Node, DataEffectProvider {
         guard let reader, let decoder, let metal = context else { return texture }
 
         if isPlaying {
-            // Advance at the source's own rate relative to the project rate, so a
-            // file is retimed to the clock rather than ad-hoc frame-dropped (SPEC 3).
-            let sourceFramesPerProjectFrame =
-                (reader.standard.frameRate / StandardDefinition.frameRate) * playbackSpeed
-            advancePlayhead(by: sourceFramesPerProjectFrame, frameCount: reader.frameCount)
+            switch timing {
+            case .continuous:
+                // Advance at the source's own rate relative to the project rate, so a
+                // file is retimed to the clock rather than ad-hoc frame-dropped (SPEC 3).
+                let sourceFramesPerProjectFrame =
+                    (reader.standard.frameRate / StandardDefinition.frameRate) * playbackSpeed
+                advancePlayhead(by: sourceFramesPerProjectFrame, frameCount: reader.frameCount)
+
+            case .stepped(let subdivision, let frames):
+                // Hold the frame, and jump only when a subdivision boundary is
+                // crossed. With the transport stopped there are no boundaries, so a
+                // stepped clip simply holds — which is right: its timing comes from
+                // the music, and there is no music.
+                if let position = renderContext.musicalPosition {
+                    advanceIfBoundaryCrossed(
+                        totalBeats: position.totalBeats,
+                        subdivision: subdivision,
+                        frames: frames,
+                        frameCount: reader.frameCount
+                    )
+                }
+            }
         }
 
         let frameIndex = reader.wrappedIndex(Int(playheadFrame))

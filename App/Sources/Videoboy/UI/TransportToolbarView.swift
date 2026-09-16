@@ -171,7 +171,11 @@ final class TransportToolbarView: NSView {
 
     /// A caption above its control, as the mockup groups them.
     private func group(_ caption: String, _ control: NSView) -> NSStackView {
-        let heading = Controls.label(caption, font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
+        // A caption that truncates stops naming its control, which is the only job
+        // it has. Whatever else in the row has to give, it is not this.
+        let heading = Controls.label(
+            caption, font: Theme.Font.tinyLabel,
+            color: Theme.Color.textTertiary, holdsWidth: true)
         let column = Controls.column([heading, control], spacing: 2)
         column.alignment = .leading
         return column

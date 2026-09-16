@@ -61,6 +61,9 @@ final class ShellController {
             body.onScrub = { [weak self] position in
                 self?.engine.sources[letter]?.seek(toNormalised: position)
             }
+            body.onTimingChanged = { [weak self] timing in
+                self?.engine.sources[letter]?.timing = timing
+            }
             body.onLoopModeChanged = { [weak self] mode in
                 self?.engine.sources[letter]?.loopMode = mode
                 Log.info(.dv, "source \(letter) loop mode is now \(mode.displayName)")
@@ -281,6 +284,19 @@ final class ShellController {
             self?.presentModulationMenu(code: code, badge: badge, from: view, bus: .two)
         }
 
+        shell.grid.panels.effectsOneBody.onEffectRemoved = { [weak self] name in
+            self?.removeEffect(name, bus: .one)
+        }
+        shell.grid.panels.effectsTwoBody.onEffectRemoved = { [weak self] name in
+            self?.removeEffect(name, bus: .two)
+        }
+        shell.grid.panels.effectsOneBody.onEffectAdded = { [weak self] name in
+            self?.addEffect(name, bus: .one)
+        }
+        shell.grid.panels.effectsTwoBody.onEffectAdded = { [weak self] name in
+            self?.addEffect(name, bus: .two)
+        }
+
         shell.grid.panels.effectsOneBody.onEffectToggled = { [weak self] name, isOn in
             // Bypassing is expressed as wet/dry, so there is one mechanism rather
             // than a separate enable flag threaded through every node.
@@ -337,6 +353,27 @@ final class ShellController {
 
     /// Which sub-mix an FX panel drives.
     private enum Bus { case one, two }
+
+    /// Takes an effect out of a chain: bypassed in the graph, card gone from the list.
+    ///
+    /// The graph itself is fixed, so "remove" means bypass — but the card really does
+    /// leave the list, and the chain's Add popup is how it comes back. Removing with
+    /// no way to restore would be a trap.
+    private func removeEffect(_ name: String, bus: Bus) {
+        guard let slots = Self.effectNameToSlot[name] else { return }
+        let slot = bus == .one ? slots.one : slots.two
+        engine.registry.setValue(0, slot: slot, code: .wetDry)
+        let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
+        panel.removeEffect(named: name)
+        Log.info(.graph, "\(name) removed from bus \(bus == .one ? "ONE" : "TWO")")
+    }
+
+    /// Puts a removed effect back, bypassed, at the end of the chain.
+    private func addEffect(_ name: String, bus: Bus) {
+        let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
+        panel.restoreEffect(named: name)
+        Log.info(.graph, "\(name) added to bus \(bus == .one ? "ONE" : "TWO")")
+    }
 
     /// Advances every armed indicator's pulse from the musical clock.
     ///
@@ -608,9 +645,18 @@ final class ShellController {
             }
         }
 
-        panels.subMixOneBody.preview.texture = engine.texture(for: GraphTopology.subMixOne)
+        // The END of each bus chain, not the bare crossfade.
+        //
+        // These previews were showing GraphTopology.subMixOne/Two, which is the
+        // crossfade BEFORE the composite codec, echo, feedback and the data stage. So
+        // turning on an effect changed PROGRAM while the sub-mix preview it belonged
+        // to sat there unchanged — which reads as the effect landing in the wrong
+        // window. A sub-mix preview must show that sub-mix as it will be mixed.
+        panels.subMixOneBody.preview.texture = engine.texture(for: Engine.busCodecOneSlot)
+            ?? engine.texture(for: GraphTopology.subMixOne)
         panels.subMixOneBody.preview.present()
-        panels.subMixTwoBody.preview.texture = engine.texture(for: GraphTopology.subMixTwo)
+        panels.subMixTwoBody.preview.texture = engine.texture(for: Engine.busCodecTwoSlot)
+            ?? engine.texture(for: GraphTopology.subMixTwo)
         panels.subMixTwoBody.preview.present()
 
         let program = engine.texture(for: GraphTopology.primary)

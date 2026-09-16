@@ -86,67 +86,86 @@ final class LibraryItemView: NSView {
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 }
 
+/// Which kind of asset a browser tab shows.
+enum AssetTab: String, CaseIterable {
+    case sources
+    case generators
+    case graphics
+    case clips
+    case images
+
+    var displayName: String {
+        switch self {
+        case .sources: "Sources"
+        case .generators: "Generators"
+        case .graphics: "Graphics"
+        case .clips: "Clips"
+        case .images: "Images"
+        }
+    }
+
+    /// What to say when a tab has nothing in it, so an empty grid is never just a
+    /// blank rectangle the user has to guess about.
+    var emptyMessage: String {
+        switch self {
+        case .sources: "No media in samples/. Drop files there and re-run scripts/make-fixtures.sh."
+        case .generators: "No generators available."
+        case .graphics: "SVG and vector sources are not built yet (SPEC §17)."
+        case .clips: "Clip bins are not built yet."
+        case .images: "Still-image sources are not built yet."
+        }
+    }
+}
+
 /// A library grid with a toolbar above it.
 final class LibraryPanelBody: NSView {
 
     private let grid = NSGridView()
 
+    /// Grids by tab, so switching a tab swaps content rather than rebuilding it.
+    private var gridsByTab: [AssetTab: NSView] = [:]
+    private var emptyLabelsByTab: [AssetTab: NSTextField] = [:]
+    private var currentTab: AssetTab = .sources
+    private let columns: Int
+
+    /// Called when an item is chosen. Nil until the app wires it.
+    var onItemChosen: ((LibraryItem) -> Void)?
+
     /// - Parameters:
-    ///   - items: what to show.
+    ///   - items: what the Sources tab shows.
     ///   - columns: 3 for the sub-mix libraries, 6 for the central browser.
     ///   - showsTabs: true for the asset browser, which is tabbed by asset kind.
     init(items: [LibraryItem], columns: Int, showsTabs: Bool) {
+        self.columns = columns
         super.init(frame: .zero)
 
         var header: [NSView] = []
+        var tabControl: NSSegmentedControl?
         if showsTabs {
-            // SPEC 14.2's browser tabs. Emulators appear once 18.2 ships.
-            header.append(Controls.segmented(
-                ["Sources", "Generators", "VSTs", "Graphics", "Clips", "Images"],
-                selected: 0, enabled: false
-            ))
+            let tabs = Controls.segmented(
+                AssetTab.allCases.map(\.displayName), selected: 0,
+                target: self, action: #selector(tabChanged(_:)))
+            tabControl = tabs
+            header.append(tabs)
         } else {
             header.append(Controls.popUp(["Page 1"], enabled: false))
         }
-        let search = Controls.searchField(placeholder: showsTabs ? "Search library…" : "Search…", enabled: false)
+        let search = Controls.searchField(
+            placeholder: showsTabs ? "Search library…" : "Search…", enabled: showsTabs)
+        search.target = self
+        search.action = #selector(searchChanged(_:))
         header.append(search)
         if showsTabs {
             header.append(Controls.button("Import…", enabled: false))
-            header.append(Controls.segmented(["⊞", "≣"], selected: 0, enabled: false))
         }
         let headerRow = Controls.row(header, spacing: 4)
         search.setContentHuggingPriority(.init(1), for: .horizontal)
         headerRow.translatesAutoresizingMaskIntoConstraints = false
         addSubview(headerRow)
 
-        // A uniform grid: fixed-width cells, tight gaps, left-aligned rows. Built
-        // from stacks rather than NSGridView because NSGridView sizes columns to
-        // their content, which is exactly the inconsistency being removed.
-        let itemsStack = NSStackView()
-        itemsStack.orientation = .vertical
-        itemsStack.alignment = .leading
-        itemsStack.spacing = Theme.Metrics.thumbnailGap
-
-        var row: [NSView] = []
-        for item in items {
-            row.append(LibraryItemView(item: item))
-            if row.count == columns {
-                itemsStack.addArrangedSubview(Controls.row(row, spacing: Theme.Metrics.thumbnailGap))
-                row = []
-            }
-        }
-        if !row.isEmpty {
-            // The final row is left-aligned, not stretched: padding it with spacers
-            // would space the real items out differently from every row above.
-            let rowStack = Controls.row(row + [Controls.spacer()], spacing: Theme.Metrics.thumbnailGap)
-            itemsStack.addArrangedSubview(rowStack)
-        }
-
         // A flipped document view keeps the grid anchored to the top of the panel.
         let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
-        itemsStack.translatesAutoresizingMaskIntoConstraints = false
-        document.addSubview(itemsStack)
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -154,6 +173,42 @@ final class LibraryPanelBody: NSView {
         scrollView.documentView = document
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
+
+        // Build every tab's grid up front and show one. The sets are small and this
+        // makes switching instant, which is what a tab strip implies.
+        let tabs: [AssetTab] = showsTabs ? AssetTab.allCases : [.sources]
+        for tab in tabs {
+            let grid = makeGrid(for: contents(of: tab, sources: items))
+            grid.translatesAutoresizingMaskIntoConstraints = false
+            grid.isHidden = tab != currentTab
+            document.addSubview(grid)
+            gridsByTab[tab] = grid
+
+            let empty = Controls.label(
+                tab.emptyMessage, font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
+            empty.translatesAutoresizingMaskIntoConstraints = false
+            empty.isHidden = tab != currentTab || !contents(of: tab, sources: items).isEmpty
+            empty.lineBreakMode = .byWordWrapping
+            empty.maximumNumberOfLines = 3
+            document.addSubview(empty)
+            emptyLabelsByTab[tab] = empty
+
+            NSLayoutConstraint.activate([
+                grid.topAnchor.constraint(equalTo: document.topAnchor),
+                grid.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+                grid.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor),
+                empty.topAnchor.constraint(equalTo: document.topAnchor, constant: 4),
+                empty.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 4),
+                empty.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -4)
+            ])
+        }
+
+        // The document's height follows whichever grid is showing.
+        if let first = gridsByTab[currentTab] {
+            documentHeight = document.heightAnchor.constraint(
+                greaterThanOrEqualTo: first.heightAnchor)
+            documentHeight?.isActive = true
+        }
 
         let padding = Theme.Metrics.panelBodyPadding
         NSLayoutConstraint.activate([
@@ -168,13 +223,82 @@ final class LibraryPanelBody: NSView {
 
             document.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             document.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            document.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-
-            itemsStack.topAnchor.constraint(equalTo: document.topAnchor),
-            itemsStack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
-            itemsStack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
-            itemsStack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor)
+            document.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor)
         ])
+
+        _ = tabControl
+    }
+
+    private var documentHeight: NSLayoutConstraint?
+
+    /// What each tab contains.
+    private func contents(of tab: AssetTab, sources: [LibraryItem]) -> [LibraryItem] {
+        switch tab {
+        case .sources:
+            return sources
+        case .generators:
+            // Every generator is real and assignable, so they are all available.
+            return GeneratorKind.allCases.map {
+                LibraryItem(name: $0.displayName, badge: "GEN", isAvailable: true)
+            }
+        case .graphics, .clips, .images:
+            // Empty on purpose; the tab says why rather than showing a blank box.
+            return []
+        }
+    }
+
+    /// Builds one uniform grid of items.
+    private func makeGrid(for items: [LibraryItem]) -> NSView {
+        let itemsStack = NSStackView()
+        itemsStack.orientation = .vertical
+        itemsStack.alignment = .leading
+        itemsStack.spacing = Theme.Metrics.thumbnailGap
+
+        var row: [NSView] = []
+        for item in items {
+            row.append(LibraryItemView(item: item))
+            if row.count == columns {
+                itemsStack.addArrangedSubview(Controls.row(row, spacing: Theme.Metrics.thumbnailGap))
+                row = []
+            }
+        }
+        if !row.isEmpty {
+            itemsStack.addArrangedSubview(
+                Controls.row(row + [Controls.spacer()], spacing: Theme.Metrics.thumbnailGap))
+        }
+        return itemsStack
+    }
+
+    @objc private func tabChanged(_ sender: NSSegmentedControl) {
+        let index = sender.selectedSegment
+        guard index >= 0, index < AssetTab.allCases.count else { return }
+        let tab = AssetTab.allCases[index]
+        guard tab != currentTab else { return }
+
+        gridsByTab[currentTab]?.isHidden = true
+        emptyLabelsByTab[currentTab]?.isHidden = true
+        currentTab = tab
+
+        let grid = gridsByTab[tab]
+        grid?.isHidden = false
+        // The empty message shows only when there is genuinely nothing to show.
+        let isEmpty = (grid as? NSStackView)?.arrangedSubviews.isEmpty ?? true
+        emptyLabelsByTab[tab]?.isHidden = !isEmpty
+
+        // Re-point the document's height at whichever grid is now visible.
+        documentHeight?.isActive = false
+        if let grid {
+            documentHeight = grid.superview?.heightAnchor.constraint(
+                greaterThanOrEqualTo: grid.heightAnchor)
+            documentHeight?.isActive = true
+        }
+        Log.info(.app, "asset browser showing \(tab.displayName)")
+    }
+
+    @objc private func searchChanged(_ sender: NSSearchField) {
+        // Filtering is not built; saying so beats silently ignoring what was typed.
+        guard !sender.stringValue.isEmpty else { return }
+        Log.info(.app, "library search is not built yet (typed: \(sender.stringValue))")
     }
 
     @available(*, unavailable)

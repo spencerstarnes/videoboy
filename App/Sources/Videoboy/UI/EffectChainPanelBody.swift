@@ -72,6 +72,12 @@ final class EffectChainPanelBody: NSView {
     /// Called when an effect's ✕ is pressed.
     var onEffectRemoved: ((String) -> Void)?
 
+    /// Called when an effect is added back from the Add popup.
+    var onEffectAdded: ((String) -> Void)?
+
+    /// Effects taken out of the chain, kept so they can be put back.
+    private var removedEffects: [EffectCardModel] = []
+
     init(effects: [EffectCardModel]) {
         self.effects = effects
         super.init(frame: .zero)
@@ -131,9 +137,15 @@ final class EffectChainPanelBody: NSView {
         for view in cardViews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
         cardViews.removeAll()
 
-        // Load / Save row stays at the top, above the layer stack.
+        // Add / Save row at the top, above the layer stack. The Add popup lists what
+        // has been removed, so ✕ is reversible rather than a one-way door.
+        let addPopUp = Controls.popUp(
+            ["Add effect…"] + removedEffects.map(\.name),
+            enabled: !removedEffects.isEmpty,
+            target: self, action: #selector(addEffectChosen(_:))
+        )
         let loadRow = Controls.row([
-            Controls.popUp(["Load Asset…"], enabled: false),
+            addPopUp,
             Controls.button("Save", enabled: false)
         ], spacing: 3)
         stack.addArrangedSubview(loadRow)
@@ -331,6 +343,31 @@ final class EffectChainPanelBody: NSView {
     @objc private func effectRemoved(_ sender: NSButton) {
         guard let name = sender.identifier?.rawValue else { return }
         onEffectRemoved?(name)
+    }
+
+    @objc private func addEffectChosen(_ sender: NSPopUpButton) {
+        // Item 0 is the prompt, not a choice.
+        guard sender.indexOfSelectedItem > 0 else { return }
+        let name = sender.titleOfSelectedItem ?? ""
+        onEffectAdded?(name)
+    }
+
+    /// Takes an effect's card out of the chain, remembering it for the Add popup.
+    func removeEffect(named name: String) {
+        guard let index = effects.firstIndex(where: { $0.name == name }) else { return }
+        removedEffects.append(effects.remove(at: index))
+        rebuild()
+    }
+
+    /// Puts a removed effect back at the end of the chain, bypassed.
+    func restoreEffect(named name: String) {
+        guard let index = removedEffects.firstIndex(where: { $0.name == name }) else { return }
+        var restored = removedEffects.remove(at: index)
+        restored = EffectCardModel(
+            name: restored.name, isEnabled: false,
+            isImplemented: restored.isImplemented, parameters: restored.parameters)
+        effects.append(restored)
+        rebuild()
     }
 
     /// Repaints a badge to show whether its parameter is currently driven.

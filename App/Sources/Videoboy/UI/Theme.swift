@@ -77,6 +77,9 @@ enum Theme {
         static let dragHandleWidth: CGFloat = 12
         /// Width of a numeric readout beside a fader.
         ///
+        /// Popups are `.small`, never `.mini`: a mini popup's text is genuinely
+        /// unreadable at a glance, and a selector you cannot read is not a control.
+        ///
         /// Fixed rather than fitted: a readout that resizes as its digits change
         /// makes the whole row twitch while a fader is being dragged, which is
         /// exactly when it needs to be readable.
@@ -148,7 +151,11 @@ enum Theme {
         /// A/B and C/D panels reclaimed the gutters that pay for it.
         static let columnWeights: [CGFloat] = [1.05, 2.0, 2.05, 2.0, 1.05]
         /// Row weights, top to bottom.
-        static let rowWeights: [CGFloat] = [1.05, 1.05, 0.6, 1.75, 0.55]
+        /// The preview rows are taller than the mockup's: the source panels now carry
+        /// a shuttle, a step-timing picker and a source selector under their preview,
+        /// and cramming those into the old height left every one of them too small to
+        /// read. The library row gives up the space — it is a grid and scrolls.
+        static let rowWeights: [CGFloat] = [1.25, 1.25, 0.6, 1.35, 0.55]
 
         /// Column weight of a folded-away column — just enough for its rail.
         static let railWeight: CGFloat = 0.14
@@ -233,11 +240,11 @@ enum Theme {
         /// Panel titles.
         static let panelTitle = NSFont.systemFont(ofSize: 11, weight: .medium)
         /// Small labels next to controls.
-        static let label = NSFont.systemFont(ofSize: 10, weight: .regular)
+        static let label = NSFont.systemFont(ofSize: 11, weight: .regular)
         /// Even smaller labels (mapping badges, param codes).
-        static let tinyLabel = NSFont.systemFont(ofSize: 9, weight: .regular)
+        static let tinyLabel = NSFont.systemFont(ofSize: 10, weight: .regular)
         /// Monospaced readouts: param codes, negotiated modes, fps.
-        static let mono = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .regular)
+        static let mono = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         /// The large tempo readout in the toolbar.
         static let tempo = NSFont.monospacedDigitSystemFont(ofSize: 17, weight: .medium)
     }

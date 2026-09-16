@@ -221,6 +221,105 @@ final class MIDIAndPlaybackTests: XCTestCase {
                        "it must hold the last frame, not wrap or blank")
     }
 
+    // MARK: - Step playback
+
+    func testSteppedPlaybackAdvancesOncePerBoundary() throws {
+        let node = try openSource()
+        let frameCount = node.frameCount
+        node.loopMode = .loop
+        node.seek(toNormalised: 0)
+
+        // One frame per beat.
+        let subdivision = Subdivision.quarter
+        // The first call establishes the reference rather than stepping, so enabling
+        // it part-way through a bar does not jump.
+        node.advanceIfBoundaryCrossed(
+            totalBeats: 0.3, subdivision: subdivision, frames: 1, frameCount: frameCount)
+        XCTAssertEqual(node.normalisedPosition, 0, accuracy: 1e-9, "arming must not step")
+
+        // Still inside beat 0: no step.
+        node.advanceIfBoundaryCrossed(
+            totalBeats: 0.9, subdivision: subdivision, frames: 1, frameCount: frameCount)
+        XCTAssertEqual(node.normalisedPosition, 0, accuracy: 1e-9, "no boundary crossed yet")
+
+        // Crossing into beat 1 steps exactly one frame.
+        node.advanceIfBoundaryCrossed(
+            totalBeats: 1.1, subdivision: subdivision, frames: 1, frameCount: frameCount)
+        XCTAssertEqual(
+            Int((node.normalisedPosition * Double(frameCount - 1)).rounded()), 1,
+            "crossing one boundary must advance exactly one frame")
+
+        // And again at the next beat.
+        node.advanceIfBoundaryCrossed(
+            totalBeats: 2.05, subdivision: subdivision, frames: 1, frameCount: frameCount)
+        XCTAssertEqual(
+            Int((node.normalisedPosition * Double(frameCount - 1)).rounded()), 2)
+    }
+
+    func testSteppedPlaybackCatchesUpRatherThanLosingSteps() throws {
+        let node = try openSource()
+        let frameCount = node.frameCount
+        node.seek(toNormalised: 0)
+
+        node.advanceIfBoundaryCrossed(
+            totalBeats: 0.0, subdivision: .quarter, frames: 1, frameCount: frameCount)
+        // A late render frame jumps three beats at once. All three steps must happen,
+        // or the clip drifts permanently out of phase with the music.
+        node.advanceIfBoundaryCrossed(
+            totalBeats: 3.2, subdivision: .quarter, frames: 1, frameCount: frameCount)
+        XCTAssertEqual(
+            Int((node.normalisedPosition * Double(frameCount - 1)).rounded()), 3,
+            "three boundaries crossed must advance three frames")
+    }
+
+    func testStepSizeMultipliesTheAdvance() throws {
+        let node = try openSource()
+        let frameCount = node.frameCount
+        node.seek(toNormalised: 0)
+
+        // Quad time: four frames per beat.
+        node.advanceIfBoundaryCrossed(
+            totalBeats: 0.0, subdivision: .quarter, frames: 4, frameCount: frameCount)
+        node.advanceIfBoundaryCrossed(
+            totalBeats: 1.1, subdivision: .quarter, frames: 4, frameCount: frameCount)
+        XCTAssertEqual(
+            Int((node.normalisedPosition * Double(frameCount - 1)).rounded()), 4)
+    }
+
+    func testSteppedPlaybackHoldsWithTheTransportStopped() throws {
+        let node = try openSource()
+        node.timing = .stepped(subdivision: .quarter, frames: 1)
+        node.isPlaying = true
+        node.seek(toNormalised: 0)
+
+        // No musical position means the transport is stopped. A stepped clip takes
+        // its timing from the music, so with no music it holds.
+        let context = RenderContext(frameIndex: 0, presentationTime: 0, musicalPosition: nil)
+        for _ in 0..<30 { _ = node.render(inputs: [], context: context) }
+        XCTAssertEqual(node.normalisedPosition, 0, accuracy: 1e-9)
+    }
+
+    func testPlaybackTimingPresetsAndLabels() {
+        XCTAssertEqual(PlaybackTiming.continuous.displayName, "Live")
+        XCTAssertNil(PlaybackTiming.continuous.beatsPerStep)
+        XCTAssertEqual(PlaybackTiming.continuous.framesPerStep, 0)
+
+        let onePerBeat = PlaybackTiming.stepped(subdivision: .quarter, frames: 1)
+        XCTAssertEqual(onePerBeat.displayName, "1/4")
+        XCTAssertEqual(onePerBeat.beatsPerStep, 1.0)
+        XCTAssertEqual(onePerBeat.framesPerStep, 1)
+
+        let quad = PlaybackTiming.stepped(subdivision: .quarter, frames: 4)
+        XCTAssertEqual(quad.displayName, "1/4×4")
+
+        // Every preset must explain itself, since "1/8×4" needs saying once.
+        for preset in PlaybackTiming.presets {
+            XCTAssertFalse(preset.displayName.isEmpty)
+            XCTAssertFalse(preset.explanation.isEmpty)
+        }
+        XCTAssertEqual(PlaybackTiming.presets.count, 7)
+    }
+
     func testLoopModeNames() {
         for mode in LoopMode.allCases {
             XCTAssertFalse(mode.displayName.isEmpty)

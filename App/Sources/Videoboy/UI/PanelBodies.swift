@@ -28,6 +28,7 @@ final class SourcePanelBody: NSView {
 
     private var generatorPopUp: NSPopUpButton?
     private var scrubFader: VBFader?
+    private var timingPopUp: NSPopUpButton?
 
     /// Loads a file into this channel. Wired by the app; nil until then.
     var onLoadRequested: (() -> Void)?
@@ -46,6 +47,8 @@ final class SourcePanelBody: NSView {
     var onScrub: ((Double) -> Void)?
     /// Loop behaviour changed.
     var onLoopModeChanged: ((LoopMode) -> Void)?
+    /// Playback timing changed — live, or stepped on a subdivision.
+    var onTimingChanged: ((PlaybackTiming) -> Void)?
 
     init(channel: String) {
         self.channel = channel
@@ -87,7 +90,28 @@ final class SourcePanelBody: NSView {
         )
         self.generatorPopUp = generatorPopUp
 
-        let sourceRow = Controls.row([load, generatorPopUp], spacing: 4)
+        // Step playback: hold each frame until the next musical subdivision, so a
+        // clip becomes a slideshow locked to the beat. "Live" is ordinary playback.
+        let timingPopUp = Controls.popUp(
+            ["Live"] + PlaybackTiming.presets.map(\.displayName),
+            target: self, action: #selector(timingChanged(_:))
+        )
+        timingPopUp.toolTip = "Playback timing — hold each frame until the next beat subdivision"
+        for (index, preset) in PlaybackTiming.presets.enumerated() {
+            timingPopUp.item(at: index + 1)?.toolTip = preset.explanation
+        }
+        self.timingPopUp = timingPopUp
+
+        let stepRow = Controls.row([
+            Controls.label("Step", font: Theme.Font.tinyLabel,
+                           color: Theme.Color.textTertiary, holdsWidth: true),
+            timingPopUp
+        ], spacing: 4)
+
+        let sourceRow = Controls.column([
+            Controls.row([load, generatorPopUp], spacing: 4),
+            stepRow
+        ], spacing: 3)
         sourceRow.translatesAutoresizingMaskIntoConstraints = false
         addSubview(sourceRow)
         let loadRowForConstraints = sourceRow
@@ -134,6 +158,16 @@ final class SourcePanelBody: NSView {
 
     @objc private func scrubbed(_ sender: VBFader) {
         onScrub?(sender.value)
+    }
+
+    @objc private func timingChanged(_ sender: NSPopUpButton) {
+        // Item 0 is Live; the rest are the step presets in order.
+        let index = sender.indexOfSelectedItem
+        let timing: PlaybackTiming = (index <= 0 || index - 1 >= PlaybackTiming.presets.count)
+            ? .continuous
+            : PlaybackTiming.presets[index - 1]
+        Log.info(.dv, "playback timing on \(channel): \(timing.displayName)")
+        onTimingChanged?(timing)
     }
 
     @objc private func loopModeChanged(_ sender: NSSegmentedControl) {
@@ -193,11 +227,11 @@ final class PreviewPanelBody: NSView {
             )
             blendPopUp = popUp
 
-            // No separate opacity control: the crossfader in the fader panel below
-            // IS the opacity for this composite. Two controls doing one job is what
-            // made this confusing — and the fader is the one a hand reaches for.
-            let hint = Controls.label(
-                "fader sets opacity", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
+            // No separate opacity control: the crossfader in the fader panel below IS
+            // the opacity for this composite. Two controls doing one job is what made
+            // this confusing. The note lives in the tooltip rather than the row,
+            // where it was stealing width from the two popups that matter.
+            popUp.toolTip = "Blend mode. The crossfader below sets this layer's opacity."
 
             // The bus interchange codec. A mixed bus is a texture with no bitstream,
             // so data effects on it are only possible if it is re-encoded first —
@@ -215,8 +249,7 @@ final class PreviewPanelBody: NSView {
                 Controls.label("Data", font: Theme.Font.tinyLabel,
                                color: Theme.Color.textTertiary, holdsWidth: true),
                 interchange,
-                Controls.spacer(),
-                hint
+                Controls.spacer()
             ], spacing: 4)
             row.translatesAutoresizingMaskIntoConstraints = false
             addSubview(row)

@@ -29,9 +29,18 @@ enum Controls {
         field.textColor = color
         field.lineBreakMode = .byTruncatingTail
         if holdsWidth {
-            // Short, load-bearing text — a section heading, a bus letter — must not be
-            // what gets sacrificed when a row runs out of room. Something longer
-            // beside it should truncate first.
+            // Short, load-bearing text — a section heading, a bus letter, a numeric
+            // readout — must never be what gets sacrificed when a row runs out of
+            // room. A caption that truncates stops naming its control, which is the
+            // only job it has.
+            //
+            // This PINS the width rather than raising the priority. Compression
+            // resistance, even at .required, does not reliably survive inside an
+            // NSStackView — it silently loses and the text truncates anyway. An
+            // explicit constraint is the thing that actually holds.
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.widthAnchor.constraint(
+                equalToConstant: ceil(field.intrinsicContentSize.width)).isActive = true
             field.setContentCompressionResistancePriority(.required, for: .horizontal)
             field.setContentHuggingPriority(.required, for: .horizontal)
         }
@@ -60,6 +69,9 @@ enum Controls {
     static func popUp(_ items: [String], enabled: Bool = true, target: AnyObject? = nil, action: Selector? = nil) -> NSPopUpButton {
         let popUp = NSPopUpButton(frame: .zero, pullsDown: false)
         popUp.addItems(withTitles: items)
+        // `.small`, never `.mini`. A mini popup's text cannot be read at a glance on
+        // a control surface, and a selector you cannot read is not a control — it is
+        // a place where a control should be.
         popUp.controlSize = .small
         popUp.font = Theme.Font.label
         popUp.isEnabled = enabled
@@ -72,15 +84,19 @@ enum Controls {
     static func segmented(_ labels: [String], selected: Int = 0, enabled: Bool = true, target: AnyObject? = nil, action: Selector? = nil) -> NSSegmentedControl {
         let control = NSSegmentedControl(labels: labels, trackingMode: .selectOne, target: target, action: action)
         control.controlSize = .small
-        control.font = Theme.Font.tinyLabel
+        control.font = Theme.Font.label
         control.selectedSegment = selected
         control.isEnabled = enabled
         return control
     }
 
     /// A boolean switch, used for effect enables and the settings-bar toggles.
+    ///
+    /// `VBSwitch`, not `NSSwitch`: press one and sweep the pointer across its
+    /// neighbours to set them all, as Blender does. Building it here means every
+    /// switch in the app gets the behaviour rather than one panel having it.
     static func toggle(on: Bool = false, enabled: Bool = true, target: AnyObject? = nil, action: Selector? = nil) -> NSSwitch {
-        let control = NSSwitch()
+        let control = VBSwitch()
         control.state = on ? .on : .off
         control.isEnabled = enabled
         control.controlSize = .mini
