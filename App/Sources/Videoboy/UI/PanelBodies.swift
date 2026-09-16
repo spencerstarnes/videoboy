@@ -91,26 +91,78 @@ final class SourcePanelBody: NSView {
 
 // MARK: - Preview-only panels
 
-/// Sub Mix ONE / TWO / Program: a large 4:3 preview and nothing else.
+/// Sub Mix ONE / TWO / Program: a large 4:3 preview, optionally with the blend
+/// controls for the composite it represents (SPEC 14.2).
 final class PreviewPanelBody: NSView {
 
     let preview: MetalPreviewView
 
-    init(caption: String) {
+    /// Called when the blend mode changes, with the chosen mode.
+    var onBlendModeChanged: ((BlendMode) -> Void)?
+    /// Called when the layer opacity changes, 0...1.
+    var onLayerOpacityChanged: ((Double) -> Void)?
+
+    private var blendPopUp: NSPopUpButton?
+
+    /// - Parameter showsBlendControls: true for the composites that carry a blend
+    ///   mode — the two sub-mixes and the program.
+    init(caption: String, showsBlendControls: Bool = false) {
         self.preview = MetalPreviewView(caption: caption)
         super.init(frame: .zero)
         preview.translatesAutoresizingMaskIntoConstraints = false
         addSubview(preview)
+
+        var bottomAnchorTarget = bottomAnchor
+        var bottomConstant: CGFloat = -2
+
+        if showsBlendControls {
+            let popUp = Controls.popUp(
+                BlendMode.allCases.map(\.displayName),
+                target: self, action: #selector(blendModeChanged(_:))
+            )
+            blendPopUp = popUp
+            let opacity = Controls.slider(
+                value: 1.0, target: self, action: #selector(opacityChanged(_:)))
+            opacity.setContentHuggingPriority(.init(1), for: .horizontal)
+
+            let row = Controls.row([
+                Controls.label("Blend", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary),
+                popUp,
+                Controls.label("Opacity", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary),
+                opacity
+            ], spacing: 4)
+            row.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(row)
+
+            NSLayoutConstraint.activate([
+                row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Metrics.panelBodyPadding),
+                row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Metrics.panelBodyPadding),
+                row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3)
+            ])
+            bottomAnchorTarget = row.topAnchor
+            bottomConstant = -3
+        }
+
         NSLayoutConstraint.activate([
             preview.topAnchor.constraint(equalTo: topAnchor, constant: 2),
             preview.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             preview.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
-            preview.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2)
+            preview.bottomAnchor.constraint(equalTo: bottomAnchorTarget, constant: bottomConstant)
         ])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+
+    @objc private func blendModeChanged(_ sender: NSPopUpButton) {
+        let mode = BlendMode.allCases[min(sender.indexOfSelectedItem, BlendMode.allCases.count - 1)]
+        Log.info(.graph, "blend mode set to \(mode.displayName)")
+        onBlendModeChanged?(mode)
+    }
+
+    @objc private func opacityChanged(_ sender: NSSlider) {
+        onLayerOpacityChanged?(sender.doubleValue)
+    }
 }
 
 // MARK: - Faders

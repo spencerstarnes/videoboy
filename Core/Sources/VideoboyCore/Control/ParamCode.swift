@@ -94,6 +94,10 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case crossfadeOneTwo = "63A"
     /// Playback speed of a source, where 1.0 is nominal.
     case playbackSpeed = "64A"
+    /// Layer blend mode of a composite (SPEC 12).
+    case blendMode = "65A"
+    /// Per-layer opacity of the blend layer in a composite.
+    case layerOpacity = "66A"
 
     // MARK: Composite emulation (7xA)
 
@@ -147,6 +151,8 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .crossfadeCD: "C/D crossfade"
         case .crossfadeOneTwo: "ONE/TWO crossfade"
         case .playbackSpeed: "speed"
+        case .blendMode: "blend mode"
+        case .layerOpacity: "layer opacity"
         case .compositeCrawl: "dot crawl"
         case .chromaBleed: "chroma bleed"
         case .tbcWobble: "TBC wobble"

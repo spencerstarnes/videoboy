@@ -81,10 +81,10 @@ Detail: SPEC §9 (composite/NTSC), §10 (capture + feedback), §11 (CRT features
 ## Phase 4+ — Backlog (post-MVP; do not start without explicit go-ahead)
 Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 - [ ] Generators + transport LFO (SPEC §6A) and audio-reactivity bus (§4c, §13).
-- [ ] ISF host (parser → Metal) + FFGL (SPEC §8); MX-1 effect set; CI/AU passthrough.
+- [ ] ISF host (parser → Metal) + FFGL (SPEC §8); CI/AU passthrough. **MX-1 effect set is done.**
 - [ ] Clean Core Text character generator + period preset (SPEC §18.1).
 - [ ] Emulated titler library — out-of-process GPL libretro host, save-state landing, genlock key (SPEC §18.2).
-- [ ] NTSC scopes (§19); SVG/PS1 source (§17); IP in/out (§6, §15); discrete A/B/C/D recording (§15); routing/send panel; full four-channel mix (C/D→TWO, layer compositing).
+- [ ] NTSC scopes (§19); SVG/PS1 source (§17); IP in/out (§6, §15); discrete A/B/C/D recording (§15); routing/send panel. **Full four-channel mix (C/D→TWO, layer compositing) is done.**
 - [ ] Optional: expose PRIMARY (and the wedge sources) over Syphon so the app can also feed VDMX/TouchDesigner rigs.
 
 ## Backlog notes / deferred ideas
@@ -108,12 +108,12 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   narrow widths (SPEC 14.4 defers density tuning, so this is expected, not a defect).
 - **MPEG bitstream corruptor.** SPEC 5 wants frame-drop / motion-vector / reference-hold
   alongside the DV DIF corruptor, sharing infrastructure but a separate module.
-- **Bus FX on Sub Mix TWO.** The composite/echo/feedback chain is built on ONE only;
-  TWO's panel shows the same effects disabled.
 - **External feedback through the physical loop.** `FeedbackNode` accepts a captured
   frame as its history (input slot 1) and the round trip is measured, but the capture
   is not yet routed into that slot live. Internal feedback works.
-- **MX-1 effect set** (freeze, negative, B&W, mosaic, posterize, flip/mirror) and the
-  Core Image passthrough from SPEC 9 — trivial shaders, not yet written.
+- **Core Image / AU passthrough** from SPEC 9 — enumerate the useful CI filters and
+  expose the video-rate ones as mappable modules. Not started.
+- **MX-1 effects are not in a chain yet.** `MX1EffectNode` exists and is tested, but
+  it is not instantiated in the engine's graph, so there is no UI for it.
 - **Overscan is a toggle, not a continuous control.** The 82A parameter exists and the
   preview overlay reads it; the settings bar only offers on/off.

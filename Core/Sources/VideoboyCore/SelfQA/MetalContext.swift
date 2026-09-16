@@ -315,6 +315,144 @@ enum ShaderSource {
         float4 b = sourceB.sample(linearSampler, in.uv);
         return mix(a, b, clamp(mixAmount, 0.0, 1.0));
     }
+
+    // ---------------------------------------------------------------------------
+    // The MX-1 effect set (SPEC 9).
+    //
+    // SPEC 9 is blunt that these are "trivial shaders" and not where the analog
+    // magic lives — that is the composite path. They are here because a video mixer
+    // is expected to have them, and because they are cheap. Nothing subtle is
+    // happening in this function and nothing should be added to it that is.
+    // ---------------------------------------------------------------------------
+
+    struct MX1Params {
+        int mode;
+        float amount;   // 0..1, meaning depends on the mode
+        float width;
+        float height;
+    };
+
+    fragment float4 mx1_fragment(VertexOut in [[stage_in]],
+                                 texture2d<float> source [[texture(0)]],
+                                 constant MX1Params &p [[buffer(0)]]) {
+        constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+        constexpr sampler pointSampler(filter::nearest, address::clamp_to_edge);
+
+        float2 uv = in.uv;
+
+        // Geometry modes change where the sample comes from.
+        switch (p.mode) {
+            case 4: uv.x = 1.0 - uv.x; break;                       // mirror (flip X)
+            case 5: uv.y = 1.0 - uv.y; break;                       // flip (flip Y)
+            case 6: uv = float2(1.0 - uv.x, 1.0 - uv.y); break;     // rotate 180
+            case 2: {                                                // mosaic
+                // Block size grows with amount. One pixel at zero means "off".
+                float blocks = mix(float(p.width), 4.0, clamp(p.amount, 0.0, 1.0));
+                float2 cell = float2(max(blocks, 1.0), max(blocks * p.height / p.width, 1.0));
+                uv = (floor(uv * cell) + 0.5) / cell;
+                break;
+            }
+            default: break;
+        }
+
+        float3 c = (p.mode == 2 ? source.sample(pointSampler, uv)
+                                : source.sample(linearSampler, uv)).rgb;
+
+        // Colour modes change the sampled value.
+        switch (p.mode) {
+            case 0: c = 1.0 - c; break;                              // negative
+            case 1: {                                                // black and white
+                float y = dot(c, float3(0.299, 0.587, 0.114));
+                c = mix(c, float3(y), clamp(p.amount, 0.0, 1.0));
+                break;
+            }
+            case 3: {                                                // posterize / paint
+                // Two levels at full amount, 32 at none.
+                float levels = mix(32.0, 2.0, clamp(p.amount, 0.0, 1.0));
+                c = floor(c * levels + 0.5) / levels;
+                break;
+            }
+            default: break;
+        }
+
+        return float4(clamp(c, 0.0, 1.0), 1.0);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Layer compositing (SPEC 12).
+    //
+    // ONE is A over B, TWO is C over D, PRIMARY is ONE over TWO. Each composite has
+    // a blend mode and a per-layer opacity, and the fader still crossfades between
+    // the two layers — so the fader and the blend mode are independent controls,
+    // which is what makes "screen at 40%" expressible.
+    //
+    // The mode numbers here must match the BlendMode enum in Swift. They are a
+    // contiguous range so the Swift side can map a 0..1 parameter onto them.
+    // ---------------------------------------------------------------------------
+
+    struct BlendParams {
+        float mixAmount;  // the crossfader, 0 = all base, 1 = all blend
+        float opacity;    // per-layer opacity of the blend layer
+        int mode;         // which blend function
+    };
+
+    static inline float3 blendChannelwise(int mode, float3 base, float3 blend) {
+        switch (mode) {
+            case 0:  return blend;                                   // normal
+            case 1:  return base * blend;                            // multiply
+            case 2:  return 1.0 - (1.0 - base) * (1.0 - blend);      // screen
+            case 3:  // overlay — multiply on dark base, screen on light
+                return select(1.0 - 2.0 * (1.0 - base) * (1.0 - blend),
+                              2.0 * base * blend,
+                              base < 0.5);
+            case 4:  return max(base, blend);                        // lighten
+            case 5:  return min(base, blend);                        // darken
+            case 6:  return abs(base - blend);                       // difference
+            case 7:  return min(base + blend, 1.0);                  // add
+            case 8:  return max(base - blend, 0.0);                  // subtract
+            case 9:  // colour dodge — brighten base by blend
+                return select(min(base / max(1.0 - blend, 1e-4), 1.0),
+                              float3(1.0),
+                              blend >= 1.0);
+            case 10: // colour burn — darken base by blend
+                return select(1.0 - min((1.0 - base) / max(blend, 1e-4), 1.0),
+                              float3(0.0),
+                              blend <= 0.0);
+            case 11: // hard light — overlay with the layers swapped
+                return select(1.0 - 2.0 * (1.0 - base) * (1.0 - blend),
+                              2.0 * base * blend,
+                              blend < 0.5);
+            case 12: { // soft light — a gentler overlay
+                float3 d = select(sqrt(base), ((16.0 * base - 12.0) * base + 4.0) * base,
+                                  base < 0.25);
+                return select(base + (2.0 * blend - 1.0) * (d - base),
+                              base - (1.0 - 2.0 * blend) * base * (1.0 - base),
+                              blend < 0.5);
+            }
+            default: return blend;
+        }
+    }
+
+    fragment float4 composite_blend_fragment(VertexOut in [[stage_in]],
+                                             texture2d<float> baseLayer [[texture(0)]],
+                                             texture2d<float> blendLayer [[texture(1)]],
+                                             constant BlendParams &p [[buffer(0)]]) {
+        constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+        float3 base = baseLayer.sample(linearSampler, in.uv).rgb;
+        float3 blend = blendLayer.sample(linearSampler, in.uv).rgb;
+
+        float3 blended = clamp(blendChannelwise(p.mode, base, blend), 0.0, 1.0);
+
+        // Opacity first: how much of the blend result stands in for the base.
+        float3 withOpacity = mix(base, blended, clamp(p.opacity, 0.0, 1.0));
+
+        // Then the crossfader travels from the bare base to that composited result.
+        // Keeping the two separate is what makes "screen at 40% opacity, fader at
+        // 70%" a thing you can express — one control is the look, the other is how
+        // far the fader has been pushed.
+        float3 result = mix(base, withOpacity, clamp(p.mixAmount, 0.0, 1.0));
+        return float4(clamp(result, 0.0, 1.0), 1.0);
+    }
     """
 }
 
@@ -336,6 +474,10 @@ public final class MetalContext {
     public let crossfadePipeline: MTLRenderPipelineState
     /// NTSC composite encode/decode round trip.
     public let compositePipeline: MTLRenderPipelineState
+    /// Layer compositing with a blend mode and per-layer opacity.
+    public let blendPipeline: MTLRenderPipelineState
+    /// The MX-1 effect set: negative, B&W, mosaic, posterize, flip/mirror.
+    public let mx1Pipeline: MTLRenderPipelineState
     /// Echo/trails: blends a frame with the decaying history behind it.
     public let echoPipeline: MTLRenderPipelineState
     /// Feedback: the previous output, transformed, mixed back in.
@@ -379,6 +521,8 @@ public final class MetalContext {
         guard let blit = makePipeline(vertex: "fullscreen_vertex", fragment: "blit_fragment"),
               let crossfade = makePipeline(vertex: "fullscreen_vertex", fragment: "crossfade_fragment"),
               let composite = makePipeline(vertex: "fullscreen_vertex", fragment: "composite_fragment"),
+              let blend = makePipeline(vertex: "fullscreen_vertex", fragment: "composite_blend_fragment"),
+              let mx1 = makePipeline(vertex: "fullscreen_vertex", fragment: "mx1_fragment"),
               let echo = makePipeline(vertex: "fullscreen_vertex", fragment: "echo_fragment"),
               let feedback = makePipeline(vertex: "fullscreen_vertex", fragment: "feedback_fragment") else {
             return nil
@@ -390,6 +534,8 @@ public final class MetalContext {
         self.blitPipeline = blit
         self.crossfadePipeline = crossfade
         self.compositePipeline = composite
+        self.blendPipeline = blend
+        self.mx1Pipeline = mx1
         self.echoPipeline = echo
         self.feedbackPipeline = feedback
         Log.info(.render, "Metal ready on \(device.name)")

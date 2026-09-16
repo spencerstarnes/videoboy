@@ -28,6 +28,7 @@ final class ShellController {
         self.engine = engine
         wireSources()
         wireFaders()
+        wireBlendControls()
         wireEffectChains()
         wireToolbar()
         wireSettingsBar()
@@ -89,6 +90,26 @@ final class ShellController {
         alert.runModal()
     }
 
+    /// Wires the blend mode and layer opacity of the three composites (SPEC 12).
+    private func wireBlendControls() {
+        let panels = shell.grid.panels
+        let composites: [(body: PreviewPanelBody, slot: String)] = [
+            (panels.subMixOneBody, GraphTopology.subMixOne),
+            (panels.subMixTwoBody, GraphTopology.subMixTwo),
+            (panels.programBody, GraphTopology.primary)
+        ]
+        for composite in composites {
+            composite.body.onBlendModeChanged = { [weak self] mode in
+                self?.engine.registry.setValue(
+                    mode.normalisedPosition, slot: composite.slot, code: .blendMode)
+            }
+            composite.body.onLayerOpacityChanged = { [weak self] opacity in
+                self?.engine.registry.setValue(
+                    opacity, slot: composite.slot, code: .layerOpacity)
+            }
+        }
+    }
+
     private func wireFaders() {
         let panels = shell.grid.panels
         // Each fader writes straight into the registry, so a MIDI move and a mouse
@@ -134,6 +155,36 @@ final class ShellController {
         .feedbackThreshold: Engine.feedbackSlot
     ]
 
+    /// Which slot each param code in the Sub Mix 2 chain belongs to.
+    private static let subMixTwoSlots: [ParamCode: String] = [
+        .corruptAmount: GraphTopology.sourceC,
+        .corruptMode: GraphTopology.sourceC,
+        .corruptRate: GraphTopology.sourceC,
+        .compositePath: Engine.compositeTwoSlot,
+        .compositeCrawl: Engine.compositeTwoSlot,
+        .chromaBleed: Engine.compositeTwoSlot,
+        .lumaBandwidth: Engine.compositeTwoSlot,
+        .tbcWobble: Engine.compositeTwoSlot,
+        .headSwitchingNoise: Engine.compositeTwoSlot,
+        .chromaSubsampling: Engine.compositeTwoSlot,
+        .compositeGeneration: Engine.compositeTwoSlot,
+        .echoDecay: Engine.echoTwoSlot,
+        .trailLength: Engine.echoTwoSlot,
+        .echoThreshold: Engine.echoTwoSlot,
+        .feedbackGain: Engine.feedbackTwoSlot,
+        .feedbackDelayFrames: Engine.feedbackTwoSlot,
+        .feedbackZoom: Engine.feedbackTwoSlot,
+        .feedbackRotate: Engine.feedbackTwoSlot,
+        .feedbackThreshold: Engine.feedbackTwoSlot
+    ]
+
+    /// Effect card names to the slot they bypass, per bus.
+    private static let effectNameToSlot: [String: (one: String, two: String)] = [
+        "Composite · NTSC": (Engine.compositeSlot, Engine.compositeTwoSlot),
+        "Echo / Trails": (Engine.echoSlot, Engine.echoTwoSlot),
+        "Feedback": (Engine.feedbackSlot, Engine.feedbackTwoSlot)
+    ]
+
     private func wireEffectChains() {
         shell.grid.panels.effectsOneBody.onParameterChanged = { [weak self] code, value in
             guard let self, let parameter = ParamCode(rawValue: code) else { return }
@@ -148,20 +199,36 @@ final class ShellController {
         }
 
         shell.grid.panels.effectsOneBody.onEffectToggled = { [weak self] name, isOn in
-            guard let self else { return }
             // Bypassing is expressed as wet/dry, so there is one mechanism rather
             // than a separate enable flag threaded through every node.
-            let slot: String?
-            switch name {
-            case "Composite · NTSC": slot = Engine.compositeSlot
-            case "Echo / Trails": slot = Engine.echoSlot
-            case "Feedback": slot = Engine.feedbackSlot
-            default: slot = nil
-            }
-            guard let slot else { return }
-            self.engine.registry.setValue(isOn ? 1 : 0, slot: slot, code: .wetDry)
-            Log.info(.app, "\(name) \(isOn ? "enabled" : "bypassed")")
+            self?.setEffectEnabled(name, isOn, bus: .one)
         }
+
+        // The same chain on TWO, driving its own node instances.
+        shell.grid.panels.effectsTwoBody.onParameterChanged = { [weak self] code, value in
+            guard let self, let parameter = ParamCode(rawValue: code) else { return }
+            guard let slot = Self.subMixTwoSlots[parameter] else {
+                Log.warn(.param, "no slot is registered for param code \(code) on bus TWO; ignoring")
+                return
+            }
+            guard let declared = self.engine.graph.nodes[slot]?.parameters
+                .first(where: { $0.code == parameter }) else { return }
+            self.engine.registry.setValue(declared.denormalise(value), slot: slot, code: parameter)
+        }
+        shell.grid.panels.effectsTwoBody.onEffectToggled = { [weak self] name, isOn in
+            self?.setEffectEnabled(name, isOn, bus: .two)
+        }
+    }
+
+    /// Which sub-mix an FX panel drives.
+    private enum Bus { case one, two }
+
+    /// Enables or bypasses a named effect on one of the buses.
+    private func setEffectEnabled(_ name: String, _ isOn: Bool, bus: Bus) {
+        guard let slots = Self.effectNameToSlot[name] else { return }
+        let slot = bus == .one ? slots.one : slots.two
+        engine.registry.setValue(isOn ? 1 : 0, slot: slot, code: .wetDry)
+        Log.info(.app, "\(name) on \(bus == .one ? "ONE" : "TWO") \(isOn ? "enabled" : "bypassed")")
     }
 
     private func wireToolbar() {

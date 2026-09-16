@@ -26,6 +26,7 @@ selfqa/out/**/*.raw
 !selfqa/out/phase-3/composite-codec/*.png
 !selfqa/out/phase-3/analog-chain/*.png
 !selfqa/out/phase-3/feedback-latency/*.png
+!selfqa/out/phase-4/blend-modes/*.png
 
 # Local device identity (machine-specific)
 config/devices.json

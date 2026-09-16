@@ -1,5 +1,5 @@
 //
-//  CrossfadeNode.swift — the two-input mixer used for every bus (SPEC 12).
+//  CrossfadeNode.swift — the two-input layer compositor used for every bus (SPEC 12).
 //
 //  Purpose : ONE is A over B, TWO is C over D, PRIMARY is ONE over TWO. All three
 //            are this same node, which is why the routing can be fixed and the
@@ -8,14 +8,23 @@
 //  Outputs : the mixed texture.
 //  Connects: MetalContext's crossfade pipeline — the same one the self-QA harness
 //            uses, so an offscreen check and the live output cannot diverge.
-//  Extend  : Photoshop-style blend modes (SPEC 12) become additional pipelines
-//            selected by a parameter; the node shape does not change.
+//  Extend  : a new blend mode is a case in `BlendMode` plus a branch in the shader;
+//            the node does not change.
 //
-//  Parameters (SPEC 13): one of 61A / 62A / 63A depending on which bus this is.
+//  Parameters (SPEC 13): one of 61A / 62A / 63A depending on which bus this is,
+//  plus 65A blend mode and 66A layer opacity.
 //
 
 import Foundation
 import Metal
+
+/// The parameter block handed to the blend shader. Layout must match `BlendParams`
+/// in the Metal source exactly.
+private struct BlendParams {
+    var mixAmount: Float
+    var opacity: Float
+    var mode: Int32
+}
 
 /// Mixes two inputs by a single position parameter.
 public final class CrossfadeNode: Node {
@@ -31,12 +40,20 @@ public final class CrossfadeNode: Node {
     public var parameters: [Parameter] {
         [
             Parameter(code: positionCode, range: 0...1, defaultValue: 0.5),
-            Parameter(code: .opacity, range: 0...1, defaultValue: 1)
+            Parameter(code: .opacity, range: 0...1, defaultValue: 1),
+            Parameter(code: .blendMode, range: 0...1, defaultValue: 0),
+            Parameter(code: .layerOpacity, range: 0...1, defaultValue: 1)
         ]
     }
 
     /// 0 is entirely input 0, 1 is entirely input 1.
     public var position: Double = 0.5
+
+    /// How the upper layer combines with the lower one.
+    public var blendMode: BlendMode = .normal
+
+    /// Per-layer opacity of the upper layer.
+    public var layerOpacity: Double = 1.0
 
     private let context: MetalContext?
     private var target: MTLTexture?
@@ -76,11 +93,15 @@ public final class CrossfadeNode: Node {
             return target
         }
         encoder.label = identifier
-        encoder.setRenderPipelineState(metal.crossfadePipeline)
+        encoder.setRenderPipelineState(metal.blendPipeline)
         encoder.setFragmentTexture(sourceA, index: 0)
         encoder.setFragmentTexture(sourceB, index: 1)
-        var mix = Float(min(max(position, 0), 1))
-        encoder.setFragmentBytes(&mix, length: MemoryLayout<Float>.size, index: 0)
+        var params = BlendParams(
+            mixAmount: Float(min(max(position, 0), 1)),
+            opacity: Float(min(max(layerOpacity, 0), 1)),
+            mode: Int32(blendMode.rawValue)
+        )
+        encoder.setFragmentBytes(&params, length: MemoryLayout<BlendParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         commandBuffer.commit()
@@ -88,10 +109,16 @@ public final class CrossfadeNode: Node {
         return target
     }
 
-    /// Pulls this node's position from the registry.
+    /// Pulls this node's settings from the registry.
     public func applyParameters(from registry: ParamRegistry) {
         if let value = registry.value(slot: identifier, code: positionCode) {
             position = value
+        }
+        if let value = registry.value(slot: identifier, code: .blendMode) {
+            blendMode = BlendMode.from(normalised: value)
+        }
+        if let value = registry.value(slot: identifier, code: .layerOpacity) {
+            layerOpacity = value
         }
     }
 }

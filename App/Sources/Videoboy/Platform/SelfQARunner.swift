@@ -40,8 +40,10 @@ enum SelfQARunner {
             verdict = AnalogChainSelfQA.run()
         case "calibrate":
             verdict = CalibrationSelfQA.run()
+        case "blend":
+            verdict = BlendSelfQA.run()
         default:
-            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate)")
+            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend)")
             return 2
         }
         // Blocked is not a failure: absent hardware must never fail a build.

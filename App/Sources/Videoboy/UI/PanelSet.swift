@@ -72,9 +72,12 @@ final class PanelSet {
 
         // MARK: Previews
         // Subtitles state the fixed routing, which never remaps (SPEC 2).
-        subMixOneBody = PreviewPanelBody(caption: "100 IRE")
-        subMixTwoBody = PreviewPanelBody(caption: "7.5 IRE")
-        programBody = PreviewPanelBody(caption: "\(StandardDefinition.width)×\(StandardDefinition.height)")
+        // The three composites each carry a blend mode and a layer opacity (SPEC 12).
+        subMixOneBody = PreviewPanelBody(caption: "100 IRE", showsBlendControls: true)
+        subMixTwoBody = PreviewPanelBody(caption: "7.5 IRE", showsBlendControls: true)
+        programBody = PreviewPanelBody(
+            caption: "\(StandardDefinition.width)×\(StandardDefinition.height)",
+            showsBlendControls: true)
 
         subMixOne = PanelView(title: "Sub Mix One", bus: .one, subtitle: "A ▸ B", body: subMixOneBody)
         subMixTwo = PanelView(title: "Sub Mix Two", bus: .two, subtitle: "C ▸ D", body: subMixTwoBody)
@@ -177,23 +180,46 @@ final class PanelSet {
             EffectCardModel(name: "Layer Mask", isEnabled: false, isImplemented: false, parameters: [])
         ])
 
-        // Sub Mix TWO's chain: the same effect types are available, but only one set
-        // of bus effects is wired to the graph so far, so these stay disabled rather
-        // than pretending to do something.
+        // Sub Mix TWO's chain: the same effects, on its own instances, so the two
+        // buses can carry different looks at once.
         effectsTwoBody = EffectChainPanelBody(effects: [
-            EffectCardModel(name: "Composite · NTSC", isEnabled: false, isImplemented: false, parameters: [
-                EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
-                                     value: 0.6, activeBadges: [], enabled: false)
-            ]),
-            EffectCardModel(name: "Echo / Trails", isEnabled: false, isImplemented: false, parameters: [
-                EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
-                                     value: 0.55, activeBadges: [], enabled: false)
-            ]),
-            EffectCardModel(name: "Feedback", isEnabled: false, isImplemented: false, parameters: [
-                EffectParameterModel(name: "delay", code: ParamCode.feedbackDelayFrames.rawValue,
-                                     value: 0.2, activeBadges: [], enabled: false)
-            ]),
-            EffectCardModel(name: "Color Invert", isEnabled: false, isImplemented: false, parameters: []),
+            EffectCardModel(
+                name: "Composite · NTSC",
+                isEnabled: false,
+                isImplemented: FeatureFlag.compositeCodec.isOn,
+                parameters: [
+                    EffectParameterModel(name: "path", code: ParamCode.compositePath.rawValue,
+                                         value: 0.0, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
+                                         value: 0.6, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "bleed", code: ParamCode.chromaBleed.rawValue,
+                                         value: 0.5, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
+                                         value: 0.2, activeBadges: [], enabled: true)
+                ]
+            ),
+            EffectCardModel(
+                name: "Echo / Trails",
+                isEnabled: false,
+                isImplemented: FeatureFlag.feedback.isOn,
+                parameters: [
+                    EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
+                                         value: 0.8, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
+                                         value: 0.0, activeBadges: [], enabled: true)
+                ]
+            ),
+            EffectCardModel(
+                name: "Feedback",
+                isEnabled: false,
+                isImplemented: FeatureFlag.feedback.isOn,
+                parameters: [
+                    EffectParameterModel(name: "gain", code: ParamCode.feedbackGain.rawValue,
+                                         value: 0.0, activeBadges: [], enabled: true),
+                    EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
+                                         value: 0.52, activeBadges: [], enabled: true)
+                ]
+            ),
             EffectCardModel(name: "Layer Mask", isEnabled: false, isImplemented: false, parameters: [])
         ])
 

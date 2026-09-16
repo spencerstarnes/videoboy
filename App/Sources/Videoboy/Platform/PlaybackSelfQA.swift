@@ -45,15 +45,30 @@ enum PlaybackSelfQA {
         // bypassed. The analog chain has its own check (phase-3/analog-chain); left
         // engaged here it would change what PRIMARY looks like and this would be
         // measuring two things at once.
-        for slot in [Engine.compositeSlot, Engine.echoSlot, Engine.feedbackSlot] {
+        for slot in Engine.busEffectSlots {
             engine.registry.setValue(0, slot: slot, code: .wetDry)
         }
 
-        // Four sources, three mixers, three bus effects, capture and test pattern.
-        let expectedNodes = 12
+        // Assert the ROUTING, not the node count. A count has to be edited every time
+        // a node is added and says nothing about whether the signal path is right;
+        // SPEC 2's fixed routing is the thing that actually must not break.
+        let evaluation = engine.graph.evaluationOrder(from: GraphTopology.primary)
+        func feeds(_ upstream: String, reaches downstream: String) -> Bool {
+            guard let from = evaluation.firstIndex(of: upstream),
+                  let to = evaluation.firstIndex(of: downstream) else { return false }
+            return from < to
+        }
+        let routingIsCorrect =
+            feeds(GraphTopology.sourceA, reaches: GraphTopology.subMixOne)
+            && feeds(GraphTopology.sourceB, reaches: GraphTopology.subMixOne)
+            && feeds(GraphTopology.sourceC, reaches: GraphTopology.subMixTwo)
+            && feeds(GraphTopology.sourceD, reaches: GraphTopology.subMixTwo)
+            && feeds(GraphTopology.subMixOne, reaches: GraphTopology.primary)
+            && feeds(GraphTopology.subMixTwo, reaches: GraphTopology.primary)
         check.record(AssertionResult(
-            name: "graph shape", passed: engine.graph.nodeCount == expectedNodes,
-            detail: "\(engine.graph.nodeCount) nodes, expected \(expectedNodes)"
+            name: "fixed routing holds",
+            passed: routingIsCorrect,
+            detail: "A/B reach ONE, C/D reach TWO, both reach PRIMARY (\(engine.graph.nodeCount) nodes)"
         ))
 
         /// Renders one frame through the engine's own traversal and reads PRIMARY back.

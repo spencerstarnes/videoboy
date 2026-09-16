@@ -11,6 +11,7 @@
 #           ui          — the window shell at three breakpoints (no hardware)
 #           playback    — the live graph: playback, fader, the wedge (no hardware)
 #           analog      — the composite codec, echo and feedback chain (no hardware)
+#           blend       — every layer blend mode over real pictures (no hardware)
 #           displays    — what displays exist and what mode they offer
 #           output      — the borderless output window on the HDMI card (needs hardware)
 #           loopback    — capture the DVC100 and write metrics.json (needs hardware)
@@ -59,6 +60,7 @@ case "$CHECK" in
   output)    run_app_check output ;;
   displays)  run_app_check displays ;;
   analog)    run_app_check analog ;;
+  blend)     run_app_check blend ;;
   calibrate) run_app_check calibrate ;;
   all)
     run_offscreen
@@ -66,8 +68,9 @@ case "$CHECK" in
     run_app_check ui
     run_app_check playback
     run_app_check analog
+    run_app_check blend
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, displays, output, loopback, calibrate, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, displays, output, loopback, calibrate, all)" ;;
 esac

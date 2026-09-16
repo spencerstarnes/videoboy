@@ -34,11 +34,14 @@ final class Engine {
     private(set) var subMixTwo: CrossfadeNode!
     private(set) var primary: CrossfadeNode!
 
-    /// Bus effects on Sub Mix ONE (SPEC 2's `bus FX`). The composite codec is the
-    /// analog character; echo and feedback sit after it.
+    /// Bus effects, one chain per sub-mix (SPEC 2's `bus FX`). The composite codec is
+    /// the analog character; echo and feedback sit after it.
     private(set) var compositeCodec: CompositeCodecNode!
     private(set) var echo: EchoNode!
     private(set) var feedback: FeedbackNode!
+    private(set) var compositeCodecTwo: CompositeCodecNode!
+    private(set) var echoTwo: EchoNode!
+    private(set) var feedbackTwo: FeedbackNode!
 
     /// Live capture, available as a source (SPEC 10). Fed by the App's capture
     /// session; nothing until then, which renders as the panel's empty state.
@@ -120,7 +123,21 @@ final class Engine {
         graph.connect(from: Engine.compositeSlot, to: Engine.echoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoSlot, to: Engine.feedbackSlot, inputIndex: 0)
         graph.connect(from: Engine.feedbackSlot, to: GraphTopology.primary, inputIndex: 0)
-        graph.connect(from: GraphTopology.subMixTwo, to: GraphTopology.primary, inputIndex: 1)
+
+        // The same chain on TWO. Separate instances rather than a shared one: the two
+        // buses must be able to carry different looks at once, which is the whole
+        // point of having two of them.
+        compositeCodecTwo = CompositeCodecNode(identifier: Engine.compositeTwoSlot, context: metal)
+        echoTwo = EchoNode(identifier: Engine.echoTwoSlot, context: metal)
+        feedbackTwo = FeedbackNode(identifier: Engine.feedbackTwoSlot, context: metal)
+        graph.add(compositeCodecTwo)
+        graph.add(echoTwo)
+        graph.add(feedbackTwo)
+
+        graph.connect(from: GraphTopology.subMixTwo, to: Engine.compositeTwoSlot, inputIndex: 0)
+        graph.connect(from: Engine.compositeTwoSlot, to: Engine.echoTwoSlot, inputIndex: 0)
+        graph.connect(from: Engine.echoTwoSlot, to: Engine.feedbackTwoSlot, inputIndex: 0)
+        graph.connect(from: Engine.feedbackTwoSlot, to: GraphTopology.primary, inputIndex: 1)
 
         // Sources that exist but are not wired into a channel until asked for.
         capture = CaptureSourceNode(identifier: Engine.captureSlot, context: metal)
@@ -133,7 +150,7 @@ final class Engine {
         // The bus effects start bypassed so the app opens showing what was loaded
         // rather than a processed version of it. Their switches in the FX panel are
         // what turns them on, which keeps "what you see" traceable to a deliberate act.
-        for slot in [Engine.compositeSlot, Engine.echoSlot, Engine.feedbackSlot] {
+        for slot in Engine.busEffectSlots {
             registry.setValue(0, slot: slot, code: .wetDry)
         }
         Log.info(.graph, "graph built: \(graph.nodeCount) nodes, max latency \(graph.maximumLatencyInFrames) frames")
@@ -144,8 +161,17 @@ final class Engine {
     static let compositeSlot = "fx.one.composite"
     static let echoSlot = "fx.one.echo"
     static let feedbackSlot = "fx.one.feedback"
+    static let compositeTwoSlot = "fx.two.composite"
+    static let echoTwoSlot = "fx.two.echo"
+    static let feedbackTwoSlot = "fx.two.feedback"
     static let captureSlot = "source.capture"
     static let testPatternSlot = "source.testpattern"
+
+    /// Every bus-effect slot, both chains.
+    static let busEffectSlots = [
+        compositeSlot, echoSlot, feedbackSlot,
+        compositeTwoSlot, echoTwoSlot, feedbackTwoSlot
+    ]
 
     /// The mapping slot name for a channel letter.
     static func slot(forChannel letter: String) -> String {
@@ -233,6 +259,9 @@ final class Engine {
         compositeCodec.applyParameters(from: registry)
         echo.applyParameters(from: registry)
         feedback.applyParameters(from: registry)
+        compositeCodecTwo.applyParameters(from: registry)
+        echoTwo.applyParameters(from: registry)
+        feedbackTwo.applyParameters(from: registry)
     }
 
     /// Evaluates the graph to PRIMARY, in dependency order, and returns every
