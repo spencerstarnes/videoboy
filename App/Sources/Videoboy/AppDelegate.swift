@@ -18,6 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var mainWindowController: MainWindowController?
     private var launchWindowController: LaunchWindowController?
+    private var preferencesController: PreferencesWindowController?
+
+    /// Settings that outlive a patch. Loaded once, here, and handed to whoever needs
+    /// them — one store, so a change made in the window is seen everywhere at once.
+    let preferences = PreferenceStore()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The launch screen goes up first and reports each subsystem as it comes up.
@@ -97,6 +102,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Opens the Preferences window, reusing it if it is already open.
+    @objc private func showPreferences() {
+        guard let engine = mainWindowController?.engine else {
+            Log.warn(.app, "no engine yet; cannot open preferences")
+            return
+        }
+        if preferencesController == nil {
+            preferencesController = PreferencesWindowController(
+                store: preferences, engine: engine)
+        }
+        preferencesController?.showWindow(nil)
+        preferencesController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     /// Builds the menu bar shown in the mockup's system bar: File, Edit, Workspace,
     /// Templates, Window, Help. Items whose features are not built yet are present
     /// but disabled, per CLAUDE.md — never omitted.
@@ -107,6 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Videoboy", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        // Comma, because that is where every Mac user's hand already goes.
+        appMenu.addItem(withTitle: "Settings…", action: #selector(showPreferences), keyEquivalent: ",")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Videoboy", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit Videoboy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

@@ -199,6 +199,48 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // Preferences, one render per pane. A settings window is where people go to
+        // find out what an app can do, so a pane that lays out badly or comes up
+        // empty is worth catching here rather than on first open.
+        do {
+            let engine = Engine()
+            let store = PreferenceStore(
+                fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                    .appendingPathComponent("videoboy-selfqa-prefs.json"))
+            // Seeded, so the Outputs pane renders its editor rather than only its
+            // empty state — the empty state is the easy half to get right.
+            store.preferences.destinations = [
+                OutputDestination(kind: .obs, name: "OBS", target: "127.0.0.1:9000"),
+                OutputDestination(kind: .feedbackSend, name: "Feedback A", target: "mix.one")
+            ]
+            let preferences = PreferencesWindowController(store: store, engine: engine)
+            guard let content = preferences.window?.contentView else {
+                check.record(AssertionResult(
+                    name: "the preferences window has content", passed: false, detail: "no content view"))
+                return check.finish()
+            }
+
+            for pane in PreferencesWindowController.Pane.allCases {
+                preferences.select(pane)
+                content.layoutSubtreeIfNeeded()
+                content.displayIfNeeded()
+                guard let image = render(view: content) else {
+                    check.record(AssertionResult(
+                        name: "preferences \(pane.rawValue) renders",
+                        passed: false, detail: "no bitmap"))
+                    continue
+                }
+                try? check.writeImage(image, named: "preferences-\(pane.rawValue).png")
+                check.record(AssertionResult(
+                    name: "preferences \(pane.rawValue) has content",
+                    passed: FrameAssertions.signalPresent(image, varianceThreshold: 5.0),
+                    detail: "luminance variance "
+                        + String(format: "%.1f", FrameAssertions.luminanceVariance(image))
+                ))
+            }
+            try? FileManager.default.removeItem(at: store.fileURL)
+        }
+
         return check.finish()
     }
 

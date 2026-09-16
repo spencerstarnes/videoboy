@@ -73,6 +73,23 @@ enum ControlAuditSelfQA {
         var findings: [Finding] = []
         collect(from: shell, panel: "window", into: &findings)
 
+        // The Preferences window too. It is where people go to find out what the app
+        // can do, so a dead control there misleads more than one on the main window,
+        // where at least the surrounding context says what is finished.
+        let store = PreferenceStore(
+            fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("videoboy-audit-prefs.json"))
+        let preferences = PreferencesWindowController(store: store, engine: engine)
+        for pane in PreferencesWindowController.Pane.allCases {
+            preferences.select(pane)
+            preferences.window?.contentView?.layoutSubtreeIfNeeded()
+            if let content = preferences.window?.contentView {
+                collect(from: content, panel: "preferences/\(pane.rawValue)", into: &findings)
+            }
+        }
+        try? FileManager.default.removeItem(at: store.fileURL)
+        withExtendedLifetime(preferences) {}
+
         let live = findings.filter(\.isLive)
         let disabled = findings.filter { !$0.isEnabled }
         let deceptive = findings.filter(\.isDeceptive)
@@ -199,6 +216,9 @@ enum ControlAuditSelfQA {
         case let fader as VBFader:
             kind = "fader"
             label = fader.identifier?.rawValue ?? "unnamed"
+        case let table as NSTableView:
+            kind = "table"
+            label = table.identifier?.rawValue ?? "list"
         case is NSSearchField:
             kind = "search"
             label = (control as? NSSearchField)?.placeholderString ?? "search"
@@ -230,6 +250,11 @@ enum ControlAuditSelfQA {
         let wired: Bool
         if let auditable = control as? AuditableControl {
             wired = auditable.isWiredForAudit
+        } else if let table = control as? NSTableView {
+            // A table is driven by its data source and delegate; target/action says
+            // nothing about whether it works. An empty table with both connected is
+            // doing its job — it simply has nothing to show.
+            wired = table.dataSource != nil && table.delegate != nil
         } else {
             wired = control.action != nil && control.target != nil
         }

@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-16T21:22:54Z
+when:     2026-09-16T21:28:43Z
 core:     0.3.0
 
 notes:
@@ -12,19 +12,25 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
 
-assertions (15/15 passed):
+assertions (21/21 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
   PASS  wide is not blank — luminance variance 1035.6
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 861.6
+  PASS  compact is not blank — luminance variance 869.0
   PASS  dimensions — expected 760x640, got 760x640
   PASS  narrow is not blank — luminance variance 1040.4
   PASS  collapsed-left is not blank — luminance variance 857.1
   PASS  collapsed-both-edges is not blank — luminance variance 657.7
   PASS  collapsed-sources-only is not blank — luminance variance 955.6
-  PASS  collapsed-effects-only is not blank — luminance variance 812.1
+  PASS  collapsed-effects-only is not blank — luminance variance 812.4
   PASS  holding Shift lights the mappable faders — 39 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
   PASS  removing the driver clears the mark — 0 faders still marked
+  PASS  preferences save has content — luminance variance 157.6
+  PASS  preferences defaults has content — luminance variance 281.2
+  PASS  preferences outputs has content — luminance variance 247.1
+  PASS  preferences inputs has content — luminance variance 154.8
+  PASS  preferences hotKeys has content — luminance variance 163.1
+  PASS  preferences midiMapping has content — luminance variance 137.0

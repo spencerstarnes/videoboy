@@ -54,6 +54,25 @@ enum Controls {
         label(text, font: Theme.Font.mono, color: color, holdsWidth: holdsWidth)
     }
 
+    /// A label that wraps instead of running off the edge.
+    ///
+    /// An ordinary NSTextField is one line and as wide as its text, which makes a
+    /// sentence of explanation force the whole window wider. This one wraps and
+    /// yields horizontally, so prose sits inside the layout rather than setting it.
+    static func note(_ text: String, width: CGFloat) -> NSTextField {
+        let field = NSTextField(wrappingLabelWithString: text)
+        field.font = Theme.Font.tinyLabel
+        field.textColor = Theme.Color.textTertiary
+        field.isEditable = false
+        field.isSelectable = false
+        field.drawsBackground = false
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.preferredMaxLayoutWidth = width
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.widthAnchor.constraint(lessThanOrEqualToConstant: width).isActive = true
+        return field
+    }
+
     /// A push button. `enabled: false` is how an unbuilt feature is shown — present
     /// and visibly inert, never omitted (CLAUDE.md).
     static func button(_ title: String, enabled: Bool = true, target: AnyObject? = nil, action: Selector? = nil) -> NSButton {

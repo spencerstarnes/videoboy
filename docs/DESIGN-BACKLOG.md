@@ -8,6 +8,15 @@ what was asked for and has not been built.
 
 ## Done in this pass
 
+- **Preferences window** (§7) — six panes: Save, Defaults, Outputs, Inputs, Hot Keys,
+  MIDI Mapping. Backed by `PreferenceStore` in Core, which is what §8's reminder
+  suppressions and §6's destination list both need.
+- **Shift-to-detect everywhere** (§5) — every enabled fader, not just FX parameters.
+- **Collapse reflow** — folding sources gives the FX chain their height; folding the
+  FX columns gives the libraries and browser their width.
+- **Driven-parameter marks** — anything with a MIDI, audio or LFO driver outlines and
+  breathes on the beat.
+
 - **Scopes** (SPEC §19) — waveform, RGB parade, histogram, vectorscope; tab cycles
   quad-overlay → histogram → parade → quad-over-black → off.
 - **NTSC broadcast safety** — legal range 7.5–100 IRE, illegal-level reporting.
