@@ -176,6 +176,12 @@ final class ShellController {
                 guard let self, let bus = busNames[composite.slot] else { return }
                 self.engine.setInterchange(codec, forBus: bus)
             }
+            composite.body.onScopeTabClicked = { [weak self] in
+                self?.cycleScopes(for: composite.slot, body: composite.body)
+            }
+            composite.body.onZebraToggled = { [weak self] on in
+                self?.zebraEnabled[composite.slot] = on
+            }
             composite.body.onDataParameterChanged = { [weak self] code, value in
                 guard let self,
                       let parameter = ParamCode(rawValue: code),
@@ -322,6 +328,24 @@ final class ShellController {
     /// Every preview's record indicator, by the label it shows.
     private var recordIndicators: [String: MiniRecordIndicator] = [:]
 
+    /// Scope mode per composite slot.
+    private var scopeModes: [String: ScopeDisplayMode] = [:]
+    /// Zebra on/off per composite slot.
+    private var zebraEnabled: [String: Bool] = [:]
+    /// Frame counter for pacing scope refreshes.
+    private var scopeRefreshCounter = 0
+
+    /// Advances a preview's scope cycle by one.
+    private func cycleScopes(for slot: String, body: PreviewPanelBody) {
+        let next = (scopeModes[slot] ?? .off).next
+        scopeModes[slot] = next
+        body.setScopeMode(next)
+        if next == .off {
+            body.preview.setScopeImage(nil, dimsPicture: false)
+        }
+        Log.info(.app, "scopes on \(slot): \(next.displayName)")
+    }
+
     /// Connects each preview's arm indicator and records which feeds are armed.
     private func wireRecordIndicators() {
         let panels = shell.grid.panels
@@ -374,6 +398,71 @@ final class ShellController {
         panel.restoreEffect(named: name)
         Log.info(.graph, "\(name) added to bus \(bus == .one ? "ONE" : "TWO")")
     }
+
+    /// Refreshes scopes and zebra overlays, well below frame rate.
+    ///
+    /// A scope reads a signal's shape, which does not change meaningfully between
+    /// one frame and the next, and producing one needs a GPU readback plus a CPU
+    /// pass. Refreshing every frame would put that in the render loop's way for no
+    /// benefit a person could see. Roughly six times a second is plenty.
+    private func updateScopesAndZebra(from engine: Engine) {
+        scopeRefreshCounter += 1
+        guard scopeRefreshCounter % Self.scopeRefreshInterval == 0 else { return }
+        guard let renderer = offscreenRenderer else { return }
+
+        let panels = shell.grid.panels
+        let composites: [(body: PreviewPanelBody, slot: String, texture: String)] = [
+            (panels.subMixOneBody, GraphTopology.subMixOne, Engine.busCodecOneSlot),
+            (panels.subMixTwoBody, GraphTopology.subMixTwo, Engine.busCodecTwoSlot),
+            (panels.programBody, GraphTopology.primary, GraphTopology.primary)
+        ]
+
+        for composite in composites {
+            let mode = scopeModes[composite.slot] ?? .off
+            let wantsZebra = zebraEnabled[composite.slot] ?? false
+            guard mode != .off || wantsZebra else { continue }
+
+            guard let texture = engine.texture(for: composite.texture)
+                ?? engine.texture(for: composite.slot),
+                  let image = renderer.readback(texture) else { continue }
+
+            if mode != .off {
+                let scope: ImageBuffer
+                switch mode {
+                case .quadOverlay, .quadBlack:
+                    scope = ScopeRenderer.renderQuad(from: image, width: 480, height: 360)
+                case .histogram:
+                    scope = ScopeRenderer.render(.histogram, from: image, width: 480, height: 360)
+                case .parade:
+                    scope = ScopeRenderer.render(.parade, from: image, width: 480, height: 360)
+                case .off:
+                    continue
+                }
+                composite.body.preview.setScopeImage(scope, dimsPicture: mode.showsPicture)
+            }
+
+            // Zebra is suppressed while scopes are up: two overlays on one monitor
+            // fight each other, and the scope already says what the zebra would.
+            if wantsZebra && mode == .off {
+                // Animated from the transport so the stripes crawl, which is what
+                // makes them read as a warning rather than as part of the picture.
+                let phase = engine.transport.isRunning
+                    ? engine.transport.beats(atHostTime: CACurrentMediaTime())
+                        .truncatingRemainder(dividingBy: 1.0)
+                    : 0
+                composite.body.preview.setZebraImage(
+                    BroadcastSafety.applyZebra(to: image, phase: phase))
+            } else {
+                composite.body.preview.setZebraImage(nil)
+            }
+        }
+    }
+
+    /// Frames between scope refreshes. About six a second at 29.97.
+    private static let scopeRefreshInterval = 5
+
+    /// Used to read textures back for the scopes.
+    private lazy var offscreenRenderer: OffscreenRenderer? = OffscreenRenderer()
 
     /// Advances every armed indicator's pulse from the musical clock.
     ///
@@ -663,6 +752,8 @@ final class ShellController {
         panels.programBody.preview.texture = program
         panels.programBody.preview.present()
         outputWindow?.present(texture: program)
+
+        updateScopesAndZebra(from: engine)
 
         // The status and transport readouts are cheap, but not free; once a second is
         // plenty for a human reading them, and it keeps text redraw off the hot path.

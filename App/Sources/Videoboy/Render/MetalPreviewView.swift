@@ -50,6 +50,12 @@ final class MetalPreviewView: NSView {
     private var metalLayer: CAMetalLayer?
     private let overlayLayer = CAShapeLayer()
 
+    /// The scope image drawn over the picture, when scopes are on for this preview.
+    private let scopeLayer = CALayer()
+
+    /// Zebra stripes drawn over the picture, marking illegal levels.
+    private let zebraLayer = CALayer()
+
     /// - Parameters:
     ///   - caption: overlay text, e.g. "A" or "720x480 · 480i".
     ///   - recordLabel: the feed's letter for the arm indicator (A-D, 1, 2, P).
@@ -76,6 +82,17 @@ final class MetalPreviewView: NSView {
         } else {
             Log.warn(.render, "preview '\(caption)' has no Metal device; showing empty state only")
         }
+
+        // Scope and zebra sit above the picture, below the safe-zone lines. Neither
+        // intercepts clicks: they are readouts drawn on the monitor, not controls.
+        scopeLayer.contentsGravity = .resize
+        scopeLayer.isHidden = true
+        layer?.addSublayer(scopeLayer)
+
+        zebraLayer.contentsGravity = .resize
+        zebraLayer.isHidden = true
+        zebraLayer.compositingFilter = "screenBlendMode"
+        layer?.addSublayer(zebraLayer)
 
         // Overlays sit above the picture and never intercept clicks.
         overlayLayer.fillColor = nil
@@ -142,6 +159,8 @@ final class MetalPreviewView: NSView {
         // per screen pixel; see contentsScale above.
         metalLayer.frame = frame
         metalLayer.drawableSize = CGSize(width: max(frame.width, 1), height: max(frame.height, 1))
+        scopeLayer.frame = frame
+        zebraLayer.frame = frame
         overlayLayer.frame = frame
         updateOverlays()
     }
@@ -183,6 +202,36 @@ final class MetalPreviewView: NSView {
 
         overlayLayer.path = path.isEmpty ? nil : path
         overlayLayer.isHidden = path.isEmpty
+    }
+
+    /// Shows a rendered scope over this preview, or clears it.
+    ///
+    /// The scope arrives as a finished image rather than as data to plot here: the
+    /// drawing lives in Core where it can be tested by measuring its output, and this
+    /// view's only job is to put it on screen.
+    func setScopeImage(_ image: ImageBuffer?, dimsPicture: Bool) {
+        guard let image, let cgImage = image.makeCGImage() else {
+            scopeLayer.isHidden = true
+            scopeLayer.contents = nil
+            metalLayer?.opacity = 1
+            return
+        }
+        scopeLayer.contents = cgImage
+        scopeLayer.isHidden = false
+        // Over a picture the scope needs the picture held back, or the trace is lost
+        // in it. Over black there is nothing to hold back.
+        metalLayer?.opacity = dimsPicture ? 0.35 : 0.0
+    }
+
+    /// Shows a zebra overlay, or clears it.
+    func setZebraImage(_ image: ImageBuffer?) {
+        guard let image, let cgImage = image.makeCGImage() else {
+            zebraLayer.isHidden = true
+            zebraLayer.contents = nil
+            return
+        }
+        zebraLayer.contents = cgImage
+        zebraLayer.isHidden = false
     }
 
     override func draw(_ dirtyRect: NSRect) {

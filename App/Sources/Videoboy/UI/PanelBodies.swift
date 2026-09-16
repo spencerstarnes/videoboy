@@ -205,6 +205,16 @@ final class PreviewPanelBody: NSView {
     var onInterchangeChanged: ((InterchangeCodec) -> Void)?
     /// Called when a bus data-effect parameter moves: (param code, 0...1).
     var onDataParameterChanged: ((String, Double) -> Void)?
+
+    /// Called when the scope tab is clicked, to advance the scope cycle.
+    var onScopeTabClicked: (() -> Void)?
+    /// Called when the zebra toggle changes.
+    var onZebraToggled: ((Bool) -> Void)?
+
+    /// The scope tab, so its title can show the current mode.
+    private var scopeTab: NSButton?
+    /// The zebra toggle, hidden while scopes are showing.
+    private var zebraToggle: NSButton?
     private var blendPopUp: NSPopUpButton?
     private var interchangePopUp: NSPopUpButton?
     private var dataEffectRow: NSStackView?
@@ -242,6 +252,21 @@ final class PreviewPanelBody: NSView {
             )
             interchangePopUp = interchange
 
+            // The zebra: a striped-animal glyph, because the pattern it draws is
+            // literally called a zebra. It toggles, and it hides itself while scopes
+            // are up — with a scope on screen the stripes are redundant and the two
+            // overlays fight each other.
+            let zebra = Controls.button("🦓", target: self, action: #selector(zebraPressed))
+            zebra.toolTip = "Zebra — stripe pixels outside the NTSC legal range"
+            zebra.setButtonType(.pushOnPushOff)
+            zebraToggle = zebra
+
+            // The scope tab. One control that cycles every scope view, so reaching a
+            // vectorscope is never more than a few clicks and never a menu.
+            let scopes = Controls.button("Scopes", target: self, action: #selector(scopeTabPressed))
+            scopes.toolTip = "Cycle the scopes: quad overlay, histogram, parade, quad over black, off"
+            scopeTab = scopes
+
             let row = Controls.row([
                 Controls.label("Blend", font: Theme.Font.tinyLabel,
                                color: Theme.Color.textTertiary, holdsWidth: true),
@@ -249,7 +274,9 @@ final class PreviewPanelBody: NSView {
                 Controls.label("Data", font: Theme.Font.tinyLabel,
                                color: Theme.Color.textTertiary, holdsWidth: true),
                 interchange,
-                Controls.spacer()
+                Controls.spacer(),
+                zebra,
+                scopes
             ], spacing: 4)
             row.translatesAutoresizingMaskIntoConstraints = false
             addSubview(row)
@@ -299,6 +326,20 @@ final class PreviewPanelBody: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+
+    @objc private func scopeTabPressed() { onScopeTabClicked?() }
+
+    @objc private func zebraPressed(_ sender: NSButton) {
+        onZebraToggled?(sender.state == .on)
+    }
+
+    /// Updates the tab's title to name the mode it is now in, and hides the zebra
+    /// while scopes are up.
+    func setScopeMode(_ mode: ScopeDisplayMode) {
+        scopeTab?.title = mode == .off ? "Scopes" : mode.displayName
+        scopeTab?.contentTintColor = mode == .off ? nil : Theme.Color.accent
+        zebraToggle?.isHidden = mode != .off
+    }
 
     @objc private func interchangeChanged(_ sender: NSPopUpButton) {
         let codec = InterchangeCodec.allCases[

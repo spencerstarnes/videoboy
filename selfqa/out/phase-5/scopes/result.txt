@@ -1,0 +1,17 @@
+check:    phase-5/scopes
+verdict:  PASS
+when:     2026-09-16T21:03:49Z
+core:     0.3.0
+
+notes:
+  colour bars read: 12.5% crushed
+
+assertions (8/8 passed):
+  PASS  dimensions — expected 480x300, got 480x300
+  PASS  Waveform draws a trace — variance 437
+  PASS  dimensions — expected 480x300, got 480x300
+  PASS  RGB Parade draws a trace — variance 432
+  PASS  dimensions — expected 480x300, got 480x300
+  PASS  Histogram draws a trace — variance 409
+  PASS  dimensions — expected 480x300, got 480x300
+  PASS  Vectorscope draws a trace — variance 185
