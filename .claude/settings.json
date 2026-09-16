@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(rm -fr:*)",
+      "Bash(sudo rm:*)",
+      "Bash(diskutil:*)",
+      "Bash(dd:*)",
+      "Bash(mkfs:*)",
+      "Bash(fdisk:*)",
+      "Bash(shutdown:*)",
+      "Bash(reboot:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(nc:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)"
+    ],
+    "allow": [
+      "Bash(swift:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(xcrun:*)",
+      "Bash(scripts/*)",
+      "Bash(git:*)",
+      "Bash(brew fetch:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(ffprobe:*)"
+    ]
+  }
+}

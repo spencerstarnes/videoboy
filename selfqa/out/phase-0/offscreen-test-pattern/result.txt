@@ -1,0 +1,13 @@
+check:    phase-0/offscreen-test-pattern
+verdict:  PASS
+when:     2026-09-16T05:00:51Z
+core:     0.2.0
+
+notes:
+  rendered SMPTE colour bars through the live blit pipeline
+
+assertions (4/4 passed):
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  color bars — worst bar -1 off by 0.0 (tolerance 24.0)
+  PASS  signal present — luminance variance 4076.4, threshold 25.0
+  PASS  blit is faithful — 0.0000 of sampled pixels differ, allowed <= 0.001

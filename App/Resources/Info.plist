@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>Videoboy</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.spencerstarnes.videoboy</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Videoboy</string>
+	<key>CFBundleDisplayName</key>
+	<string>Videoboy</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.2.0</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<!-- Required. The DVC100 loopback presents as a camera; without this string
+	     macOS terminates the process the moment capture is requested. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Videoboy reads the DVC100 capture device to verify the analog video signal it is sending out, and to use live capture as a video source.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Videoboy reads audio input for beat detection, which drives the musical clock.</string>
+</dict>
+</plist>

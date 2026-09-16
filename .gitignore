@@ -1,0 +1,22 @@
+# Build products
+build/
+.build/
+DerivedData/
+*.xcuserdatastate
+.DS_Store
+
+# Vendored binaries (rebuilt by scripts/bootstrap.sh)
+vendor/
+!vendor/README.md
+
+# User media and generated fixtures are not committed
+samples/*
+!samples/manifest.json
+!samples/README.md
+
+# Self-QA artifacts are evidence, but large; keep only what a phase pins
+selfqa/out/**/*.png
+selfqa/out/**/*.raw
+
+# Local device identity (machine-specific)
+config/devices.json

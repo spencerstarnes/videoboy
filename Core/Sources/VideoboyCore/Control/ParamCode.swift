@@ -1,0 +1,126 @@
+//
+//  ParamCode.swift — the stable parameter address table (SPEC 13).
+//
+//  Purpose : Every adjustable parameter has a code that outlives the module instance
+//            holding it. Mappings (MIDI, OSC, audio-reactivity, keyboard) and saved
+//            templates target the code, never a pointer, so swapping the effect in a
+//            slot keeps any mapping whose code still exists.
+//  Inputs  : none; this is the table itself.
+//  Outputs : `ParamCode` values used by the registry, the UI, and templates.
+//  Connects: ParamRegistry (resolution), templates (serialisation), the FX panels
+//            (which print the code next to each parameter).
+//  Extend  : add a case with a NEW code. Never reuse or renumber an existing one —
+//            an old template holding that code would silently bind to the wrong
+//            parameter. Codes are permanent once shipped.
+//
+//  Numbering scheme, so new codes are allocated consistently:
+//    0xA  — universal per-node parameters (opacity, enable, wet/dry)
+//    1xA  — geometry (scale, x, y, rotate)
+//    2xA  — time-domain effects (echo decay, trails)
+//    3xB  — the bitstream wedge (corruptor amount, mode, rate, seed)
+//    4xC  — feedback
+//    5xA  — colour controls
+//    6xA  — mixer and transport
+//    7xA  — composite / NTSC emulation
+//
+
+import Foundation
+
+/// A stable parameter address. The raw value is what appears in templates and in
+/// the FX panel next to the parameter's name.
+public enum ParamCode: String, CaseIterable, Codable, Sendable {
+
+    // MARK: Universal (0xA)
+
+    /// Layer opacity, 0...1. Present on every node that composites.
+    case opacity = "01A"
+    /// Effect wet/dry mix, 0...1.
+    case wetDry = "02A"
+    /// Node enable, 0 or 1.
+    case enabled = "03A"
+
+    // MARK: Geometry (1xA)
+
+    case scale = "11A"
+    case positionX = "12A"
+    case positionY = "13A"
+    case rotation = "14A"
+
+    // MARK: Time-domain effects (2xA)
+
+    case echoDecay = "21A"
+    case trailLength = "22A"
+
+    // MARK: The bitstream wedge (3xB)
+    //
+    // These are the competitive core. They address the corruptor that runs on
+    // compressed packets before decode (SPEC 5).
+
+    /// How much corruption to apply, 0...1.
+    case corruptAmount = "31B"
+    /// Which corruption transform is selected, quantised from 0...1.
+    case corruptMode = "32B"
+    /// How often corruption is re-rolled, as a beat subdivision.
+    case corruptRate = "33B"
+    /// The corruptor's random seed, so a performance is repeatable.
+    case corruptSeed = "34B"
+
+    // MARK: Feedback (4xC)
+
+    case feedbackGain = "43C"
+    case feedbackDelayFrames = "44C"
+
+    // MARK: Colour (5xA)
+
+    case contrast = "51A"
+    case saturation = "52A"
+    case brightness = "53A"
+
+    // MARK: Mixer and transport (6xA)
+
+    /// The A/B crossfader position, 0...1.
+    case crossfadeAB = "61A"
+    /// The C/D crossfader position, 0...1.
+    case crossfadeCD = "62A"
+    /// The ONE/TWO crossfader position, 0...1.
+    case crossfadeOneTwo = "63A"
+    /// Playback speed of a source, where 1.0 is nominal.
+    case playbackSpeed = "64A"
+
+    // MARK: Composite emulation (7xA)
+
+    case compositeCrawl = "71A"
+    case chromaBleed = "72A"
+    case tbcWobble = "73A"
+
+    /// Human-readable name, used in the UI and in template comments.
+    public var displayName: String {
+        switch self {
+        case .opacity: "opacity"
+        case .wetDry: "wet/dry"
+        case .enabled: "enabled"
+        case .scale: "scale"
+        case .positionX: "x"
+        case .positionY: "y"
+        case .rotation: "rotate"
+        case .echoDecay: "echo decay"
+        case .trailLength: "trail length"
+        case .corruptAmount: "corrupt amount"
+        case .corruptMode: "corrupt mode"
+        case .corruptRate: "corrupt rate"
+        case .corruptSeed: "corrupt seed"
+        case .feedbackGain: "feedback gain"
+        case .feedbackDelayFrames: "feedback delay"
+        case .contrast: "contrast"
+        case .saturation: "saturation"
+        case .brightness: "brightness"
+        case .crossfadeAB: "A/B crossfade"
+        case .crossfadeCD: "C/D crossfade"
+        case .crossfadeOneTwo: "ONE/TWO crossfade"
+        case .playbackSpeed: "speed"
+        case .compositeCrawl: "dot crawl"
+        case .chromaBleed: "chroma bleed"
+        case .tbcWobble: "TBC wobble"
+        }
+    }
+}

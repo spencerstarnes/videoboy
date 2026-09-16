@@ -1,0 +1,12 @@
+check:    phase-0/offscreen-crossfade
+verdict:  PASS
+when:     2026-09-16T05:00:51Z
+core:     0.2.0
+
+notes:
+  crossfade endpoints and midpoint through the live crossfade pipeline
+
+assertions (3/3 passed):
+  PASS  mix 0.0 is source A — mean(255.0, 0.0, 0.0) vs expected(255, 0, 0); worst delta 0.0, tolerance 24.0
+  PASS  mix 1.0 is source B — mean(0.0, 0.0, 255.0) vs expected(0, 0, 255); worst delta 0.0, tolerance 24.0
+  PASS  mix 0.5 is halfway — mean(128.0, 0.0, 128.0) vs expected(128, 0, 128); worst delta 0.0, tolerance 4.0
