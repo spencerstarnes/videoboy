@@ -84,7 +84,9 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 - [ ] ISF host (parser → Metal) + FFGL (SPEC §8); CI/AU passthrough. **MX-1 effect set is done.**
 - [ ] Clean Core Text character generator + period preset (SPEC §18.1).
 - [ ] Emulated titler library — out-of-process GPL libretro host, save-state landing, genlock key (SPEC §18.2).
-- [ ] NTSC scopes (§19); SVG/PS1 source (§17); IP in/out (§6, §15); discrete A/B/C/D recording (§15); routing/send panel. **Full four-channel mix (C/D→TWO, layer compositing) is done.**
+- [ ] SVG/PS1 source (§17); IP in/out (§6, §15). **NTSC scopes (§19), discrete A/B/C/D
+      recording (§15), the routing/send panel (§6) and the full four-channel mix
+      (C/D→TWO, layer compositing) are done.**
 - [ ] Optional: expose PRIMARY (and the wedge sources) over Syphon so the app can also feed VDMX/TouchDesigner rigs.
 
 ## Backlog notes / deferred ideas

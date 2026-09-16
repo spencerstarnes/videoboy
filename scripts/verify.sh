@@ -27,5 +27,6 @@ log "verify: 5/5 app self-QA (layout + live graph + analog chain)"
 "$REPO_ROOT/scripts/selfqa.sh" analog
 # Loopback only, on 127.0.0.1 — this never puts anything on the network.
 "$REPO_ROOT/scripts/selfqa.sh" stream
+"$REPO_ROOT/scripts/selfqa.sh" record
 
 log "verify: OK"

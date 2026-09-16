@@ -63,6 +63,7 @@ case "$CHECK" in
   blend)     run_app_check blend ;;
   calibrate) run_app_check calibrate ;;
   stream)    run_app_check stream ;;
+  record)    run_app_check record ;;
   audit)     run_app_check audit ;;
   all)
     run_offscreen
@@ -72,9 +73,10 @@ case "$CHECK" in
     run_app_check analog
     run_app_check blend
     run_app_check stream
+    run_app_check record
     run_app_check audit
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, audit, displays, output, loopback, calibrate, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, displays, output, loopback, calibrate, all)" ;;
 esac

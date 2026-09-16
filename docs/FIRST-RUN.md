@@ -128,7 +128,7 @@ Present, greyed, labelled — never hidden, so the shape of the app is legible:
 
 - **Color Ctrl** and **Layer Mask** — the MX-1 effect set and the Core Image
   passthrough from SPEC §9 are not written yet.
-- **Record** — Phase 4. The **Stream** readout is live (see below).
+- The **Stream** readout is live (see below).
 - **Modulation assignment is on the FX parameters only.** The badge columns on the
   faders and shuttles are still decorative.
 - **MX-1 effects** (negative, B&W, mosaic, posterize, mirror, flip, freeze) are built
@@ -225,3 +225,25 @@ cover the controls with no way back.
 
 Right-click the glyph under **Program Preview** for the **four-up preview**, which
 tiles all four sources onto one screen.
+
+
+## Recording
+
+Recording follows the **arming dots** — the small circle in the top right of each
+preview. PROGRAM is armed by default. Arm as many as you like: each armed feed is
+written to its own file, all starting and stopping together, so they line up on a
+timeline afterwards.
+
+Press the red button in the top right to start. Each take goes into its own folder,
+named for the time it started, inside your save location (Settings › Save) or
+`~/Movies/Videoboy` if you have not set one. Files are named for the feed: `P.mov`,
+`A.mov`, and so on.
+
+ProRes 422, HQ or 4444, chosen beside the record button. ProRes rather than H.264
+because this is a capture of a performance meant to be edited — putting the output of
+a chain built to preserve a specific texture through a lossy codec would throw away
+the thing the app exists to produce.
+
+Recording two feeds costs about 7 ms a frame against a 33 ms budget, so it keeps up;
+each additional armed feed is another readback and another encode, so arm what you
+need rather than everything.

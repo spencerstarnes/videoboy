@@ -36,6 +36,20 @@ final class TransportToolbarView: NSView {
     private var clockSourceName = "Internal"
     private var subdivisionName = "1/4"
 
+    /// Which codec recordings use.
+    private var codecPopUp: NSPopUpButton?
+
+    /// The codec currently chosen in the Record group.
+    var selectedRecordCodec: FrameRecorder.Codec {
+        guard let title = codecPopUp?.titleOfSelectedItem,
+              let codec = FrameRecorder.Codec(rawValue: title) else { return .proRes422 }
+        return codec
+    }
+
+    @objc private func recordCodecChanged(_ sender: NSPopUpButton) {
+        Log.info(.app, "recording codec is now \(sender.titleOfSelectedItem ?? "?")")
+    }
+
     /// The record button, top right.
     let recordButton = RecordButton(frame: .zero)
 
@@ -92,8 +106,19 @@ final class TransportToolbarView: NSView {
 
         // Record, top right. The codec and stream selection sit beside the button so
         // the whole recording decision is in one place.
-        let codecPopUp = Controls.popUp(["ProRes 422", "ProRes HQ", "DV"], enabled: false)
-        let streamsPopUp = Controls.popUp(["PRIMARY", "PRI + A/B/C/D"], enabled: false)
+        // ProRes only, because that is what AVAssetWriter encodes here and what a
+        // capture meant for editing wants. DV was on this list before anything could
+        // record at all; offering it now would be offering something that does not
+        // happen.
+        let codecPopUp = Controls.popUp(
+            FrameRecorder.Codec.allCases.map(\.rawValue),
+            target: self, action: #selector(recordCodecChanged(_:)))
+        self.codecPopUp = codecPopUp
+        // What is recorded is whatever is ARMED, chosen by the dots on the previews,
+        // so a second control naming a fixed combination would only disagree with
+        // them. It stays as a readout of what arming currently means.
+        let streamsPopUp = Controls.popUp(["Armed feeds"], enabled: false)
+        streamsPopUp.toolTip = "Recording follows the arming dots on each preview"
         recordButton.translatesAutoresizingMaskIntoConstraints = false
         recordButton.target = self
         recordButton.action = #selector(recordPressed)

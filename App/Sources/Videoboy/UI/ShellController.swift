@@ -177,6 +177,84 @@ final class ShellController {
         }
     }
 
+    // MARK: - Recording
+
+    /// Opens a take across every armed feed.
+    private func startRecording(feeds: [String]) {
+        let directory = preferences.preferences.saveLocation
+            ?? RecordingSession.defaultDirectory()
+
+        var slots: [String: String] = [:]
+        for feed in feeds { slots[feed] = slot(forFeed: feed) }
+
+        do {
+            let session = try RecordingSession(
+                feeds: slots,
+                codec: shell.toolbar.selectedRecordCodec,
+                directory: directory,
+                metal: MetalContext.shared
+            )
+            recording = session
+            // A feed that could not be opened is said once, here, rather than being
+            // discovered afterwards as a missing file.
+            if !session.failedFeeds.isEmpty {
+                presentNotice(
+                    "Recording \(session.activeFeeds.joined(separator: ", "))",
+                    "\(session.failedFeeds.joined(separator: ", ")) could not be opened and "
+                        + "is not being recorded. The others are running."
+                )
+            }
+            Log.info(.app, "recording \(session.activeFeeds.joined(separator: ", ")) "
+                + "to \(session.folder.path)")
+        } catch {
+            shell.toolbar.recordButton.isRecording = false
+            presentNotice(
+                "Could not start recording",
+                "\(error.localizedDescription)\n\nFiles would have gone to \(directory.path)."
+            )
+        }
+    }
+
+    /// Closes the take and says where it went.
+    private func stopRecording() {
+        guard let session = recording else { return }
+        recording = nil
+        let folder = session.folder
+        let frames = session.frameCount
+
+        session.finish { [weak self] written in
+            guard let self else { return }
+            self.shell.grid.panels.settingsBarBody.setStreamStatus(self.router.streamSummary)
+            guard !written.isEmpty else {
+                self.presentNotice(
+                    "Nothing was recorded",
+                    "The take produced no frames. If the transport was stopped, the "
+                        + "picture was not changing and nothing was written."
+                )
+                return
+            }
+            Log.info(.app, "take finished: \(written.count) files, \(frames) frames")
+            self.presentRecordingFinished(folder: folder, files: written, frames: frames)
+        }
+    }
+
+    /// Says where the take went, and offers to open it.
+    private func presentRecordingFinished(folder: URL, files: [URL], frames: Int) {
+        let seconds = Double(frames) / StandardDefinition.frameRate
+        let alert = NSAlert()
+        alert.messageText = "Recorded \(files.count) file\(files.count == 1 ? "" : "s")"
+        alert.informativeText = String(
+            format: "%@ · %.1f seconds\n\n%@",
+            files.map { $0.deletingPathExtension().lastPathComponent }.joined(separator: ", "),
+            seconds,
+            folder.path)
+        alert.addButton(withTitle: "Show in Finder")
+        alert.addButton(withTitle: "Done")
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.activateFileViewerSelecting(files)
+        }
+    }
+
     // MARK: - Shift-to-detect
 
     /// Which slot the crossfaders, shuttles and bus data effects belong to.
@@ -713,6 +791,18 @@ final class ShellController {
 
     /// Every preview's record indicator, by the label it shows.
     private var recordIndicators: [String: MiniRecordIndicator] = [:]
+    /// The take in progress, if any.
+    private var recording: RecordingSession?
+
+    /// Which graph slot each armable feed reads from.
+    private func slot(forFeed label: String) -> String {
+        switch label {
+        case "1": Engine.busCodecOneSlot
+        case "2": Engine.busCodecTwoSlot
+        case "P": Engine.outputSlot
+        default: Engine.slot(forChannel: label)
+        }
+    }
 
     /// Scope mode per composite slot.
     private var scopeModes: [String: ScopeDisplayMode] = [:]
@@ -990,13 +1080,10 @@ final class ShellController {
                 )
                 return
             }
-            Log.info(.app, "record \(isRecording ? "started" : "stopped") for \(armed.joined(separator: ", "))")
             if isRecording {
-                self.presentNotice(
-                    "Recording is not built yet",
-                    "Arming and the transport-locked indicators work, but there is no encoder behind them — AVAssetWriter and the discrete-channel plumbing are still to come (SPEC §15)."
-                )
-                self.shell.toolbar.recordButton.isRecording = false
+                self.startRecording(feeds: armed)
+            } else {
+                self.stopRecording()
             }
         }
         shell.toolbar.onClockSourceChanged = { [weak self] choice in
@@ -1227,6 +1314,17 @@ final class ShellController {
                 case .scope(let slot):
                     return self.engine.texture(for: slot)
                 }
+            }
+        }
+
+        // Recording reads the same textures the previews do, so what is written is
+        // what was on screen rather than a second render of the graph.
+        if let recording {
+            recording.write { [weak self] feed in
+                guard let self else { return nil }
+                let slot = self.slot(forFeed: feed)
+                return self.engine.texture(for: slot)
+                    ?? (feed == "P" ? self.engine.texture(for: GraphTopology.primary) : nil)
             }
         }
 
