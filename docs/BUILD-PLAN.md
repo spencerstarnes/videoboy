@@ -49,13 +49,13 @@ Goal: the competitive heart, fully unit-tested without hardware. This is the mos
 ## Phase 2 — Minimal playable app = CLICKABLE-APP MILESTONE `[FLAG]` per unfinished bit
 Goal: the smallest thing that plays, is clickable, and outputs a real SD signal — self-verified end to end. Detail: SPEC §3 (output), §6 (sources), §7 (MIDI detect), §12 (mix), §9 (composite — minimal).
 
-- [ ] Metal render loop: decoded/corrupted frames → `MTLTexture` → composite → present.
-- [ ] Two players (A, B) → one bus → PRIMARY. Crossfade + hard cut. Real clickable UI controls (buttons, a fader) — the human must have something to click.
-- [ ] **Build the canonical UI shell from the start (SPEC §14 — normative; open `docs/mockups/layout-v6.html` first).** The full 5×5 grid with every panel present, real AppKit controls (§14.3), docked/collapsible/never-movable, width-reactive. Panels whose features aren't built yet render with their controls disabled and a "not yet implemented" state — do NOT omit them, and do NOT build a throwaway simpler shell. Put all radii/padding/gutter values in one `Theme` token file (§14.4). Verify reflow at wide/compact/narrow via offscreen PNGs at three window sizes.
-- [ ] DV-stream source with the Phase-1 corruptor inline, clock-schedulable, mappable, with on-screen controls.
-- [ ] Output stage: borderless window on the chosen external display (the HDMI card); enumerate displays; **negotiate and log** the mode (SPEC §3). Default SD 480i/480p; expose the interlace/pulldown choice — never guess silently.
-- [ ] Core MIDI in + shift-to-detect learn for the mixer + corruptor params.
-- [ ] App is a proper `.app` bundle, `NSCameraUsageDescription` set, runs unsigned (ad-hoc). No ADP/notarization.
+- [x] Metal render loop: decoded/corrupted frames → `MTLTexture` → composite → present.
+- [x] Two players (A, B) → one bus → PRIMARY. Crossfade + hard cut. Real clickable UI controls (buttons, a fader) — the human must have something to click.
+- [x] **Build the canonical UI shell from the start (SPEC §14 — normative; open `docs/mockups/layout-v6.html` first).** The full 5×5 grid with every panel present, real AppKit controls (§14.3), docked/collapsible/never-movable, width-reactive. Panels whose features aren't built yet render with their controls disabled and a "not yet implemented" state — do NOT omit them, and do NOT build a throwaway simpler shell. Put all radii/padding/gutter values in one `Theme` token file (§14.4). Verify reflow at wide/compact/narrow via offscreen PNGs at three window sizes.
+- [x] DV-stream source with the Phase-1 corruptor inline, clock-schedulable, mappable, with on-screen controls.
+- [x] Output stage: borderless window on the chosen external display (the HDMI card); enumerate displays; **negotiate and log** the mode (SPEC §3). Default SD 480i/480p; expose the interlace/pulldown choice — never guess silently.
+- [x] Core MIDI in + shift-to-detect learn for the mixer + corruptor params.
+- [x] App is a proper `.app` bundle, `NSCameraUsageDescription` set, runs unsigned (ad-hoc). No ADP/notarization.
 
 **Acceptance (all self-verified — do NOT wait for the human):**
 - `[HEADLESS]` app builds, launches, plays a `samples/` file to an on-screen preview; MIDI-learn maps a virtual-MIDI control in a test.
@@ -89,3 +89,22 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)
+
+- **Per-channel FX chains.** Sub Mix 1 FX currently drives Source A's corruptor only.
+  SPEC 14.2 describes one chain per sub-mix; per-channel chains (SPEC 2's `chFX`) are
+  a separate piece of work.
+- **AVFoundation source for non-DV formats.** Only `.dv` plays today. Ordinary
+  `.mov`/`.mp4` need the AVPlayerItemVideoOutput path from SPEC 1.
+- **Shift-to-detect UI affordance.** MIDI learn works and is tested in Core; the
+  toolbar's "⇧ Learn" button and the hold-Shift highlight of mappable controls are
+  not wired to it yet.
+- **Integrate libdvc100 as a capture *source*** (SPEC 10, Phase 3), not just as the
+  self-QA loopback. It is GPL v2, so it must stay out-of-process — the same rule as
+  the libretro cores. The out-of-process shell-out in `DVC100CaptureSource` is the
+  pattern to extend.
+- **Sources C and D reach PROGRAM.** They load and play into TWO, but the ONE/TWO
+  composite path has only been exercised from ONE.
+- **Density pass on the FX panels.** Effect names truncate in the outer columns at
+  narrow widths (SPEC 14.4 defers density tuning, so this is expected, not a defect).
+- **MPEG bitstream corruptor.** SPEC 5 wants frame-drop / motion-vector / reference-hold
+  alongside the DV DIF corruptor, sharing infrastructure but a separate module.

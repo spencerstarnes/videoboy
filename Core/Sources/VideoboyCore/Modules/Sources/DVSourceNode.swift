@@ -1,0 +1,212 @@
+//
+//  DVSourceNode.swift — a DV file as a playable graph source, corruptor inline.
+//
+//  Purpose : The wedge made playable. Reads a raw DV file, runs the Phase-1 DIF
+//            corruptor over the compressed bytes, decodes the result, and hands the
+//            graph a texture. The corruption happens between read and decode, which
+//            is the entire point (SPEC 5).
+//  Inputs  : a .dv file; parameters by param code; a RenderContext per frame.
+//  Outputs : an `MTLTexture` at the project size.
+//  Connects: DVReader, DIFCorruptor, DVDecoder, MetalContext; the Source A-D panels.
+//  Extend  : an MPEG source is a sibling type with the same shape, not a mode here.
+//
+//  Parameters (SPEC 13):
+//    31B corrupt amount   0...1
+//    32B corrupt mode     0...1, quantised to a CorruptionMode
+//    33B corrupt rate     0...1, quantised to a beat subdivision
+//    34B corrupt seed     re-rolled by the scheduler on each subdivision boundary
+//    64A playback speed   0...2, where 1.0 is nominal
+//
+
+import Foundation
+import Metal
+
+/// Plays a DV file into the render graph, corrupting it before decode.
+public final class DVSourceNode: Node {
+
+    public let identifier: String
+    public let kind: NodeKind = .source
+
+    /// Decoding a DV frame is not instantaneous, and the mixer must compensate for
+    /// it when scheduling a cut so the result lands on the beat (SPEC 4b). One frame
+    /// is measured-conservative: DV decode runs well under a frame period, but the
+    /// upload and composite that follow it occupy the rest of the frame.
+    public let latencyInFrames = 1
+
+    public var parameters: [Parameter] {
+        [
+            Parameter(code: .corruptAmount, range: 0...1, defaultValue: 0),
+            Parameter(code: .corruptMode, range: 0...1, defaultValue: 0),
+            Parameter(code: .corruptRate, range: 0...1, defaultValue: 0.25),
+            Parameter(code: .corruptSeed, range: 0...65535, defaultValue: 1),
+            Parameter(code: .playbackSpeed, range: 0...2, defaultValue: 1)
+        ]
+    }
+
+    /// The file being played, or nil when nothing is loaded.
+    public private(set) var reader: DVReader?
+    /// The file's own path, for templates and the panel title.
+    public private(set) var mediaURL: URL?
+
+    /// What damage to apply. Set by the UI, by mappings, and by the scheduler.
+    public var corruption = CorruptionSettings.inert
+
+    /// Whether playback advances.
+    public var isPlaying = false
+
+    /// Playback rate, 1.0 being nominal.
+    public var playbackSpeed = 1.0
+
+    /// Current position, in source frames. Fractional so non-nominal speeds work.
+    public private(set) var playheadFrame = 0.0
+
+    /// The most recently decoded picture, kept so the preview has something to show
+    /// while paused and so a failed decode does not blank the output.
+    public private(set) var lastImage: ImageBuffer?
+
+    private let context: MetalContext?
+    private var decoder: DVDecoder?
+    private var texture: MTLTexture?
+    /// Frame index the current texture was produced from; avoids redundant decodes.
+    private var textureFrameIndex = -1
+    /// The last corruption settings the texture was produced with, for the same reason.
+    private var textureCorruption = CorruptionSettings.inert
+
+    public init(identifier: String, context: MetalContext? = MetalContext.shared) {
+        self.identifier = identifier
+        self.context = context
+    }
+
+    /// Total frames in the loaded file, or 0.
+    public var frameCount: Int { reader?.frameCount ?? 0 }
+
+    /// Playback position as 0...1, for the shuttle's scrub track.
+    public var normalisedPosition: Double {
+        guard frameCount > 1 else { return 0 }
+        return playheadFrame / Double(frameCount - 1)
+    }
+
+    /// Loads a DV file.
+    ///
+    /// A failure is logged and leaves the node empty rather than throwing into the
+    /// render loop; the panel then shows its "no source" state (SPEC 1.5).
+    @discardableResult
+    public func load(url: URL) -> Bool {
+        do {
+            let reader = try DVReader(url: url)
+            if decoder == nil { decoder = try DVDecoder() }
+            self.reader = reader
+            self.mediaURL = url
+            self.playheadFrame = 0
+            self.textureFrameIndex = -1
+            Log.info(.dv, "\(identifier) loaded \(url.lastPathComponent)")
+            return true
+        } catch {
+            Log.error(.dv, "\(identifier) could not load \(url.lastPathComponent): \(error)")
+            self.reader = nil
+            self.mediaURL = nil
+            return false
+        }
+    }
+
+    /// Moves the playhead to a 0...1 position (the shuttle scrub).
+    public func seek(toNormalised position: Double) {
+        guard frameCount > 0 else { return }
+        playheadFrame = min(max(position, 0), 1) * Double(frameCount - 1)
+    }
+
+    /// Steps the playhead by whole frames (the shuttle's step buttons).
+    public func step(by frames: Int) {
+        guard let reader else { return }
+        playheadFrame = Double(reader.wrappedIndex(Int(playheadFrame.rounded()) + frames))
+    }
+
+    /// Re-rolls the corruption seed. Called by the scheduler on a beat boundary, so
+    /// the damage changes in time with the music rather than continuously.
+    public func rerollCorruptionSeed(using source: UInt64) {
+        corruption.seed = source
+    }
+
+    // MARK: - Node
+
+    public func render(inputs: [MTLTexture], context renderContext: RenderContext) -> MTLTexture? {
+        guard let reader, let decoder, let metal = context else { return texture }
+
+        if isPlaying {
+            // Advance at the source's own rate relative to the project rate, so a
+            // file is retimed to the clock rather than ad-hoc frame-dropped (SPEC 3).
+            let sourceFramesPerProjectFrame =
+                (reader.standard.frameRate / StandardDefinition.frameRate) * playbackSpeed
+            playheadFrame += sourceFramesPerProjectFrame
+            if playheadFrame >= Double(reader.frameCount) {
+                playheadFrame -= Double(reader.frameCount)
+            }
+        }
+
+        let frameIndex = reader.wrappedIndex(Int(playheadFrame))
+
+        // Re-decode only when the frame or the damage has actually changed. With the
+        // transport stopped and no corruption this makes the preview free.
+        if frameIndex == textureFrameIndex && corruption == textureCorruption, texture != nil {
+            return texture
+        }
+
+        guard let cleanBytes = reader.frame(at: frameIndex) else { return texture }
+        let previousBytes = reader.frame(at: reader.wrappedIndex(frameIndex - 1))
+
+        // THE WEDGE: damage the compressed bytes, then decode them. Never the other
+        // way round — decoding first and damaging pixels would be an ordinary effect.
+        let bytes = DIFCorruptor.corrupt(
+            frame: cleanBytes,
+            settings: corruption,
+            standard: reader.standard,
+            previousFrame: previousBytes
+        )
+
+        guard let image = decoder.decode(frameBytes: bytes) else {
+            // A frame that will not decode at all keeps the previous picture on
+            // screen rather than flashing black.
+            Log.warn(.dv, "\(identifier) frame \(frameIndex) produced no picture; holding the last one")
+            return texture
+        }
+
+        lastImage = image
+        texture = metal.makeTexture(from: image, label: "\(identifier)-frame-\(frameIndex)")
+        textureFrameIndex = frameIndex
+        textureCorruption = corruption
+        return texture
+    }
+
+    /// Renders one frame without a Metal device, for headless self-QA.
+    ///
+    /// Same read/corrupt/decode path as `render`, stopping before the GPU upload, so
+    /// a test can assert on pixels with no window server present.
+    public func renderToImage(frameIndex requestedIndex: Int) -> ImageBuffer? {
+        guard let reader, let decoder else { return nil }
+        let frameIndex = reader.wrappedIndex(requestedIndex)
+        guard let cleanBytes = reader.frame(at: frameIndex) else { return nil }
+        let previousBytes = reader.frame(at: reader.wrappedIndex(frameIndex - 1))
+        let bytes = DIFCorruptor.corrupt(
+            frame: cleanBytes, settings: corruption,
+            standard: reader.standard, previousFrame: previousBytes
+        )
+        return decoder.decode(frameBytes: bytes)
+    }
+
+    /// Applies parameter values from the registry. Called once per frame by the app,
+    /// so a MIDI move, a template load and a UI drag all arrive the same way.
+    public func applyParameters(from registry: ParamRegistry) {
+        if let amount = registry.value(slot: identifier, code: .corruptAmount) {
+            corruption.amount = amount
+        }
+        if let mode = registry.value(slot: identifier, code: .corruptMode) {
+            corruption.mode = CorruptionMode.from(normalised: mode)
+        }
+        if let speed = registry.value(slot: identifier, code: .playbackSpeed) {
+            playbackSpeed = speed
+        }
+        if let seed = registry.value(slot: identifier, code: .corruptSeed) {
+            corruption.seed = UInt64(max(0, seed))
+        }
+    }
+}

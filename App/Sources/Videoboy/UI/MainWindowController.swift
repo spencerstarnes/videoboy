@@ -17,6 +17,12 @@ import VideoboyCore
 /// Creates and owns the main window.
 final class MainWindowController: NSWindowController {
 
+    /// The running instrument this window drives.
+    let engine = Engine()
+
+    /// Keeps the views and the engine connected for the window's lifetime.
+    private var shellController: ShellController?
+
     /// Builds the window at a size that shows the full wide layout on first run.
     init() {
         let initialSize = NSSize(width: 1460, height: 912)
@@ -44,7 +50,13 @@ final class MainWindowController: NSWindowController {
 
         super.init(window: window)
 
-        window.contentView = ShellView()
+        let shell = ShellView()
+        window.contentView = shell
+        shellController = ShellController(shell: shell, engine: engine)
+        // The render clock follows the display this window is on, so moving the
+        // window between screens retimes it automatically (SPEC 4a).
+        engine.start(drivenBy: shell)
+
         Log.info(.app, "main window built at \(Int(initialSize.width))x\(Int(initialSize.height))")
     }
 

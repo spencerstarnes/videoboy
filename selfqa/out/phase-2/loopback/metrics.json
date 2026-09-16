@@ -1,0 +1,12 @@
+{
+  "capturedHeight" : 480,
+  "capturedWidth" : 720,
+  "combingScore" : 3.00067313504379e-05,
+  "deviceName" : "DVC100 (via dvc100 tool)",
+  "droppedFrames" : 0,
+  "duplicateFrames" : 19,
+  "effectiveFps" : 30,
+  "frameCount" : 120,
+  "loggedOutputMode" : "1280x1024@60.00",
+  "signalPresent" : true
+}

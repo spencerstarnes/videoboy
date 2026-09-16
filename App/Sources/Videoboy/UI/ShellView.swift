@@ -16,9 +16,9 @@ import VideoboyCore
 /// The window's content: transport toolbar, panel grid, status bar.
 final class ShellView: NSView {
 
-    private let toolbar = TransportToolbarView()
-    private let grid = PanelGridView()
-    private let statusBar = StatusBarView()
+    let toolbar = TransportToolbarView()
+    let grid = PanelGridView()
+    let statusBar = StatusBarView()
 
     init() {
         super.init(frame: .zero)

@@ -14,9 +14,15 @@ samples/*
 !samples/manifest.json
 !samples/README.md
 
-# Self-QA artifacts are evidence, but large; keep only what a phase pins
+# Self-QA artifacts. Routine re-runs are noise, so PNGs are ignored by default and
+# the evidence a phase is accepted on is pinned explicitly with `git add -f`.
 selfqa/out/**/*.png
 selfqa/out/**/*.raw
+!selfqa/out/phase-1/dv-corruption/*.png
+!selfqa/out/phase-2/loopback/*.png
+!selfqa/out/phase-2/playback/*.png
+!selfqa/out/phase-2/beat-synced-corruption/*.png
+!selfqa/out/phase-2/ui-layout/*.png
 
 # Local device identity (machine-specific)
 config/devices.json

@@ -1,0 +1,121 @@
+# FIRST-RUN.md
+
+Your first sit-down with Videoboy. What to click, what works, what doesn't.
+
+## Launch it
+
+```sh
+scripts/build.sh      # builds Core, the app, and assembles Videoboy.app
+scripts/run.sh        # launches it, with logs in your terminal
+```
+
+The app is unsigned and ad-hoc signed, as intended — no Apple Developer Program, no
+notarization. If macOS objects, right-click `build/Videoboy.app` ▸ Open once.
+
+Run `scripts/bootstrap.sh` first on a fresh clone: it generates the sample fixtures
+and copies `config/devices.example.json` to `config/devices.json`.
+
+## What you'll see
+
+The full canonical layout from SPEC §14 — the 5×5 grid, every panel present:
+
+```
+ SOURCE A │ SUB MIX ONE │  PROGRAM   │ SUB MIX TWO │ SOURCE C
+ SOURCE B │  (preview)  │  PREVIEW   │  (preview)  │ SOURCE D
+ SUB MIX  │  A→B FADER  │ ONE→TWO F. │  C→D FADER  │ SUB MIX
+   1 FX   ├─────────────┼────────────┼─────────────┤   2 FX
+  (tall)  │ SM1 LIBRARY │ ASSET BROW │ SM2 LIBRARY │  (tall)
+          │──── RECORD / STREAM / OUTPUT / TOGGLES ────│
+```
+
+Panels collapse by clicking their header. They never move — that's deliberate.
+Resize the window narrower and the outer columns collapse to rails, then disappear.
+
+## What actually works
+
+**Play a DV file.** Click **Load…** on Source A, pick `samples/motion.dv`, then press
+**▶** on that panel's shuttle strip. It plays in the panel preview, through Sub Mix
+One, into Program Preview.
+
+**The wedge — this is the point.** In the **Sub Mix 1 FX** panel, the *DV · DIF
+corruptor* card is live:
+
+| Slider | Code | What it does |
+|---|---|---|
+| amount | `31B` | how much of the frame gets damaged |
+| mode | `32B` | which damage: shuffle / duplicate / drop blocks, flip DCT coefficients, swap sequences, hold sequences |
+| rate | `33B` | how often the damage re-rolls, in beat subdivisions |
+
+Push **amount** up and the picture breaks apart. This is happening on the *compressed
+DV bitstream before it is decoded* — libav is decoding genuinely damaged DIF blocks.
+It is not a shader pretending. `mode` at the far left is block shuffle; drop is the
+classic DV dropout look.
+
+**The faders.** A→B, C→D and ONE→TWO all work, with **Cut** (and **◆ Swap** on
+ONE→TWO). Drag them and Program Preview follows.
+
+**The transport.** Tempo, **Tap** (tap four times), and **▶** start the musical clock.
+With it running, the corruptor re-rolls its seed on every quarter note — the damage
+changes *on the beat*, latency-compensated so the visible change lands on time.
+
+**MIDI.** Any connected MIDI device is picked up at launch; the status bar names it.
+Mappings target param codes, so swapping a module keeps them.
+
+**Output.** The **Test Pat** switch in the bottom bar opens a borderless output window
+on the display named in `config/devices.json` (`MACROSILICON` here) and sends PROGRAM
+to it. Switch it off to close it and restore the display.
+
+## What's visible but deliberately dead
+
+Present, greyed, labelled — never hidden, so the shape of the app is legible:
+
+- **Composite · NTSC**, **Echo/Trails**, **Feedback**, **Color Ctrl**, **Layer Mask** — Phase 3.
+- **Record** and **Stream** sections — Phase 4.
+- Asset Browser tabs, search, import, and the drag-to-load flow.
+- Clock sources other than Internal (audio detection, MIDI clock, Link).
+- **⇧ Learn** button: MIDI learn works in Core and is tested, but the shift-to-highlight
+  UI affordance isn't wired to the button yet.
+- Source C and D load and play, but only A and B reach PROGRAM through ONE.
+
+## Known rough edges
+
+- **Only `.dv` files play.** Choosing anything else tells you so. The AVFoundation
+  path for ordinary formats isn't wired up — the DV bitstream path was the priority.
+- **The FX panel text truncates** in the outer columns at narrow window widths.
+- **The output display won't switch to 720x480.** macOS refuses the mode; see
+  `docs/BLOCKED.md` §2. The program is scaled into the card's current mode instead,
+  and the app logs exactly what it negotiated rather than guessing. The analog chain
+  still works — the loopback proves it — this only affects pixel-exactness.
+- **The DVC100 is on S-Video, not composite**, on this rig. `config/devices.json`
+  records it. Reading the wrong connector returns a valid, perfectly black picture.
+- **Only one process can hold the DVC100** — quit `DVC100.app` before the loopback.
+- **Sub Mix 1 FX drives Source A only.** Per-channel FX chains come later.
+- The settings bar panel carries an "Output" header the mockup doesn't have.
+
+## Verifying it yourself
+
+```sh
+scripts/verify.sh              # build + test + lint, must exit 0
+scripts/selfqa.sh offscreen    # render checks, no hardware
+scripts/selfqa.sh loopback     # DVC100 analog capture (quit DVC100.app first)
+./build/Videoboy.app/Contents/MacOS/Videoboy --selfqa ui        # layout at 3 widths
+./build/Videoboy.app/Contents/MacOS/Videoboy --selfqa playback  # the live graph
+./build/Videoboy.app/Contents/MacOS/Videoboy --selfqa output    # the HDMI output stage
+```
+
+Evidence lands in `selfqa/out/<phase>/` — PNGs plus a `result.txt` for each check.
+The interesting ones to look at:
+
+- `selfqa/out/phase-1/dv-corruption/` — one PNG per corruption mode. This is the wedge.
+- `selfqa/out/phase-2/beat-synced-corruption/` — one PNG per beat, same source frame.
+- `selfqa/out/phase-2/playback/` — the fader sweeping A to B through the real graph.
+- `selfqa/out/phase-2/ui-layout/` — the shell at wide, compact and narrow.
+- `selfqa/out/phase-2/loopback/` — **the real analog signal**, captured back off the
+  DVC100 after going out the HDMI card and through the HDMI-to-RCA converter.
+  30.000 fps, 0 dropped frames, 720x480, all six colour bars recovered.
+
+## Read next
+
+- `docs/BLOCKED.md` — the three things needing you, one of which is a single action.
+- `docs/ARCHITECTURE.md` — the graph, the two clocks, the one extension point.
+- `docs/ADD-A-MODULE.md` — how to add a source or effect.

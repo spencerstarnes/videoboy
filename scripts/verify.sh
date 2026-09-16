@@ -9,16 +9,20 @@
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 require_toolchain
 
-log "verify: 1/4 Core tests"
+log "verify: 1/5 Core tests"
 "$REPO_ROOT/scripts/test.sh"
 
-log "verify: 2/4 build app"
+log "verify: 2/5 build app"
 "$REPO_ROOT/scripts/build.sh" release
 
-log "verify: 3/4 lint"
+log "verify: 3/5 lint"
 "$REPO_ROOT/scripts/lint.sh"
 
-log "verify: 4/4 offscreen self-QA"
+log "verify: 4/5 offscreen self-QA"
 "$REPO_ROOT/scripts/selfqa.sh" offscreen
+
+log "verify: 5/5 app self-QA (layout + live graph)"
+"$REPO_ROOT/scripts/selfqa.sh" ui
+"$REPO_ROOT/scripts/selfqa.sh" playback
 
 log "verify: OK"

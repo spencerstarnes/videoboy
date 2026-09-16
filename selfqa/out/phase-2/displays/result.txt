@@ -1,0 +1,14 @@
+check:    phase-2/displays
+verdict:  PASS
+when:     2026-09-16T05:23:53Z
+core:     0.2.0
+
+notes:
+  displays seen: 3
+    'BenQ PD3200U' 3840x2160@60.00 [main]
+    'BenQ SW271' 2160x3840@60.00
+    'MACROSILICON' 1280x1024@60.00
+  output target: 'MACROSILICON' negotiated 1280x1024@60.00
+
+assertions (1/1 passed):
+  PASS  an output display exists — 'MACROSILICON' at 1280x1024@60.00

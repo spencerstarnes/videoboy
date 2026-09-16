@@ -17,14 +17,16 @@ CHECK="${1:-all}"
 
 run_offscreen() {
   log "self-QA: offscreen render checks"
+  require_ffmpeg
   cd "$REPO_ROOT/Core"
-  swift test --filter 'SelfQA|Offscreen|Render'
+  swift test "${FFMPEG_FLAGS[@]}" --filter 'SelfQA|Offscreen|Render'
 }
 
 run_midi() {
   log "self-QA: virtual MIDI detect"
+  require_ffmpeg
   cd "$REPO_ROOT/Core"
-  swift test --filter 'MIDI'
+  swift test "${FFMPEG_FLAGS[@]}" --filter 'MIDI'
 }
 
 run_loopback() {
@@ -35,10 +37,27 @@ run_loopback() {
   "$APP_BUNDLE/Contents/MacOS/$APP_NAME" --selfqa loopback
 }
 
+# The checks that live inside the app bundle, because they need a bundle identity
+# (camera permission) or a real NSApplication (display enumeration, view rendering).
+run_app_check() {
+  [ -d "$APP_BUNDLE" ] || fail "no app at $APP_BUNDLE — run scripts/build.sh first"
+  "$APP_BUNDLE/Contents/MacOS/$APP_NAME" --selfqa "$1"
+}
+
 case "$CHECK" in
   offscreen) run_offscreen ;;
   midi)      run_midi ;;
   loopback)  run_loopback ;;
-  all)       run_offscreen; run_midi; run_loopback ;;
-  *)         fail "unknown check '$CHECK' (try: offscreen, midi, loopback, all)" ;;
+  ui)        run_app_check ui ;;
+  playback)  run_app_check playback ;;
+  output)    run_app_check output ;;
+  displays)  run_app_check displays ;;
+  all)
+    run_offscreen
+    run_midi
+    run_app_check ui
+    run_app_check playback
+    run_loopback
+    ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, output, displays, loopback, all)" ;;
 esac

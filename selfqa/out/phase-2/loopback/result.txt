@@ -1,0 +1,22 @@
+check:    phase-2/loopback
+verdict:  PASS
+when:     2026-09-16T05:34:43Z
+core:     0.2.0
+
+notes:
+  sending colour bars to 'MACROSILICON' at 1280x1024@60.00
+  AVFoundation capture devices visible: OBS Virtual Camera, PC-LM1E Camera, Spencer’s iPhone Camera
+  dvc100 tool: /Users/spencerstarnes/dvc100/build/dvc100, input 'svideo'
+  captured the DVC100 directly through the dvc100 tool
+  captured 120 frames from 'DVC100 (via dvc100 tool)'
+  app logged output mode: 1280x1024@60.00
+  combing score: 0.0000
+  combing score 0.0000 (interlace indicator)
+
+assertions (6/6 passed):
+  PASS  frame rate — measured 30.000 fps vs expected 29.970, delta 0.030, tolerance 2.0
+  PASS  no runaway drops — 0 dropped of 120
+  PASS  signal is live — 19 duplicate frames of 120
+  PASS  captured geometry — captured 720x480, expected 720x480
+  PASS  signal present — luminance variance over threshold in at least one sampled frame
+  PASS  captured picture matches what was sent — matched 6 of 6 saturated bars by channel signature (needed 5)

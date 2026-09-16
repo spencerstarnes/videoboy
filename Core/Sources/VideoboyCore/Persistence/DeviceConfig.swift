@@ -63,6 +63,17 @@ public struct OutputDisplayConfig: Codable {
 public struct LoopbackCaptureConfig: Codable {
     /// Substring matched against capture device names.
     public var name: String
+    /// Which physical connector on the grabber carries the signal: "composite" or
+    /// "svideo". Getting this wrong reads as a perfectly black picture, so it is
+    /// configuration rather than a guess.
+    public var input: String?
+
+    /// Other device names to try when `name` is not attached, in order.
+    ///
+    /// This exists because a grabber that macOS cannot address directly can often be
+    /// reached second-hand — for example through a virtual camera published by
+    /// another application that does have a driver for it.
+    public var alternateNames: [String]?
     public var expectedFormat: ExpectedFormat
 
     public struct ExpectedFormat: Codable {
@@ -74,8 +85,16 @@ public struct LoopbackCaptureConfig: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case name
+        case input
+        case alternateNames = "alternate_names"
         case expectedFormat = "expected_format"
     }
+
+    /// Every name to try, preferred first.
+    public var candidateNames: [String] { [name] + (alternateNames ?? []) }
+
+    /// The configured connector, defaulting to composite.
+    public var connector: String { input ?? "composite" }
 }
 
 /// The whole of config/devices.json.

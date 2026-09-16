@@ -1,0 +1,51 @@
+check:    phase-2/output-stage
+verdict:  FAIL
+when:     2026-09-16T05:25:23Z
+core:     0.2.0
+
+notes:
+  SCOPE: verifies the app's output window and the display mode it negotiated.
+  It does NOT capture the analog signal — see docs/BLOCKED.md for why.
+  output display: 'MACROSILICON', was at 1280x1024@60.00
+  negotiated output mode: 1280x1024@60.00
+  display mode restored
+
+assertions (5/6 passed):
+  PASS  HDMI card advertises the SD mode — 720x480@29.97i is in this display's mode list
+  FAIL  output switched to SD — negotiated 1280x1024@60.00, expected to start with 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  color bars — worst bar 0 off by 2.1 (tolerance 45.0)
+  PASS  signal present — luminance variance 3986.9, threshold 25.0
+  PASS  output window is on the intended display — window placed on 'MACROSILICON'
+
+recent log:
+  1789536322.910 INFO [output]   720x576 @ 50.00
+  1789536322.910 INFO [output]   1600x900 @ 60.00
+  1789536322.910 INFO [output] the requested 720x480@29.97i IS available on this display
+  1789536322.910 ERROR [output] could not switch 'MACROSILICON' to 720x480@29.97i: CGError 1001; keeping the current mode
+  1789536322.910 WARN [output] output mode: requested 720x480@29.97i but 'MACROSILICON' is at 1280x1024@60.00. Videoboy does not force display modes; the 720x480 program is scaled to fill this display, and the downstream HDMI-to-RCA converter handles interlacing. Set the display to 720x480@29.97i in System Settings for a 1:1 signal.
+  1789536322.917 INFO [output] output window on 'MACROSILICON' at 1280x1024@60.00
+  1789536322.918 INFO [selfqa] phase-2/output-stage: negotiated output mode: 1280x1024@60.00
+  1789536322.918 ERROR [selfqa] phase-2/output-stage: FAIL  output switched to SD — negotiated 1280x1024@60.00, expected to start with 720x480
+  1789536322.918 INFO [param] slot 'mix.one' now exposes 2 params (0 values carried, 0 dropped)
+  1789536322.918 INFO [param] slot 'mix.two' now exposes 2 params (0 values carried, 0 dropped)
+  1789536322.918 INFO [param] slot 'source.c' now exposes 5 params (0 values carried, 0 dropped)
+  1789536322.918 INFO [param] slot 'mix.primary' now exposes 2 params (0 values carried, 0 dropped)
+  1789536322.918 INFO [param] slot 'source.b' now exposes 5 params (0 values carried, 0 dropped)
+  1789536322.918 INFO [param] slot 'source.d' now exposes 5 params (0 values carried, 0 dropped)
+  1789536322.918 INFO [param] slot 'source.a' now exposes 5 params (0 values carried, 0 dropped)
+  1789536322.918 INFO [graph] graph built: 7 nodes, max latency 1 frames
+  1789536322.918 INFO [clock] subscription 1: 1/4, latency 1 frames (33.4ms)
+  1789536322.918 INFO [clock] subscription 2: 1/4, latency 1 frames (33.4ms)
+  1789536322.918 INFO [clock] subscription 3: 1/4, latency 1 frames (33.4ms)
+  1789536322.918 INFO [clock] subscription 4: 1/4, latency 1 frames (33.4ms)
+  1789536322.920 INFO [dv] opened bars.dv: 119 NTSC frames, 720x480
+  1789536322.920 INFO [dv] DV decoder ready (libavcodec 9.0.1)
+  1789536322.920 INFO [dv] source.b loaded bars.dv
+  1789536322.920 INFO [param] slot 'source.b' now exposes 5 params (5 values carried, 0 dropped)
+  1789536323.432 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-2/output-stage/program-sent-to-output.png
+  1789536323.432 INFO [selfqa] phase-2/output-stage: PASS  dimensions — expected 720x480, got 720x480
+  1789536323.432 INFO [selfqa] phase-2/output-stage: PASS  color bars — worst bar 0 off by 2.1 (tolerance 45.0)
+  1789536323.432 INFO [selfqa] phase-2/output-stage: PASS  signal present — luminance variance 3986.9, threshold 25.0
+  1789536323.432 INFO [selfqa] phase-2/output-stage: PASS  output window is on the intended display — window placed on 'MACROSILICON'
+  1789536323.433 INFO [selfqa] phase-2/output-stage: display mode restored

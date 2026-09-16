@@ -29,12 +29,28 @@ struct DisplayInfo {
     let pixelHeight: Int
     let refreshRate: Double
     let isMain: Bool
+    /// True when this display is mirroring another.
+    ///
+    /// This matters a great deal for output: a mirrored display cannot have its mode
+    /// set independently, so SD output is impossible until mirroring is turned off.
+    let isMirrored: Bool
 
     /// The mode string logged and compared against captured metrics.
     /// Refresh rate reads 0 on some adapters, which is reported honestly as `?`.
     var modeDescription: String {
         let rate = refreshRate > 0 ? String(format: "%.2f", refreshRate) : "?"
         return "\(pixelWidth)x\(pixelHeight)@\(rate)"
+    }
+
+    /// Why this display cannot be switched to a different mode, or nil if it can.
+    ///
+    /// Returned as a sentence fit to show a person, because the fix is theirs to make
+    /// in System Settings — Videoboy will not rearrange someone's desktop by itself.
+    var modeSwitchObstacle: String? {
+        if isMirrored {
+            return "'\(name)' is mirroring another display. A mirrored display cannot be switched to its own mode, so SD output is not possible until mirroring is turned off for it in System Settings > Displays."
+        }
+        return nil
     }
 }
 
@@ -59,7 +75,8 @@ enum DisplayRouter {
                 pixelWidth: mode?.pixelWidth ?? Int(CGDisplayPixelsWide(displayID)),
                 pixelHeight: mode?.pixelHeight ?? Int(CGDisplayPixelsHigh(displayID)),
                 refreshRate: mode?.refreshRate ?? 0,
-                isMain: screen == NSScreen.main
+                isMain: screen == NSScreen.main,
+                isMirrored: CGDisplayIsInMirrorSet(displayID) != 0
             )
         }
     }
@@ -98,6 +115,59 @@ enum DisplayRouter {
 
         Log.warn(.output, "only the main display is available; output will appear on it")
         return displays.first
+    }
+
+    /// Every mode a display advertises through its EDID.
+    ///
+    /// SPEC 3: a mode the adapter does not offer cannot be forced, so the first step
+    /// is always to find out what it actually offers. The list is logged so the gap
+    /// between the project format and the available modes is visible rather than
+    /// guessed at.
+    static func availableModes(for display: DisplayInfo) -> [CGDisplayMode] {
+        // Include modes macOS hides by default: the low-resolution SD modes an HDMI
+        // capture card advertises are usually among them.
+        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
+        guard let modes = CGDisplayCopyAllDisplayModes(display.displayID, options) as? [CGDisplayMode] else {
+            Log.warn(.output, "'\(display.name)' reported no mode list")
+            return []
+        }
+        return modes
+    }
+
+    /// The advertised mode closest to a requested one, or nil when nothing matches.
+    ///
+    /// "Closest" means exact width and height; refresh rate is then preferred but not
+    /// required, because an adapter often reports 0 for it.
+    static func bestMode(
+        for display: DisplayInfo, matching requested: TargetMode
+    ) -> CGDisplayMode? {
+        let candidates = availableModes(for: display).filter {
+            $0.pixelWidth == requested.width && $0.pixelHeight == requested.height
+        }
+        guard !candidates.isEmpty else { return nil }
+        return candidates.min {
+            abs($0.refreshRate - requested.fps) < abs($1.refreshRate - requested.fps)
+        }
+    }
+
+    /// Logs every mode a display offers, and whether the project format is among them.
+    static func logAvailableModes(for display: DisplayInfo, requested: TargetMode) {
+        let modes = availableModes(for: display)
+        Log.info(.output, "'\(display.name)' advertises \(modes.count) mode(s)")
+        // Distinct geometries only; a display lists the same size at many rates.
+        var seen: Set<String> = []
+        for mode in modes {
+            let key = "\(mode.pixelWidth)x\(mode.pixelHeight)"
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            let rate = mode.refreshRate > 0 ? String(format: "%.2f", mode.refreshRate) : "?"
+            Log.info(.output, "  \(key) @ \(rate)")
+        }
+        if bestMode(for: display, matching: requested) != nil {
+            Log.info(.output, "the requested \(requested.description) IS available on this display")
+        } else {
+            Log.warn(.output, "the requested \(requested.description) is NOT advertised by '\(display.name)'; it will be scaled into whatever mode the display is in")
+        }
     }
 
     /// Reports what was asked for, what was obtained, and how the gap is handled.

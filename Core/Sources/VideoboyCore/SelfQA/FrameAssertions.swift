@@ -133,6 +133,97 @@ public enum FrameAssertions {
         )
     }
 
+    /// Asserts the expected bar colours are present somewhere in the frame, judged by
+    /// colour *identity* rather than absolute level.
+    ///
+    /// `looksLikeColorBars` compares absolute values at fixed positions, which is
+    /// right for an offscreen render whose geometry and levels are exact. It is the
+    /// wrong test for a frame that has been through an analog chain, for two reasons:
+    ///
+    /// 1. **Position moves.** The picture is scaled and pillarboxed, so fixed sample
+    ///    points no longer land on the bars.
+    /// 2. **Amplitude drops, legitimately.** NTSC gives chroma far less bandwidth
+    ///    than luma, and the saturated primaries lose the most. Measured on this rig,
+    ///    a 191-level blue came back at 111 and red at 124 while the hues stayed
+    ///    correct. That is composite video behaving normally, not a fault, and a
+    ///    tolerance loose enough to accept it would accept almost anything.
+    ///
+    /// So this tests what actually matters: for each expected bar, is there a strip
+    /// whose *channel signature* matches — the channels that should be bright are
+    /// clearly brighter than the channels that should be dark? That identifies the
+    /// colour and the bar order while staying indifferent to saturation loss.
+    ///
+    /// - Parameters:
+    ///   - image: the captured frame.
+    ///   - separation: how far a "bright" channel must exceed a "dark" one, 0...255.
+    ///   - requiredMatches: how many of the six saturated bars must be found.
+    public static func containsColorBarHues(
+        _ image: ImageBuffer,
+        separation: Double = 40.0,
+        requiredMatches: Int = 5,
+        name: String = "captured picture contains the bar colours"
+    ) -> AssertionResult {
+        // The six saturated bars. Grey, white and black are skipped: letterbox bars
+        // and surrounding chrome would satisfy a neutral expectation trivially.
+        let wanted = TestPattern.smpteBarColors.filter { color in
+            !(color.r == color.g && color.g == color.b)
+        }
+
+        let stripCount = 72
+        let stripWidth = max(image.width / stripCount, 1)
+        // Sample the vertical middle, clear of a menu bar or a letterbox edge.
+        let sampleTop = image.height / 3
+        let sampleHeight = image.height / 3
+
+        var stripMeans: [(r: Double, g: Double, b: Double)] = []
+        for strip in 0..<stripCount {
+            let x = strip * stripWidth
+            guard x < image.width else { break }
+            stripMeans.append(meanColor(image, region: (
+                x: x, y: sampleTop, width: min(stripWidth, image.width - x), height: sampleHeight
+            )))
+        }
+
+        /// True when `mean` carries the same bright/dark channel pattern as `expected`.
+        func signatureMatches(
+            _ mean: (r: Double, g: Double, b: Double),
+            _ expected: (r: UInt8, g: UInt8, b: UInt8)
+        ) -> Bool {
+            // Split the expected colour's channels into bright and dark.
+            var bright: [Double] = []
+            var dark: [Double] = []
+            let pairs: [(UInt8, Double)] = [
+                (expected.r, mean.r), (expected.g, mean.g), (expected.b, mean.b)
+            ]
+            for (expectedChannel, measuredChannel) in pairs {
+                if expectedChannel >= 128 { bright.append(measuredChannel) }
+                else { dark.append(measuredChannel) }
+            }
+            guard let dimmestBright = bright.min(), let brightestDark = dark.max() else { return false }
+            // The bright channels must be clearly above the dark ones, and must carry
+            // real signal rather than being three shades of near-black.
+            return dimmestBright > brightestDark + separation && dimmestBright > 55
+        }
+
+        var found: [String] = []
+        var missing: [String] = []
+        for color in wanted {
+            let label = "(\(color.r),\(color.g),\(color.b))"
+            if stripMeans.contains(where: { signatureMatches($0, color) }) {
+                found.append(label)
+            } else {
+                missing.append(label)
+            }
+        }
+
+        return AssertionResult(
+            name: name,
+            passed: found.count >= requiredMatches,
+            detail: "matched \(found.count) of \(wanted.count) saturated bars by channel signature (needed \(requiredMatches))"
+                + (missing.isEmpty ? "" : "; missing \(missing.joined(separator: " "))")
+        )
+    }
+
     // MARK: - Signal presence
 
     /// Per-channel-averaged luminance variance across the frame. A black or

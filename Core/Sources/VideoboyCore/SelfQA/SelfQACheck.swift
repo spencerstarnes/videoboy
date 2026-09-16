@@ -164,3 +164,11 @@ public final class SelfQACheck {
         return verdict
     }
 }
+
+/// Bounds-checked subscripting, so sampling "the middle frame" of a possibly-short
+/// sequence cannot trap.
+public extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}

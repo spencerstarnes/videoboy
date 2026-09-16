@@ -1,0 +1,19 @@
+check:    phase-2/playback
+verdict:  PASS
+when:     2026-09-16T05:35:10Z
+core:     0.2.0
+
+notes:
+  A = motion.dv, B = bars.dv, through the engine's own graph
+  all frames rendered through the engine's own nodes and Metal pipelines
+
+assertions (9/9 passed):
+  PASS  graph shape — 7 nodes (4 sources, ONE, TWO, PRIMARY)
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  signal present — luminance variance 4188.1, threshold 25.0
+  PASS  fader at B shows source B — worst bar 0 off by 2.1 (tolerance 45.0)
+  PASS  moving the fader changes PRIMARY — 0.997 of sampled pixels differ, needed >= 0.2
+  PASS  mid-fade is a blend of both — differs from A by 0.93 and from B by 0.99
+  PASS  playback advances the picture — 0.086 of sampled pixels differ, needed >= 0.05
+  PASS  the corruptor damages PRIMARY through the live graph — 0.487 of sampled pixels differ, needed >= 0.05
+  PASS  signal present — luminance variance 3898.5, threshold 25.0

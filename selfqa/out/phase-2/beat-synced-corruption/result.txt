@@ -1,0 +1,17 @@
+check:    phase-2/beat-synced-corruption
+verdict:  PASS
+when:     2026-09-16T05:35:02Z
+core:     0.2.0
+
+notes:
+  120 BPM, quarter-note reseed, mode shuffleBlocks at amount 0.65
+  source latency 1 frame(s), compensated by the scheduler
+
+assertions (7/7 passed):
+  PASS  scheduler reseeded on the beat — 3 reseeds over 2 seconds at 120 BPM (expected about 4)
+  PASS  each beat used a distinct seed — 4 distinct seeds seen
+  PASS  the picture changes from beat to beat — 3 of 3 consecutive beat pairs differ
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  dimensions — expected 720x480, got 720x480

@@ -69,13 +69,13 @@ final class PanelGridView: NSView {
     private var currentBreakpoint: LayoutBreakpoint = .wide
 
     /// Panels other parts of the app need to reach. Built once, kept for wiring.
-    private(set) var panels: PanelSet!
+    let panels = PanelSet()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = Theme.Color.content.cgColor
-        buildPanels()
+        placePanels()
     }
 
     @available(*, unavailable)
@@ -97,9 +97,8 @@ final class PanelGridView: NSView {
     ///     "fxL  libA brow libC fxR"
     ///     "fxL  set  set  set  fxR"
     ///
-    private func buildPanels() {
-        let set = PanelSet()
-        panels = set
+    private func placePanels() {
+        let set = panels
 
         func place(_ panel: PanelView, _ placement: GridPlacement, outer: Bool = false) {
             panel.translatesAutoresizingMaskIntoConstraints = true
