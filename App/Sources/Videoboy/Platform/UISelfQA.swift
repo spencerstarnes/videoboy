@@ -360,7 +360,114 @@ enum UISelfQA {
             }
         }
 
+        // Output routing. The tiling is the part with real arithmetic in it, so it is
+        // checked against pixels rather than by looking at the popover.
+        do {
+            let store = PreferenceStore(
+                fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                    .appendingPathComponent("videoboy-selfqa-routing.json"))
+            store.preferences.destinations = [
+                OutputDestination(kind: .obs, name: "OBS", target: "127.0.0.1:9000")
+            ]
+            let router = OutputRouter(store: store, metal: MetalContext.shared)
+
+            // Destinations that cannot be served must say so rather than being
+            // offered and then doing nothing — the failure this whole list exists to
+            // avoid is a menu item that looks live and is not.
+            let options = router.availableOptions()
+            let configured = options.filter {
+                if case .configured = $0.destination { return true }
+                return false
+            }
+            check.record(AssertionResult(
+                name: "destinations that cannot be served are offered greyed, with a reason",
+                passed: configured.allSatisfy { !$0.isAvailable && $0.unavailableReason != nil },
+                detail: "\(configured.count) configured destinations, "
+                    + "\(configured.filter { $0.unavailableReason != nil }.count) give a reason"
+            ))
+
+            // The main display must never be offered: the app is on it, and a
+            // borderless output window there would leave no way back to the controls.
+            let mainOffered = options.contains {
+                $0.isAvailable && $0.detail.contains("main")
+            }
+            check.record(AssertionResult(
+                name: "the display Videoboy is running on is not offered as an output",
+                passed: !mainOffered,
+                detail: mainOffered ? "the main display was offered" : "correctly withheld"
+            ))
+
+            // Four-up tiling, with one quadrant deliberately empty.
+            if let metal = MetalContext.shared {
+                let quadrantColours: [ImageBuffer] = [
+                    solid(width: 320, height: 240, r: 220, g: 40, b: 40),
+                    solid(width: 320, height: 240, r: 40, g: 220, b: 40),
+                    solid(width: 320, height: 240, r: 40, g: 40, b: 220)
+                ]
+                let textures: [MTLTexture?] = quadrantColours.map {
+                    metal.makeTexture(from: $0, label: "quadrant")
+                } + [nil]
+
+                if let tiled = router.tiled(textures),
+                   let renderer = OffscreenRenderer(context: metal),
+                   let image = renderer.readback(tiled) {
+                    try? check.writeImage(image, named: "four-up.png")
+
+                    // Each quadrant must hold its own colour, and the missing one must
+                    // stay black rather than shifting the others along.
+                    let topLeft = image.pixel(x: image.width / 4, y: image.height / 4)
+                    let topRight = image.pixel(x: image.width * 3 / 4, y: image.height / 4)
+                    let bottomLeft = image.pixel(x: image.width / 4, y: image.height * 3 / 4)
+                    let bottomRight = image.pixel(x: image.width * 3 / 4, y: image.height * 3 / 4)
+
+                    check.record(AssertionResult(
+                        name: "each source keeps its own quadrant in the four-up",
+                        passed: topLeft.r > 150 && topRight.g > 150 && bottomLeft.b > 150,
+                        detail: "top-left r=\(topLeft.r), top-right g=\(topRight.g), "
+                            + "bottom-left b=\(bottomLeft.b)"
+                    ))
+                    check.record(AssertionResult(
+                        name: "an empty channel leaves its quadrant black rather than moving the others",
+                        passed: bottomRight.r < 40 && bottomRight.g < 40 && bottomRight.b < 40,
+                        detail: "bottom-right is (\(bottomRight.r), \(bottomRight.g), \(bottomRight.b))"
+                    ))
+                } else {
+                    check.record(AssertionResult(
+                        name: "four-up tiles", passed: false, detail: "no tiled texture came back"))
+                }
+            }
+
+            // The popover itself.
+            let popover = RoutingPopover(
+                source: .slot(Engine.outputSlot), router: router, onChosen: { _ in })
+            let content = popover.view
+            content.appearance = NSAppearance(named: .darkAqua)
+            content.layoutSubtreeIfNeeded()
+            content.frame = NSRect(origin: .zero, size: content.fittingSize)
+            let backing = NSView(frame: content.frame)
+            backing.wantsLayer = true
+            backing.layer?.backgroundColor = Theme.Color.content.cgColor
+            backing.addSubview(content)
+            backing.layoutSubtreeIfNeeded()
+            backing.displayIfNeeded()
+            if let image = render(view: backing) {
+                try? check.writeImage(image, named: "routing-popover.png")
+            }
+            try? FileManager.default.removeItem(at: store.fileURL)
+        }
+
         return check.finish()
+    }
+
+    /// A flat colour, for checking that a quadrant kept its own picture.
+    private static func solid(
+        width: Int, height: Int, r: UInt8, g: UInt8, b: UInt8
+    ) -> ImageBuffer {
+        var image = ImageBuffer(width: width, height: height)
+        for y in 0..<height {
+            for x in 0..<width { image.setPixel(x: x, y: y, r: r, g: g, b: b) }
+        }
+        return image
     }
 
     /// Counts faders marked as driven.

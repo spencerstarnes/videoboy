@@ -758,6 +758,62 @@ public final class MetalContext {
         return true
     }
 
+    /// Tiles up to four textures into one, for a multi-view send to a monitor.
+    ///
+    /// A performer watching four sources on one screen wants them side by side, not
+    /// four windows to arrange. Missing inputs leave their quadrant black rather than
+    /// shifting the others around — the position of a quadrant is how you know which
+    /// source it is, so it has to stay put whether or not anything is loaded.
+    ///
+    /// - Parameter textures: up to four, in reading order: top-left, top-right,
+    ///   bottom-left, bottom-right.
+    /// - Returns: false if the pass could not be encoded.
+    public func tile(
+        _ textures: [MTLTexture?], into target: MTLTexture, label: String
+    ) -> Bool {
+        let descriptor = MTLRenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = target
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+        descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+
+        guard let commandBuffer = commandQueue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
+            Log.error(.render, "\(label) could not encode its tiled view")
+            return false
+        }
+        encoder.label = "\(label)-tile"
+        encoder.setRenderPipelineState(blitPipeline)
+
+        let halfWidth = Double(target.width) / 2
+        let halfHeight = Double(target.height) / 2
+        // Reading order, with the origin at the top left as viewports are measured.
+        let quadrants: [(x: Double, y: Double)] = [
+            (0, 0), (halfWidth, 0), (0, halfHeight), (halfWidth, halfHeight)
+        ]
+
+        for (index, quadrant) in quadrants.enumerated() {
+            guard index < textures.count, let texture = textures[index] else { continue }
+            encoder.setViewport(MTLViewport(
+                originX: quadrant.x, originY: quadrant.y,
+                width: halfWidth, height: halfHeight,
+                znear: 0, zfar: 1
+            ))
+            encoder.setFragmentTexture(texture, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        }
+
+        encoder.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+
+        if let error = commandBuffer.error {
+            Log.error(.render, "\(label) tiled view failed: \(error)")
+            return false
+        }
+        return true
+    }
+
     /// Uploads an `ImageBuffer` into a new sampleable texture.
     ///
     /// `ImageBuffer` is RGBA and the graph is BGRA, so channels are swapped during

@@ -20,6 +20,8 @@ final class ShellController {
     private let engine: Engine
     private let preferences: PreferenceStore
     private var outputWindow: OutputWindowController?
+    /// Everything leaving the app beyond the PROGRAM output window.
+    private lazy var router = OutputRouter(store: preferences, metal: MetalContext.shared)
     /// Shift-to-detect. Exposed so the self-QA render can arm it.
     private(set) var detectSession: DetectSession?
 
@@ -38,6 +40,7 @@ final class ShellController {
         wireSettingsBar()
         wireRecordIndicators()
         wireLibraries()
+        wireRouting()
         wireDetect()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
@@ -78,6 +81,80 @@ final class ShellController {
     }
 
     /// Wires the libraries: double-click loads into the pair's next channel.
+    /// Hangs the destination list off a preview's send glyph.
+    private func presentRouting(for source: RoutingSource, from view: NSView) {
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.appearance = NSAppearance(named: .darkAqua)
+        popover.contentViewController = RoutingPopover(
+            source: source, router: router
+        ) { [weak self, weak popover] destination in
+            guard let self else { return }
+            if let destination {
+                // Picking a destination this source already goes to means "stop", the
+                // way a checked item in any menu does.
+                if self.router.destinations(showing: source).contains(destination) {
+                    self.router.clear(destination)
+                } else {
+                    self.router.route(source, to: destination)
+                }
+            } else {
+                for destination in self.router.destinations(showing: source) {
+                    self.router.clear(destination)
+                }
+            }
+            popover?.close()
+        }
+        popover.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+    }
+
+    /// Gives every preview a send glyph that knows what it is showing.
+    private func wireRouting() {
+        let panels = shell.grid.panels
+        var sources: [(MetalPreviewView, RoutingSource)] = [
+            (panels.subMixOneBody.preview, .slot(Engine.busCodecOneSlot)),
+            (panels.subMixTwoBody.preview, .slot(Engine.busCodecTwoSlot)),
+            (panels.programBody.preview, .slot(Engine.outputSlot))
+        ]
+        for letter in Self.channels {
+            guard let body = panels.sourceBodies[letter] else { continue }
+            sources.append((body.preview, .slot(Engine.slot(forChannel: letter))))
+        }
+
+        for (preview, source) in sources {
+            preview.onRoutingRequested = { [weak self] view in
+                self?.presentRouting(for: source, from: view)
+            }
+        }
+
+        // The four-up is offered from the PROGRAM preview, since that is where
+        // someone looking for "show me everything" would reach first. Right-click,
+        // because the plain click already means "send what this preview shows".
+        panels.programBody.preview.routingButton?.menu = fourUpMenu()
+
+        router.onRoutesChanged = { [weak self] in
+            guard let self else { return }
+            for (preview, source) in sources {
+                preview.setRouted(!self.router.destinations(showing: source).isEmpty)
+            }
+        }
+    }
+
+    /// The right-click menu on PROGRAM's send glyph: the assembled views.
+    private func fourUpMenu() -> NSMenu {
+        let menu = NSMenu()
+        let item = NSMenuItem(
+            title: "Send four-up preview…", action: #selector(sendFourUp), keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
+        return menu
+    }
+
+    @objc private func sendFourUp() {
+        guard let view = shell.grid.panels.programBody.preview.routingButton else { return }
+        presentRouting(for: .fourUp, from: view)
+    }
+
     private func wireLibraries() {
         let panels = shell.grid.panels
         // Each sub-mix library defaults to the pair it feeds. The browser starts on
@@ -1133,6 +1210,25 @@ final class ShellController {
         panels.programBody.preview.texture = program
         panels.programBody.preview.present()
         outputWindow?.present(texture: program)
+
+        // Everything else that has been routed somewhere. The four-up is assembled
+        // here rather than in the graph because it is a view made FOR output, not a
+        // stage anything downstream reads.
+        if router.hasRoutes {
+            router.present { [weak self] source in
+                guard let self else { return nil }
+                switch source {
+                case .slot(let slot):
+                    return self.engine.texture(for: slot)
+                case .fourUp:
+                    return self.router.tiled(Self.channels.map {
+                        self.engine.texture(for: Engine.slot(forChannel: $0))
+                    })
+                case .scope(let slot):
+                    return self.engine.texture(for: slot)
+                }
+            }
+        }
 
         updateFadesAndCuts(from: engine)
         updateScopesAndZebra(from: engine)

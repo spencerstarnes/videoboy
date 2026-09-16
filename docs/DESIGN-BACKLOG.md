@@ -18,6 +18,10 @@ what was asked for and has not been built.
   breathes on the beat.
 - **"Don't remind me again"** (§8) — save location on first open, save on quit, and
   the audio-clock warning. Reset from the Defaults pane.
+- **Output routing** (§6, partly) — a send glyph under every preview, listing every
+  display plus the destinations defined in preferences. Displays work, including the
+  four-up tiled send. OBS, window, capture-card, IP and feedback-send destinations
+  are listed greyed, each saying which specific piece is missing.
 - **NTSC / DV output emulation** (§13) — two toggles on the output bar, three
   variables each behind a Look Up-style popover.
 - **FCP X library behaviour** (§10) — hover-scrub with real decoded frames, in/out

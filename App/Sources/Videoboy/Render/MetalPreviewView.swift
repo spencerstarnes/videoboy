@@ -45,6 +45,13 @@ final class MetalPreviewView: NSView {
     /// not a recordable feed.
     private(set) var recordIndicator: MiniRecordIndicator?
 
+    /// The send glyph, bottom right. macOS asks "where do you want this?" with one
+    /// glyph and a short list, and everyone already knows how to use it.
+    private(set) var routingButton: NSButton?
+
+    /// Called when the send glyph is clicked, with the glyph to hang a popover from.
+    var onRoutingRequested: ((NSView) -> Void)?
+
     private let captionLabel = NSTextField(labelWithString: "")
     private let emptyLabel = NSTextField(labelWithString: "no source")
     private var metalLayer: CAMetalLayer?
@@ -119,6 +126,28 @@ final class MetalPreviewView: NSView {
             captionLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3)
         ])
 
+        // The send glyph sits opposite the caption, out of the picture's way but
+        // always in the same place on every preview — which is what makes it
+        // findable without hunting.
+        let routing = NSButton(
+            image: NSImage(
+                systemSymbolName: "airplayvideo",
+                accessibilityDescription: "Send this to a display") ?? NSImage(),
+            target: self, action: #selector(routingPressed(_:)))
+        routing.bezelStyle = .inline
+        routing.isBordered = false
+        routing.contentTintColor = Theme.Color.textTertiary
+        routing.toolTip = "Send this to a display"
+        routing.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(routing)
+        routingButton = routing
+        NSLayoutConstraint.activate([
+            routing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            routing.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            routing.widthAnchor.constraint(equalToConstant: 18),
+            routing.heightAnchor.constraint(equalToConstant: 14)
+        ])
+
         if let recordLabel {
             let indicator = MiniRecordIndicator(label: recordLabel)
             indicator.translatesAutoresizingMaskIntoConstraints = false
@@ -131,6 +160,17 @@ final class MetalPreviewView: NSView {
                 indicator.heightAnchor.constraint(equalToConstant: Theme.Record.miniHeight)
             ])
         }
+    }
+
+    @objc private func routingPressed(_ sender: NSButton) {
+        onRoutingRequested?(sender)
+    }
+
+    /// Lights the glyph while this preview is being sent somewhere, so a route is
+    /// visible from the window rather than only from the popover that made it.
+    func setRouted(_ isRouted: Bool) {
+        routingButton?.contentTintColor = isRouted
+            ? Theme.Color.accent : Theme.Color.textTertiary
     }
 
     @available(*, unavailable)
