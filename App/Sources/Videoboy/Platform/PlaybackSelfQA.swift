@@ -78,10 +78,13 @@ enum PlaybackSelfQA {
                 presentationTime: Double(frameIndex) / StandardDefinition.frameRate,
                 musicalPosition: nil
             )
-            guard let primary = engine.evaluateGraph(context: context)[GraphTopology.primary] else {
-                return nil
-            }
-            return renderer.readback(primary)
+            // The END of the programme chain, which is what actually goes out. Reading
+            // the ONE/TWO mix instead would skip the programme data stage, and a check
+            // that cannot see a stage cannot tell you it is disconnected.
+            let produced = engine.evaluateGraph(context: context)
+            guard let output = produced[Engine.outputSlot] ?? produced[GraphTopology.primary]
+            else { return nil }
+            return renderer.readback(output)
         }
 
         // 1. The fader hard over to A: PRIMARY must be motion.dv.
@@ -206,6 +209,31 @@ enum PlaybackSelfQA {
             }
         } else {
             check.note("samples/motion.mov is missing; the AVFoundation path was not exercised")
+        }
+
+        // 7. The PROGRAM data stage reaches output. It was built and added to the
+        // graph but never connected, so its controls moved nothing and the picture
+        // was identical whatever they were set to — which is exactly what a check
+        // comparing before and after catches and a reading of the code did not.
+        engine.load(url: fileA, intoChannel: "A")
+        engine.registry.setValue(0.0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+        engine.registry.setValue(0.0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
+        engine.setInterchange(.dv, forBus: GraphTopology.primary)
+
+        engine.registry.setValue(0.0, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
+        let programClean = renderFrame(80)
+        engine.registry.setValue(0.95, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
+        engine.registry.setValue(0.0, slot: Engine.busCodecProgramSlot, code: .corruptMode)
+        let programDamaged = renderFrame(80)
+
+        if let programClean, let programDamaged {
+            try? check.writeImage(programDamaged, named: "08-program-data-stage.png")
+            check.record(FrameAssertions.framesDiffer(
+                programClean, programDamaged, minimumFraction: 0.02,
+                name: "the PROGRAM data stage reaches the output"))
+        } else {
+            check.record(AssertionResult(
+                name: "PROGRAM data stage renders", passed: false, detail: "a frame failed to render"))
         }
 
         check.note("all frames rendered through the engine's own nodes and Metal pipelines")

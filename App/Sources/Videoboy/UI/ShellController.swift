@@ -723,7 +723,9 @@ final class ShellController {
         let composites: [(body: PreviewPanelBody, slot: String, texture: String)] = [
             (panels.subMixOneBody, GraphTopology.subMixOne, Engine.busCodecOneSlot),
             (panels.subMixTwoBody, GraphTopology.subMixTwo, Engine.busCodecTwoSlot),
-            (panels.programBody, GraphTopology.primary, GraphTopology.primary)
+            // Scopes must read what actually goes OUT, which is the end of the
+            // programme chain, not the mix before its data stage.
+            (panels.programBody, GraphTopology.primary, Engine.outputSlot)
         ]
 
         for composite in composites {
@@ -1068,7 +1070,10 @@ final class ShellController {
             ?? engine.texture(for: GraphTopology.subMixTwo)
         panels.subMixTwoBody.preview.present()
 
-        let program = engine.texture(for: GraphTopology.primary)
+        // The end of the programme chain, falling back to the mix while the data
+        // stage has produced nothing yet.
+        let program = engine.texture(for: Engine.outputSlot)
+            ?? engine.texture(for: GraphTopology.primary)
         panels.programBody.preview.texture = program
         panels.programBody.preview.present()
         outputWindow?.present(texture: program)

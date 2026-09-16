@@ -207,6 +207,12 @@ final class Engine {
         graph.connect(from: Engine.feedbackTwoSlot, to: Engine.busCodecTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.busCodecTwoSlot, to: GraphTopology.primary, inputIndex: 1)
 
+        // PROGRAM's own data stage, after the ONE/TWO mix. It was created and added
+        // but never connected, so the programme's data controls moved nothing — the
+        // graph simply terminated at the mix. It is the last thing before output,
+        // which is what makes it the right place for the output emulation too.
+        graph.connect(from: GraphTopology.primary, to: Engine.busCodecProgramSlot, inputIndex: 0)
+
         // A generator per channel, created up front so its parameters are registered
         // and mappable whether or not it is currently the channel's source.
         for letter in ["A", "B", "C", "D"] {
@@ -245,6 +251,13 @@ final class Engine {
     static let busCodecOneSlot = "data.one"
     static let busCodecTwoSlot = "data.two"
     static let busCodecProgramSlot = "data.program"
+
+    /// The last node in the graph — what output and the programme preview show.
+    ///
+    /// Named separately from `GraphTopology.primary` because they are not the same
+    /// thing: primary is the ONE/TWO mix, and the programme data stage runs after it.
+    /// Conflating them is what left that stage unconnected.
+    static var outputSlot: String { busCodecProgramSlot }
     static let captureSlot = "source.capture"
     static let testPatternSlot = "source.testpattern"
 
@@ -379,7 +392,7 @@ final class Engine {
     func evaluateGraph(context: RenderContext) -> [String: MTLTexture] {
         applyAllParameters()
         var produced: [String: MTLTexture] = [:]
-        for identifier in graph.evaluationOrder(from: GraphTopology.primary) {
+        for identifier in graph.evaluationOrder(from: Engine.outputSlot) {
             guard let node = graph.nodes[identifier] else { continue }
             let inputs = graph.inputs(of: identifier).compactMap { produced[$0] }
             if let texture = node.render(inputs: inputs, context: context) {
