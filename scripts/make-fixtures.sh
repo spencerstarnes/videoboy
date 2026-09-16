@@ -15,16 +15,37 @@ source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 
 SAMPLES="$REPO_ROOT/samples"
 mkdir -p "$SAMPLES"
+# Scratch file for the raw RGB bar pattern, removed once ffmpeg has consumed it.
+WORK_RGB="$REPO_ROOT/build/bars-rgb24.raw"
+mkdir -p "$REPO_ROOT/build"
 
 command -v ffmpeg >/dev/null 2>&1 || fail "ffmpeg CLI not found; install it (brew install ffmpeg) to generate fixtures"
 
 # NTSC DV: 720x480, 29.97, 120000 bytes per frame. `-target ntsc-dv` pins all of it.
+#
+# The bars are generated here rather than taken from ffmpeg's `smptebars` filter so
+# that they match `TestPattern.colorBars` exactly — eight equal bars of known colour.
+# That is what lets the decode test assert real colour values and so catch a wrong
+# channel order or pixel format, which a generic pattern could not.
 if [ ! -f "$SAMPLES/bars.dv" ]; then
-  log "generating samples/bars.dv (SMPTE bars, 4s NTSC DV)"
+  log "generating samples/bars.dv (eight-bar pattern matching TestPattern.colorBars, 4s NTSC DV)"
+  python3 - > "$WORK_RGB" <<'RGB'
+import sys
+# Must stay in step with TestPattern.smpteBarColors in Core.
+BARS = [(191,191,191),(191,191,0),(0,191,191),(0,191,0),
+        (191,0,191),(191,0,0),(0,0,191),(0,0,0)]
+WIDTH, HEIGHT = 720, 480
+row = bytearray()
+for x in range(WIDTH):
+    r, g, b = BARS[min(x * len(BARS) // WIDTH, len(BARS) - 1)]
+    row += bytes((r, g, b))
+sys.stdout.buffer.write(bytes(row) * HEIGHT)
+RGB
   ffmpeg -y -loglevel error \
-    -f lavfi -i "smptebars=size=720x480:rate=30000/1001:duration=4" \
+    -f rawvideo -pix_fmt rgb24 -s 720x480 -framerate 30000/1001 -stream_loop 119 -i "$WORK_RGB" \
     -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=4" \
-    -target ntsc-dv "$SAMPLES/bars.dv"
+    -shortest -target ntsc-dv "$SAMPLES/bars.dv"
+  rm -f "$WORK_RGB"
 fi
 
 # Moving content matters: a static picture cannot show whether playback advances,

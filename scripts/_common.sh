@@ -31,6 +31,30 @@ fi
 # arm64 only, per CLAUDE.md. Recorded here so every build agrees.
 export VIDEOBOY_ARCH="arm64"
 
+# The vendored LGPL FFmpeg (scripts/build-ffmpeg.sh). It is not checked in, so its
+# header and library paths are handed to SwiftPM here rather than hardcoded in a
+# Package.swift. Every build and test goes through these arrays.
+VENDOR_FFMPEG="$REPO_ROOT/vendor/ffmpeg"
+FFMPEG_FLAGS=(
+  -Xcc -I"$VENDOR_FFMPEG/include"
+  -Xlinker -L"$VENDOR_FFMPEG/lib"
+  -Xlinker -lavformat
+  -Xlinker -lavcodec
+  -Xlinker -lavutil
+  -Xlinker -lswscale
+  # Let the built binaries find the dylibs both in vendor/ (for `swift test`) and
+  # inside the app bundle's Frameworks directory (for the shipped .app).
+  -Xlinker -rpath -Xlinker "$VENDOR_FFMPEG/lib"
+  -Xlinker -rpath -Xlinker "@executable_path/../Frameworks"
+)
+export VENDOR_FFMPEG
+
+have_ffmpeg() { [ -f "$VENDOR_FFMPEG/lib/libavcodec.dylib" ]; }
+
+require_ffmpeg() {
+  have_ffmpeg || fail "vendor/ffmpeg is missing. Run: scripts/build-ffmpeg.sh"
+}
+
 log()  { printf '\033[1;36m[videoboy]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[videoboy] FAIL:\033[0m %s\n' "$*" >&2; exit 1; }
 

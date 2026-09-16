@@ -13,13 +13,13 @@ Operational plan for Claude Code. Execute phases in order. One phase per work se
 ## Phase 0 — Repo, toolchain, headless skeleton
 Goal: a project that builds and tests from terminal on the Mac Studio with nothing real in it yet.
 
-- [ ] Detect toolchain (`sw_vers`, `xcodebuild -version`, `swift --version`); record versions in `docs/ENVIRONMENT.md`.
-- [ ] Create the split: `Core/` SwiftPM package + `App/` Xcode target linking it (see SPEC §1.5 folder layout).
-- [ ] Write `scripts/bootstrap.sh`, `build.sh`, `test.sh`, `run.sh`, `verify.sh`. Idempotent, arm64.
-- [ ] Add `.claudeignore`, `.claude/settings.json` (deny destructive shell + non-registry network), `.gitignore` (`build/`, vendored binaries, media).
-- [ ] `Core` exposes a trivial version function with a passing unit test. `App` launches to an empty window.
-- [ ] Seed `/Docs`: `ARCHITECTURE.md` (graph + two clocks, one diagram), `ADD-A-MODULE.md` (stub), per-folder READMEs.
-- [ ] **Build the self-QA harness first (your eyes — see `docs/SELF-QA-HARNESS.md`):**
+- [x] Detect toolchain (`sw_vers`, `xcodebuild -version`, `swift --version`); record versions in `docs/ENVIRONMENT.md`.
+- [x] Create the split: `Core/` SwiftPM package + `App/` Xcode target linking it (see SPEC §1.5 folder layout).
+- [x] Write `scripts/bootstrap.sh`, `build.sh`, `test.sh`, `run.sh`, `verify.sh`. Idempotent, arm64.
+- [x] Add `.claudeignore`, `.claude/settings.json` (deny destructive shell + non-registry network), `.gitignore` (`build/`, vendored binaries, media).
+- [x] `Core` exposes a trivial version function with a passing unit test. `App` launches to an empty window.
+- [x] Seed `/Docs`: `ARCHITECTURE.md` (graph + two clocks, one diagram), `ADD-A-MODULE.md` (stub), per-folder READMEs.
+- [x] **Build the self-QA harness first (your eyes — see `docs/SELF-QA-HARNESS.md`):**
   - Offscreen render: any texture → PNG in `selfqa/out/`.
   - Capture tool: read a UVC/AVCapture device (the DVC100) → PNG frames + `metrics.json` (effective fps, dropped/dup, combing score, signal-present). Behind a protocol with a mock so it builds without hardware.
   - Frame assertions: dimensions, dominant color, signal-present, byte-diff vs a fixture, fps-within-tolerance.
@@ -34,13 +34,13 @@ Goal: a project that builds and tests from terminal on the Mac Studio with nothi
 ## Phase 1 — The wedge core (headless, no UI)
 Goal: the competitive heart, fully unit-tested without hardware. This is the most important phase; spend the most care here. Detail: SPEC §5 (DV/MPEG), §4 (clocks), §13 (param codes), §16 (templates), §2 (graph model).
 
-- [ ] Vendor FFmpeg as an **LGPL** arm64 xcframework (`scripts/bootstrap.sh` fetches/builds it). Record version + license in `docs/THIRD-PARTY.md`. If only GPL is achievable, STOP and report.
-- [ ] DV path: demux + decode DV via libav → raw frames in memory (no display yet). Test against a sample `.dv` fixture.
-- [ ] **Bitstream corruptor (the wedge):** operate on compressed packets *before* decode — DIF block drop/dup/shuffle, DCT-coefficient zero/flip, sequence hold/reseed for DV; frame-drop / motion-vector / reference-hold for MPEG. Pure functions over byte buffers. Unit-test each transform on fixtures (deterministic given a seed).
-- [ ] Musical clock: transport (BPM, phase, PPQN), subdivision scheduler with **lookahead + latency compensation** (schedule at `T − latency`). Unit-test that scheduled events land on target ticks given fake module latencies.
-- [ ] Param-code registry (§13): stable codes (`11A` etc.), mapping resolves to codes not instances. Unit-test that swapping a module preserves mappings whose codes persist.
-- [ ] Template read/write (§16): serialize the graph model + mappings to plain-text TOML/JSON and back. Unit-test round-trip equality; unknown keys are non-fatal.
-- [ ] Render-graph model (nodes + typed edges) as data — no rendering yet.
+- [x] Vendor FFmpeg as an **LGPL** arm64 xcframework (`scripts/bootstrap.sh` fetches/builds it). Record version + license in `docs/THIRD-PARTY.md`. If only GPL is achievable, STOP and report.
+- [x] DV path: demux + decode DV via libav → raw frames in memory (no display yet). Test against a sample `.dv` fixture.
+- [x] **Bitstream corruptor (the wedge):** operate on compressed packets *before* decode — DIF block drop/dup/shuffle, DCT-coefficient zero/flip, sequence hold/reseed for DV; frame-drop / motion-vector / reference-hold for MPEG. Pure functions over byte buffers. Unit-test each transform on fixtures (deterministic given a seed).
+- [x] Musical clock: transport (BPM, phase, PPQN), subdivision scheduler with **lookahead + latency compensation** (schedule at `T − latency`). Unit-test that scheduled events land on target ticks given fake module latencies.
+- [x] Param-code registry (§13): stable codes (`11A` etc.), mapping resolves to codes not instances. Unit-test that swapping a module preserves mappings whose codes persist.
+- [x] Template read/write (§16): serialize the graph model + mappings to plain-text TOML/JSON and back. Unit-test round-trip equality; unknown keys are non-fatal.
+- [x] Render-graph model (nodes + typed edges) as data — no rendering yet.
 
 **Acceptance:** `[HEADLESS]` all of the above green under `swift test`; a fixture DV file can be loaded, corrupted deterministically, and the corrupted bytes still decode. Commit `phase-1: bitstream core`.
 

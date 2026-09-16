@@ -1,6 +1,6 @@
 check:    phase-0/blocked-check-self-test
 verdict:  BLOCKED
-when:     2026-09-16T05:00:50Z
+when:     2026-09-16T05:16:57Z
 core:     0.2.0
 
 notes:
@@ -10,4 +10,33 @@ assertions (1/1 passed):
   PASS  irrelevant — ignored
 
 recent log:
-  1789534850.729 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1789535817.684 INFO [clock] subscription 1: 1/4, latency 0 frames (0.0ms)
+  1789535817.684 INFO [clock] transport started at 120.0 BPM
+  1789535817.684 INFO [clock] subscription 1: 1/4, latency 0 frames (0.0ms)
+  1789535817.694 ERROR [graph] cycle detected at node 'a'; breaking it
+  1789535817.694 INFO [param] slot 'a' now exposes 1 params (0 values carried, 0 dropped)
+  1789535817.695 INFO [template] loaded template 'sparse' (0 nodes, 0 mappings)
+  1789535817.695 INFO [param] slot 'a' now exposes 2 params (0 values carried, 0 dropped)
+  1789535817.695 INFO [param] mapped midi cc 2/7 -> a/01A
+  1789535817.695 INFO [param] mapped midi cc 2/7 -> a/11A
+  1789535817.695 INFO [param] slot 'a' now exposes 1 params (0 values carried, 0 dropped)
+  1789535817.695 WARN [param] no parameter 43C in slot 'a'; value ignored
+  1789535817.695 WARN [param] no parameter 01A in slot 'nonexistent'; value ignored
+  1789535817.695 INFO [param] slot 'subMixOne.fx0' now exposes 3 params (0 values carried, 0 dropped)
+  1789535817.695 INFO [param] mapped midi cc 1/21 -> subMixOne.fx0/31B
+  1789535817.695 INFO [param] mapped midi cc 1/22 -> subMixOne.fx0/71A
+  1789535817.695 INFO [param] slot 'subMixOne.fx0' now exposes 3 params (2 values carried, 1 dropped)
+  1789535817.695 INFO [param] slot 'subMixOne.fx0' now exposes 3 params (2 values carried, 1 dropped)
+  1789535817.696 INFO [template] saved template 'hand-edit-me' -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-readable-5753DBD8-B1B2-403A-B03B-9C0A6475BCDA.vbt
+  1789535817.696 INFO [template] loaded template 'hand-edit-me' (0 nodes, 0 mappings)
+  1789535817.697 INFO [template] saved template 'latenight_vhs' -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-template-8D262FEF-13B7-4070-B694-7DAB9001A425.vbt
+  1789535817.697 INFO [template] loaded template 'latenight_vhs' (2 nodes, 2 mappings)
+  1789535817.698 WARN [template] template is version 99 but this build understands 1; loading anyway
+  1789535817.698 INFO [template] loaded template 'from-the-future' (1 nodes, 1 mappings)
+  1789535817.698 INFO [param] slot 'source.a' now exposes 1 params (0 values carried, 0 dropped)
+  1789535817.698 WARN [template] template holds unknown param code '99Z' on 'source.a'; keeping it but not applying
+  1789535817.698 WARN [template] template maps midi cc 1/3 to unknown code '99Z'; preserved but inactive
+  1789535817.698 INFO [template] saved template 'from-the-future' -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-future2-AF565386-DB81-4987-BDC2-7C7D2A987080.vbt
+  1789535817.698 WARN [template] template is version 99 but this build understands 1; loading anyway
+  1789535817.698 INFO [template] loaded template 'from-the-future' (1 nodes, 1 mappings)
+  1789535817.699 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored

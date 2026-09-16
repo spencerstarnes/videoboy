@@ -75,7 +75,14 @@ public final class Transport {
                 beatsPerMinute = oldValue
                 return
             }
-            if isRunning { reanchor(atHostTime: lastKnownHostTime) }
+            guard isRunning, beatsPerMinute != oldValue else { return }
+            // The elapsed beats must be measured with the tempo that was actually in
+            // force while they elapsed. By the time `didSet` runs the property already
+            // holds the new value, so the old one is used explicitly here — computing
+            // it from the new tempo would rewrite history and make the position jump.
+            let elapsedSeconds = lastKnownHostTime - anchorHostTime
+            anchorBeats += elapsedSeconds / (60.0 / oldValue)
+            anchorHostTime = lastKnownHostTime
         }
     }
 
@@ -114,13 +121,6 @@ public final class Transport {
         anchorHostTime = hostTime
         isRunning = false
         Log.info(.clock, "transport stopped at beat \(String(format: "%.2f", anchorBeats))")
-    }
-
-    /// Re-anchors the beat/time relationship without moving the current position.
-    /// Called after a tempo change so the beat count stays continuous.
-    private func reanchor(atHostTime hostTime: Double) {
-        anchorBeats = beats(atHostTime: hostTime)
-        anchorHostTime = hostTime
     }
 
     /// Total beats elapsed at a host time. Frozen when stopped.

@@ -24,8 +24,16 @@ let package = Package(
         .library(name: "VideoboyCore", targets: ["VideoboyCore"])
     ],
     targets: [
+        // The C shim exposing the vendored LGPL FFmpeg. Its header and library
+        // search paths are supplied at build time by scripts/_common.sh, because
+        // vendor/ffmpeg is built by scripts/build-ffmpeg.sh rather than checked in.
+        .target(
+            name: "CFFmpeg",
+            path: "Sources/CFFmpeg"
+        ),
         .target(
             name: "VideoboyCore",
+            dependencies: ["CFFmpeg"],
             path: "Sources/VideoboyCore",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

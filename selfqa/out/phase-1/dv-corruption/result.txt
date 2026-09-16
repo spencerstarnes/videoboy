@@ -1,0 +1,24 @@
+check:    phase-1/dv-corruption
+verdict:  PASS
+when:     2026-09-16T05:16:57Z
+core:     0.2.0
+
+notes:
+  source: motion.dv frame 30, 179 frames total
+  decoder saw 0 damaged frames of 7 decoded
+
+assertions (14/14 passed):
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  signal present — luminance variance 4196.4, threshold 25.0
+  PASS  shuffleBlocks decodes to full size — got 720x480
+  PASS  shuffleBlocks changes the picture — 0.350 of sampled pixels differ, needed >= 0.02
+  PASS  duplicateBlocks decodes to full size — got 720x480
+  PASS  duplicateBlocks changes the picture — 0.293 of sampled pixels differ, needed >= 0.02
+  PASS  dropBlocks decodes to full size — got 720x480
+  PASS  dropBlocks changes the picture — 0.374 of sampled pixels differ, needed >= 0.02
+  PASS  flipCoefficients decodes to full size — got 720x480
+  PASS  flipCoefficients changes the picture — 0.021 of sampled pixels differ, needed >= 0.02
+  PASS  swapSequences decodes to full size — got 720x480
+  PASS  swapSequences changes the picture — 0.075 of sampled pixels differ, needed >= 0.02
+  PASS  holdSequences decodes to full size — got 720x480
+  PASS  holdSequences changes the picture — 0.030 of sampled pixels differ, needed >= 0.02
