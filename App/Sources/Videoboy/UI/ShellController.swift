@@ -970,7 +970,63 @@ final class ShellController {
         shell.toolbar.setTempo(tempo)
     }
 
+    /// The three variables behind each output emulation toggle.
+    ///
+    /// Three, and deliberately not more: the argument for these being two switches on
+    /// the output bar rather than another effect panel is that they have sensible
+    /// defaults and a short way in when they are not right.
+    private func presentEmulationDetail(_ emulation: OutputEmulation, from view: NSView) {
+        let controller: EmulationPopover
+        switch emulation {
+        case .ntsc:
+            controller = EmulationPopover(
+                heading: "NTSC signal",
+                summary: "What the picture picks up on its way out as composite video. "
+                    + "Applies to whatever is on air, after every bus effect.",
+                slot: Engine.compositeProgramSlot,
+                variables: [
+                    .init(caption: "Dot crawl", code: .compositeCrawl),
+                    .init(caption: "Chroma bleed", code: .chromaBleed),
+                    .init(caption: "Luma bandwidth", code: .lumaBandwidth)
+                ],
+                registry: engine.registry
+            )
+        case .dv:
+            controller = EmulationPopover(
+                heading: "DV colour",
+                summary: "Passes the output through DV: 4:1:1 colour and 8-bit. Each "
+                    + "generation re-quantises what the last one produced, the way "
+                    + "dubbing a tape does.",
+                slot: Engine.busCodecProgramSlot,
+                variables: [
+                    .init(caption: "Generations", code: .compositeGeneration, range: 0...4),
+                    .init(caption: "Damage", code: .corruptAmount),
+                    .init(
+                        caption: "Rate lock", code: .playbackSpeed,
+                        unavailableNote: "Locking output to 29.97 is not built yet; "
+                            + "the output mode is negotiated in the Output section.")
+                ],
+                registry: engine.registry
+            )
+        }
+
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .transient
+        popover.appearance = NSAppearance(named: .darkAqua)
+        popover.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+    }
+
     private func wireSettingsBar() {
+        shell.grid.panels.settingsBarBody.onOutputNTSCToggled = { [weak self] isOn in
+            self?.engine.isOutputNTSCEnabled = isOn
+        }
+        shell.grid.panels.settingsBarBody.onOutputDVToggled = { [weak self] isOn in
+            self?.engine.isOutputDVEnabled = isOn
+        }
+        shell.grid.panels.settingsBarBody.onEmulationDetailRequested = { [weak self] emulation, view in
+            self?.presentEmulationDetail(emulation, from: view)
+        }
         let settings = shell.grid.panels.settingsBarBody
         // Output is its own switch now. Test Pattern is a separate thing: what the
         // output SHOWS, not whether it is running — conflating them was part of what

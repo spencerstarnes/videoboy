@@ -293,6 +293,73 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // The two output-emulation popovers. They are the one place in the app where
+        // a control panel is hidden behind a chevron, so "does it lay out and say
+        // what it is" is worth a picture rather than an assumption.
+        do {
+            let engine = Engine()
+            let cases: [(String, EmulationPopover)] = [
+                ("ntsc", EmulationPopover(
+                    heading: "NTSC signal",
+                    summary: "What the picture picks up on its way out as composite video. "
+                        + "Applies to whatever is on air, after every bus effect.",
+                    slot: Engine.compositeProgramSlot,
+                    variables: [
+                        .init(caption: "Dot crawl", code: .compositeCrawl),
+                        .init(caption: "Chroma bleed", code: .chromaBleed),
+                        .init(caption: "Luma bandwidth", code: .lumaBandwidth)
+                    ],
+                    registry: engine.registry)),
+                ("dv", EmulationPopover(
+                    heading: "DV colour",
+                    summary: "Passes the output through DV: 4:1:1 colour and 8-bit. Each "
+                        + "generation re-quantises what the last one produced, the way "
+                        + "dubbing a tape does.",
+                    slot: Engine.busCodecProgramSlot,
+                    variables: [
+                        .init(caption: "Generations", code: .compositeGeneration, range: 0...4),
+                        .init(caption: "Damage", code: .corruptAmount),
+                        .init(
+                            caption: "Rate lock", code: .playbackSpeed,
+                            unavailableNote: "Locking output to 29.97 is not built yet; "
+                                + "the output mode is negotiated in the Output section.")
+                    ],
+                    registry: engine.registry))
+            ]
+
+            for (name, controller) in cases {
+                let content = controller.view
+                content.appearance = NSAppearance(named: .darkAqua)
+                content.layoutSubtreeIfNeeded()
+                content.frame = NSRect(origin: .zero, size: content.fittingSize)
+
+                // NSPopover supplies the background in the app; offscreen there is
+                // none, and the render came back as pale text on white — a picture of
+                // the harness rather than of the popover. This stands in for the
+                // chrome so what is saved is what a person would actually see.
+                let backing = NSView(frame: content.frame)
+                backing.wantsLayer = true
+                backing.layer?.backgroundColor = Theme.Color.panelFill
+                    .blended(withFraction: 1.0, of: Theme.Color.content)?.cgColor
+                    ?? Theme.Color.content.cgColor
+                backing.addSubview(content)
+                backing.layoutSubtreeIfNeeded()
+                backing.displayIfNeeded()
+
+                guard let image = render(view: backing) else {
+                    check.record(AssertionResult(
+                        name: "\(name) popover renders", passed: false, detail: "no bitmap"))
+                    continue
+                }
+                try? check.writeImage(image, named: "emulation-\(name).png")
+                check.record(AssertionResult(
+                    name: "\(name) emulation popover has content",
+                    passed: FrameAssertions.signalPresent(image, varianceThreshold: 5.0),
+                    detail: "\(image.width)x\(image.height)"
+                ))
+            }
+        }
+
         return check.finish()
     }
 

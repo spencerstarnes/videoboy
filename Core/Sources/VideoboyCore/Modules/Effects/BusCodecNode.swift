@@ -62,7 +62,8 @@ public final class BusCodecNode: Node, DataEffectProvider {
             Parameter(code: .corruptAmount, range: 0...1, defaultValue: 0),
             Parameter(code: .corruptMode, range: 0...1, defaultValue: 0),
             Parameter(code: .corruptRate, range: 0...1, defaultValue: 0.25),
-            Parameter(code: .corruptSeed, range: 0...65535, defaultValue: 1)
+            Parameter(code: .corruptSeed, range: 0...65535, defaultValue: 1),
+            Parameter(code: .compositeGeneration, range: 0...4, defaultValue: 0)
         ]
     }
 
@@ -83,6 +84,15 @@ public final class BusCodecNode: Node, DataEffectProvider {
 
     /// What damage to apply to the re-encoded bitstream.
     public var corruption = CorruptionSettings.inert
+
+    /// How many DV encode/decode passes the bus makes, for generation loss.
+    ///
+    /// Zero means no round trip at all, which is different from one: a single pass is
+    /// already a real change to the picture — DV is 4:1:1 and 8-bit, so the colour
+    /// gets coarser whether or not anything is damaged afterwards. That is the whole
+    /// of what the output's DV emulation does, and it is why the round trip can no
+    /// longer be skipped just because the damage is zero.
+    public var generations = 0
 
     /// Whatever the interchange currently offers.
     public var dataEffectFamily: DataEffectFamily { interchange.family }
@@ -111,7 +121,7 @@ public final class BusCodecNode: Node, DataEffectProvider {
         // No interchange, or no damage asked for: leave the texture alone. Running a
         // full round trip to produce an identical picture would be the most expensive
         // no-op in the graph.
-        guard interchange != .none, corruption.amount > 0 else { return input }
+        guard interchange != .none, corruption.amount > 0 || generations > 0 else { return input }
         guard let metal = context else { return input }
 
         if readbackRenderer == nil { readbackRenderer = OffscreenRenderer(context: metal) }
@@ -135,19 +145,36 @@ public final class BusCodecNode: Node, DataEffectProvider {
         }
         guard let encoder, let decoder else { return input }
 
-        guard let image = readbackRenderer.readback(input) else { return input }
-        guard let encoded = encoder.encode(image: image) else { return input }
+        guard var image = readbackRenderer.readback(input) else { return input }
 
-        let corrupted = DIFCorruptor.corrupt(
-            frame: encoded,
-            settings: corruption,
-            standard: standard,
-            previousFrame: previousEncodedFrame
-        )
-        previousEncodedFrame = encoded
+        // At least one pass, because getting here at all means something asked for a
+        // round trip. Extra passes are dubbing: each one re-quantises what the last
+        // one produced, which is exactly how generation loss accumulates on tape.
+        let passes = max(generations, 1)
+        for pass in 0..<passes {
+            guard let encoded = encoder.encode(image: image) else { return input }
 
-        guard let decoded = decoder.decode(frameBytes: corrupted) else { return input }
-        return metal.makeTexture(from: decoded, label: "\(identifier)-interchange")
+            // Damage lands on the LAST pass only. Damaging every generation would
+            // multiply the amount by the generation count, so turning up one control
+            // would silently move the other.
+            let bytes: [UInt8]
+            if pass == passes - 1 && corruption.amount > 0 {
+                bytes = DIFCorruptor.corrupt(
+                    frame: encoded,
+                    settings: corruption,
+                    standard: standard,
+                    previousFrame: previousEncodedFrame
+                )
+                previousEncodedFrame = encoded
+            } else {
+                bytes = encoded
+            }
+
+            guard let decoded = decoder.decode(frameBytes: bytes) else { return input }
+            image = decoded
+        }
+
+        return metal.makeTexture(from: image, label: "\(identifier)-interchange")
     }
 
     /// Re-rolls the corruption seed, so bus damage can change on the beat too.
@@ -157,6 +184,9 @@ public final class BusCodecNode: Node, DataEffectProvider {
 
     /// Pulls settings from the registry.
     public func applyParameters(from registry: ParamRegistry) {
+        if let value = registry.value(slot: identifier, code: .compositeGeneration) {
+            generations = Int(value.rounded())
+        }
         if let value = registry.value(slot: identifier, code: .corruptAmount) {
             corruption.amount = value
         }

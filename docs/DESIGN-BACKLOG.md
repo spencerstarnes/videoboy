@@ -18,6 +18,8 @@ what was asked for and has not been built.
   breathes on the beat.
 - **"Don't remind me again"** (§8) — save location on first open, save on quit, and
   the audio-clock warning. Reset from the Defaults pane.
+- **NTSC / DV output emulation** (§13) — two toggles on the output bar, three
+  variables each behind a Look Up-style popover.
 - **FCP X library behaviour** (§10) — hover-scrub with real decoded frames, in/out
   points that actually trim playback, drag-and-drop (which genuinely was not there),
   and double-click-to-channel with the A/B ↔ C/D auto-advance.

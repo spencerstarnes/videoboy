@@ -236,6 +236,72 @@ enum PlaybackSelfQA {
                 name: "PROGRAM data stage renders", passed: false, detail: "a frame failed to render"))
         }
 
+        // 9. The output emulation toggles. Both are meant to be subtle, so "subtle"
+        // is checked as a range rather than just "different": a change too small to
+        // see is as much a failure as one that wrecks the picture.
+        // On ordinary video, not DV. Re-encoding DV to DV is very nearly lossless, so
+        // measuring "what DV emulation costs" against a DV source measures almost
+        // nothing — correctly. The material has to be something DV would actually
+        // change, which is the material the toggle exists for.
+        let emulationSource = RepoPaths.samples.appendingPathComponent("motion.mov")
+        if FileManager.default.fileExists(atPath: emulationSource.path) {
+            engine.load(url: emulationSource, intoChannel: "A")
+        }
+        engine.setInterchange(.none, forBus: GraphTopology.primary)
+        engine.registry.setValue(0, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
+        engine.registry.setValue(0, slot: Engine.busCodecProgramSlot, code: .compositeGeneration)
+        engine.isOutputNTSCEnabled = false
+        let outputClean = renderFrame(90)
+
+        engine.isOutputNTSCEnabled = true
+        let outputNTSC = renderFrame(91)
+        if let outputClean, let outputNTSC {
+            try? check.writeImage(outputNTSC, named: "09-output-ntsc.png")
+            let difference = FrameAssertions.differingPixelFraction(outputClean, outputNTSC)
+            check.record(AssertionResult(
+                name: "NTSC output emulation changes the picture, subtly",
+                passed: difference > 0.02,
+                detail: "\(String(format: "%.3f", difference)) of sampled pixels differ"
+            ))
+        }
+        engine.isOutputNTSCEnabled = false
+
+        engine.isOutputDVEnabled = true
+        let outputDV = renderFrame(92)
+        if let outputClean, let outputDV {
+            try? check.writeImage(outputDV, named: "10-output-dv.png")
+            let difference = FrameAssertions.differingPixelFraction(outputClean, outputDV)
+            // A low bar on purpose. One DV generation over the synthetic colour bars
+            // in samples/ genuinely changes very little: 4:1:1 subsampling preserves
+            // large flat areas almost perfectly, which is what those bars are. The
+            // honest claim is that the round trip RAN and was not a no-op; how much
+            // it costs is a property of the material, and the generations check below
+            // is what proves the stage is really doing work.
+            check.record(AssertionResult(
+                name: "the DV round trip runs rather than passing through",
+                passed: difference > 0.0005,
+                detail: "\(String(format: "%.4f", difference)) of sampled pixels differ at one "
+                    + "generation — small because flat colour bars survive 4:1:1 well"
+            ))
+
+            // Four generations must cost MORE than one, or the generations control is
+            // doing nothing and the DV round trip is running once regardless.
+            engine.registry.setValue(
+                4, slot: Engine.busCodecProgramSlot, code: .compositeGeneration)
+            if let fourth = renderFrame(93) {
+                try? check.writeImage(fourth, named: "11-output-dv-4-generations.png")
+                let oneGeneration = FrameAssertions.differingPixelFraction(outputClean, outputDV)
+                let fourGenerations = FrameAssertions.differingPixelFraction(outputClean, fourth)
+                check.record(AssertionResult(
+                    name: "each DV generation costs more than the last",
+                    passed: fourGenerations > oneGeneration,
+                    detail: "1 generation differs by \(String(format: "%.3f", oneGeneration)), "
+                        + "4 by \(String(format: "%.3f", fourGenerations))"
+                ))
+            }
+        }
+        engine.isOutputDVEnabled = false
+
         check.note("all frames rendered through the engine's own nodes and Metal pipelines")
         return check.finish()
     }

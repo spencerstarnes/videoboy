@@ -68,6 +68,7 @@ final class Engine {
     private(set) var busCodecOne: BusCodecNode!
     private(set) var busCodecTwo: BusCodecNode!
     private(set) var busCodecProgram: BusCodecNode!
+    private(set) var compositeProgram: CompositeCodecNode!
 
     /// Live capture, available as a source (SPEC 10). Fed by the App's capture
     /// session; nothing until then, which renders as the panel's empty state.
@@ -211,7 +212,16 @@ final class Engine {
         // but never connected, so the programme's data controls moved nothing — the
         // graph simply terminated at the mix. It is the last thing before output,
         // which is what makes it the right place for the output emulation too.
-        graph.connect(from: GraphTopology.primary, to: Engine.busCodecProgramSlot, inputIndex: 0)
+        // The output emulation stage, between the mix and the programme data stage.
+        // NTSC character belongs at the very END of the chain: it is what the signal
+        // picks up on its way out, not something a bus carries into the mix.
+        compositeProgram = CompositeCodecNode(
+            identifier: Engine.compositeProgramSlot, context: metal)
+        graph.add(compositeProgram)
+        graph.connect(
+            from: GraphTopology.primary, to: Engine.compositeProgramSlot, inputIndex: 0)
+        graph.connect(
+            from: Engine.compositeProgramSlot, to: Engine.busCodecProgramSlot, inputIndex: 0)
 
         // A generator per channel, created up front so its parameters are registered
         // and mappable whether or not it is currently the channel's source.
@@ -251,6 +261,7 @@ final class Engine {
     static let busCodecOneSlot = "data.one"
     static let busCodecTwoSlot = "data.two"
     static let busCodecProgramSlot = "data.program"
+    static let compositeProgramSlot = "fx.program.composite"
 
     /// The last node in the graph — what output and the programme preview show.
     ///
@@ -374,6 +385,7 @@ final class Engine {
         compositeCodec.applyParameters(from: registry)
         echo.applyParameters(from: registry)
         feedback.applyParameters(from: registry)
+        compositeProgram.applyParameters(from: registry)
         compositeCodecTwo.applyParameters(from: registry)
         echoTwo.applyParameters(from: registry)
         feedbackTwo.applyParameters(from: registry)
@@ -551,6 +563,38 @@ final class Engine {
         case "ONE": busCodecOne.interchange = codec
         case "TWO": busCodecTwo.interchange = codec
         default: busCodecProgram.interchange = codec
+        }
+    }
+
+    // MARK: - Output emulation (SPEC 9, 13)
+
+    /// Whether the output carries NTSC signal character.
+    ///
+    /// Distinct from the per-bus composite codec, which is a look you apply to one
+    /// side of the mix. This one is about what the SIGNAL becomes on its way out, so
+    /// it sits after everything and applies to whatever is on air.
+    var isOutputNTSCEnabled: Bool {
+        get { (registry.value(slot: Engine.compositeProgramSlot, code: .wetDry) ?? 0) > 0.5 }
+        set {
+            registry.setValue(
+                newValue ? 1 : 0, slot: Engine.compositeProgramSlot, code: .wetDry)
+            Log.info(.render, "output NTSC emulation \(newValue ? "on" : "off")")
+        }
+    }
+
+    /// Whether the output is passed through DV, giving 4:1:1 colour and 8-bit.
+    ///
+    /// Turning it on sets one generation; the popover can ask for more. Off is zero
+    /// generations rather than one, because one pass is already a real change to the
+    /// picture and "off" has to mean untouched.
+    var isOutputDVEnabled: Bool {
+        get { (registry.value(slot: Engine.busCodecProgramSlot, code: .compositeGeneration) ?? 0) >= 1 }
+        set {
+            setInterchange(newValue ? .dv : .none, forBus: GraphTopology.primary)
+            registry.setValue(
+                newValue ? 1 : 0,
+                slot: Engine.busCodecProgramSlot, code: .compositeGeneration)
+            Log.info(.render, "output DV emulation \(newValue ? "on" : "off")")
         }
     }
 

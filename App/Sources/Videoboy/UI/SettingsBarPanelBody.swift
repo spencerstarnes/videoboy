@@ -38,6 +38,13 @@ final class SettingsBarPanelBody: NSView {
     var onOverscanToggled: ((Bool) -> Void)?
     /// Called when black-frame insertion is toggled.
     var onBlackFrameInsertionToggled: ((Bool) -> Void)?
+    /// NTSC signal emulation on the output was switched.
+    var onOutputNTSCToggled: ((Bool) -> Void)?
+    /// DV colour-space emulation on the output was switched.
+    var onOutputDVToggled: ((Bool) -> Void)?
+    /// The chevron beside an emulation toggle was clicked, to open its variables.
+    /// The view is what the popover hangs from.
+    var onEmulationDetailRequested: ((OutputEmulation, NSView) -> Void)?
 
     init(negotiatedMode: String) {
         outputSwitch = NSSwitch()
@@ -73,13 +80,30 @@ final class SettingsBarPanelBody: NSView {
             labelled("Test Pat", testToggle)
         ])
 
+        // EMULATION — what the signal becomes on its way out. Two switches, because
+        // the point is that they are two switches: sensible defaults, and the detail
+        // behind a chevron for when the look is not quite right.
+        let ntscToggle = Controls.toggle(on: false, target: self, action: #selector(outputNTSCChanged(_:)))
+        let dvToggle = Controls.toggle(on: false, target: self, action: #selector(outputDVChanged(_:)))
+        let ntscDetail = Controls.button("⌄", target: self, action: #selector(ntscDetailPressed(_:)))
+        let dvDetail = Controls.button("⌄", target: self, action: #selector(dvDetailPressed(_:)))
+        ntscDetail.toolTip = "NTSC signal variables"
+        dvDetail.toolTip = "DV colour variables"
+        self.ntscDetailButton = ntscDetail
+        self.dvDetailButton = dvDetail
+        let emulation = section("Emulate", views: [
+            labelled("NTSC", Controls.row([ntscToggle, ntscDetail], spacing: 1)),
+            labelled("DV", Controls.row([dvToggle, dvDetail], spacing: 1))
+        ])
+
         // STREAM — not built. Marked as such rather than left as live-looking popups.
         let stream = section("Stream", views: [
             Controls.label("not built", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
         ])
 
         let row = Controls.row([
-            output, divider(), toggles, divider(), stream, Controls.spacer()
+            output, divider(), toggles, divider(), emulation, divider(),
+            stream, Controls.spacer()
         ], spacing: 12)
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
@@ -93,6 +117,25 @@ final class SettingsBarPanelBody: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+
+    private var ntscDetailButton: NSButton?
+    private var dvDetailButton: NSButton?
+
+    @objc private func outputNTSCChanged(_ sender: NSSwitch) {
+        onOutputNTSCToggled?(sender.state == .on)
+    }
+
+    @objc private func outputDVChanged(_ sender: NSSwitch) {
+        onOutputDVToggled?(sender.state == .on)
+    }
+
+    @objc private func ntscDetailPressed(_ sender: NSButton) {
+        onEmulationDetailRequested?(.ntsc, sender)
+    }
+
+    @objc private func dvDetailPressed(_ sender: NSButton) {
+        onEmulationDetailRequested?(.dv, sender)
+    }
 
     /// Updates the destination and mode after the output window has negotiated.
     func setOutput(destination: String, mode: String) {
