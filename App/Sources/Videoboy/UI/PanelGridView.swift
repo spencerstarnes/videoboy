@@ -23,6 +23,50 @@
 import AppKit
 import VideoboyCore
 
+/// The four groups that can be collapsed to the edge of the window (Resolve-style).
+///
+/// Collapsing is by GROUP, not by panel: the things that fold away together are the
+/// things you stop needing together. Fold both groups on one side and that whole
+/// column shrinks to a rail, handing its width to the monitors and the library —
+/// which is the point of collapsing anything.
+enum PanelGroup: String, CaseIterable {
+    case sourcesLeft
+    case effectsLeft
+    case effectsRight
+    case sourcesRight
+
+    /// Name shown on the rail and in the toolbar's show/hide control.
+    var displayName: String {
+        switch self {
+        case .sourcesLeft: "A/B"
+        case .effectsLeft: "FX 1"
+        case .effectsRight: "FX 2"
+        case .sourcesRight: "C/D"
+        }
+    }
+
+    /// Full name for the rail's rotated label and the tooltip.
+    var longName: String {
+        switch self {
+        case .sourcesLeft: "Sources A/B"
+        case .effectsLeft: "Sub Mix 1 FX"
+        case .effectsRight: "Sub Mix 2 FX"
+        case .sourcesRight: "Sources C/D"
+        }
+    }
+
+    /// Which grid column this group occupies.
+    var column: Int {
+        switch self {
+        case .sourcesLeft, .effectsLeft: 0
+        case .sourcesRight, .effectsRight: 4
+        }
+    }
+
+    /// True for the groups on the left-hand edge.
+    var isLeadingEdge: Bool { column == 0 }
+}
+
 /// Which edges of a panel are butted against a neighbour.
 ///
 /// Panels that are always shown together — A above B, C above D — are joined rather
@@ -79,10 +123,21 @@ final class PanelGridView: NSView {
         let isOuterColumn: Bool
         /// Edges butted against a neighbour, which take no gutter.
         let joined: GroupEdge
+        /// The collapsible group this panel belongs to, if any.
+        let group: PanelGroup?
     }
 
     private var placedPanels: [PlacedPanel] = []
     private var currentBreakpoint: LayoutBreakpoint = .wide
+
+    /// Groups the user has folded away.
+    private(set) var collapsedGroups: Set<PanelGroup> = []
+
+    /// The rail standing in for each collapsed group.
+    private var rails: [PanelGroup: CollapsedRailView] = [:]
+
+    /// Called when a group is collapsed or restored, so the toolbar can keep up.
+    var onGroupCollapseChanged: ((PanelGroup, Bool) -> Void)?
 
     /// Panels other parts of the app need to reach. Built once, kept for wiring.
     let panels = PanelSet()
@@ -118,22 +173,27 @@ final class PanelGridView: NSView {
 
         func place(
             _ panel: PanelView, _ placement: GridPlacement,
-            outer: Bool = false, joined: GroupEdge = []
+            outer: Bool = false, joined: GroupEdge = [], group: PanelGroup? = nil
         ) {
             panel.translatesAutoresizingMaskIntoConstraints = true
             panel.squaredEdges = joined
             addSubview(panel)
             placedPanels.append(PlacedPanel(
-                panel: panel, placement: placement, isOuterColumn: outer, joined: joined))
+                panel: panel, placement: placement, isOuterColumn: outer,
+                joined: joined, group: group))
         }
 
         // Row 0-1, outer columns: the four source panels. A sits directly on B and
         // C on D — they feed the same bus and are never used apart, so they are one
         // block with a hairline between rather than two floating boxes.
-        place(set.sourceA, GridPlacement(column: 0, row: 0), outer: true, joined: .bottom)
-        place(set.sourceB, GridPlacement(column: 0, row: 1), outer: true, joined: .top)
-        place(set.sourceC, GridPlacement(column: 4, row: 0), outer: true, joined: .bottom)
-        place(set.sourceD, GridPlacement(column: 4, row: 1), outer: true, joined: .top)
+        place(set.sourceA, GridPlacement(column: 0, row: 0), outer: true, joined: .bottom,
+              group: .sourcesLeft)
+        place(set.sourceB, GridPlacement(column: 0, row: 1), outer: true, joined: .top,
+              group: .sourcesLeft)
+        place(set.sourceC, GridPlacement(column: 4, row: 0), outer: true, joined: .bottom,
+              group: .sourcesRight)
+        place(set.sourceD, GridPlacement(column: 4, row: 1), outer: true, joined: .top,
+              group: .sourcesRight)
 
         // Row 0-1, inner columns: the three previews, each spanning two rows.
         place(set.subMixOne, GridPlacement(column: 1, row: 0, rowSpan: 2))
@@ -146,8 +206,10 @@ final class PanelGridView: NSView {
         place(set.faderCD, GridPlacement(column: 3, row: 2))
 
         // Rows 2-4, outer columns: the two tall FX chains.
-        place(set.effectsOne, GridPlacement(column: 0, row: 2, rowSpan: 3), outer: true)
-        place(set.effectsTwo, GridPlacement(column: 4, row: 2, rowSpan: 3), outer: true)
+        place(set.effectsOne, GridPlacement(column: 0, row: 2, rowSpan: 3), outer: true,
+              group: .effectsLeft)
+        place(set.effectsTwo, GridPlacement(column: 4, row: 2, rowSpan: 3), outer: true,
+              group: .effectsRight)
 
         // Row 3: the two libraries and the central asset browser. The settings bar
         // sits directly beneath them, so those edges join too.
@@ -158,7 +220,53 @@ final class PanelGridView: NSView {
         // Row 4: the settings bar, spanning the three inner columns.
         place(set.settingsBar, GridPlacement(column: 1, row: 4, columnSpan: 3), joined: .top)
 
+        // One rail per group, hidden until its group is folded away.
+        for group in PanelGroup.allCases {
+            let rail = CollapsedRailView(title: group.longName, isLeadingEdge: group.isLeadingEdge)
+            rail.translatesAutoresizingMaskIntoConstraints = true
+            rail.isHidden = true
+            rail.target = self
+            rail.action = #selector(railClicked(_:))
+            rail.identifier = NSUserInterfaceItemIdentifier(group.rawValue)
+            addSubview(rail)
+            rails[group] = rail
+        }
+
         Log.info(.app, "panel grid built with \(placedPanels.count) panels")
+    }
+
+    // MARK: - Collapsing
+
+    /// Folds a group away to the edge, or brings it back.
+    func setGroup(_ group: PanelGroup, collapsed: Bool) {
+        if collapsed { collapsedGroups.insert(group) } else { collapsedGroups.remove(group) }
+        for placed in placedPanels where placed.group == group {
+            placed.panel.isHidden = collapsed
+        }
+        rails[group]?.isHidden = !collapsed
+        needsLayout = true
+        Log.info(.app, "\(group.longName) \(collapsed ? "collapsed" : "restored")")
+        onGroupCollapseChanged?(group, collapsed)
+    }
+
+    /// True when a group is folded away.
+    func isCollapsed(_ group: PanelGroup) -> Bool { collapsedGroups.contains(group) }
+
+    @objc private func railClicked(_ sender: CollapsedRailView) {
+        guard let raw = sender.identifier?.rawValue, let group = PanelGroup(rawValue: raw) else { return }
+        setGroup(group, collapsed: false)
+    }
+
+    /// The groups sharing a column with this one.
+    private func groups(inColumn column: Int) -> [PanelGroup] {
+        PanelGroup.allCases.filter { $0.column == column }
+    }
+
+    /// True when every group in a column is folded away, so the column itself can
+    /// shrink to a rail and hand its width to the middle of the window.
+    private func columnIsFullyCollapsed(_ column: Int) -> Bool {
+        let inColumn = groups(inColumn: column)
+        return !inColumn.isEmpty && inColumn.allSatisfy(collapsedGroups.contains)
     }
 
     // MARK: - Layout
@@ -186,6 +294,20 @@ final class PanelGridView: NSView {
             weights: Theme.Grid.rowWeights,
             total: contentHeight, gutter: gutter, origin: padding
         )
+
+        // Rails occupy their group's cells while it is folded away.
+        for (group, rail) in rails where !rail.isHidden {
+            guard let cells = placedPanels.first(where: { $0.group == group })?.placement else { continue }
+            let spanned = placedPanels.filter { $0.group == group }.map(\.placement)
+            let firstRow = spanned.map(\.row).min() ?? cells.row
+            let lastRow = spanned.map { $0.row + $0.rowSpan - 1 }.max() ?? cells.row
+            let left = columnEdges[cells.column].start
+            let right = columnEdges[cells.column].end
+            let top = rowEdges[min(firstRow, rowEdges.count - 1)].start
+            let bottom = rowEdges[min(lastRow, rowEdges.count - 1)].end
+            rail.frame = NSRect(
+                x: left, y: top, width: max(right - left, 0), height: max(bottom - top, 0))
+        }
 
         for placed in placedPanels {
             let placement = placed.placement
@@ -220,7 +342,7 @@ final class PanelGridView: NSView {
         }
     }
 
-    /// Column weights for a breakpoint. The outer columns narrow, then vanish.
+    /// Column weights for a breakpoint, after user collapsing is taken into account.
     private func columnWeights(for breakpoint: LayoutBreakpoint) -> [CGFloat] {
         var weights = Theme.Grid.columnWeights
         switch breakpoint {
@@ -228,13 +350,20 @@ final class PanelGridView: NSView {
             break
         case .compact:
             // Outer columns become rails: wide enough for a collapsed panel header.
-            weights[0] = 0.35
-            weights[4] = 0.35
+            weights[0] = Theme.Grid.railWeight
+            weights[4] = Theme.Grid.railWeight
         case .narrow:
             // Zero-weight columns still exist in the table so the remaining
             // placements keep their indices; they simply take no space.
             weights[0] = 0
             weights[4] = 0
+        }
+
+        // A column whose groups are ALL folded away shrinks to a rail, whatever the
+        // breakpoint. This is what makes collapsing worth doing: the width goes to
+        // the monitors and the library rather than being left empty.
+        for column in [0, 4] where columnIsFullyCollapsed(column) && weights[column] > 0 {
+            weights[column] = Theme.Grid.railWeight
         }
         return weights
     }

@@ -533,8 +533,8 @@ enum ShaderSource {
     // ---------------------------------------------------------------------------
 
     struct BlendParams {
-        float mixAmount;  // the crossfader, 0 = all base, 1 = all blend
-        float opacity;    // per-layer opacity of the blend layer
+        float mixAmount;  // the crossfader: 0 = pure base, 0.5 = full blend, 1 = pure blend layer
+        float opacity;    // retained for template compatibility; see the note below
         int mode;         // which blend function
     };
 
@@ -584,15 +584,28 @@ enum ShaderSource {
         float3 blend = blendLayer.sample(linearSampler, in.uv).rgb;
 
         float3 blended = clamp(blendChannelwise(p.mode, base, blend), 0.0, 1.0);
+        float t = clamp(p.mixAmount, 0.0, 1.0);
 
-        // Opacity first: how much of the blend result stands in for the base.
-        float3 withOpacity = mix(base, blended, clamp(p.opacity, 0.0, 1.0));
-
-        // Then the crossfader travels from the bare base to that composited result.
-        // Keeping the two separate is what makes "screen at 40% opacity, fader at
-        // 70%" a thing you can express — one control is the look, the other is how
-        // far the fader has been pushed.
-        float3 result = mix(base, withOpacity, clamp(p.mixAmount, 0.0, 1.0));
+        // The fader IS the opacity. Two things have to be true at once:
+        //
+        //   1. Hard left is the left source untouched, hard right the right source
+        //      untouched — whatever the mode. That is what a crossfader means, and a
+        //      blend mode must not take it away.
+        //   2. Normal mode must still be an ordinary linear crossfade.
+        //
+        // So the blend is applied to the RIGHT-HAND SIDE of the mix, by an amount
+        // that peaks in the middle and falls to nothing at both ends:
+        //
+        //      blendWeight = 1 - |2t - 1|          (a triangle peaking at t = 0.5)
+        //      rightSide   = mix(blend, blended, blendWeight)
+        //      result      = mix(base, rightSide, t)
+        //
+        // Mixing straight from base to `blended` instead would break (2): under
+        // Normal, `blended` IS the blend layer, so the whole right half of the
+        // fader's travel would do nothing at all.
+        float blendWeight = 1.0 - abs(2.0 * t - 1.0);
+        float3 rightSide = mix(blend, blended, blendWeight);
+        float3 result = mix(base, rightSide, t);
         return float4(clamp(result, 0.0, 1.0), 1.0);
     }
     """

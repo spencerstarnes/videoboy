@@ -474,6 +474,26 @@ final class Engine {
         transport.beatsPerMinute = estimate.beatsPerMinute
     }
 
+    /// Whether the program bus carries the test pattern instead of the live mix.
+    ///
+    /// Routed at the graph, not painted over the preview, so what the CRT receives
+    /// and what the operator sees are the same signal — which is the entire point of
+    /// having a test pattern for calibration (SPEC 11).
+    private(set) var programShowsTestPattern = false
+
+    /// Switches the program bus between the live mix and the test pattern.
+    func setProgramShowsTestPattern(_ showsPattern: Bool) {
+        guard showsPattern != programShowsTestPattern else { return }
+        programShowsTestPattern = showsPattern
+        if showsPattern {
+            graph.connect(from: Engine.testPatternSlot, to: GraphTopology.primary, inputIndex: 0)
+            registry.setValue(0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
+        } else {
+            graph.connect(from: Engine.feedbackSlot, to: GraphTopology.primary, inputIndex: 0)
+        }
+        Log.info(.output, "program bus now carries \(showsPattern ? "the test pattern" : "the live mix")")
+    }
+
     /// True when this frame should be blacked out for BFI.
     func isBlackFrame() -> Bool {
         blackFrameInsertion.isBlackFrame(frameIndex)

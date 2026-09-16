@@ -41,13 +41,20 @@ final class MetalPreviewView: NSView {
         didSet { updateOverlays() }
     }
 
+    /// The per-preview record arm indicator, upper right. Nil for previews that are
+    /// not a recordable feed.
+    private(set) var recordIndicator: MiniRecordIndicator?
+
     private let captionLabel = NSTextField(labelWithString: "")
     private let emptyLabel = NSTextField(labelWithString: "no source")
     private var metalLayer: CAMetalLayer?
     private let overlayLayer = CAShapeLayer()
 
-    /// - Parameter caption: overlay text, e.g. "A" or "720x480 · 480i".
-    init(caption: String) {
+    /// - Parameters:
+    ///   - caption: overlay text, e.g. "A" or "720x480 · 480i".
+    ///   - recordLabel: the feed's letter for the arm indicator (A-D, 1, 2, P).
+    ///     Nil leaves the preview without one.
+    init(caption: String, recordLabel: String? = nil) {
         self.caption = caption
         super.init(frame: .zero)
 
@@ -94,6 +101,19 @@ final class MetalPreviewView: NSView {
             captionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
             captionLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3)
         ])
+
+        if let recordLabel {
+            let indicator = MiniRecordIndicator(label: recordLabel)
+            indicator.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(indicator)
+            recordIndicator = indicator
+            NSLayoutConstraint.activate([
+                indicator.topAnchor.constraint(equalTo: topAnchor, constant: 3),
+                indicator.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -3),
+                indicator.widthAnchor.constraint(equalToConstant: Theme.Record.miniWidth),
+                indicator.heightAnchor.constraint(equalToConstant: Theme.Record.miniHeight)
+            ])
+        }
     }
 
     @available(*, unavailable)

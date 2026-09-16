@@ -32,6 +32,7 @@ final class ShellController {
         wireEffectChains()
         wireToolbar()
         wireSettingsBar()
+        wireRecordIndicators()
         engine.onFrame = { [weak self] engine in self?.refresh(from: engine) }
     }
 
@@ -119,7 +120,12 @@ final class ShellController {
         alert.runModal()
     }
 
-    /// Wires the blend mode and layer opacity of the three composites (SPEC 12).
+    /// Wires the blend mode of the three composites (SPEC 12).
+    ///
+    /// There is no separate opacity control any more: the crossfader IS the opacity.
+    /// It travels base → blend → blend-layer, so hard left and hard right are the two
+    /// sources untouched whatever the mode, and the blend is at full strength in the
+    /// middle.
     private func wireBlendControls() {
         let panels = shell.grid.panels
         let composites: [(body: PreviewPanelBody, slot: String)] = [
@@ -131,10 +137,6 @@ final class ShellController {
             composite.body.onBlendModeChanged = { [weak self] mode in
                 self?.engine.registry.setValue(
                     mode.normalisedPosition, slot: composite.slot, code: .blendMode)
-            }
-            composite.body.onLayerOpacityChanged = { [weak self] opacity in
-                self?.engine.registry.setValue(
-                    opacity, slot: composite.slot, code: .layerOpacity)
             }
         }
     }
@@ -256,8 +258,63 @@ final class ShellController {
         }
     }
 
+    /// Every preview's record indicator, by the label it shows.
+    private var recordIndicators: [String: MiniRecordIndicator] = [:]
+
+    /// Connects each preview's arm indicator and records which feeds are armed.
+    private func wireRecordIndicators() {
+        let panels = shell.grid.panels
+        var found: [String: MiniRecordIndicator] = [:]
+        for letter in Self.channels {
+            if let indicator = panels.sourceBodies[letter]?.preview.recordIndicator {
+                found[letter] = indicator
+            }
+        }
+        if let one = panels.subMixOneBody.preview.recordIndicator { found["1"] = one }
+        if let two = panels.subMixTwoBody.preview.recordIndicator { found["2"] = two }
+        if let program = panels.programBody.preview.recordIndicator { found["P"] = program }
+
+        for (label, indicator) in found {
+            indicator.target = self
+            indicator.action = #selector(armChanged(_:))
+            // PROGRAM is armed by default: recording the program feed is what anyone
+            // means by "record" unless they say otherwise.
+            indicator.isArmed = (label == "P")
+        }
+        recordIndicators = found
+        Log.info(.app, "record indicators on \(found.keys.sorted().joined(separator: ", "))")
+    }
+
+    @objc private func armChanged(_ sender: MiniRecordIndicator) {
+        let armed = recordIndicators.filter { $0.value.isArmed }.keys.sorted()
+        Log.info(.app, "armed for recording: \(armed.isEmpty ? "nothing" : armed.joined(separator: ", "))")
+    }
+
     /// Which sub-mix an FX panel drives.
     private enum Bus { case one, two }
+
+    /// Advances every armed indicator's pulse from the musical clock.
+    ///
+    /// The pulse is derived from the transport rather than from a timer, so all the
+    /// armed indicators are in step with each other and with the music by
+    /// construction — a timer per indicator would drift apart within seconds.
+    private func updateRecordPulse(from engine: Engine) {
+        let isRecording = shell.toolbar.recordButton.isRecording
+        let phase: Double
+        if engine.transport.isRunning {
+            let beats = engine.transport.beats(atHostTime: CACurrentMediaTime())
+            let cycle = beats / Theme.Record.pulseBeats
+            phase = cycle - cycle.rounded(.down)
+        } else {
+            // Stopped: hold the indicators at full brightness rather than freezing
+            // them mid-fade, which reads as a rendering fault.
+            phase = 0
+        }
+        for indicator in recordIndicators.values where indicator.isArmed {
+            indicator.isRecording = isRecording
+            indicator.pulsePhase = phase
+        }
+    }
 
     /// Opens the MIDI / audio / LFO menu for a parameter and applies the choice.
     private func presentModulationMenu(code: String, badge: String, from view: NSView, bus: Bus) {
@@ -343,6 +400,35 @@ final class ShellController {
             self?.engine.setTransportRunning(running)
         }
         shell.toolbar.onTap = { [weak self] in self?.tapTempo() }
+
+        // The toolbar and the rails are two ways to do the same thing, so each keeps
+        // the other in step rather than letting them disagree about what is shown.
+        shell.toolbar.onPanelGroupToggled = { [weak self] panelGroup, collapsed in
+            self?.shell.grid.setGroup(panelGroup, collapsed: collapsed)
+        }
+        shell.grid.onGroupCollapseChanged = { [weak self] panelGroup, collapsed in
+            self?.shell.toolbar.setPanelGroupShown(panelGroup, !collapsed)
+        }
+        shell.toolbar.onRecordToggled = { [weak self] isRecording in
+            guard let self else { return }
+            let armed = self.recordIndicators.filter { $0.value.isArmed }.keys.sorted()
+            if isRecording && armed.isEmpty {
+                self.shell.toolbar.recordButton.isRecording = false
+                self.presentNotice(
+                    "Nothing is armed",
+                    "Arm at least one feed first — click the dot in the top right of a preview."
+                )
+                return
+            }
+            Log.info(.app, "record \(isRecording ? "started" : "stopped") for \(armed.joined(separator: ", "))")
+            if isRecording {
+                self.presentNotice(
+                    "Recording is not built yet",
+                    "Arming and the transport-locked indicators work, but there is no encoder behind them — AVAssetWriter and the discrete-channel plumbing are still to come (SPEC §15)."
+                )
+                self.shell.toolbar.recordButton.isRecording = false
+            }
+        }
         shell.toolbar.onClockSourceChanged = { [weak self] choice in
             guard let self else { return false }
             switch choice {
@@ -393,8 +479,14 @@ final class ShellController {
 
     private func wireSettingsBar() {
         let settings = shell.grid.panels.settingsBarBody
-        settings.onTestPatternToggled = { [weak self] on in
+        // Output is its own switch now. Test Pattern is a separate thing: what the
+        // output SHOWS, not whether it is running — conflating them was part of what
+        // made this bar confusing.
+        settings.onOutputEnabledChanged = { [weak self] on in
             self?.setOutputWindowVisible(on)
+        }
+        settings.onTestPatternToggled = { [weak self] on in
+            self?.setTestPatternVisible(on)
         }
         settings.onSafeZoneToggled = { [weak self] on in
             self?.setSafeZonesVisible(on)
@@ -428,18 +520,29 @@ final class ShellController {
         guard visible else {
             outputWindow?.dismiss()
             outputWindow = nil
+            shell.grid.panels.settingsBarBody.setOutput(destination: "off", mode: "—")
             return
         }
         let config = DeviceConfig.load()
         guard let display = DisplayRouter.preferredOutputDisplay(config: config) else {
             presentNotice("No display available", "Videoboy could not find a display to send output to.")
+            shell.grid.panels.settingsBarBody.setOutputEnabled(false)
             return
         }
         let controller = OutputWindowController(display: display, requestedMode: config.requestedMode)
         controller.present()
         outputWindow = controller
         engine.setNegotiatedOutputMode(controller.negotiatedMode)
-        shell.grid.panels.settingsBarBody.setNegotiatedMode(controller.negotiatedMode)
+        shell.grid.panels.settingsBarBody.setOutput(
+            destination: display.name, mode: controller.negotiatedMode)
+    }
+
+    /// Routes a test pattern to the program bus instead of the live mix.
+    ///
+    /// This is about what the output CARRIES; whether output is running at all is the
+    /// Output switch beside it.
+    private func setTestPatternVisible(_ visible: Bool) {
+        engine.setProgramShowsTestPattern(visible)
     }
 
     // MARK: - Per-frame refresh
@@ -447,6 +550,7 @@ final class ShellController {
     /// Pushes this frame's textures and readouts into the views.
     private func refresh(from engine: Engine) {
         let panels = shell.grid.panels
+        updateRecordPulse(from: engine)
 
         for letter in Self.channels {
             let slot = Engine.slot(forChannel: letter)

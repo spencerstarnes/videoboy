@@ -39,6 +39,12 @@ final class TransportToolbarView: NSView {
     /// The record button, top right.
     let recordButton = RecordButton(frame: .zero)
 
+    /// Which panel groups are shown.
+    private let panelsControl = NSSegmentedControl()
+
+    /// Called when a panel group is shown or hidden.
+    var onPanelGroupToggled: ((PanelGroup, Bool) -> Void)?
+
     /// Called when record is pressed, with the new recording state.
     var onRecordToggled: ((Bool) -> Void)?
 
@@ -93,14 +99,35 @@ final class TransportToolbarView: NSView {
         recordButton.translatesAutoresizingMaskIntoConstraints = false
         recordButton.target = self
         recordButton.action = #selector(recordPressed)
-        recordButton.isEnabled = FeatureFlag.recording.isOn
+        // Enabled even though the encoder is not built: arming and the
+        // transport-locked indicators are real and worth using, and pressing record
+        // says plainly what is missing rather than being inert with no explanation.
+        recordButton.isEnabled = true
 
         let recordGroup = Controls.row([
             group("Record", Controls.row([codecPopUp, streamsPopUp], spacing: 4)),
             recordButton
         ], spacing: 8)
 
+        // Panel show/hide, Resolve-style. A multi-select segmented control: each
+        // segment is a group, selected means shown. One control rather than four
+        // buttons, because they are one decision about how much of the window you
+        // want given over to edges.
+        panelsControl.segmentCount = PanelGroup.allCases.count
+        panelsControl.trackingMode = .selectAny
+        panelsControl.controlSize = .small
+        panelsControl.font = Theme.Font.tinyLabel
+        panelsControl.target = self
+        panelsControl.action = #selector(panelsChanged(_:))
+        for (index, panelGroup) in PanelGroup.allCases.enumerated() {
+            panelsControl.setLabel(panelGroup.displayName, forSegment: index)
+            panelsControl.setSelected(true, forSegment: index)
+            panelsControl.setToolTip("Show or hide \(panelGroup.longName)", forSegment: index)
+        }
+
         let row = Controls.row([
+            group("Panels", panelsControl),
+            separator(),
             group("Tempo", tempoLabel),
             tapButton,
             playButton,
@@ -181,6 +208,19 @@ final class TransportToolbarView: NSView {
     }
 
     @objc private func tapPressed() { onTap?() }
+
+    @objc private func panelsChanged(_ sender: NSSegmentedControl) {
+        let index = sender.selectedSegment
+        guard index >= 0, index < PanelGroup.allCases.count else { return }
+        let panelGroup = PanelGroup.allCases[index]
+        onPanelGroupToggled?(panelGroup, !sender.isSelected(forSegment: index))
+    }
+
+    /// Reflects a collapse that happened elsewhere — clicking a rail, for instance.
+    func setPanelGroupShown(_ panelGroup: PanelGroup, _ shown: Bool) {
+        guard let index = PanelGroup.allCases.firstIndex(of: panelGroup) else { return }
+        panelsControl.setSelected(shown, forSegment: index)
+    }
 
     @objc private func recordPressed() {
         recordButton.isRecording.toggle()

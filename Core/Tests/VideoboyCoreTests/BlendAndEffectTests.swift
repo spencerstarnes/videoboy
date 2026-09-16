@@ -22,11 +22,17 @@ final class BlendAndEffectTests: XCTestCase {
     }
 
     /// Composites two flat colours and reads the middle pixel back.
+    ///
+    /// The fader defaults to its MIDPOINT, where the blend mode is at full strength.
+    /// At the midpoint the result is `mix(base, blended, 0.5)` — half the base and
+    /// half the blend result — so the expected values below are computed that way.
+    /// The ends of the travel are the two sources untouched; see
+    /// `testFaderEndsAreAlwaysThePureSources`.
     private func composite(
         base: (UInt8, UInt8, UInt8),
         blend: (UInt8, UInt8, UInt8),
         mode: BlendMode,
-        position: Double = 1.0,
+        position: Double = 0.5,
         layerOpacity: Double = 1.0
     ) throws -> (r: Double, g: Double, b: Double) {
         guard let metal = MetalContext.shared, let renderer = OffscreenRenderer(context: metal) else {
@@ -56,53 +62,78 @@ final class BlendAndEffectTests: XCTestCase {
     // MARK: - Blend arithmetic
 
     func testNormalReplacesTheBase() throws {
-        let result = try composite(base: (200, 0, 0), blend: (0, 0, 200), mode: .normal)
+        // At the far right, not the midpoint: the midpoint of a Normal crossfade is
+        // half of each, which is what it should be.
+        let result = try composite(base: (200, 0, 0), blend: (0, 0, 200), mode: .normal, position: 1.0)
         XCTAssertEqual(result.r, 0, accuracy: 3)
         XCTAssertEqual(result.b, 200, accuracy: 3)
     }
 
+    /// At the midpoint the result is half base, half blend result. So for a mode
+    /// whose blend result is `x`, the expected value is `(base + x) / 2`.
+    private func expectedAtMidpoint(base: Double, blendResult: Double) -> Double {
+        (base + blendResult) / 2
+    }
+
     func testMultiplyDarkens() throws {
-        // 0.5 * 0.5 = 0.25, so 128 over 128 is about 64.
+        // 0.5 * 0.5 = 0.25 (64). Half of 128 and 64 is 96.
         let result = try composite(base: (128, 128, 128), blend: (128, 128, 128), mode: .multiply)
-        XCTAssertEqual(result.r, 64, accuracy: 4)
-        // Anything multiplied by white is unchanged.
+        XCTAssertEqual(result.r, expectedAtMidpoint(base: 128, blendResult: 64), accuracy: 4)
+        // Multiplying by white leaves the base alone, so the midpoint is just the base.
         let byWhite = try composite(base: (100, 150, 200), blend: (255, 255, 255), mode: .multiply)
         XCTAssertEqual(byWhite.r, 100, accuracy: 3)
         XCTAssertEqual(byWhite.b, 200, accuracy: 3)
     }
 
     func testScreenLightens() throws {
-        // 1 - (1-0.5)(1-0.5) = 0.75, so 128 over 128 is about 191.
+        // 1 - (1-0.5)(1-0.5) = 0.75 (191). Half of 128 and 191 is about 160.
         let result = try composite(base: (128, 128, 128), blend: (128, 128, 128), mode: .screen)
-        XCTAssertEqual(result.r, 191, accuracy: 4)
-        // Screening with black changes nothing.
+        XCTAssertEqual(result.r, expectedAtMidpoint(base: 128, blendResult: 191), accuracy: 4)
+        // Screening with black changes nothing, so the midpoint is the base.
         let byBlack = try composite(base: (100, 150, 200), blend: (0, 0, 0), mode: .screen)
         XCTAssertEqual(byBlack.g, 150, accuracy: 3)
     }
 
     func testDifferenceIsAbsoluteDistance() throws {
+        // |200-50| = 150, and the midpoint is half of 200 and 150 = 175.
         let result = try composite(base: (200, 100, 50), blend: (50, 100, 200), mode: .difference)
-        XCTAssertEqual(result.r, 150, accuracy: 4)
-        XCTAssertEqual(result.g, 0, accuracy: 4)
-        XCTAssertEqual(result.b, 150, accuracy: 4)
+        XCTAssertEqual(result.r, expectedAtMidpoint(base: 200, blendResult: 150), accuracy: 4)
+        XCTAssertEqual(result.g, expectedAtMidpoint(base: 100, blendResult: 0), accuracy: 4)
+        XCTAssertEqual(result.b, expectedAtMidpoint(base: 50, blendResult: 150), accuracy: 4)
     }
 
     func testAddAndSubtractClampRatherThanWrap() throws {
-        // Adding past white must saturate, not wrap around to black.
+        // 200 + 200 saturates at 255, not wrapping to black. Midpoint: (200+255)/2.
         let added = try composite(base: (200, 200, 200), blend: (200, 200, 200), mode: .add)
-        XCTAssertEqual(added.r, 255, accuracy: 2)
-        // Subtracting past black must clamp at zero.
+        XCTAssertEqual(added.r, expectedAtMidpoint(base: 200, blendResult: 255), accuracy: 3)
+        // 50 - 200 clamps at zero, not wrapping to white. Midpoint: (50+0)/2.
         let subtracted = try composite(base: (50, 50, 50), blend: (200, 200, 200), mode: .subtract)
-        XCTAssertEqual(subtracted.r, 0, accuracy: 2)
+        XCTAssertEqual(subtracted.r, expectedAtMidpoint(base: 50, blendResult: 0), accuracy: 3)
     }
 
     func testLightenAndDarkenPickPerChannel() throws {
         let lighter = try composite(base: (200, 50, 100), blend: (50, 200, 100), mode: .lighten)
-        XCTAssertEqual(lighter.r, 200, accuracy: 3)
-        XCTAssertEqual(lighter.g, 200, accuracy: 3)
+        XCTAssertEqual(lighter.r, expectedAtMidpoint(base: 200, blendResult: 200), accuracy: 3)
+        XCTAssertEqual(lighter.g, expectedAtMidpoint(base: 50, blendResult: 200), accuracy: 3)
         let darker = try composite(base: (200, 50, 100), blend: (50, 200, 100), mode: .darken)
-        XCTAssertEqual(darker.r, 50, accuracy: 3)
-        XCTAssertEqual(darker.g, 50, accuracy: 3)
+        XCTAssertEqual(darker.r, expectedAtMidpoint(base: 200, blendResult: 50), accuracy: 3)
+        XCTAssertEqual(darker.g, expectedAtMidpoint(base: 50, blendResult: 50), accuracy: 3)
+    }
+
+    /// The other half of the guarantee: Normal must remain an ordinary linear
+    /// crossfade over the whole travel. Mixing straight from base to the blend result
+    /// would leave the entire right half of the fader doing nothing under Normal,
+    /// because under Normal the blend result IS the blend layer.
+    func testNormalIsALinearCrossfadeAcrossTheWholeTravel() throws {
+        let black = (UInt8(0), UInt8(0), UInt8(0))
+        let white = (UInt8(200), UInt8(200), UInt8(200))
+        for (position, expected) in [(0.0, 0.0), (0.25, 50.0), (0.5, 100.0), (0.75, 150.0), (1.0, 200.0)] {
+            let result = try composite(
+                base: black, blend: white, mode: .normal, position: position)
+            XCTAssertEqual(
+                result.r, expected, accuracy: 4,
+                "Normal at fader \(position) must be a straight linear mix")
+        }
     }
 
     func testEveryModeProducesAValidResult() throws {
@@ -120,26 +151,47 @@ final class BlendAndEffectTests: XCTestCase {
 
     // MARK: - Fader and opacity are independent
 
-    func testFaderAtZeroShowsOnlyTheBaseWhateverTheMode() throws {
-        // However exotic the blend, a fader at 0 must show the base untouched —
-        // otherwise the fader stops being a fader.
+    /// The guarantee that makes the crossfader a crossfader: whatever the blend mode,
+    /// hard left is the left source untouched and hard right is the right source
+    /// untouched. A blend mode changes the journey, never the destinations.
+    func testFaderEndsAreAlwaysThePureSources() throws {
+        let baseColour = (UInt8(200), UInt8(100), UInt8(50))
+        let blendColour = (UInt8(10), UInt8(220), UInt8(30))
+
         for mode in BlendMode.allCases {
-            let result = try composite(
-                base: (200, 100, 50), blend: (10, 220, 30), mode: mode, position: 0.0)
-            XCTAssertEqual(result.r, 200, accuracy: 3, "\(mode.displayName) altered the base at fader 0")
-            XCTAssertEqual(result.g, 100, accuracy: 3, "\(mode.displayName) altered the base at fader 0")
+            let left = try composite(
+                base: baseColour, blend: blendColour, mode: mode, position: 0.0)
+            XCTAssertEqual(left.r, 200, accuracy: 3, "\(mode.displayName) altered the base at fader 0")
+            XCTAssertEqual(left.g, 100, accuracy: 3, "\(mode.displayName) altered the base at fader 0")
+            XCTAssertEqual(left.b, 50, accuracy: 3, "\(mode.displayName) altered the base at fader 0")
+
+            let right = try composite(
+                base: baseColour, blend: blendColour, mode: mode, position: 1.0)
+            XCTAssertEqual(right.r, 10, accuracy: 3, "\(mode.displayName) did not reach a pure blend layer at fader 1")
+            XCTAssertEqual(right.g, 220, accuracy: 3, "\(mode.displayName) did not reach a pure blend layer at fader 1")
+            XCTAssertEqual(right.b, 30, accuracy: 3, "\(mode.displayName) did not reach a pure blend layer at fader 1")
         }
     }
 
-    func testLayerOpacityScalesTheBlendIndependentlyOfTheFader() throws {
-        // Multiply at full opacity takes 128x128 to 64; at half opacity it should sit
-        // halfway between the base and that result.
-        let full = try composite(
-            base: (128, 128, 128), blend: (128, 128, 128), mode: .multiply, layerOpacity: 1.0)
-        let half = try composite(
-            base: (128, 128, 128), blend: (128, 128, 128), mode: .multiply, layerOpacity: 0.5)
-        XCTAssertEqual(full.r, 64, accuracy: 4)
-        XCTAssertEqual(half.r, 96, accuracy: 5)
+    func testTheBlendIsStrongestAtTheMidpointAndFadesToNothingAtTheEnds() throws {
+        // How much the mode is contributing is what peaks in the middle. Comparing a
+        // blend mode against Normal at the same fader position isolates that: the
+        // difference between them must be largest at the centre and vanish at both
+        // ends, whatever the mode does.
+        let base = (UInt8(180), UInt8(90), UInt8(40))
+        let blendLayer = (UInt8(60), UInt8(160), UInt8(220))
+
+        func modeContribution(at position: Double) throws -> Double {
+            let plain = try composite(base: base, blend: blendLayer, mode: .normal, position: position)
+            let multiplied = try composite(base: base, blend: blendLayer, mode: .multiply, position: position)
+            return abs(plain.r - multiplied.r) + abs(plain.g - multiplied.g) + abs(plain.b - multiplied.b)
+        }
+
+        let atCentre = try modeContribution(at: 0.5)
+        let atQuarter = try modeContribution(at: 0.25)
+        XCTAssertGreaterThan(atCentre, atQuarter, "the mode must contribute most at the midpoint")
+        XCTAssertLessThan(try modeContribution(at: 0.0), 4.0, "the mode must vanish at the left end")
+        XCTAssertLessThan(try modeContribution(at: 1.0), 4.0, "the mode must vanish at the right end")
     }
 
     func testBlendModeSelectionFromANormalisedParameter() {

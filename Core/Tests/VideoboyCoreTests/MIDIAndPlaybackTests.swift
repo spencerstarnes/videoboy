@@ -168,6 +168,71 @@ final class MIDIAndPlaybackTests: XCTestCase {
         XCTAssertGreaterThan(node.normalisedPosition, 0.9)
     }
 
+    // MARK: - Loop modes
+
+    func testLoopWrapsAtBothEnds() throws {
+        let node = try openSource()
+        let frameCount = node.frameCount
+        node.loopMode = .loop
+
+        node.seek(toNormalised: 1.0)
+        node.advancePlayhead(by: 5, frameCount: frameCount)
+        // Past the end comes round to the start, not to a stop.
+        XCTAssertLessThan(node.normalisedPosition, 0.1)
+
+        node.seek(toNormalised: 0.0)
+        node.advancePlayhead(by: -5, frameCount: frameCount)
+        // ...and backwards past the start comes round to the end.
+        XCTAssertGreaterThan(node.normalisedPosition, 0.9)
+    }
+
+    func testPingPongTurnsAroundRatherThanWrapping() throws {
+        let node = try openSource()
+        let frameCount = node.frameCount
+        node.loopMode = .pingPong
+
+        node.seek(toNormalised: 1.0)
+        XCTAssertFalse(node.isPlayingBackwards)
+        node.advancePlayhead(by: 5, frameCount: frameCount)
+
+        // It must reverse, not jump to the start.
+        XCTAssertTrue(node.isPlayingBackwards, "ping-pong must reverse at the end")
+        XCTAssertGreaterThan(node.normalisedPosition, 0.9, "it must stay near the end, not wrap")
+
+        // Run it back to the start and it should turn around again.
+        for _ in 0..<(frameCount * 2) {
+            node.advancePlayhead(by: 5, frameCount: frameCount)
+            if !node.isPlayingBackwards { break }
+        }
+        XCTAssertFalse(node.isPlayingBackwards, "ping-pong must reverse again at the start")
+    }
+
+    func testOneShotStopsOnTheLastFrame() throws {
+        let node = try openSource()
+        let frameCount = node.frameCount
+        node.loopMode = .oneShot
+        node.isPlaying = true
+
+        node.seek(toNormalised: 1.0)
+        node.advancePlayhead(by: 5, frameCount: frameCount)
+
+        XCTAssertFalse(node.isPlaying, "one shot must stop at the end")
+        XCTAssertEqual(node.normalisedPosition, 1.0, accuracy: 0.02,
+                       "it must hold the last frame, not wrap or blank")
+    }
+
+    func testLoopModeNames() {
+        for mode in LoopMode.allCases {
+            XCTAssertFalse(mode.displayName.isEmpty)
+        }
+        XCTAssertEqual(LoopMode.from(index: 0), .loop)
+        XCTAssertEqual(LoopMode.from(index: 1), .pingPong)
+        XCTAssertEqual(LoopMode.from(index: 2), .oneShot)
+        // Out of range clamps rather than trapping.
+        XCTAssertEqual(LoopMode.from(index: 99), .oneShot)
+        XCTAssertEqual(LoopMode.from(index: -5), .loop)
+    }
+
     func testPlaybackProducesDifferentPicturesOverTime() throws {
         let node = try openSource()
         let first = try XCTUnwrap(node.renderToImage(frameIndex: 0))

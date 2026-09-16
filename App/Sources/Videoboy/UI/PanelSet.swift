@@ -73,11 +73,13 @@ final class PanelSet {
         // MARK: Previews
         // Subtitles state the fixed routing, which never remaps (SPEC 2).
         // The three composites each carry a blend mode and a layer opacity (SPEC 12).
-        subMixOneBody = PreviewPanelBody(caption: "100 IRE", showsBlendControls: true)
-        subMixTwoBody = PreviewPanelBody(caption: "7.5 IRE", showsBlendControls: true)
+        subMixOneBody = PreviewPanelBody(
+            caption: "100 IRE", showsBlendControls: true, recordLabel: "1")
+        subMixTwoBody = PreviewPanelBody(
+            caption: "7.5 IRE", showsBlendControls: true, recordLabel: "2")
         programBody = PreviewPanelBody(
             caption: "\(StandardDefinition.width)×\(StandardDefinition.height)",
-            showsBlendControls: true)
+            showsBlendControls: true, recordLabel: "P")
 
         subMixOne = PanelView(title: "Sub Mix One", bus: .one, subtitle: "A ▸ B", body: subMixOneBody)
         subMixTwo = PanelView(title: "Sub Mix Two", bus: .two, subtitle: "C ▸ D", body: subMixTwoBody)

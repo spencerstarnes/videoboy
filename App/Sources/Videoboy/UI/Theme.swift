@@ -91,6 +91,17 @@ enum Theme {
 
     enum Record {
         static let buttonDiameter: CGFloat = 26
+
+        /// The per-preview arm indicator: a dot plus its channel letter.
+        static let miniWidth: CGFloat = 26
+        static let miniHeight: CGFloat = 14
+        static let miniDotDiameter: CGFloat = 7
+        /// How dim an armed dot gets at the bottom of its pulse. Never fully out —
+        /// an indicator that disappears reads as "not armed".
+        static let miniPulseFloor: Double = 0.35
+        /// Beats per pulse. Two, not one: at one beat it flickers and fights the
+        /// picture; at two it is unmistakably deliberate and still locked to tempo.
+        static let pulseBeats: Double = 2.0
     }
 
     // MARK: - Fader
@@ -138,6 +149,9 @@ enum Theme {
         static let columnWeights: [CGFloat] = [1.05, 2.0, 2.05, 2.0, 1.05]
         /// Row weights, top to bottom.
         static let rowWeights: [CGFloat] = [1.05, 1.05, 0.6, 1.75, 0.55]
+
+        /// Column weight of a folded-away column — just enough for its rail.
+        static let railWeight: CGFloat = 0.14
     }
 
     // MARK: - Breakpoints
@@ -209,6 +223,8 @@ enum Theme {
         static let recordActive = NSColor(srgbRed: 1.0, green: 0.19, blue: 0.19, alpha: 1)
         static let recordDisabled = NSColor(white: 0.4, alpha: 1)
         static let recordRing = NSColor(white: 1.0, alpha: 0.28)
+        /// An unarmed per-preview dot.
+        static let recordDisarmed = NSColor(white: 1.0, alpha: 0.22)
     }
 
     // MARK: - Type

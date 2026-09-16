@@ -21,6 +21,30 @@
 import Foundation
 import Metal
 
+/// How a clip behaves when it reaches its end (SPEC 12).
+public enum LoopMode: String, CaseIterable, Codable, Sendable {
+    /// Wrap back to the start and keep going.
+    case loop
+    /// Reverse direction at each end.
+    case pingPong
+    /// Stop on the last frame.
+    case oneShot
+
+    public var displayName: String {
+        switch self {
+        case .loop: "Loop"
+        case .pingPong: "Ping-Pong"
+        case .oneShot: "One Shot"
+        }
+    }
+
+    /// Selects from a 0...1 parameter, or from a segmented control's index.
+    public static func from(index: Int) -> LoopMode {
+        let all = allCases
+        return all[min(max(index, 0), all.count - 1)]
+    }
+}
+
 /// Plays a DV file into the render graph, corrupting it before decode.
 public final class DVSourceNode: Node {
 
@@ -56,6 +80,12 @@ public final class DVSourceNode: Node {
 
     /// Playback rate, 1.0 being nominal.
     public var playbackSpeed = 1.0
+
+    /// What happens at the end of the clip.
+    public var loopMode: LoopMode = .loop
+
+    /// Direction of travel. Only ping-pong ever makes this negative.
+    private(set) public var isPlayingBackwards = false
 
     /// Current position, in source frames. Fractional so non-nominal speeds work.
     public private(set) var playheadFrame = 0.0
@@ -98,6 +128,7 @@ public final class DVSourceNode: Node {
             self.reader = reader
             self.mediaURL = url
             self.playheadFrame = 0
+            self.isPlayingBackwards = false
             self.textureFrameIndex = -1
             Log.info(.dv, "\(identifier) loaded \(url.lastPathComponent)")
             return true
@@ -106,6 +137,49 @@ public final class DVSourceNode: Node {
             self.reader = nil
             self.mediaURL = nil
             return false
+        }
+    }
+
+    /// Advances the playhead and applies the loop mode at the ends.
+    ///
+    /// Split out from `render` because the end-of-clip rules are the whole of what
+    /// the loop buttons do, and they are worth being able to read and test on their
+    /// own rather than buried in a render path.
+    func advancePlayhead(by frames: Double, frameCount: Int) {
+        guard frameCount > 0 else { return }
+        let last = Double(frameCount)
+        playheadFrame += isPlayingBackwards ? -frames : frames
+
+        switch loopMode {
+        case .loop:
+            // Wrap at both ends: playing backwards past zero comes round to the end.
+            if playheadFrame >= last {
+                playheadFrame -= last
+            } else if playheadFrame < 0 {
+                playheadFrame += last
+            }
+
+        case .pingPong:
+            // Turn around rather than wrap. The overshoot is reflected back so the
+            // motion stays smooth at the turn instead of pausing on the end frame.
+            if playheadFrame >= last - 1 {
+                playheadFrame = max(last - 1 - (playheadFrame - (last - 1)), 0)
+                isPlayingBackwards = true
+            } else if playheadFrame <= 0 {
+                playheadFrame = -playheadFrame
+                isPlayingBackwards = false
+            }
+
+        case .oneShot:
+            // Stop on the last frame and stay there.
+            if playheadFrame >= last - 1 {
+                playheadFrame = last - 1
+                isPlaying = false
+                Log.info(.dv, "\(identifier) reached the end of its clip (one shot)")
+            } else if playheadFrame < 0 {
+                playheadFrame = 0
+                isPlaying = false
+            }
         }
     }
 
@@ -137,10 +211,7 @@ public final class DVSourceNode: Node {
             // file is retimed to the clock rather than ad-hoc frame-dropped (SPEC 3).
             let sourceFramesPerProjectFrame =
                 (reader.standard.frameRate / StandardDefinition.frameRate) * playbackSpeed
-            playheadFrame += sourceFramesPerProjectFrame
-            if playheadFrame >= Double(reader.frameCount) {
-                playheadFrame -= Double(reader.frameCount)
-            }
+            advancePlayhead(by: sourceFramesPerProjectFrame, frameCount: reader.frameCount)
         }
 
         let frameIndex = reader.wrappedIndex(Int(playheadFrame))

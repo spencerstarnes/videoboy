@@ -37,7 +37,7 @@ final class SourcePanelBody: NSView {
 
     init(channel: String) {
         self.channel = channel
-        self.preview = MetalPreviewView(caption: channel)
+        self.preview = MetalPreviewView(caption: channel, recordLabel: channel)
         super.init(frame: .zero)
 
         preview.translatesAutoresizingMaskIntoConstraints = false
@@ -130,15 +130,12 @@ final class PreviewPanelBody: NSView {
 
     /// Called when the blend mode changes, with the chosen mode.
     var onBlendModeChanged: ((BlendMode) -> Void)?
-    /// Called when the layer opacity changes, 0...1.
-    var onLayerOpacityChanged: ((Double) -> Void)?
-
     private var blendPopUp: NSPopUpButton?
 
     /// - Parameter showsBlendControls: true for the composites that carry a blend
     ///   mode — the two sub-mixes and the program.
-    init(caption: String, showsBlendControls: Bool = false) {
-        self.preview = MetalPreviewView(caption: caption)
+    init(caption: String, showsBlendControls: Bool = false, recordLabel: String? = nil) {
+        self.preview = MetalPreviewView(caption: caption, recordLabel: recordLabel)
         super.init(frame: .zero)
         preview.translatesAutoresizingMaskIntoConstraints = false
         addSubview(preview)
@@ -152,15 +149,19 @@ final class PreviewPanelBody: NSView {
                 target: self, action: #selector(blendModeChanged(_:))
             )
             blendPopUp = popUp
-            let opacity = Controls.fader(
-                value: 1.0, target: self, action: #selector(opacityChanged(_:)))
-            opacity.setContentHuggingPriority(.init(1), for: .horizontal)
+
+            // No separate opacity control: the crossfader in the fader panel below
+            // IS the opacity for this composite. Two controls doing one job is what
+            // made this confusing — and the fader is the one a hand reaches for.
+            let hint = Controls.label(
+                "fader sets opacity", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
 
             let row = Controls.row([
-                Controls.label("Blend", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary),
+                Controls.label("Blend", font: Theme.Font.tinyLabel,
+                               color: Theme.Color.textTertiary, holdsWidth: true),
                 popUp,
-                Controls.label("Opacity", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary),
-                opacity
+                Controls.spacer(),
+                hint
             ], spacing: 4)
             row.translatesAutoresizingMaskIntoConstraints = false
             addSubview(row)
@@ -191,9 +192,6 @@ final class PreviewPanelBody: NSView {
         onBlendModeChanged?(mode)
     }
 
-    @objc private func opacityChanged(_ sender: VBFader) {
-        onLayerOpacityChanged?(sender.value)
-    }
 }
 
 // MARK: - Faders

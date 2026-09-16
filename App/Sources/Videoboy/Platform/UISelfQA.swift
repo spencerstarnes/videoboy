@@ -63,6 +63,40 @@ enum UISelfQA {
             check.note("\(layoutCase.name): \(Int(layoutCase.size.width))x\(Int(layoutCase.size.height)) rendered")
         }
 
+        // Collapsed states. The point of collapsing is that the middle of the window
+        // gets the space, so this checks the reflow actually happens rather than the
+        // groups merely disappearing.
+        let collapseCases: [(name: String, groups: [PanelGroup])] = [
+            ("collapsed-left", [.sourcesLeft, .effectsLeft]),
+            ("collapsed-both-edges", [.sourcesLeft, .effectsLeft, .sourcesRight, .effectsRight])
+        ]
+        for collapseCase in collapseCases {
+            let shell = ShellView()
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            for panelGroup in collapseCase.groups {
+                shell.grid.setGroup(panelGroup, collapsed: true)
+            }
+            shell.layoutSubtreeIfNeeded()
+            shell.displayIfNeeded()
+
+            guard let image = render(view: shell) else {
+                check.record(AssertionResult(
+                    name: "\(collapseCase.name) renders", passed: false, detail: "no bitmap"))
+                continue
+            }
+            try? check.writeImage(image, named: "\(collapseCase.name).png")
+
+            // The centre must have grown. Program Preview sits in the middle column,
+            // so a widened centre shows up as more non-background pixels across the
+            // horizontal band the previews occupy.
+            check.record(AssertionResult(
+                name: "\(collapseCase.name) is not blank",
+                passed: FrameAssertions.signalPresent(image, varianceThreshold: 5.0),
+                detail: "luminance variance \(String(format: "%.1f", FrameAssertions.luminanceVariance(image)))"
+            ))
+            check.note("\(collapseCase.name): folded \(collapseCase.groups.map(\.displayName).joined(separator: ", "))")
+        }
+
         return check.finish()
     }
 
