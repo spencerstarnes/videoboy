@@ -70,6 +70,10 @@ public final class FeedbackNode: Node {
     /// slider and the enable switch in the FX panel both drive.
     public var wetDry = 1.0
 
+    /// A frame from elsewhere to use as this loop's history, set once per frame by
+    /// the engine when a feedback send is routed. Nil means the internal ring.
+    public var externalHistory: MTLTexture?
+
     /// Target for the wet/dry blend, allocated alongside the effect's own buffers.
     private var blendTarget: MTLTexture?
 
@@ -114,8 +118,15 @@ public final class FeedbackNode: Node {
 
         // Read `delayFrames` back around the ring. An external frame, when supplied,
         // replaces the internal history — that is the physical-loop case.
+        //
+        // `externalHistory` is the same idea for an INTERNAL send: a bus routed back
+        // into this loop. It is set from the PREVIOUS frame's textures rather than
+        // wired as a graph edge, because a bus downstream of this node feeding back
+        // into it is a cycle, and a graph that contains one has no evaluation order.
+        // A one-frame delay is what breaks the cycle — which is exactly what the ring
+        // below does for the internal case, so the two are the same mechanism.
         let readPosition = ((ringPosition - delayFrames) % ringSize + ringSize) % ringSize
-        let history = inputs.count > 1 ? inputs[1] : ring[readPosition]
+        let history = externalHistory ?? (inputs.count > 1 ? inputs[1] : ring[readPosition])
 
         let descriptor = MTLRenderPassDescriptor()
         descriptor.colorAttachments[0].texture = target

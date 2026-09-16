@@ -102,6 +102,9 @@ final class OutputRouter {
     /// Called when the routes change, so the interface can restate them.
     var onRoutesChanged: (() -> Void)?
 
+    /// Called when a feedback send is made or cleared: (source slot or nil, bus).
+    var onFeedbackSendChanged: ((String?, String) -> Void)?
+
     init(store: PreferenceStore, metal: MetalContext?) {
         self.store = store
         self.metal = metal
@@ -133,18 +136,15 @@ final class OutputRouter {
         for destination in store.preferences.destinations {
             // OBS is served now; the rest are listed with the specific piece that is
             // still missing, so someone deciding whether to wait knows which.
-            let canServe = destination.kind == .obs && !destination.target.isEmpty
+            let canServe = !destination.target.isEmpty
+                && (destination.kind == .obs || destination.kind == .feedbackSend)
             options.append(RoutingOption(
                 destination: .configured(destination.id),
                 name: destination.name,
                 detail: destination.kind.displayName
                     + (destination.target.isEmpty ? "" : " · \(destination.target)"),
                 isAvailable: canServe,
-                unavailableReason: canServe
-                    ? nil
-                    : (destination.kind == .obs
-                        ? "Set a target, such as 9000, in Settings › Outputs."
-                        : Self.reasonNotBuilt(destination.kind))
+                unavailableReason: canServe ? nil : Self.reasonNotBuilt(destination.kind)
             ))
         }
 
@@ -160,7 +160,7 @@ final class OutputRouter {
         switch kind {
         case .obs: "Set a target, such as 9000, in Settings › Outputs."
         case .window: "Sending to another app's window is not built yet."
-        case .feedbackSend: "Feedback sends are not wired to the feedback node's external input yet."
+        case .feedbackSend: "Set the target to ONE or TWO in Settings › Outputs."
         case .captureCard: "Capture-card output needs the card's own SDK."
         case .ipStream: "IP output is not built yet."
         case .generator: "Generators are sources, not destinations."
@@ -202,8 +202,24 @@ final class OutputRouter {
 
     /// Opens a stream to a configured destination.
     private func routeToStream(_ source: RoutingSource, destinationID id: String) {
-        guard let configured = store.preferences.destinations.first(where: { $0.id == id }),
-              configured.kind == .obs else {
+        guard let configured = store.preferences.destinations.first(where: { $0.id == id })
+        else { return }
+
+        // A feedback send is not a stream — it goes back into the graph rather than
+        // out of the app — but it IS a destination, so it is chosen the same way.
+        if configured.kind == .feedbackSend {
+            guard case .slot(let slot) = source else {
+                Log.warn(.render, "only a bus can be sent into a feedback loop")
+                return
+            }
+            let bus = configured.target.uppercased().contains("TWO") ? "TWO" : "ONE"
+            routes[.configured(id)] = source
+            onFeedbackSendChanged?(slot, bus)
+            onRoutesChanged?()
+            return
+        }
+
+        guard configured.kind == .obs else {
             Log.warn(.render, "destination \(id) cannot be streamed to")
             return
         }
@@ -241,6 +257,11 @@ final class OutputRouter {
         case .configured(let id):
             streamers[id]?.close()
             streamers.removeValue(forKey: id)
+            if let configured = store.preferences.destinations.first(where: { $0.id == id }),
+               configured.kind == .feedbackSend {
+                let bus = configured.target.uppercased().contains("TWO") ? "TWO" : "ONE"
+                onFeedbackSendChanged?(nil, bus)
+            }
         }
         Log.info(.render, "cleared a route")
         onRoutesChanged?()

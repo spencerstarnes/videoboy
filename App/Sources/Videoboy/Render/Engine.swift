@@ -419,6 +419,9 @@ final class Engine {
     @discardableResult
     func evaluateGraph(context: RenderContext) -> [String: MTLTexture] {
         applyAllParameters()
+        // Before evaluation, so each loop sees last frame's picture rather than one
+        // being overwritten as this frame is built.
+        if !feedbackSends.isEmpty { applyFeedbackSends() }
         var produced: [String: MTLTexture] = [:]
         for identifier in graph.evaluationOrder(from: Engine.outputSlot) {
             guard let node = graph.nodes[identifier] else { continue }
@@ -580,6 +583,41 @@ final class Engine {
         case "TWO": busCodecTwo.interchange = codec
         default: busCodecProgram.interchange = codec
         }
+    }
+
+    // MARK: - Feedback sends (SPEC 10)
+
+    /// Which slot, if any, feeds each bus's feedback loop from elsewhere.
+    private var feedbackSends: [String: String] = [:]
+
+    /// Routes a bus into a feedback loop's history, or clears it with nil.
+    ///
+    /// - Parameters:
+    ///   - slot: the node whose picture becomes the loop's history.
+    ///   - bus: "ONE" or "TWO".
+    func setFeedbackSend(from slot: String?, toBus bus: String) {
+        if let slot {
+            feedbackSends[bus] = slot
+            Log.info(.render, "feedback send: \(slot) into bus \(bus)")
+        } else {
+            feedbackSends.removeValue(forKey: bus)
+            Log.info(.render, "feedback send into bus \(bus) cleared")
+        }
+        applyFeedbackSends()
+    }
+
+    /// Which slot is feeding a bus's loop, if any.
+    func feedbackSend(forBus bus: String) -> String? { feedbackSends[bus] }
+
+    /// Hands each loop the PREVIOUS frame of whatever is routed into it.
+    ///
+    /// Previous, not current: a bus downstream of a feedback node feeding back into
+    /// it is a cycle, and a graph containing one has no evaluation order at all. The
+    /// one-frame delay is what makes the send expressible, and it is the same delay
+    /// the internal ring already uses.
+    private func applyFeedbackSends() {
+        feedback.externalHistory = feedbackSends["ONE"].flatMap { currentTextures[$0] }
+        feedbackTwo.externalHistory = feedbackSends["TWO"].flatMap { currentTextures[$0] }
     }
 
     // MARK: - Output emulation (SPEC 9, 13)

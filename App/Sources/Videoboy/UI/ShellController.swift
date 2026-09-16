@@ -132,6 +132,9 @@ final class ShellController {
         // because the plain click already means "send what this preview shows".
         panels.programBody.preview.routingButton?.menu = fourUpMenu()
 
+        router.onFeedbackSendChanged = { [weak self] slot, bus in
+            self?.engine.setFeedbackSend(from: slot, toBus: bus)
+        }
         router.onRoutesChanged = { [weak self] in
             guard let self else { return }
             for (preview, source) in sources {

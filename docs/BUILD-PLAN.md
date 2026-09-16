@@ -109,9 +109,9 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   narrow widths (SPEC 14.4 defers density tuning, so this is expected, not a defect).
 - **MPEG bitstream corruptor.** SPEC 5 wants frame-drop / motion-vector / reference-hold
   alongside the DV DIF corruptor, sharing infrastructure but a separate module.
-- **External feedback through the physical loop.** `FeedbackNode` accepts a captured
-  frame as its history (input slot 1) and the round trip is measured, but the capture
-  is not yet routed into that slot live. Internal feedback works.
+- **The PHYSICAL feedback loop.** `FeedbackNode` accepts a captured frame as its
+  history (input slot 1) and the round trip is measured, but the live capture is not
+  yet routed into that slot. Internal feedback and internal bus sends both work.
 - **Modulation assignment beyond MIDI covers the FX chains only.** Shift-to-detect
   now reaches every enabled fader, including the crossfaders and shuttles, but the
   audio-tap and LFO menus are still only on the effect parameters' S and C badges.

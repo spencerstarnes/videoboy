@@ -408,6 +408,49 @@ enum PlaybackSelfQA {
         }
         engine.registry.setValue(0, slot: Engine.mx1OneSlot, code: .wetDry)
 
+        // 11. A feedback send: one bus routed into the other's feedback loop. The
+        // claim worth checking is that it does NOT hang — a bus feeding a loop it is
+        // downstream of is a cycle, and the whole design of this send is the one-frame
+        // delay that makes it expressible.
+        engine.load(url: fileA, intoChannel: "A")
+        engine.registry.setValue(0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+        engine.registry.setValue(1, slot: Engine.feedbackSlot, code: .wetDry)
+        engine.registry.setValue(0.8, slot: Engine.feedbackSlot, code: .feedbackGain)
+        engine.registry.setValue(0, slot: Engine.mx1OneSlot, code: .wetDry)
+
+        let withoutSend = renderFrame(150)
+        engine.setFeedbackSend(from: Engine.busCodecOneSlot, toBus: "ONE")
+        check.record(AssertionResult(
+            name: "a feedback send is recorded against its bus",
+            passed: engine.feedbackSend(forBus: "ONE") == Engine.busCodecOneSlot,
+            detail: engine.feedbackSend(forBus: "ONE") ?? "nothing"
+        ))
+
+        // Twenty frames through a loop fed by its own output. If the one-frame delay
+        // were not doing its job this is where it would spin or blow up.
+        var sendFrames: [ImageBuffer] = []
+        for frame in 151..<171 {
+            if let image = renderFrame(frame) { sendFrames.append(image) }
+        }
+        engine.setFeedbackSend(from: nil, toBus: "ONE")
+
+        check.record(AssertionResult(
+            name: "a bus fed back into its own loop keeps rendering",
+            passed: sendFrames.count == 20,
+            detail: "\(sendFrames.count) of 20 frames rendered"
+        ))
+
+        if let withoutSend, let withSend = sendFrames.last {
+            try? check.writeImage(withSend, named: "15-feedback-send.png")
+            check.record(FrameAssertions.framesDiffer(
+                withoutSend, withSend, minimumFraction: 0.02,
+                name: "the feedback send changes the picture"))
+            // And the picture must stay a picture rather than saturating to white,
+            // which is how a runaway loop usually announces itself.
+            check.record(FrameAssertions.hasSignal(withSend))
+        }
+        engine.registry.setValue(0, slot: Engine.feedbackSlot, code: .wetDry)
+
         check.note("all frames rendered through the engine's own nodes and Metal pipelines")
         return check.finish()
     }

@@ -125,9 +125,15 @@ this is a restrained preset face over them.
 
 ---
 
-## Open question I'd want answered before building §6
+## Open question, now built on a stated assumption
 
-"Feedback display send" — I read this as routing a bus back into the feedback
-loop's external input as a destination, which fits the existing `FeedbackNode`
-(it already accepts a captured frame as its history). Confirm that is what you
-meant before I wire it that way.
+"Feedback display send" — I read it as routing a bus back into the feedback loop's
+external input as a destination, which fits the existing `FeedbackNode` (it already
+accepts a captured frame as its history). It is built that way rather than left
+waiting: it is a destination in Settings › Outputs whose target names the bus, ONE or
+TWO, and it is easy to change if the reading is wrong.
+
+One thing worth knowing about it: the send uses the PREVIOUS frame, not the current
+one. A bus downstream of a feedback node feeding back into that node is a cycle, and
+a graph containing one has no evaluation order at all. The one-frame delay is what
+makes the send expressible, and it is the same delay the internal ring already uses.
