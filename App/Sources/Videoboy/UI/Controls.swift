@@ -128,6 +128,8 @@ enum Controls {
     /// The mapping badges beside a parameter: M(IDI), S(audio-react), C(lock-LFO).
     /// Shown for every mappable parameter so the param code and its bindings are
     /// legible at a glance (SPEC 14.2).
+    ///
+    /// Non-interactive version, for rows whose feature is not built yet.
     static func mappingBadges(_ letters: [String], active: Set<String> = []) -> NSStackView {
         let badges = letters.map { letter -> NSTextField in
             let badge = label(letter, font: Theme.Font.tinyLabel,
@@ -136,5 +138,24 @@ enum Controls {
             return badge
         }
         return row(badges, spacing: 2)
+    }
+
+    /// A clickable mapping badge.
+    ///
+    /// These are small on purpose — the mockup's geometry is tight — so they are
+    /// buttons with no bezel rather than styled labels, which keeps the hit target
+    /// and the keyboard behaviour that AppKit already gets right.
+    static func mappingBadgeButton(
+        _ letter: String, isActive: Bool, target: AnyObject?, action: Selector?
+    ) -> NSButton {
+        let button = NSButton(title: letter, target: target, action: action)
+        button.isBordered = false
+        button.bezelStyle = .inline
+        button.font = Theme.Font.tinyLabel
+        button.contentTintColor = isActive ? Theme.Color.accent : Theme.Color.textTertiary
+        button.setButtonType(.momentaryChange)
+        // Room for one character plus a little slack, so the row stays tight.
+        button.widthAnchor.constraint(equalToConstant: 14).isActive = true
+        return button
     }
 }

@@ -80,6 +80,20 @@ drives the transport from it. The **Sync** readout shows detection confidence; b
 25% it ignores the estimate rather than dragging the tempo around on speech or
 applause. It will ask for microphone access the first time.
 
+**Modulating anything.** Every parameter row in the FX panels has three little
+letters beside it — **M S C**. They are buttons:
+
+- **M** — MIDI learn. Click it, then move a control on your deck.
+- **S** — audio. Pick a tap and a shape: *Level (envelope)*, *Onset (pulse)*, *Bass*,
+  *Treble*, or anything under **More…** with full control of the shaping. Needs the
+  clock set to Audio to actually move.
+- **C** — an LFO. Pick a shape, then a rate as a clock subdivision (so it stays
+  musical) or a free-running Hz.
+
+A lit letter means that parameter is being driven. This is where it stops being a
+video player and becomes an instrument — put a pulse on the corruptor's amount and
+the picture breaks on the kick.
+
 **The faders.** A→B, C→D and ONE→TWO all work, with **Cut** (and **◆ Swap** on
 ONE→TWO). Drag them and Program Preview follows.
 
@@ -105,11 +119,8 @@ Present, greyed, labelled — never hidden, so the shape of the app is legible:
 - **Color Ctrl** and **Layer Mask** — the MX-1 effect set and the Core Image
   passthrough from SPEC §9 are not written yet.
 - **Record** and **Stream** sections — Phase 4.
-- **LFO and audio assignment.** Both engines are complete and tested — an LFO can
-  drive any parameter, and audio taps (RMS, seven bands, onsets) can too, with pulse
-  / envelope / gate / sample-hold shaping. But there is no UI for assigning them to
-  an arbitrary parameter yet; the `C` and `S` badges on each parameter row are where
-  that belongs.
+- **Modulation assignment is on the FX parameters only.** The badge columns on the
+  faders and shuttles are still decorative.
 - **MX-1 effects** (negative, B&W, mosaic, posterize, mirror, flip, freeze) are built
   and tested but not yet placed in a chain, so they have no controls.
 - Asset Browser tabs, search, import, and the drag-to-load flow.

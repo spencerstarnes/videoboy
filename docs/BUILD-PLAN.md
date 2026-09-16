@@ -111,20 +111,15 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 - **External feedback through the physical loop.** `FeedbackNode` accepts a captured
   frame as its history (input slot 1) and the round trip is measured, but the capture
   is not yet routed into that slot live. Internal feedback works.
+- **Modulation assignment covers the FX chains only.** The M/S/C badges are live on
+  every effect parameter, but the faders, shuttles and generator controls have badge
+  columns that are still decorative.
 - **Core Image / AU passthrough** from SPEC 9 — enumerate the useful CI filters and
   expose the video-rate ones as mappable modules. Not started.
 - **MX-1 effects are not in a chain yet.** `MX1EffectNode` exists and is tested, but
   it is not instantiated in the engine's graph, so there is no UI for it.
-- **LFO assignment is not exposed in the UI.** `LFOBank` is complete and tested, and
-  selecting a generator attaches one to its phase automatically, but there is no way
-  to put an LFO on an arbitrary parameter from the interface yet. The `C` mapping
-  badge on each parameter row is where that belongs.
 - **Generator colours are not editable.** Each generator has two colours with an
   out-of-gamut check, but no colour well in the UI.
-- **Audio reactivity has no UI yet.** The bus, taps and shapes are complete and
-  tested, and selecting the Audio clock source starts analysis, but assigning a tap
-  to a parameter can only be done in code. The `S` badge on each parameter row is
-  where that belongs, alongside the LFO's `C` badge.
 - **Audio does not drive transport phase, only tempo.** SPEC 4c mentions phase; the
   estimator deliberately does not guess where the downbeat is, because guessing it
   badly is worse than leaving it to tap tempo.

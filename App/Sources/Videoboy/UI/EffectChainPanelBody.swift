@@ -45,6 +45,10 @@ final class EffectChainPanelBody: NSView {
     /// Called when a parameter slider moves: (param code, new 0...1 value).
     var onParameterChanged: ((String, Double) -> Void)?
 
+    /// Called when a mapping badge is clicked: (param code, which badge).
+    /// "M" arms MIDI detect, "S" offers audio taps, "C" offers an LFO.
+    var onMappingBadgeClicked: ((String, String, NSView) -> Void)?
+
     /// Called when an effect's enable switch is toggled: (effect name, on).
     var onEffectToggled: ((String, Bool) -> Void)?
 
@@ -165,7 +169,24 @@ final class EffectChainPanelBody: NSView {
 
     /// One parameter row: mapping badges, label with param code, slider, value.
     private func makeParameterRow(_ parameter: EffectParameterModel) -> NSStackView {
-        let badges = Controls.mappingBadges(["M", "S", "C"], active: parameter.activeBadges)
+        // The badges are clickable for a live parameter: that is how a performer
+        // reaches MIDI learn, an audio tap or an LFO without leaving the panel.
+        let badges: NSStackView
+        if parameter.enabled {
+            let buttons = ["M", "S", "C"].map { letter -> NSButton in
+                let button = Controls.mappingBadgeButton(
+                    letter,
+                    isActive: parameter.activeBadges.contains(letter),
+                    target: self, action: #selector(badgeClicked(_:))
+                )
+                // The code and the letter together identify what was clicked.
+                button.identifier = NSUserInterfaceItemIdentifier("\(parameter.code)|\(letter)")
+                return button
+            }
+            badges = Controls.row(buttons, spacing: 0)
+        } else {
+            badges = Controls.mappingBadges(["M", "S", "C"], active: parameter.activeBadges)
+        }
         // The param code is shown next to the name because mappings target the code,
         // not the module instance (SPEC 13) — so the code is the thing worth reading.
         let label = Controls.monoLabel(
@@ -192,6 +213,28 @@ final class EffectChainPanelBody: NSView {
             readout.stringValue = String(format: "%.2f", sender.doubleValue)
         }
         onParameterChanged?(code, sender.doubleValue)
+    }
+
+    @objc private func badgeClicked(_ sender: NSButton) {
+        guard let identifier = sender.identifier?.rawValue else { return }
+        let parts = identifier.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return }
+        onMappingBadgeClicked?(parts[0], parts[1], sender)
+    }
+
+    /// Repaints a badge to show whether its parameter is currently driven.
+    func setBadgeActive(code: String, badge: String, isActive: Bool) {
+        let identifier = NSUserInterfaceItemIdentifier("\(code)|\(badge)")
+        for case let button as NSButton in allSubviews(of: stack)
+        where button.identifier == identifier {
+            button.contentTintColor = isActive ? Theme.Color.accent : Theme.Color.textTertiary
+        }
+    }
+
+    /// Every view beneath a root, flattened. Small trees only — this walks the
+    /// effect chain's own rows, not the whole window.
+    private func allSubviews(of root: NSView) -> [NSView] {
+        root.subviews + root.subviews.flatMap { allSubviews(of: $0) }
     }
 
     @objc private func effectToggled(_ sender: NSSwitch) {

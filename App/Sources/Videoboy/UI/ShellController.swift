@@ -227,6 +227,13 @@ final class ShellController {
             self.engine.registry.setValue(declared.denormalise(value), slot: slot, code: parameter)
         }
 
+        shell.grid.panels.effectsOneBody.onMappingBadgeClicked = { [weak self] code, badge, view in
+            self?.presentModulationMenu(code: code, badge: badge, from: view, bus: .one)
+        }
+        shell.grid.panels.effectsTwoBody.onMappingBadgeClicked = { [weak self] code, badge, view in
+            self?.presentModulationMenu(code: code, badge: badge, from: view, bus: .two)
+        }
+
         shell.grid.panels.effectsOneBody.onEffectToggled = { [weak self] name, isOn in
             // Bypassing is expressed as wet/dry, so there is one mechanism rather
             // than a separate enable flag threaded through every node.
@@ -251,6 +258,77 @@ final class ShellController {
 
     /// Which sub-mix an FX panel drives.
     private enum Bus { case one, two }
+
+    /// Opens the MIDI / audio / LFO menu for a parameter and applies the choice.
+    private func presentModulationMenu(code: String, badge: String, from view: NSView, bus: Bus) {
+        guard let parameter = ParamCode(rawValue: code) else { return }
+        let table = bus == .one ? Self.subMixOneSlots : Self.subMixTwoSlots
+        guard let slot = table[parameter] else {
+            Log.warn(.param, "no slot registered for \(code); cannot map it")
+            return
+        }
+
+        let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
+        let isDriven: Bool
+        switch badge {
+        case "M": isDriven = engine.registry.bindings.contains { $0.slot == slot && $0.code == parameter }
+        case "S": isDriven = engine.audioReactivity.isDriven(slot: slot, code: parameter)
+        default:  isDriven = engine.lfos.isDriven(slot: slot, code: parameter)
+        }
+
+        ModulationMenus.present(badge: badge, isCurrentlyDriven: isDriven, from: view) { [weak self] choice in
+            guard let self else { return }
+            switch choice {
+            case .learnMIDI:
+                self.engine.midi.beginDetect(slot: slot, code: parameter)
+                self.shell.statusBar.setMIDIDevice("learning \(parameter.displayName)…")
+                // The badge lights once something actually arrives, not on arming —
+                // otherwise it would claim a mapping that may never be made.
+                self.engine.midi.onDetectCompleted = { [weak self] binding in
+                    DispatchQueue.main.async {
+                        panel.setBadgeActive(code: code, badge: "M", isActive: true)
+                        self?.shell.statusBar.setMIDIDevice(
+                            self?.engine.midi.connectedSourceNames.first)
+                        Log.info(.midi, "learned \(binding.source.description) for \(binding.slot)/\(binding.code.rawValue)")
+                    }
+                }
+
+            case .audio(let tap, let shape):
+                self.engine.audioReactivity.assign(ReactivityAssignment(
+                    tap: tap, shape: shape, slot: slot, code: parameter))
+                panel.setBadgeActive(code: code, badge: "S", isActive: true)
+                if self.engine.clockSource != .audio {
+                    // An audio mapping with no audio running would silently do
+                    // nothing, which is the kind of thing found out mid-set.
+                    self.presentNotice(
+                        "Audio input is not running",
+                        "The mapping is saved, but nothing will move until you set Clock to Audio in the toolbar."
+                    )
+                }
+
+            case .lfo(let shape, let rate):
+                let latency = self.engine.graph.nodes[slot]?.latencyInFrames ?? 0
+                self.engine.lfos.assign(LFOBank.Assignment(
+                    lfo: LFO(shape: shape, rate: rate, depth: 1.0),
+                    slot: slot, code: parameter, latencyInFrames: latency))
+                panel.setBadgeActive(code: code, badge: "C", isActive: true)
+
+            case .clear:
+                switch badge {
+                case "M":
+                    for binding in self.engine.registry.bindings
+                    where binding.slot == slot && binding.code == parameter {
+                        self.engine.registry.unbind(source: binding.source)
+                    }
+                case "S":
+                    self.engine.audioReactivity.remove(slot: slot, code: parameter)
+                default:
+                    self.engine.lfos.remove(slot: slot, code: parameter)
+                }
+                panel.setBadgeActive(code: code, badge: badge, isActive: false)
+            }
+        }
+    }
 
     /// Enables or bypasses a named effect on one of the buses.
     private func setEffectEnabled(_ name: String, _ isOn: Bool, bus: Bus) {
