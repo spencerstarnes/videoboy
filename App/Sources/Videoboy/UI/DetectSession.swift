@@ -42,6 +42,10 @@ final class DetectSession {
         // not have to click the right thing first to make Shift mean something.
         monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.setArmed(event.modifierFlags.contains(.shift))
+            // The same monitor also drives the sweep-arming highlight, so the two
+            // modal hints cannot disagree about whether a key is down.
+            self?.setSweepArming(
+                event.modifierFlags.contains(.command) && event.modifierFlags.contains(.option))
             return event
         }
     }
@@ -69,6 +73,18 @@ final class DetectSession {
         onArmedChanged?(armed)
     }
 
+    /// Whether the mark-a-sweep gesture is being held.
+    private(set) var isSweepArming = false
+
+    /// Lights every fader that could take a sweep mark. Exposed for the same reason
+    /// `setArmed` is: a check proving the highlight reaches real controls has to be
+    /// able to turn it on without synthesising a modifier key.
+    func setSweepArming(_ arming: Bool) {
+        guard arming != isSweepArming else { return }
+        isSweepArming = arming
+        refresh()
+    }
+
     /// Walks the tree rather than keeping a register of controls.
     ///
     /// Panels rebuild their rows as effects are added, reordered and bypassed, so a
@@ -79,6 +95,7 @@ final class DetectSession {
         if let fader = view as? VBFader {
             let mappable = fader.mappingSlot != nil && fader.mappingCode != nil
             fader.isDetectHighlighted = isArmed && mappable
+            fader.isSweepArming = isSweepArming && mappable
             if mappable && fader.onDetectRequested == nil {
                 fader.onDetectRequested = { [weak self] slot, code in
                     self?.onDetectRequested?(slot, code)

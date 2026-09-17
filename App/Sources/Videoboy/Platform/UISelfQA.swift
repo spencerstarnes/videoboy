@@ -1129,14 +1129,58 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
-        // FADER SWEEPS. Control-command marks an in and an out on any mappable fader,
-        // and the fader then plays itself between them on the clock.
-        //
-        // Driven through the real mouse handlers with real modifier flags, not by
-        // setting the marks directly — and through BOTH of them, because macOS
-        // promotes a control-click to a right-click at the window server, so the same
-        // gesture can arrive as either a left or a right mouse down. A check that
-        // only drove one would pass while the real gesture failed on the other.
+        // DOUBLE-CLICKING A SOURCE PICTURE PLAYS OR PAUSES IT. The transport keys
+        // live on a hover overlay, so the picture being dead to a click made the most
+        // obvious gesture in the window do nothing at all.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1460, height: 912),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = shell
+            shell.layoutSubtreeIfNeeded()
+
+            if let body = shell.grid.panels.sourceBodies["A"] {
+                var toggled = 0
+                let existing = body.onPlayToggled
+                body.onPlayToggled = { toggled += 1; existing?() }
+
+                let centre = body.convert(
+                    NSPoint(x: body.bounds.midX, y: body.bounds.midY), to: nil)
+                func click(times: Int) -> NSEvent? {
+                    NSEvent.mouseEvent(
+                        with: .leftMouseDown, location: centre, modifierFlags: [],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil,
+                        eventNumber: 0, clickCount: times, pressure: 1)
+                }
+
+                if let single = click(times: 1) { body.mouseDown(with: single) }
+                check.record(AssertionResult(
+                    name: "a single click on a source picture does NOT toggle playback",
+                    passed: toggled == 0,
+                    detail: toggled == 0
+                        ? "single clicks left the transport alone"
+                        : "a stray click would stop the show"
+                ))
+
+                if let double = click(times: 2) { body.mouseDown(with: double) }
+                check.record(AssertionResult(
+                    name: "double-clicking a source picture plays or pauses it",
+                    passed: toggled == 1,
+                    detail: "\(toggled) toggle(s) from one double click"
+                ))
+            }
+
+            withExtendedLifetime(controller) {}
+        }
+
+        // FADER SWEEPS. Command-option marks an in and an out on any mappable fader,
+        // and the fader then plays itself between them on the clock. Driven through
+        // the real mouseDown with real modifier flags rather than by setting the
+        // marks directly, so the gesture is tested and not just the state it leaves.
         do {
             let shell = ShellView()
             let engine = Engine()
@@ -1150,14 +1194,70 @@ enum UISelfQA {
             let faders = VBFader.all(in: shell.grid.panels.effectsOneBody)
                 .filter { $0.mappingCode != nil && $0.isEnabled }
 
+            // Specifically a COLOUR fader, reported as the one where the second mark
+            // would not take. Checking the first fader in the panel would test the
+            // corruptor and say nothing about it.
+            if let colourFader = faders.first(where: { $0.mappingCode == .brightness }) {
+                func markAt(_ fraction: CGFloat) {
+                    let x = colourFader.bounds.minX + colourFader.bounds.width * fraction
+                    let point = colourFader.convert(
+                        NSPoint(x: x, y: colourFader.bounds.midY), to: nil)
+                    if let event = NSEvent.mouseEvent(
+                        with: .leftMouseDown, location: point,
+                        modifierFlags: [.command, .option],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil,
+                        eventNumber: 0, clickCount: 1, pressure: 1) {
+                        colourFader.mouseDown(with: event)
+                    }
+                }
+                // WHAT A REAL CLICK LANDS ON. Every assertion above calls mouseDown
+                // on the fader directly, which bypasses hit-testing — so a view
+                // sitting on top of the fader would swallow the gesture in the app
+                // while every check here passed. That is exactly how the library drag
+                // bug hid.
+                let centre = colourFader.convert(
+                    NSPoint(x: colourFader.bounds.midX, y: colourFader.bounds.midY), to: nil)
+                let hit = shell.hitTest(centre)
+                check.record(AssertionResult(
+                    name: "a click on a colour fader actually lands on that fader",
+                    passed: hit === colourFader,
+                    detail: hit === colourFader
+                        ? "hit test returns the fader"
+                        : "hit test returns \(hit.map { String(describing: type(of: $0)) } ?? "nothing") — "
+                            + "the gesture never reaches the fader in the real window"
+                ))
+
+                colourFader.clearSweep()
+                markAt(0.3)
+                let afterFirst = colourFader.sweepMarksForChecks
+                markAt(0.6)
+                let afterSecond = colourFader.sweepMarksForChecks
+
+                check.record(AssertionResult(
+                    name: "a colour fader takes BOTH marks where they were clicked",
+                    passed: afterSecond.second != nil
+                        && abs((afterSecond.first ?? -1) - 0.3) < 0.06
+                        && abs((afterSecond.second ?? -1) - 0.6) < 0.06,
+                    detail: "after one click: \(afterFirst.first.map { String(format: "%.2f", $0) } ?? "nil"), "
+                        + "after two: \(afterSecond.first.map { String(format: "%.2f", $0) } ?? "nil") / "
+                        + "\(afterSecond.second.map { String(format: "%.2f", $0) } ?? "nil") "
+                        + "(expected 0.30 / 0.60)"
+                ))
+                colourFader.clearSweep()
+            } else {
+                check.record(AssertionResult(
+                    name: "a colour fader exists to mark", passed: false,
+                    detail: "no brightness fader found"))
+            }
+
             if let fader = faders.first {
-                /// One mark, delivered as a LEFT mouse down.
-                func controlCommandClick(atFraction fraction: CGFloat) {
+                func commandOptionClick(atFraction fraction: CGFloat) {
                     let x = fader.bounds.minX + fader.bounds.width * fraction
                     let point = fader.convert(NSPoint(x: x, y: fader.bounds.midY), to: nil)
                     if let event = NSEvent.mouseEvent(
                         with: .leftMouseDown, location: point,
-                        modifierFlags: [.command, .control],
+                        modifierFlags: [.command, .option],
                         timestamp: ProcessInfo.processInfo.systemUptime,
                         windowNumber: window.windowNumber, context: nil,
                         eventNumber: 0, clickCount: 1, pressure: 1) {
@@ -1165,35 +1265,20 @@ enum UISelfQA {
                     }
                 }
 
-                /// The same mark, delivered as a RIGHT mouse down, which is how macOS
-                /// often hands a control-click over.
-                func controlCommandRightClick(atFraction fraction: CGFloat) {
-                    let x = fader.bounds.minX + fader.bounds.width * fraction
-                    let point = fader.convert(NSPoint(x: x, y: fader.bounds.midY), to: nil)
-                    if let event = NSEvent.mouseEvent(
-                        with: .rightMouseDown, location: point,
-                        modifierFlags: [.command, .control],
-                        timestamp: ProcessInfo.processInfo.systemUptime,
-                        windowNumber: window.windowNumber, context: nil,
-                        eventNumber: 0, clickCount: 1, pressure: 1) {
-                        fader.rightMouseDown(with: event)
-                    }
-                }
-
                 let before = fader.value
-                controlCommandClick(atFraction: 0.2)
+                commandOptionClick(atFraction: 0.2)
                 check.record(AssertionResult(
-                    name: "control-command marks a point instead of moving the fader",
+                    name: "command-option marks a point instead of moving the fader",
                     passed: fader.value == before && fader.sweep == nil,
                     detail: fader.value == before
                         ? "one mark set, fader did not jump"
                         : "the fader moved — the gesture fell through to a drag"
                 ))
 
-                controlCommandClick(atFraction: 0.8)
+                commandOptionClick(atFraction: 0.8)
                 let sweep = fader.sweep
                 check.record(AssertionResult(
-                    name: "a second control-command click arms the sweep",
+                    name: "a second command-option click arms the sweep",
                     passed: sweep != nil,
                     detail: sweep.map {
                         String(format: "%.2f...%.2f", $0.lower, $0.upper)
@@ -1217,26 +1302,11 @@ enum UISelfQA {
                 }
 
                 // A third click re-aims rather than leaving the old pair in place.
-                controlCommandClick(atFraction: 0.5)
+                commandOptionClick(atFraction: 0.5)
                 check.record(AssertionResult(
                     name: "a third click starts a new pair rather than sticking",
                     passed: fader.sweep == nil,
                     detail: fader.sweep == nil ? "back to one mark" : "the old pair survived"
-                ))
-
-                // THE SAME GESTURE, DELIVERED AS A RIGHT CLICK. This is the one that
-                // would silently not work: macOS promotes control-clicks, and a fader
-                // that only listened on mouseDown would look fine in a test and do
-                // nothing under a real finger.
-                fader.clearSweep()
-                controlCommandRightClick(atFraction: 0.3)
-                controlCommandRightClick(atFraction: 0.7)
-                check.record(AssertionResult(
-                    name: "a control-command RIGHT click marks a sweep too",
-                    passed: fader.sweep != nil,
-                    detail: fader.sweep.map {
-                        String(format: "%.2f...%.2f via rightMouseDown", $0.lower, $0.upper)
-                    } ?? "right-delivered control-clicks are ignored"
                 ))
 
                 // Plain shift must still arm detect, not mark a sweep.
@@ -1287,6 +1357,19 @@ enum UISelfQA {
             shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
             shell.layoutSubtreeIfNeeded()
 
+            /// Every value the registry holds, for spotting a write anywhere.
+            func snapshotEveryValue() -> [String: Double] {
+                var values: [String: Double] = [:]
+                for slot in engine.graph.nodes.keys {
+                    for parameter in engine.graph.nodes[slot]?.parameters ?? [] {
+                        if let value = engine.registry.value(slot: slot, code: parameter.code) {
+                            values["\(slot)|\(parameter.code.rawValue)"] = value
+                        }
+                    }
+                }
+                return values
+            }
+
             /// Every wet/dry in the engine, as one comparable snapshot.
             func wetDrySnapshot() -> [String: Double] {
                 var values: [String: Double] = [:]
@@ -1324,6 +1407,39 @@ enum UISelfQA {
                 detail: deadSwitches.isEmpty
                     ? "\(livingSwitches) switches moved a wet/dry in the graph"
                     : "dead: \(deadSwitches.joined(separator: ", "))"
+            ))
+
+            // AND EVERY ENABLED FADER, which is the half this check was missing.
+            //
+            // The switch and the faders on a card resolve their slot through two
+            // DIFFERENT tables — the switch by effect NAME, the faders by param
+            // CODE — so a card can be added with its name registered and its codes
+            // forgotten. Its switch then works while every one of its faders does
+            // nothing, which is exactly how the colour controls shipped: the
+            // switch-only version of this check passed them.
+            var deadFaders: [String] = []
+            var livingFaders = 0
+            for (busName, panel) in panels {
+                for fader in VBFader.all(in: panel) where fader.isEnabled {
+                    guard let code = fader.mappingCode else { continue }
+                    let before = snapshotEveryValue()
+                    // Through the panel's own closure, which is what a drag calls.
+                    let moved = fader.value < 0.5 ? 0.9 : 0.1
+                    panel.onParameterChanged?(code.rawValue, moved)
+                    if snapshotEveryValue() == before {
+                        deadFaders.append("\(busName) · \(code.rawValue) \(code.displayName)")
+                    } else {
+                        livingFaders += 1
+                    }
+                }
+            }
+
+            check.record(AssertionResult(
+                name: "every enabled effect fader actually reaches the engine",
+                passed: deadFaders.isEmpty,
+                detail: deadFaders.isEmpty
+                    ? "\(livingFaders) faders moved a value in the registry"
+                    : "dead: \(deadFaders.joined(separator: ", "))"
             ))
 
             withExtendedLifetime(controller) {}

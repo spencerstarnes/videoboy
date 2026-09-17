@@ -375,6 +375,21 @@ final class SourcePanelBody: NSView {
         onScrub?(sender.value)
     }
 
+    /// Double-clicking the picture plays or pauses, the way it does in every video
+    /// player. The transport keys are on a hover overlay now, so the picture itself
+    /// being dead to a click made the most obvious gesture in the window do nothing.
+    ///
+    /// Only a DOUBLE click: a single click on a source panel is how you focus it, and
+    /// making that also toggle playback would make a stray click stop the show.
+    override func mouseDown(with event: NSEvent) {
+        guard event.clickCount >= 2 else {
+            super.mouseDown(with: event)
+            return
+        }
+        Log.info(.app, "double-click play/pause on source \(channel)")
+        onPlayToggled?()
+    }
+
     // MARK: - Hover
 
     // The transport appears on hover, so the panel needs a tracking area and has to

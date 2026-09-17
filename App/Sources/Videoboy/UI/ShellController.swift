@@ -130,6 +130,10 @@ final class ShellController {
     private func ejectClip(fromChannel channel: String) {
         engine.unload(channel: channel)
         shell.grid.panels.sourceBodies[channel]?.setMediaName(nil)
+        // A drive outliving the clip it was aimed at is a fader still moving on its
+        // own with nothing behind it. Clearing the marks stops it and takes the STEP
+        // key and its ✕ away with them.
+        clearSweepsForCorruptor(channel: channel)
         Log.info(.dv, "ejected channel \(channel)")
     }
 
@@ -881,6 +885,14 @@ final class ShellController {
     /// enough to know where a slider's value should land. This table is that mapping,
     /// written out rather than inferred so adding an effect is a one-line change.
     private static let subMixOneSlots: [ParamCode: String] = [
+        .brightness: Engine.colourSlot,
+        .contrast: Engine.colourSlot,
+        .saturation: Engine.colourSlot,
+        .shadow: Engine.colourSlot,
+        .highlight: Engine.colourSlot,
+        .blackLevel: Engine.colourSlot,
+        .whiteLevel: Engine.colourSlot,
+        .gamma: Engine.colourSlot,
         // The wedge's codes are NOT here: they live on whichever channel the
         // corruptor card's selector currently points at, resolved dynamically by
         // `slot(forParameter:bus:)` below rather than fixed to one channel.
@@ -907,6 +919,14 @@ final class ShellController {
 
     /// Which slot each param code in the Sub Mix 2 chain belongs to.
     private static let subMixTwoSlots: [ParamCode: String] = [
+        .brightness: Engine.colourTwoSlot,
+        .contrast: Engine.colourTwoSlot,
+        .saturation: Engine.colourTwoSlot,
+        .shadow: Engine.colourTwoSlot,
+        .highlight: Engine.colourTwoSlot,
+        .blackLevel: Engine.colourTwoSlot,
+        .whiteLevel: Engine.colourTwoSlot,
+        .gamma: Engine.colourTwoSlot,
         // See the note on subMixOneSlots — the wedge's codes are resolved
         // dynamically now, not fixed to channel C.
         .compositePath: Engine.compositeTwoSlot,
@@ -1184,6 +1204,31 @@ final class ShellController {
         let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
         panel.restoreEffect(named: name)
         Log.info(.graph, "\(name) added to bus \(bus == .one ? "ONE" : "TWO")")
+    }
+
+    /// Clears sweeps on faders that were aimed at a channel that has just emptied.
+    ///
+    /// Only the per-channel corruptor's faders follow a channel; the bus effects are
+    /// downstream of the mix and keep working whatever is loaded, so their sweeps are
+    /// deliberately left alone.
+    private func clearSweepsForCorruptor(channel: String) {
+        let bus: Bus = ["A", "B"].contains(channel) ? .one : .two
+        guard corruptorChannel(bus: bus) == channel else { return }
+        let panel = bus == .one
+            ? shell.grid.panels.effectsOneBody
+            : shell.grid.panels.effectsTwoBody
+        var cleared = 0
+        for fader in VBFader.all(in: panel) where fader.sweep != nil {
+            guard let code = fader.mappingCode,
+                  [.corruptAmount, .corruptMode, .corruptRate, .corruptSeed].contains(code)
+            else { continue }
+            fader.clearSweep()
+            cleared += 1
+        }
+        if cleared > 0 {
+            Log.info(.param, "cleared \(cleared) sweep(s) aimed at ejected channel \(channel)")
+            refreshArmedSweeps()
+        }
     }
 
     /// Drives every armed fader sweep, once a frame.

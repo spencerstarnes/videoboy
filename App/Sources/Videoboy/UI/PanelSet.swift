@@ -176,7 +176,13 @@ final class PanelSet {
             ),
             EffectCardModel(
                 name: "Colour",
-                isEnabled: false,
+                // ON by default, unlike every other effect here. A grade at its
+                // neutral settings changes nothing and costs nothing — the node skips
+                // its render pass entirely when it is neutral — so there is no reason
+                // to make someone switch it on before they can touch a fader. Every
+                // other card in this chain alters the picture the moment it is armed,
+                // which is why they all start off.
+                isEnabled: true,
                 isImplemented: true,
                 parameters: [
                     EffectParameterModel(name: "bright", code: ParamCode.brightness.rawValue,
@@ -276,7 +282,13 @@ final class PanelSet {
             ),
             EffectCardModel(
                 name: "Colour",
-                isEnabled: false,
+                // ON by default, unlike every other effect here. A grade at its
+                // neutral settings changes nothing and costs nothing — the node skips
+                // its render pass entirely when it is neutral — so there is no reason
+                // to make someone switch it on before they can touch a fader. Every
+                // other card in this chain alters the picture the moment it is armed,
+                // which is why they all start off.
+                isEnabled: true,
                 isImplemented: true,
                 parameters: [
                     EffectParameterModel(name: "bright", code: ParamCode.brightness.rawValue,

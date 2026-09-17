@@ -88,18 +88,25 @@ final class VBFader: NSControl {
 
     // MARK: Sweep marks
     //
-    // Control-command click marks an IN point, a second marks an OUT, and the fader
+    // Command-option click marks an IN point, a second marks an OUT, and the fader
     // then plays itself between the two on the clock.
     //
-    // Control-command rather than shift-command, which is what this was: shift alone
-    // already means "arm this for detect", so the two gestures shared a modifier and
-    // the order they were tested in was load-bearing. Control shares nothing with
-    // detect, so that collision is simply gone.
+    // This modifier pair has been through two others, and both were rejected for
+    // reasons worth keeping written down:
     //
-    // It brings a different problem, though, and it is handled below rather than
-    // hoped about: macOS turns a CONTROL-click into a RIGHT-click at the window
-    // server, so this gesture can arrive as `rightMouseDown` and never reach
-    // `mouseDown` at all. Both entry points are wired to the same place.
+    //   SHIFT-COMMAND — shift alone already means "arm this for detect", so the two
+    //   gestures shared a modifier and the order they were tested in was load-bearing.
+    //
+    //   CONTROL-COMMAND — macOS promotes a CONTROL-click to a RIGHT-click at the
+    //   window server, so the gesture could arrive as `rightMouseDown` and never
+    //   reach `mouseDown`. That needed a second entry point to catch, and a synthetic
+    //   test could not tell you it was needed, because calling the handler directly
+    //   bypasses the promotion.
+    //
+    // Option does neither. It is not spoken for by detect and it is not promoted, so
+    // one check on one entry point is genuinely enough — which is why the
+    // rightMouseDown override that control-command required is gone rather than left
+    // behind as harmless.
 
     /// The first mark, if one has been set.
     private(set) var sweepFirst: Double?
@@ -124,6 +131,42 @@ final class VBFader: NSControl {
     /// STEP key and the controller can start or stop driving this fader.
     var onSweepChanged: (() -> Void)?
 
+    /// Whether the mark-a-sweep gesture is currently held, so this fader should
+    /// advertise that it can take one. Set for every mappable fader at once.
+    var isSweepArming = false {
+        didSet {
+            guard isSweepArming != oldValue else { return }
+            if isSweepArming { startArmingPulse() } else { stopArmingPulse() }
+            needsDisplay = true
+        }
+    }
+
+    private var armingPulseTimer: Timer?
+    private var armingPhase: Double = 0
+
+    private func startArmingPulse() {
+        armingPulseTimer?.invalidate()
+        armingPhase = 0
+        // Held for a second or two at a time, so a modest rate is plenty and it does
+        // not become the busiest thing on screen.
+        armingPulseTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) {
+            [weak self] _ in
+            guard let self else { return }
+            self.armingPhase += 1.0 / 20.0
+            self.needsDisplay = true
+        }
+    }
+
+    private func stopArmingPulse() {
+        armingPulseTimer?.invalidate()
+        armingPulseTimer = nil
+    }
+
+    deinit { armingPulseTimer?.invalidate() }
+
+    /// Both marks, for checks that need to see where they landed.
+    var sweepMarksForChecks: (first: Double?, second: Double?) { (sweepFirst, sweepSecond) }
+
     /// Every fader beneath a view, for finding the armed ones.
     static func all(in view: NSView) -> [VBFader] {
         var found: [VBFader] = []
@@ -131,8 +174,8 @@ final class VBFader: NSControl {
         return found + view.subviews.flatMap { all(in: $0) }
     }
 
-    /// Clears both marks.
-    func clearSweep() {
+    /// Clears both marks. Exposed to the responder chain so the row's ✕ can call it.
+    @objc func clearSweep() {
         guard sweepFirst != nil || sweepSecond != nil else { return }
         sweepFirst = nil
         sweepSecond = nil
@@ -260,30 +303,14 @@ final class VBFader: NSControl {
     // MARK: - Drawing
 
     /// Whether an event is the mark-a-sweep-point gesture.
-    ///
-    /// One place, because it is asked from two: a control-click may be delivered as
-    /// either a left or a right mouse down depending on how the system feels about
-    /// it, and a gesture that works on one machine and not another is worse than one
-    /// that does not work at all.
     private func isSweepGesture(_ event: NSEvent) -> Bool {
-        event.modifierFlags.contains(.control)
+        event.modifierFlags.contains(.option)
             && event.modifierFlags.contains(.command)
             && mappingSlot != nil
             && mappingCode != nil
     }
 
-    /// The other half of the same gesture. macOS promotes a control-click to a right
-    /// click, so without this the mark would only ever land on machines and input
-    /// devices where that promotion does not happen.
-    override func rightMouseDown(with event: NSEvent) {
-        guard isEnabled, isSweepGesture(event) else {
-            super.rightMouseDown(with: event)
-            return
-        }
-        markSweepPoint(at: convert(event.locationInWindow, from: nil))
-    }
-
-    /// First control-command click sets the in point, the second sets the out point,
+    /// First command-option click sets the in point, the second sets the out point,
     /// and a third starts again — so the gesture that arms a sweep is also the one
     /// that re-aims it, with no separate clear to remember.
     private func markSweepPoint(at point: NSPoint) {
@@ -437,6 +464,18 @@ final class VBFader: NSControl {
                                        xRadius: trackRect.height / 2 + 1.5,
                                        yRadius: trackRect.height / 2 + 1.5)
             outline.lineWidth = Theme.Pulse.drivenLineWidth
+            outline.stroke()
+        }
+
+        // The arming outline, pulsing, on every fader that could take a mark. Drawn
+        // before the detect highlight so holding both modifiers still reads as
+        // detect, which is the gesture with the narrower meaning.
+        if isSweepArming {
+            let pulse = 0.45 + 0.55 * (0.5 - 0.5 * cos(2 * Double.pi * armingPhase))
+            Theme.Color.sweepArming.withAlphaComponent(pulse * dimmed).setStroke()
+            let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+                                       xRadius: 3, yRadius: 3)
+            outline.lineWidth = 1.5
             outline.stroke()
         }
 

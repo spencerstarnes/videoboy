@@ -416,7 +416,15 @@ final class EffectChainPanelBody: NSView {
         sweepKey.isHidden = true
         sweepKey.toolTip = "How long one sweep between the marks takes"
 
-        let topLine = Controls.row([label, Controls.spacer(), sweepKey, value], spacing: 5)
+        // Cancelling a sweep needs its own control. Command-option clicking a third
+        // time re-aims rather than clears, which is right for re-aiming and useless
+        // for stopping — and a drive you cannot switch off is worse than one you
+        // cannot start.
+        let sweepCancel = Controls.glyphButton("✕", tooltip: "Stop this fader driving itself")
+        sweepCancel.isHidden = true
+
+        let topLine = Controls.row(
+            [label, Controls.spacer(), sweepKey, sweepCancel, value], spacing: 5)
 
         // Line 2 — the fader, full width. This is the whole reason for two lines.
         let fader = Controls.fader(
@@ -435,9 +443,13 @@ final class EffectChainPanelBody: NSView {
             fader?.sweepRate = timing
         }
         sweepKey.setTiming(fader.sweepRate)
-        fader.onSweepChanged = { [weak self, weak fader, weak sweepKey] in
-            guard let fader, let sweepKey else { return }
-            sweepKey.isHidden = fader.sweep == nil
+        sweepCancel.target = fader
+        sweepCancel.action = #selector(VBFader.clearSweep)
+        fader.onSweepChanged = { [weak self, weak fader, weak sweepKey, weak sweepCancel] in
+            guard let fader else { return }
+            let armed = fader.sweep != nil
+            sweepKey?.isHidden = !armed
+            sweepCancel?.isHidden = !armed
             self?.onSweepsChanged?()
         }
 

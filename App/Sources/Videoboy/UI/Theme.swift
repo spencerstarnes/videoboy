@@ -353,10 +353,17 @@ enum Theme {
 
         /// On air. Red means this everywhere in broadcast, and it is not used for
         /// anything else in this window.
-        /// The span between a fader's two sweep marks. Yellow because nothing else
-        /// on a fader is — it has to read as "this one is moving on its own" at a
-        /// glance, across a row of faders that are not.
-        static let sweepMark = NSColor(srgbRed: 0xf2 / 255.0, green: 0xc8 / 255.0, blue: 0x2c / 255.0, alpha: 0.85)
+        /// Animation. The span between a fader's two sweep marks, and the pulsing
+        /// outline on every fader that could take one while the gesture is held.
+        ///
+        /// Purple because it has to mean ONE thing across the window and not collide
+        /// with anything already spoken for: amber and cyan are the two buses, yellow
+        /// is detect-arming, red is on-air, and the accent is a driven parameter.
+        /// Purple was the colour left that reads at a glance.
+        static let sweepMark = NSColor(srgbRed: 0xa9 / 255.0, green: 0x6c / 255.0, blue: 0xf0 / 255.0, alpha: 0.85)
+
+        /// The same purple for the arming outline, which pulses rather than sits.
+        static let sweepArming = NSColor(srgbRed: 0xa9 / 255.0, green: 0x6c / 255.0, blue: 0xf0 / 255.0, alpha: 1)
 
         /// What a FOCUS control turns when it is the one receiving your next action.
         ///

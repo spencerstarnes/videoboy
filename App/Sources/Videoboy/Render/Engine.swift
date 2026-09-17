@@ -268,11 +268,28 @@ final class Engine {
         // The bus effects start bypassed so the app opens showing what was loaded
         // rather than a processed version of it. Their switches in the FX panel are
         // what turns them on, which keeps "what you see" traceable to a deliberate act.
-        for slot in Engine.busEffectSlots {
+        //
+        // The GRADE is the exception, and it is an exception with a reason rather than
+        // a convenience: a colour node at its neutral settings changes nothing and
+        // skips its render pass entirely, so leaving it live costs nothing and means
+        // its faders work the moment you touch them. Every other effect here alters
+        // the picture the instant it is armed.
+        //
+        // This list and the cards' `isEnabled` MUST agree. When they did not, the
+        // switch read one thing and the engine did another — which is the NTSC boot
+        // bug, and it is why `liveAtLaunchSlots` is spelled out beside the list it
+        // is subtracted from rather than left implicit somewhere else.
+        for slot in Engine.busEffectSlots where !Engine.liveAtLaunchSlots.contains(slot) {
             registry.setValue(0, slot: slot, code: .wetDry)
         }
         Log.info(.graph, "graph built: \(graph.nodeCount) nodes, max latency \(graph.maximumLatencyInFrames) frames")
     }
+
+    /// Bus effects that are live when the app opens, rather than bypassed.
+    ///
+    /// Anything here must also be declared `isEnabled: true` on its card in
+    /// `PanelSet`, or the switch and the engine will disagree at launch.
+    static let liveAtLaunchSlots: Set<String> = [colourSlot, colourTwoSlot]
 
     /// Slot names for the bus effects and the extra sources, so mappings and
     /// templates can address them by a stable name.

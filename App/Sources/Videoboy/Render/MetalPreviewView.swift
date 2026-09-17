@@ -270,15 +270,25 @@ final class MetalPreviewView: NSView {
         present()
     }
 
-    /// Draws the current texture into the layer. Safe to call when there is nothing
-    /// to draw: it simply leaves the empty state visible.
+    /// Draws the current texture into the layer, or CLEARS the layer when there is
+    /// no texture.
+    ///
+    /// Clearing is the part that used to be missing. This returned early on a nil
+    /// texture after un-hiding the empty label, which left the last drawable still on
+    /// screen — so ejecting a clip showed "no source" printed over the frame that was
+    /// playing when it was ejected. A layer keeps what it was last given until it is
+    /// given something else; going empty has to be drawn, not merely stopped.
     func present() {
         emptyLabel.isHidden = texture != nil
 
-        guard let context = MetalContext.shared,
-              let metalLayer,
-              let texture,
-              let drawable = metalLayer.nextDrawable() else { return }
+        guard let context = MetalContext.shared, let metalLayer else { return }
+
+        if texture == nil {
+            clearLayer(context: context, layer: metalLayer)
+            return
+        }
+
+        guard let texture, let drawable = metalLayer.nextDrawable() else { return }
 
         let descriptor = MTLRenderPassDescriptor()
         descriptor.colorAttachments[0].texture = drawable.texture
@@ -294,6 +304,23 @@ final class MetalPreviewView: NSView {
         encoder.setRenderPipelineState(context.blitPipeline)
         encoder.setFragmentTexture(texture, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+    }
+
+    /// Presents an empty drawable, so the layer stops showing whatever it last held.
+    private func clearLayer(context: MetalContext, layer: CAMetalLayer) {
+        guard let drawable = layer.nextDrawable() else { return }
+        let descriptor = MTLRenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = drawable.texture
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+        descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        guard let commandBuffer = context.commandQueue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
+            return
+        }
         encoder.endEncoding()
         commandBuffer.present(drawable)
         commandBuffer.commit()

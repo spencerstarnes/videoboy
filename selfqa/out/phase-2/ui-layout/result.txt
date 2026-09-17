@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T18:37:15Z
+when:     2026-09-17T18:48:51Z
 core:     0.3.0
 
 notes:
@@ -12,18 +12,18 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
 
-assertions (72/72 passed):
+assertions (76/76 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 812.2
+  PASS  wide is not blank — luminance variance 812.6
   PASS  dimensions — expected 1000x760, got 1000x760
   PASS  compact is not blank — luminance variance 831.5
   PASS  dimensions — expected 760x640, got 760x640
   PASS  narrow is not blank — luminance variance 1057.9
-  PASS  collapsed-left is not blank — luminance variance 723.0
+  PASS  collapsed-left is not blank — luminance variance 723.2
   PASS  collapsed-both-edges is not blank — luminance variance 627.5
-  PASS  collapsed-sources-only is not blank — luminance variance 832.9
+  PASS  collapsed-sources-only is not blank — luminance variance 833.3
   PASS  collapsed-effects-only is not blank — luminance variance 607.2
-  PASS  holding Shift lights the mappable faders — 46 faders highlighted
+  PASS  holding Shift lights the mappable faders — 62 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
@@ -78,10 +78,14 @@ assertions (72/72 passed):
   PASS  I and O mark a range the loader can use — 0.25...0.75
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
-  PASS  control-command marks a point instead of moving the fader — one mark set, fader did not jump
-  PASS  a second control-command click arms the sweep — 0.18...0.82
+  PASS  a single click on a source picture does NOT toggle playback — single clicks left the transport alone
+  PASS  double-clicking a source picture plays or pauses it — 1 toggle(s) from one double click
+  PASS  a click on a colour fader actually lands on that fader — hit test returns the fader
+  PASS  a colour fader takes BOTH marks where they were clicked — after one click: 0.29, after two: 0.29 / 0.61 (expected 0.30 / 0.60)
+  PASS  command-option marks a point instead of moving the fader — one mark set, fader did not jump
+  PASS  a second command-option click arms the sweep — 0.18...0.82
   PASS  an armed sweep travels between its marks — 9 distinct values across one cycle
   PASS  a third click starts a new pair rather than sticking — back to one mark
-  PASS  a control-command RIGHT click marks a sweep too — 0.29...0.71 via rightMouseDown
   PASS  plain shift still arms detect rather than marking a sweep — detect armed, no mark set
   PASS  every enabled effect switch actually reaches the engine — 12 switches moved a wet/dry in the graph
+  PASS  every enabled effect fader actually reaches the engine — 49 faders moved a value in the registry
