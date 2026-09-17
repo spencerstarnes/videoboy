@@ -1129,11 +1129,14 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
-        // FADER SWEEPS. Command-shift marks an in and an out on any mappable fader,
-        // and the fader then plays itself between them on the clock. Driven here
-        // through the real mouseDown with real modifier flags, not by setting the
-        // marks directly — the gesture has to survive sharing a control with
-        // shift-to-detect, which is the part most likely to go wrong.
+        // FADER SWEEPS. Control-command marks an in and an out on any mappable fader,
+        // and the fader then plays itself between them on the clock.
+        //
+        // Driven through the real mouse handlers with real modifier flags, not by
+        // setting the marks directly — and through BOTH of them, because macOS
+        // promotes a control-click to a right-click at the window server, so the same
+        // gesture can arrive as either a left or a right mouse down. A check that
+        // only drove one would pass while the real gesture failed on the other.
         do {
             let shell = ShellView()
             let engine = Engine()
@@ -1148,12 +1151,13 @@ enum UISelfQA {
                 .filter { $0.mappingCode != nil && $0.isEnabled }
 
             if let fader = faders.first {
-                func commandShiftClick(atFraction fraction: CGFloat) {
+                /// One mark, delivered as a LEFT mouse down.
+                func controlCommandClick(atFraction fraction: CGFloat) {
                     let x = fader.bounds.minX + fader.bounds.width * fraction
                     let point = fader.convert(NSPoint(x: x, y: fader.bounds.midY), to: nil)
                     if let event = NSEvent.mouseEvent(
                         with: .leftMouseDown, location: point,
-                        modifierFlags: [.command, .shift],
+                        modifierFlags: [.command, .control],
                         timestamp: ProcessInfo.processInfo.systemUptime,
                         windowNumber: window.windowNumber, context: nil,
                         eventNumber: 0, clickCount: 1, pressure: 1) {
@@ -1161,20 +1165,35 @@ enum UISelfQA {
                     }
                 }
 
+                /// The same mark, delivered as a RIGHT mouse down, which is how macOS
+                /// often hands a control-click over.
+                func controlCommandRightClick(atFraction fraction: CGFloat) {
+                    let x = fader.bounds.minX + fader.bounds.width * fraction
+                    let point = fader.convert(NSPoint(x: x, y: fader.bounds.midY), to: nil)
+                    if let event = NSEvent.mouseEvent(
+                        with: .rightMouseDown, location: point,
+                        modifierFlags: [.command, .control],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil,
+                        eventNumber: 0, clickCount: 1, pressure: 1) {
+                        fader.rightMouseDown(with: event)
+                    }
+                }
+
                 let before = fader.value
-                commandShiftClick(atFraction: 0.2)
+                controlCommandClick(atFraction: 0.2)
                 check.record(AssertionResult(
-                    name: "command-shift marks a point instead of moving the fader",
+                    name: "control-command marks a point instead of moving the fader",
                     passed: fader.value == before && fader.sweep == nil,
                     detail: fader.value == before
                         ? "one mark set, fader did not jump"
                         : "the fader moved — the gesture fell through to a drag"
                 ))
 
-                commandShiftClick(atFraction: 0.8)
+                controlCommandClick(atFraction: 0.8)
                 let sweep = fader.sweep
                 check.record(AssertionResult(
-                    name: "a second command-shift click arms the sweep",
+                    name: "a second control-command click arms the sweep",
                     passed: sweep != nil,
                     detail: sweep.map {
                         String(format: "%.2f...%.2f", $0.lower, $0.upper)
@@ -1198,11 +1217,26 @@ enum UISelfQA {
                 }
 
                 // A third click re-aims rather than leaving the old pair in place.
-                commandShiftClick(atFraction: 0.5)
+                controlCommandClick(atFraction: 0.5)
                 check.record(AssertionResult(
                     name: "a third click starts a new pair rather than sticking",
                     passed: fader.sweep == nil,
                     detail: fader.sweep == nil ? "back to one mark" : "the old pair survived"
+                ))
+
+                // THE SAME GESTURE, DELIVERED AS A RIGHT CLICK. This is the one that
+                // would silently not work: macOS promotes control-clicks, and a fader
+                // that only listened on mouseDown would look fine in a test and do
+                // nothing under a real finger.
+                fader.clearSweep()
+                controlCommandRightClick(atFraction: 0.3)
+                controlCommandRightClick(atFraction: 0.7)
+                check.record(AssertionResult(
+                    name: "a control-command RIGHT click marks a sweep too",
+                    passed: fader.sweep != nil,
+                    detail: fader.sweep.map {
+                        String(format: "%.2f...%.2f via rightMouseDown", $0.lower, $0.upper)
+                    } ?? "right-delivered control-clicks are ignored"
                 ))
 
                 // Plain shift must still arm detect, not mark a sweep.

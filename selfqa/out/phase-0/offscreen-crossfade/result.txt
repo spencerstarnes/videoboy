@@ -1,6 +1,6 @@
 check:    phase-0/offscreen-crossfade
 verdict:  PASS
-when:     2026-09-17T18:29:14Z
+when:     2026-09-17T18:37:32Z
 core:     0.3.0
 
 notes:

@@ -88,10 +88,18 @@ final class VBFader: NSControl {
 
     // MARK: Sweep marks
     //
-    // Command-shift click marks an IN point, a second marks an OUT, and the fader
-    // then plays itself between the two on the clock. Command-shift rather than plain
-    // shift because shift alone already means "arm this for detect" — the two
-    // gestures live on the same control and must not collide.
+    // Control-command click marks an IN point, a second marks an OUT, and the fader
+    // then plays itself between the two on the clock.
+    //
+    // Control-command rather than shift-command, which is what this was: shift alone
+    // already means "arm this for detect", so the two gestures shared a modifier and
+    // the order they were tested in was load-bearing. Control shares nothing with
+    // detect, so that collision is simply gone.
+    //
+    // It brings a different problem, though, and it is handled below rather than
+    // hoped about: macOS turns a CONTROL-click into a RIGHT-click at the window
+    // server, so this gesture can arrive as `rightMouseDown` and never reach
+    // `mouseDown` at all. Both entry points are wired to the same place.
 
     /// The first mark, if one has been set.
     private(set) var sweepFirst: Double?
@@ -251,7 +259,31 @@ final class VBFader: NSControl {
 
     // MARK: - Drawing
 
-    /// First command-shift click sets the in point, the second sets the out point,
+    /// Whether an event is the mark-a-sweep-point gesture.
+    ///
+    /// One place, because it is asked from two: a control-click may be delivered as
+    /// either a left or a right mouse down depending on how the system feels about
+    /// it, and a gesture that works on one machine and not another is worse than one
+    /// that does not work at all.
+    private func isSweepGesture(_ event: NSEvent) -> Bool {
+        event.modifierFlags.contains(.control)
+            && event.modifierFlags.contains(.command)
+            && mappingSlot != nil
+            && mappingCode != nil
+    }
+
+    /// The other half of the same gesture. macOS promotes a control-click to a right
+    /// click, so without this the mark would only ever land on machines and input
+    /// devices where that promotion does not happen.
+    override func rightMouseDown(with event: NSEvent) {
+        guard isEnabled, isSweepGesture(event) else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        markSweepPoint(at: convert(event.locationInWindow, from: nil))
+    }
+
+    /// First control-command click sets the in point, the second sets the out point,
     /// and a third starts again — so the gesture that arms a sweep is also the one
     /// that re-aims it, with no separate clear to remember.
     private func markSweepPoint(at point: NSPoint) {
@@ -422,11 +454,7 @@ final class VBFader: NSControl {
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
 
-        // Command-shift marks a sweep point. Checked BEFORE plain shift, because a
-        // command-shift click also contains shift and would otherwise be swallowed by
-        // detect-arming — the more specific gesture has to win.
-        if event.modifierFlags.contains(.command), event.modifierFlags.contains(.shift),
-           mappingSlot != nil, mappingCode != nil {
+        if isSweepGesture(event) {
             markSweepPoint(at: convert(event.locationInWindow, from: nil))
             return
         }
