@@ -492,6 +492,9 @@ enum Theme {
         /// it unreachable precisely when the pointer was there to press it. This is
         /// the height of that strip plus a little air.
         static let bottomClearance: CGFloat = 20
+
+        /// Gap between the play bar and the shuttle floating above it.
+        static let shuttleGap: CGFloat = 6
     }
 
     /// Marks the FOCUSED item on any "which one receives what I do next" control —

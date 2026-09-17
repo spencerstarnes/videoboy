@@ -43,9 +43,6 @@ final class ShellController {
         refreshPlaylists()
         wireRouting()
         setPreviewFill(preferences.preferences.previewFill)
-        // The key has to show the SAVED mode from the first frame, or it would read
-        // FIT while the previews were doing something else.
-        shell.grid.panels.settingsBarBody.setPreviewFill(preferences.preferences.previewFill)
         wireDetect()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
@@ -75,6 +72,10 @@ final class ShellController {
             return
         }
         engine.sources[channel]?.playbackRange = range
+        // The marks go on the play bar, so a trimmed clip LOOKS trimmed. A clip that
+        // looks identical whether or not it has in and out points is how those points
+        // come to seem broken.
+        shell.grid.panels.sourceBodies[channel]?.setMarkedRange(range)
         shell.grid.panels.sourceBodies[channel]?.setMediaName(
             range == nil
                 ? url.lastPathComponent
@@ -130,6 +131,7 @@ final class ShellController {
     private func ejectClip(fromChannel channel: String) {
         engine.unload(channel: channel)
         shell.grid.panels.sourceBodies[channel]?.setMediaName(nil)
+        shell.grid.panels.sourceBodies[channel]?.setMarkedRange(nil)
         // A drive outliving the clip it was aimed at is a fader still moving on its
         // own with nothing behind it. Clearing the marks stops it and takes the STEP
         // key and its ✕ away with them.
@@ -141,7 +143,10 @@ final class ShellController {
     /// Applies a picture fill to every preview in the window.
     func setPreviewFill(_ fill: PreviewFill) {
         let panels = shell.grid.panels
-        for body in panels.sourceBodies.values { body.preview.fillMode = fill }
+        // Seeds each SOURCE with the saved preference; from then on each one carries
+        // its own, set from its own panel. The three composites follow the preference
+        // and have no key, because everything reaching them is already 720x480.
+        for body in panels.sourceBodies.values { body.setFill(fill) }
         panels.subMixOneBody.preview.fillMode = fill
         panels.subMixTwoBody.preview.fillMode = fill
         panels.programBody.preview.fillMode = fill
@@ -595,6 +600,12 @@ final class ShellController {
             body.onTimingChanged = { [weak self] timing in
                 self?.engine.sources[letter]?.timing = timing
             }
+            body.onFillChanged = { [weak self] fill in
+                // The most recently chosen mode becomes what a fresh source starts
+                // with, so setting it once does not mean setting it four times.
+                self?.preferences.preferences.previewFill = fill
+                Log.info(.render, "source \(letter) fill is now \(fill.displayName)")
+            }
             body.onClipDropped = { [weak self] url, range in
                 // The range travels with the drag now, so a dragged clip honours its
                 // marks exactly as a double-clicked one does.
@@ -695,10 +706,6 @@ final class ShellController {
         ]
 
         for composite in composites {
-            composite.body.onBlendModeChanged = { [weak self] mode in
-                self?.engine.registry.setValue(
-                    mode.normalisedPosition, slot: composite.slot, code: .blendMode)
-            }
             composite.body.onInterchangeChanged = { [weak self] codec in
                 guard let self, let bus = busNames[composite.slot] else { return }
                 self.engine.setInterchange(codec, forBus: bus)
@@ -841,6 +848,12 @@ final class ShellController {
             (panels.faderOneTwoBody, GraphTopology.primary)
         ]
         for bus in buses {
+            // Blend lives on the fader panel now, and writes to the same slot the
+            // composite above it reads — the control moved, the wiring did not.
+            bus.body.onBlendModeChanged = { [weak self] mode in
+                self?.engine.registry.setValue(
+                    mode.normalisedPosition, slot: bus.slot, code: .blendMode)
+            }
             bus.body.onFade = { [weak self] rate in
                 guard let self else { return }
                 // Fade always fades. Beat only decides when it starts.
@@ -852,6 +865,22 @@ final class ShellController {
             bus.body.onBeatCutToggled = { [weak self] on in
                 self?.beatCutEnabled[bus.slot] = on
             }
+            // CUT takes the OTHER source, wherever the fader currently is. Past the
+            // halfway point it cuts to the near end, otherwise to the far one — so
+            // the key always does the thing the picture is not already doing.
+            bus.body.onCutRequested = { [weak self] in
+                guard let self else { return }
+                guard let code = Self.faderCode(for: bus.slot) else { return }
+                let current = self.engine.registry.value(slot: bus.slot, code: code) ?? 0.5
+                let target: Double = current >= 0.5 ? 0 : 1
+                self.beginMove(
+                    on: bus.slot, rate: nil,
+                    waitsForBeat: self.beatCutEnabled[bus.slot] ?? false,
+                    to: target)
+                bus.body.setPosition(target)
+                Log.info(.app, "cut on \(bus.slot) to \(target)")
+            }
+
             bus.body.onCutTo = { [weak self] target in
                 guard let self else { return }
                 // The key has already moved the fader for an immediate cut; with beat
@@ -1649,13 +1678,6 @@ final class ShellController {
     }
 
     private func wireSettingsBar() {
-        shell.grid.panels.settingsBarBody.onPreviewFillChanged = { [weak self] fill in
-            guard let self else { return }
-            self.setPreviewFill(fill)
-            // Persisted, so the choice survives a relaunch the way the Preferences
-            // version of this control always did.
-            self.preferences.preferences.previewFill = fill
-        }
         shell.grid.panels.settingsBarBody.onOutputNTSCToggled = { [weak self] isOn in
             self?.engine.isOutputNTSCEnabled = isOn
         }

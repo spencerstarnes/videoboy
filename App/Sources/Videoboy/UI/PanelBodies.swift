@@ -69,15 +69,46 @@ final class SourcePanelBody: NSView {
     /// The full transport, shown only while the pointer is over this panel.
     private weak var shuttleScrim: NSView?
 
-    /// The resting playhead line, shown when the pointer is not.
-    private weak var miniPlayBar: VBMiniPlayBar?
+    /// The playhead strip. Always visible, and the scrubbing surface.
+    private(set) weak var miniPlayBar: VBMiniPlayBar?
+
+    /// This source's fill key.
+    private weak var fillKey: VBOptionButton?
+
+    /// How this source's picture fills its window.
+    private var previewFill: PreviewFill = .fit {
+        didSet {
+            preview.fillMode = previewFill
+            fillKey?.setTitle(previewFill.displayName.uppercased())
+        }
+    }
+
+    /// Called when this source's fill mode changes.
+    var onFillChanged: ((PreviewFill) -> Void)?
+
+    /// Points the key at a mode without firing its action.
+    func setFill(_ fill: PreviewFill) {
+        previewFill = fill
+    }
+
+    @objc private func fillCycled() {
+        let all = PreviewFill.allCases
+        guard let index = all.firstIndex(of: previewFill) else { return }
+        let backwards = NSEvent.modifierFlags.contains(.control)
+        previewFill = all[backwards
+            ? (index - 1 + all.count) % all.count
+            : (index + 1) % all.count]
+        onFillChanged?(previewFill)
+    }
 
     /// Swaps the resting line for the full transport, and back.
     private var isHovered = false {
         didSet {
             guard isHovered != oldValue else { return }
+            // Only the shuttle comes and goes. The play bar is PERSISTENT: it is the
+            // scrubbing surface, and a scrubber that appears only once the pointer is
+            // already on it is one you cannot aim at.
             shuttleScrim?.isHidden = !isHovered
-            miniPlayBar?.isHidden = isHovered
         }
     }
 
@@ -255,6 +286,7 @@ final class SourcePanelBody: NSView {
         // row of buttons it does not need.
         let miniBar = VBMiniPlayBar()
         miniBar.translatesAutoresizingMaskIntoConstraints = false
+        miniBar.onScrub = { [weak self] position in self?.onScrub?(position) }
         addSubview(miniBar)
         self.miniPlayBar = miniBar
 
@@ -291,7 +323,17 @@ final class SourcePanelBody: NSView {
         // theirs, so a row of chrome is subtracted directly from the picture. The
         // caption goes too; the key already reads STEP, or 1/4, or whatever rate it
         // is on, which is the caption.
-        let sourceRow = Controls.row([load, generatorPopUp, stepButton, Controls.spacer()],
+        // FILL, per source. It used to be one global key in the output bar, which
+        // meant a 16:9 clip on A and a 4:3 clip on B could not be framed differently —
+        // and the one place you are looking when you notice a clip is the wrong shape
+        // is the panel showing it.
+        let fillKey = VBOptionButton(title: PreviewFill.fit.displayName.uppercased())
+        fillKey.toolTip = "How this source's picture fills its window. Click to cycle."
+        fillKey.target = self
+        fillKey.action = #selector(fillCycled)
+        self.fillKey = fillKey
+
+        let sourceRow = Controls.row([load, generatorPopUp, stepButton, fillKey, Controls.spacer()],
                                      spacing: 4)
         sourceRow.translatesAutoresizingMaskIntoConstraints = false
 
@@ -336,8 +378,10 @@ final class SourcePanelBody: NSView {
                 equalTo: preview.leadingAnchor, constant: scrimInset),
             shuttleScrim.trailingAnchor.constraint(
                 equalTo: preview.trailingAnchor, constant: -scrimInset),
+            // Sits ABOVE the play bar, clear of it, so the keys never cover the
+            // thing they are controlling.
             shuttleScrim.bottomAnchor.constraint(
-                equalTo: preview.bottomAnchor, constant: -Theme.MiniPlayBar.bottomClearance),
+                equalTo: miniBar.topAnchor, constant: -Theme.MiniPlayBar.shuttleGap),
 
             sourceRow.leadingAnchor.constraint(equalTo: overlayStack.leadingAnchor),
             shuttle.leadingAnchor.constraint(equalTo: overlayStack.leadingAnchor),
@@ -416,6 +460,11 @@ final class SourcePanelBody: NSView {
     }
 
     /// Moves the scrub track to follow playback, without firing its action.
+    /// The trimmed range this source is playing, drawn on the play bar.
+    func setMarkedRange(_ range: ClosedRange<Double>?) {
+        miniPlayBar?.markedRange = range
+    }
+
     func setScrubPosition(_ position: Double) {
         scrubFader?.value = position
         // The resting line reads the same playhead as the shuttle's track, so the
@@ -474,17 +523,9 @@ final class PreviewPanelBody: NSView {
         var bottomConstant: CGFloat = -2
 
         if showsBlendControls {
-            let popUp = Controls.popUp(
-                BlendMode.allCases.map(\.displayName),
-                target: self, action: #selector(blendModeChanged(_:))
-            )
-            blendPopUp = popUp
-
-            // No separate opacity control: the crossfader in the fader panel below IS
-            // the opacity for this composite. Two controls doing one job is what made
-            // this confusing. The note lives in the tooltip rather than the row,
-            // where it was stealing width from the two popups that matter.
-            popUp.toolTip = "Blend mode. The crossfader below sets this layer's opacity."
+            // BLEND moved to the fader panel beneath this one. It decides how the two
+            // layers combine, and the crossfader decides how much of each — they are
+            // two halves of one question, and they were two panels apart.
 
             // The bus interchange codec. A mixed bus is a texture with no bitstream,
             // so data effects on it are only possible if it is re-encoded first —
@@ -502,9 +543,6 @@ final class PreviewPanelBody: NSView {
             scopeTab = scopes
 
             let row = Controls.row([
-                Controls.label("Blend", font: Theme.Font.tinyLabel,
-                               color: Theme.Color.textTertiary, holdsWidth: true),
-                popUp,
                 Controls.label("Data", font: Theme.Font.tinyLabel,
                                color: Theme.Color.textTertiary, holdsWidth: true),
                 interchange,
@@ -624,8 +662,27 @@ final class FaderPanelBody: NSView {
     var onBeatCutToggled: ((Bool) -> Void)?
     private var leftKey: VBBusButton?
     private var rightKey: VBBusButton?
-    private var beatCutButton: NSButton?
+    private var beatCutButton: VBOptionButton?
     private var rateControl: NSSegmentedControl?
+
+    /// Called when CUT is pressed: take the other source, now.
+    var onCutRequested: (() -> Void)?
+
+    /// Called when this bus's blend mode changes.
+    var onBlendModeChanged: ((BlendMode) -> Void)?
+
+    private var blendPopUp: NSPopUpButton?
+
+    /// Points the popup at a mode without firing its action.
+    func setBlendMode(_ mode: BlendMode) {
+        blendPopUp?.selectItem(at: min(mode.rawValue, (blendPopUp?.numberOfItems ?? 1) - 1))
+    }
+
+    @objc private func blendModeChanged(_ sender: NSPopUpButton) {
+        let modes = BlendMode.allCases
+        guard modes.indices.contains(sender.indexOfSelectedItem) else { return }
+        onBlendModeChanged?(modes[sender.indexOfSelectedItem])
+    }
     private var leftName = ""
     private var rightName = ""
 
@@ -681,15 +738,32 @@ final class FaderPanelBody: NSView {
         self.rightKey = rightKey
         buttons.append(leftKey)
         buttons.append(rightKey)
-        let fadeButton = Controls.button("Fade", target: self, action: #selector(fadePressed))
+        // CUT. Asked for repeatedly and genuinely absent: the bus keys cut TO a named
+        // source, but there was no single key that simply takes the other one — which
+        // is the most basic thing a vision mixer does, and the one you reach for
+        // without looking. On all three faders.
+        let cutButton = VBOptionButton(title: "CUT", onColour: Theme.Color.tallyOnAir)
+        cutButton.target = self
+        cutButton.action = #selector(cutPressed)
+        cutButton.toolTip = "Cut straight to the other source. "
+            + "With Beat on, it waits for the next beat."
+        buttons.append(cutButton)
+
+        // Fade and Beat are instrument keys now, not bezelled push buttons. They sat
+        // next to the flat bus keys looking like controls from a settings dialogue,
+        // and at .small they were the smallest things in a row you hit by feel.
+        let fadeButton = VBOptionButton(title: "FADE")
+        fadeButton.target = self
+        fadeButton.action = #selector(fadePressed)
         fadeButton.toolTip = "Fade to the other source over the time set by the "
             + "turtle/rabbit control"
         buttons.append(fadeButton)
 
         // Cut-on-beat. With this on, a cut waits for the next subdivision and is
         // taken early by the graph's latency so the picture changes ON the beat.
-        let beatToggle = Controls.button("Beat", target: self, action: #selector(beatCutPressed))
-        beatToggle.setButtonType(.pushOnPushOff)
+        let beatToggle = VBOptionButton(title: "BEAT")
+        beatToggle.target = self
+        beatToggle.action = #selector(beatCutPressed)
         // Beat answers WHEN, not WHAT. With it on, a bus key still cuts and Fade
         // still fades — they just wait for the next boundary first.
         beatToggle.toolTip = "Hold the next cut or fade until the beat. "
@@ -711,8 +785,22 @@ final class FaderPanelBody: NSView {
         // nothing — and one of them read "Slo", which was not an abbreviation of
         // anything. Shift-click the fader to map it; that gesture reaches every fader
         // in the window and does not cost a column of the shortest panel in the grid.
+        // BLEND, moved here from the preview above. How the two layers combine and
+        // how much of each are two halves of one question; having them two panels
+        // apart meant answering it in two places.
+        let blend = Controls.popUp(
+            BlendMode.allCases.map(\.displayName),
+            target: self, action: #selector(blendModeChanged(_:)))
+        blend.toolTip = "How this bus's two layers combine. The fader below sets how much of each."
+        self.blendPopUp = blend
+        buttons.append(blend)
+
         buttons.append(Controls.spacer())
-        buttons.append(Controls.button("Auto", enabled: false))
+        // AUTO is gone rather than left sitting there disabled. It was never
+        // implemented, and it could not be without duplicating something: on a vision
+        // mixer AUTO performs the transition at the set rate, which is exactly what
+        // FADE already does with the turtle/rabbit control beside it. A permanently
+        // dead key that would duplicate its neighbour is worse than no key.
         let buttonRow = Controls.row(buttons, spacing: 4)
 
         let left = Controls.label(leftLabel, font: Theme.Font.tinyLabel, color: leftColor,
@@ -778,6 +866,11 @@ final class FaderPanelBody: NSView {
 
     @objc private func fadePressed() {
         onFade?(currentRate)
+    }
+
+    /// Cuts straight to whichever source is not currently up.
+    @objc private func cutPressed() {
+        onCutRequested?()
     }
 
     @objc private func beatCutPressed(_ sender: NSButton) {
