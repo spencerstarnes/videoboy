@@ -7,6 +7,18 @@ Recovery point before this run: tag `v0.8.0-pre-backlog`, branch
 `recovery/pre-backlog`, both at **a895d34**.
 Restore with `git reset --hard refs/tags/v0.8.0-pre-backlog`.
 
+## Where the run got to
+
+**Done:** A/B/BOTH on every effect · fader dead space · TRANSFORM · app icon · library
+bins, folders-as-bins and a search that searches · mini luma scope · CUT/FADE MIDI
+learning · now-playing model, templates and research.
+
+**Not done, and why:** the live Apple Music adapter needs an Automation permission
+granted at the keyboard (probed: `AppleEvent timed out -1712`), and the Engine DJ
+adapter cannot be verified without the hardware. Per-app audio beat detection is
+probed and viable but not built — it was the largest remaining item and I stopped
+rather than leave it half-wired.
+
 ---
 
 ## Asked more than once — these come first
