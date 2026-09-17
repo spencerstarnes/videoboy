@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T09:01:50Z
+when:     2026-09-17T09:04:36Z
 core:     0.3.0
 
 notes:
@@ -12,13 +12,13 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
 
-assertions (61/61 passed):
+assertions (62/62 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 856.0
+  PASS  wide is not blank — luminance variance 854.2
   PASS  dimensions — expected 1000x760, got 1000x760
   PASS  compact is not blank — luminance variance 827.2
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 1057.3
+  PASS  narrow is not blank — luminance variance 1054.3
   PASS  collapsed-left is not blank — luminance variance 743.8
   PASS  collapsed-both-edges is not blank — luminance variance 624.4
   PASS  collapsed-sources-only is not blank — luminance variance 838.0
@@ -74,3 +74,4 @@ assertions (61/61 passed):
   PASS  channel D's wedge — unreachable before this — now damages PROGRAM — 0.483 of sampled pixels differ, needed >= 0.02
   PASS  the corruptor card's ✕ actually takes the card out of the chain — card present after ✕: false
   PASS  removing a per-channel card bypasses BOTH of its channels — C wet/dry 0.0, D wet/dry 0.0
+  PASS  every enabled effect switch actually reaches the engine — 10 switches moved a wet/dry in the graph

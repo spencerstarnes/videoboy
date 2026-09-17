@@ -983,7 +983,78 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // EVERY ENABLED EFFECT SWITCH MUST REACH THE ENGINE.
+        //
+        // Three controls on the corruptor card shipped dead this week — the enable
+        // switch, the modulation badges and the ✕ — all with the same shape: the
+        // handler looked the effect's name up in a static table, the table had no
+        // entry for it, and the guard returned before doing anything. Nothing caught
+        // it, because the control audit only asks whether a control HAS a target and
+        // an action, and all three did.
+        //
+        // This asks the question that actually matters: flip the switch and see
+        // whether any parameter in the engine moved. It needs no list of effect
+        // names to stay in step with, so a new card cannot quietly opt out of it.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            /// Every wet/dry in the engine, as one comparable snapshot.
+            func wetDrySnapshot() -> [String: Double] {
+                var values: [String: Double] = [:]
+                for slot in engine.graph.nodes.keys {
+                    if let value = engine.registry.value(slot: slot, code: .wetDry) {
+                        values[slot] = value
+                    }
+                }
+                return values
+            }
+
+            let panels = [
+                ("A/B", shell.grid.panels.effectsOneBody),
+                ("C/D", shell.grid.panels.effectsTwoBody)
+            ]
+            var deadSwitches: [String] = []
+            var livingSwitches = 0
+
+            for (busName, panel) in panels {
+                for (name, control) in enableSwitches(in: panel) where control.isEnabled {
+                    let before = wetDrySnapshot()
+                    control.state = control.state == .on ? .off : .on
+                    _ = control.target?.perform(control.action, with: control)
+                    if wetDrySnapshot() == before {
+                        deadSwitches.append("\(busName) · \(name)")
+                    } else {
+                        livingSwitches += 1
+                    }
+                }
+            }
+
+            check.record(AssertionResult(
+                name: "every enabled effect switch actually reaches the engine",
+                passed: deadSwitches.isEmpty,
+                detail: deadSwitches.isEmpty
+                    ? "\(livingSwitches) switches moved a wet/dry in the graph"
+                    : "dead: \(deadSwitches.joined(separator: ", "))"
+            ))
+
+            withExtendedLifetime(controller) {}
+        }
+
         return check.finish()
+    }
+
+    /// Every enable switch in a panel, with the effect name it belongs to.
+    private static func enableSwitches(in view: NSView) -> [(name: String, control: NSSwitch)] {
+        var found: [(String, NSSwitch)] = []
+        if let control = view as? NSSwitch, let name = control.identifier?.rawValue, !name.isEmpty {
+            found.append((name, control))
+        }
+        for subview in view.subviews { found.append(contentsOf: enableSwitches(in: subview)) }
+        return found
     }
 
     /// The remove (✕) button on a card, which shares the card's identifier with the
