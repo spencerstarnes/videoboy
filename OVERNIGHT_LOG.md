@@ -180,3 +180,53 @@ somewhere in the graph actually moved. Verified by breaking it on purpose.
   `withUnsafeBytes`, and a `CFAttributedStringCreateMutable` that cannot fail for a
   zero-length allocation). 0 uses of `try!`.
 
+## Phases 4–6 — Verification, optimisation, health
+
+### Phase 4 — adversarial verification
+
+- `git diff a4164ff..HEAD` reviewed: 13 source files, +173/−24. Small and surgical.
+- `ParamRegistry.setValue` is `@discardableResult` and **no** caller branches on it
+  (114 call sites), so refusing a non-finite write cannot break any of them — they
+  keep the previous value instead of storing garbage.
+- The 10 mechanical sweep replacements are semantically identical for finite input;
+  verified by reading old and new arithmetic side by side.
+- **Reproducing tests proved by temporary revert**, both restored afterwards:
+  the `NormalisedSweep` guard (runner dies without it) and the corruptor's slot
+  resolution (dead-switch audit names both offenders).
+- **Clean build from scratch**: `swift package clean` on both packages, then
+  `verify.sh` — exit 0 in 94 s, 359 tests.
+- **App launched and exercised**: starts clean, 25-node graph, three displays
+  enumerated, no errors in 8 s of runtime, terminated cleanly and left no process.
+  The startup log confirms the window fix on real hardware — **1766×970**, up from a
+  hardcoded 1460×912 — and explains the stale `output-stage` failure (the third
+  display is `MACROSILICON` at 1280×1024, the capture card).
+- Verification script committed to `scripts/verify/warnings.sh`.
+- **Nothing reverted.** No change failed verification.
+
+### Phase 5 — measured optimisation
+
+Profiled the suite; slowest tests are real decode and real Metal work, not artificial
+waits. Two candidates measured:
+
+| Location | Before | After | Change | Kept? |
+|---|---|---|---|---|
+| `ImageBuffer` solid fill | 1.489 ms/frame | 0.233 ms/frame | −84% | yes (`09a1b5c`) |
+| `DVDecoder` redundant 120 KB copy | 2.85 ms/frame | 2.85 ms/frame | 0% | kept as a **warning fix**, not claimed as perf (`37f3f33`) |
+
+Both measured in a **release** build, which is what ships. An earlier debug-build
+figure of 66 ms/frame for the solid fill was an artefact and is not a user-visible
+number.
+
+### Phase 6 — code health
+
+42 warnings cleared (`f235f0a`), all non-behavioural: 40 discarded `try?` results, one
+dead downcast, one `try?` on a non-throwing call that made a guard unfailable. The
+12 duplicated sweep implementations were consolidated into `NormalisedSweep` during
+Phase 3, which is the "3+ identical copies" case.
+
+Deliberately **not** done: the 11 deprecated AVFoundation calls, whose replacements
+are async and would change public signatures. Written up as a proposal.
+
+---
+
+Final state: **363 tests, 0 failures. verify.sh exits 0. Nothing blocked.**
