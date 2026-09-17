@@ -148,6 +148,9 @@ enum PlaybackSelfQA {
 
         // 5. The wedge, through the live graph: corruption visibly damages PRIMARY.
         let beforeCorruption = renderFrame(35)
+        // The corruptor boots bypassed now, so the wedge has to be switched on
+        // before it can damage anything.
+        engine.registry.setValue(1, slot: GraphTopology.sourceA, code: .wetDry)
         engine.registry.setValue(0.9, slot: GraphTopology.sourceA, code: .corruptAmount)
         engine.registry.setValue(0.0, slot: GraphTopology.sourceA, code: .corruptMode)
         let afterCorruption = renderFrame(35)
@@ -245,6 +248,9 @@ enum PlaybackSelfQA {
         engine.load(url: fileA, intoChannel: "C")
         engine.load(url: fileB, intoChannel: "D")
         engine.registry.setValue(0.0, slot: GraphTopology.subMixTwo, code: .crossfadeCD)
+        // The corruptor boots bypassed now, so the wedge has to be switched on
+        // before it can damage anything.
+        engine.registry.setValue(1, slot: GraphTopology.sourceC, code: .wetDry)
         engine.registry.setValue(0.9, slot: GraphTopology.sourceC, code: .corruptAmount)
         engine.registry.setValue(0.0, slot: GraphTopology.sourceC, code: .corruptMode)
         engine.registry.setValue(1.0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
@@ -516,6 +522,9 @@ enum PlaybackSelfQA {
             for mode in MPEGCorruptionMode.allCases {
                 engine.registry.setValue(
                     mode.normalisedPosition, slot: GraphTopology.sourceA, code: .corruptMode)
+                // The corruptor boots bypassed now, so the wedge has to be switched on
+                // before it can damage anything.
+                engine.registry.setValue(1, slot: GraphTopology.sourceA, code: .wetDry)
                 engine.registry.setValue(0.9, slot: GraphTopology.sourceA, code: .corruptAmount)
                 if let image = renderFrame(191 + MPEGCorruptionMode.allCases.firstIndex(of: mode)!) {
                     damagedFrames.append((mode.displayName, image))

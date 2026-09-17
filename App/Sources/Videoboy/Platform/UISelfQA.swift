@@ -952,6 +952,15 @@ enum UISelfQA {
             }
 
             click(selectorTwo, segment: 1) // D
+            // The corruptor boots BYPASSED now, like every effect except the grade, so
+            // the wedge has to be switched on before it can damage anything — exactly
+            // what an operator does. Driven through the card's own enable switch
+            // rather than by writing wet/dry directly, so this still exercises the
+            // path a click takes.
+            if let enable = enableSwitch(named: corruptorName, in: shell.grid.panels.effectsTwoBody) {
+                enable.state = .on
+                _ = enable.target?.perform(enable.action, with: enable)
+            }
             shell.grid.panels.effectsTwoBody.onParameterChanged?(ParamCode.corruptAmount.rawValue, 0)
             let clean = renderProgram(frameIndex: 50)
 

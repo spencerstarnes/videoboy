@@ -383,6 +383,12 @@ final class VBFader: NSControl {
         // Fill. From the left normally; from the centre for a bipolar control, so a
         // crossfader shows how far it has been pushed from neutral rather than how
         // far it is from one end.
+        //
+        // NOT DRAWN while a sweep is armed. The purple span between the marks is what
+        // the fader is saying then, and the ordinary fill runs underneath it from the
+        // left edge — two bars overlapping, one of which is answering a question
+        // nobody is asking of an automated fader.
+        let isSweeping = sweep != nil
         let fillRect: NSRect
         if fillsFromCentre {
             let centre = track.midX
@@ -410,7 +416,7 @@ final class VBFader: NSControl {
             // parked in the middle stops shouting a colour it has not earned.
             Self.saturated(fillColour, by: Self.commitment(of: normalisedValue))
                 .withAlphaComponent(dimmed).setFill()
-            fillPath.fill()
+            if !isSweeping { fillPath.fill() }
         }
 
         // Cap. Taller than the track on purpose — that overhang is what makes the

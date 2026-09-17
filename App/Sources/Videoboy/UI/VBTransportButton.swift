@@ -125,9 +125,12 @@ final class VBTransportButton: NSControl {
         path.stroke()
 
         let attributes: [NSAttributedString.Key: Any] = [
+            // A point down from where these started. The keys sit on the picture
+            // now rather than under it, and at the old size the glyphs were the
+            // heaviest thing on a source panel.
             .font: glyph.count > 1
-                ? Theme.Font.osd(size: 11)
-                : NSFont.systemFont(ofSize: 12, weight: .bold),
+                ? Theme.Font.osd(size: 10)
+                : NSFont.systemFont(ofSize: 11, weight: .bold),
             .foregroundColor: isActive || isHovering
                 ? NSColor.white : Theme.Color.textPrimary.withAlphaComponent(0.8)
         ]
