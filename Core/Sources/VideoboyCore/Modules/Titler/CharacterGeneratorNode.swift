@@ -108,8 +108,7 @@ public enum TitlerAlignment: Int, CaseIterable, Sendable {
 
     public static func from(normalised value: Double) -> TitlerAlignment {
         let all = allCases
-        let index = Int((min(max(value, 0), 1) * Double(all.count - 1)).rounded())
-        return all[min(index, all.count - 1)]
+        return all[NormalisedSweep.index(value, count: all.count)]
     }
 
     public var normalisedPosition: Double {
@@ -148,8 +147,7 @@ public enum TitlerWeight: Int, CaseIterable, Sendable {
 
     public static func from(normalised value: Double) -> TitlerWeight {
         let all = allCases
-        let index = Int((min(max(value, 0), 1) * Double(all.count - 1)).rounded())
-        return all[min(index, all.count - 1)]
+        return all[NormalisedSweep.index(value, count: all.count)]
     }
 
     public var normalisedPosition: Double {
@@ -180,8 +178,7 @@ public enum TitlerRollMode: Int, CaseIterable, Sendable {
 
     public static func from(normalised value: Double) -> TitlerRollMode {
         let all = allCases
-        let index = Int((min(max(value, 0), 1) * Double(all.count - 1)).rounded())
-        return all[min(index, all.count - 1)]
+        return all[NormalisedSweep.index(value, count: all.count)]
     }
 
     public var normalisedPosition: Double {

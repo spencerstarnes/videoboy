@@ -54,9 +54,7 @@ public enum CorruptionMode: String, CaseIterable, Codable, Sendable {
     /// Selects a mode from a 0...1 parameter value (param code `32B`).
     public static func from(normalised value: Double) -> CorruptionMode {
         let all = allCases
-        let clamped = min(max(value, 0), 1)
-        let index = Int((clamped * Double(all.count - 1)).rounded())
-        return all[min(index, all.count - 1)]
+        return all[NormalisedSweep.index(value, count: all.count)]
     }
 }
 

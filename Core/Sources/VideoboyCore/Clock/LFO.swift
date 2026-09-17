@@ -47,8 +47,7 @@ public enum LFOShape: String, CaseIterable, Codable, Sendable {
     /// Selects a shape from a 0...1 parameter.
     public static func from(normalised value: Double) -> LFOShape {
         let all = allCases
-        let index = Int((min(max(value, 0), 1) * Double(all.count - 1)).rounded())
-        return all[min(index, all.count - 1)]
+        return all[NormalisedSweep.index(value, count: all.count)]
     }
 }
 

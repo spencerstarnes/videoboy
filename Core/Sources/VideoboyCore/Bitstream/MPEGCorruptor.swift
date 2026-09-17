@@ -60,8 +60,7 @@ public enum MPEGCorruptionMode: String, CaseIterable, Codable, Sendable {
     /// Which mode a 0...1 parameter selects.
     public static func from(normalised value: Double) -> MPEGCorruptionMode {
         let all = allCases
-        let index = Int((min(max(value, 0), 1) * Double(all.count - 1)).rounded())
-        return all[min(index, all.count - 1)]
+        return all[NormalisedSweep.index(value, count: all.count)]
     }
 }
 

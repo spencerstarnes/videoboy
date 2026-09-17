@@ -52,9 +52,7 @@ public enum BlendMode: Int, CaseIterable, Codable, Sendable {
     /// Selects a mode from a 0...1 parameter (code `65A`).
     public static func from(normalised value: Double) -> BlendMode {
         let all = allCases
-        let clamped = min(max(value, 0), 1)
-        let index = Int((clamped * Double(all.count - 1)).rounded())
-        return all[min(index, all.count - 1)]
+        return all[NormalisedSweep.index(value, count: all.count)]
     }
 
     /// Where this mode sits on a 0...1 parameter, for driving the UI from a value.

@@ -150,7 +150,9 @@ public struct BlackFrameInsertion {
     ///
     /// 0 is off; the rest maps onto inserting one black frame in every 2 to 16.
     public static func from(normalised value: Double) -> BlackFrameInsertion {
-        let clamped = min(max(value, 0), 1)
+        // NormalisedSweep.clamp, not min/max: a NaN survives min/max untouched and
+        // then Int() traps on it a few lines below.
+        let clamped = NormalisedSweep.clamp(value)
         guard clamped > 0.01 else { return BlackFrameInsertion(everyNFrames: 0) }
         // Inverted so a higher value means more frequent insertion.
         let period = Int((16.0 - clamped * 14.0).rounded())

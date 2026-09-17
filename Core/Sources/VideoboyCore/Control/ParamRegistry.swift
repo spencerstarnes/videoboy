@@ -148,6 +148,19 @@ public final class ParamRegistry {
             Log.warn(.param, "no parameter \(code.rawValue) in slot '\(slot)'; value ignored")
             return false
         }
+        // REJECTED, not coerced. `min`/`max` do not sanitise NaN — every comparison
+        // against it is false, so both hand it straight back — and a NaN stored here
+        // reaches every reader downstream, several of which convert it with
+        // `Int(Double)`, which is a fatal error in Swift rather than a nil or a zero.
+        //
+        // Refusing it is better than quietly substituting a number: a non-finite value
+        // arriving means something upstream divided by zero, and coercing it to 0
+        // would hide the bug that produced it while leaving the fader somewhere the
+        // operator did not put it. This fails visibly, which is the house rule.
+        guard value.isFinite else {
+            Log.warn(.param, "refused a non-finite value for \(code.rawValue) in slot '\(slot)'")
+            return false
+        }
         let clamped = min(max(value, parameter.range.lowerBound), parameter.range.upperBound)
         valuesBySlot[slot]?[code] = clamped
         return true
