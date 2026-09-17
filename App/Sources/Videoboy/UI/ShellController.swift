@@ -960,6 +960,15 @@ final class ShellController {
         return bus == .one ? slots.one : slots.two
     }
 
+    /// Every slot a card speaks for — more than one when the card is a per-channel
+    /// (chFX) card, which stands for both of its bus's channels at once.
+    private func slots(forEffect name: String, bus: Bus) -> [String] {
+        if name == "DV · DIF corruptor" {
+            return (bus == .one ? ["A", "B"] : ["C", "D"]).map(Engine.slot(forChannel:))
+        }
+        return slot(forEffect: name, bus: bus).map { [$0] } ?? []
+    }
+
     /// The card's selector changed. Three things have to follow it, or the toggle
     /// would move the underlying data without changing what the screen shows: the
     /// Shift-detect address on every fader in the card, the enable switch (each
@@ -1054,9 +1063,25 @@ final class ShellController {
     /// leave the list, and the chain's Add popup is how it comes back. Removing with
     /// no way to restore would be a trap.
     private func removeEffect(_ name: String, bus: Bus) {
-        guard let slots = Self.effectNameToSlot[name] else { return }
-        let slot = bus == .one ? slots.one : slots.two
-        engine.registry.setValue(0, slot: slot, code: .wetDry)
+        // Resolved through `slot(forEffect:bus:)`, NOT through the static table.
+        // The per-channel corruptor has no entry there — its slot depends on which
+        // channel the card is pointed at — so reading the table directly meant the
+        // guard fell through and ✕ did nothing at all on the one card in the window
+        // most likely to be reached for. The enable switch and the badges were fixed
+        // this way already; this was the third path still going the old way.
+        // A per-channel card stands for BOTH of its channels, so taking it out has to
+        // bypass both. Bypassing only the one the selector happens to point at would
+        // leave the other channel corrupting with no card left in the window to
+        // reach it — the same unreachable-wedge problem the channel selector was
+        // added to solve, reintroduced by the ✕.
+        let targets = slots(forEffect: name, bus: bus)
+        guard !targets.isEmpty else {
+            Log.warn(.graph, "cannot remove \(name): no slot on bus \(bus == .one ? "ONE" : "TWO")")
+            return
+        }
+        for slot in targets {
+            engine.registry.setValue(0, slot: slot, code: .wetDry)
+        }
         let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
         panel.removeEffect(named: name)
         Log.info(.graph, "\(name) removed from bus \(bus == .one ? "ONE" : "TWO")")

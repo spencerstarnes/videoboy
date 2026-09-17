@@ -1,6 +1,6 @@
 check:    phase-1/dv-corruption
 verdict:  PASS
-when:     2026-09-17T06:59:33Z
+when:     2026-09-17T08:26:51Z
 core:     0.3.0
 
 notes:

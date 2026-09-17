@@ -28,10 +28,32 @@ final class MainWindowController: NSWindowController {
     /// Exposed so the app delegate can make first-run offers that touch routing.
     private(set) var shellController: ShellController?
 
+    /// How big to open on first run, measured against the display rather than fixed.
+    ///
+    /// This was pinned at 1460x912 on every machine. That is not merely conservative
+    /// on a large display — it makes the previews small as a matter of ARITHMETIC.
+    /// A preview panel's height is derived from its column's width so it comes out
+    /// 4:3, and column width is a fraction of the window, so a window that declines
+    /// to use the screen produces video windows that cannot be any bigger no matter
+    /// what the grid weights say. The instrument should open at the size of the desk
+    /// it is sitting on.
+    ///
+    /// Capped, because past a point more width stops buying picture and starts
+    /// buying whitespace — and on a very wide display a window spanning the whole
+    /// desktop is worse to work at, not better.
+    static func initialSize(for screen: NSScreen?) -> NSSize {
+        guard let visible = screen?.visibleFrame else {
+            return NSSize(width: 1460, height: 912)
+        }
+        let width = min(max(visible.width * 0.92, Theme.Breakpoint.minimumWindowWidth), 2600)
+        let height = min(max(visible.height * 0.92, Theme.Breakpoint.minimumWindowHeight), 1600)
+        return NSSize(width: floor(width), height: floor(height))
+    }
+
     /// Builds the window at a size that shows the full wide layout on first run.
     init(preferences: PreferenceStore) {
         self.preferences = preferences
-        let initialSize = NSSize(width: 1460, height: 912)
+        let initialSize = Self.initialSize(for: NSScreen.main)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],

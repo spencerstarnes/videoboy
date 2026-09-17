@@ -207,17 +207,17 @@ final class SourcePanelBody: NSView {
         }
         self.stepButton = stepButton
 
-        let stepRow = Controls.row([
-            Controls.label("Step", font: Theme.Font.tinyLabel,
-                           color: Theme.Color.textTertiary, holdsWidth: true),
-            stepButton,
-            Controls.spacer()
-        ], spacing: 4)
-
-        let sourceRow = Controls.column([
-            Controls.row([load, generatorPopUp], spacing: 4),
-            stepRow
-        ], spacing: 3)
+        // Load, source and step on ONE row rather than two.
+        //
+        // The step key used to have a row to itself, with a "Step" caption beside it
+        // and a spacer filling the rest — a whole row of the shortest panel in the
+        // window spent on one small button. In the source panels nothing sets the
+        // preview's height: it is simply what is left after the controls have taken
+        // theirs, so a row of chrome is subtracted directly from the picture. The
+        // caption goes too; the key already reads STEP, or 1/4, or whatever rate it
+        // is on, which is the caption.
+        let sourceRow = Controls.row([load, generatorPopUp, stepButton, Controls.spacer()],
+                                     spacing: 4)
         sourceRow.translatesAutoresizingMaskIntoConstraints = false
         addSubview(sourceRow)
         let loadRowForConstraints = sourceRow

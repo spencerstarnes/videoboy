@@ -947,10 +947,56 @@ enum UISelfQA {
                     name: "channel D chFX renders", passed: false, detail: "a frame failed to render"))
             }
 
+            // The ✕ on that same card. It resolved its slot through the static
+            // name-to-slot table, which has no entry for a per-channel effect, so the
+            // guard fell through and the button did nothing whatsoever — the card
+            // stayed put. Driven here through the button's real target/action.
+            let corruptorSlots = ["C", "D"].map(Engine.slot(forChannel:))
+            for slot in corruptorSlots {
+                engine.registry.setValue(0.8, slot: slot, code: .wetDry)
+            }
+
+            if let remove = removeButton(named: corruptorName, in: shell.grid.panels.effectsTwoBody) {
+                _ = remove.target?.perform(remove.action, with: remove)
+                shell.layoutSubtreeIfNeeded()
+
+                check.record(AssertionResult(
+                    name: "the corruptor card's ✕ actually takes the card out of the chain",
+                    passed: segmentedControl(named: corruptorName, in: shell.grid.panels.effectsTwoBody) == nil,
+                    detail: "card present after ✕: \(segmentedControl(named: corruptorName, in: shell.grid.panels.effectsTwoBody) != nil)"
+                ))
+
+                // Both channels, not just the one the selector pointed at. Bypassing
+                // only the selected channel would leave the other one corrupting with
+                // no card left in the window to reach it.
+                let remaining = corruptorSlots.map { engine.registry.value(slot: $0, code: .wetDry) ?? -1 }
+                check.record(AssertionResult(
+                    name: "removing a per-channel card bypasses BOTH of its channels",
+                    passed: remaining.allSatisfy { $0 < 0.001 },
+                    detail: "C wet/dry \(remaining[0]), D wet/dry \(remaining[1])"
+                ))
+            } else {
+                check.record(AssertionResult(
+                    name: "the corruptor card has a ✕", passed: false, detail: "no remove button found"))
+            }
+
             withExtendedLifetime(controller) {}
         }
 
         return check.finish()
+    }
+
+    /// The remove (✕) button on a card, which shares the card's identifier with the
+    /// enable switch — so this matches on the title too.
+    private static func removeButton(named identifier: String, in view: NSView) -> NSButton? {
+        if let button = view as? NSButton, button.identifier?.rawValue == identifier,
+           button.title == "✕" {
+            return button
+        }
+        for subview in view.subviews {
+            if let found = removeButton(named: identifier, in: subview) { return found }
+        }
+        return nil
     }
 
     /// The first segmented control found with a matching identifier.
