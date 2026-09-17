@@ -1140,6 +1140,81 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // FRAME TIME AND JITTER. The single most important property of this app: the
+        // picture must not stutter. Mean frame time is not the measure — a chain that
+        // averages 8 ms and spikes to 40 every twentieth frame drops a frame every
+        // twentieth frame, and that is exactly what an audience sees.
+        //
+        // So this reports the WORST frame and the spread, not the average, with every
+        // effect switched on so it measures the real load rather than a bypassed one.
+        do {
+            let engine = Engine()
+            let url = RepoPaths.samples.appendingPathComponent("motion.dv")
+            guard FileManager.default.fileExists(atPath: url.path),
+                  engine.load(url: url, intoChannel: "A"),
+                  engine.load(url: url, intoChannel: "B") else {
+                check.note("samples/motion.dv missing; the jitter check was skipped")
+                return check.finish()
+            }
+            engine.setPlaying(true, channel: "A")
+            engine.setPlaying(true, channel: "B")
+
+            // EVERYTHING on, including all four channel chains and both bus chains.
+            for slot in Engine.busEffectSlots {
+                engine.registry.setValue(1, slot: slot, code: .wetDry)
+            }
+            for letter in ["A", "B", "C", "D"] {
+                engine.registry.setValue(1, slot: Engine.slot(forChannel: letter), code: .wetDry)
+                engine.registry.setValue(0.6, slot: Engine.slot(forChannel: letter), code: .corruptAmount)
+                for effect in ["transform", "colour", "composite", "echo", "feedback", "mx1"] {
+                    engine.registry.setValue(
+                        1, slot: Engine.channelSlot(letter, effect), code: .wetDry)
+                }
+                // Neutral settings let a node skip its pass, which would measure an
+                // idle chain rather than a working one.
+                engine.registry.setValue(1.3, slot: Engine.channelSlot(letter, "colour"), code: .contrast)
+                engine.registry.setValue(1.2, slot: Engine.channelSlot(letter, "transform"), code: .scale)
+            }
+            engine.applyAllParameters()
+
+            var milliseconds: [Double] = []
+            for frame in 0..<90 {
+                let context = RenderContext(
+                    frameIndex: frame, presentationTime: Double(frame) / 29.97,
+                    musicalPosition: nil)
+                let start = Date()
+                _ = engine.evaluateGraph(context: context)
+                milliseconds.append(Date().timeIntervalSince(start) * 1000)
+            }
+            // The first few frames pay for texture allocation and shader warm-up, and
+            // are not what a running show looks like.
+            let settled = Array(milliseconds.dropFirst(10)).sorted()
+            let mean = settled.reduce(0, +) / Double(settled.count)
+            let worst = settled.last ?? 0
+            let p95 = settled[Int(Double(settled.count) * 0.95)]
+            let budget = 1000.0 / StandardDefinition.frameRate
+
+            check.note(String(
+                format: "frame time with everything on: mean %.2f ms, p95 %.2f ms, worst %.2f ms, budget %.2f ms",
+                mean, p95, worst, budget))
+
+            check.record(AssertionResult(
+                name: "no frame misses the budget with every effect running",
+                passed: worst < budget,
+                detail: String(
+                    format: "worst frame %.2f ms against a %.2f ms budget (mean %.2f, p95 %.2f)",
+                    worst, budget, mean, p95)
+            ))
+
+            // Spread matters on its own. A chain that is always 20 ms is playable; one
+            // that alternates 4 and 20 is visibly uneven even though both fit.
+            check.record(AssertionResult(
+                name: "frame time is even, not just fast on average",
+                passed: worst < mean * 3.0 || worst < 4.0,
+                detail: String(format: "worst is %.1fx the mean", mean > 0 ? worst / mean : 0)
+            ))
+        }
+
         // ACTION KEYS CAN BE LEARNED. Shift-to-map reached faders only, so the keys
         // you most want on a controller — CUT and FADE — were the ones you could not
         // put there.

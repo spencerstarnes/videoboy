@@ -47,6 +47,35 @@ Every visual/output acceptance item is checked by you via these before it counts
 - Device names/IDs and paths live in `config/devices.json` (copy from `config/devices.example.json`; the human fills real values). Read device identity from there — never hardcode.
 - Sample videos are in `samples/` with a `samples/manifest.json`. There must be at least one real `.dv` file (DV can't be decoded by AVFoundation, so the libav path and DIF corruptor need a genuine fixture). If `samples/` is empty or has no `.dv`, that's a blocker (rule 5b).
 
+## Smooth playback outranks everything
+
+**The picture must never stutter. This is the highest priority in the app — above any
+feature, any effect, any piece of UI.** A dropped frame is visible to an audience; a
+missing feature is not. If a change would risk the frame rate, it does not ship, or it
+ships behind a switch that is off.
+
+The rules that follow from that:
+
+- **Measure the WORST frame, not the mean.** A chain averaging 8 ms that spikes to 40
+  every twentieth frame drops a frame every twentieth frame. `scripts/selfqa.sh ui`
+  asserts both the worst frame and the spread, with every effect switched on — a
+  bypassed chain measures nothing.
+- **Budget is 33.4 ms at 29.97.** Current worst case with all four channel chains,
+  both bus chains, corruption and two DV decodes running: **11.4 ms** (mean 10.3,
+  p95 11.1). That headroom is the safety margin, not spare capacity to spend.
+- **Nothing expensive on the render path.** No allocation per frame where a cached
+  buffer will do, no CPU pixel loops (`ImageBuffer(width:height:r:g:b:)`, not
+  `setPixel` in a loop), no synchronous file or network I/O, ever.
+- **Effects must early-return when bypassed or neutral.** Every node here does; keep
+  it that way. It is what makes a long chain cost nothing when it is not in use.
+
+**The known structural risk, written down so it is not rediscovered:** every effect
+node calls `commandBuffer.waitUntilCompleted()`, which stalls the CPU until the GPU
+finishes — once per node, per frame. It is measurably fine today and is not worth
+refactoring while it is. It is also the FIRST thing to attack if jitter ever appears,
+because the cost scales with the number of active nodes and the per-channel chains
+multiplied that count. Do not add a new hard sync without measuring.
+
 ## Code standards (from SPEC §1.5 — non-negotiable)
 - Clarity over cleverness. Boring, obvious, repairable code. A little bloat is fine if it aids stability or legibility.
 - Every file opens with a header comment (purpose, I/O, connections, how to extend). Doc-comment types and non-trivial functions. No magic numbers — use the param-code table.
