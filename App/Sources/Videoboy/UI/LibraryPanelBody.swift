@@ -12,6 +12,14 @@
 //
 
 import AppKit
+
+extension NSPasteboard.PasteboardType {
+    /// The in and out points a dragged clip carries, as "lower,upper".
+    ///
+    /// Private to this app: a clip dragged to the Finder is still just a file, and a
+    /// file dragged in from the Finder simply has no marks.
+    static let videoboyClipRange = NSPasteboard.PasteboardType("com.videoboy.clip-range")
+}
 import VideoboyCore
 
 /// One entry in a library grid.
@@ -272,7 +280,8 @@ final class LibraryItemView: NSView {
 
     private func beginDrag(url: URL, from event: NSEvent) {
         Self.onDragStartedForChecks?(url)
-        let dragItem = NSDraggingItem(pasteboardWriter: Self.pasteboardItem(for: url))
+        let dragItem = NSDraggingItem(
+            pasteboardWriter: Self.pasteboardItem(for: url, range: thumbnail.markedRange))
         dragItem.setDraggingFrame(thumbnail.frame, contents: thumbnailSnapshot())
         beginDraggingSession(with: [dragItem], event: event, source: self)
     }
@@ -288,14 +297,29 @@ final class LibraryItemView: NSView {
     ///
     /// One place, so what is written and what the drop targets read cannot drift
     /// apart — which is the only way a drag silently does nothing.
-    static func pasteboardItem(for url: URL) -> NSPasteboardItem {
+    static func pasteboardItem(for url: URL, range: ClosedRange<Double>? = nil) -> NSPasteboardItem {
         let item = NSPasteboardItem()
         // Both spellings: `.fileURL` is what a modern reader asks for, and the plain
         // string is what some targets still look for. Writing one and reading the
         // other is exactly how a drag ends up doing nothing at all.
         item.setString(url.absoluteString, forType: .fileURL)
         item.setString(url.path, forType: .string)
+        // The MARKS travel with the clip. Without this a dragged clip arrived with no
+        // in or out point and played the whole file, while the same clip opened by
+        // double-click honoured them — so the marks looked broken rather than
+        // unsupported on one of the two ways of loading.
+        if let range {
+            item.setString("\(range.lowerBound),\(range.upperBound)", forType: .videoboyClipRange)
+        }
         return item
+    }
+
+    /// Reads the marks a dragged clip was carrying, if it was carrying any.
+    static func markedRange(from pasteboard: NSPasteboard) -> ClosedRange<Double>? {
+        guard let raw = pasteboard.string(forType: .videoboyClipRange) else { return nil }
+        let parts = raw.split(separator: ",").compactMap { Double($0) }
+        guard parts.count == 2, parts[0] <= parts[1] else { return nil }
+        return parts[0]...parts[1]
     }
 
     /// A picture of the thumbnail, so what is dragged looks like what was grabbed.
@@ -421,6 +445,10 @@ final class HoverScrubView: NSView {
     ///
     /// One mark counts: marking only an in point means "from here to the end", which
     /// is what every editor does and what anyone setting a single mark expects.
+    /// The hover position, exposed so a check can tell "the keys did nothing" from
+    /// "the pointer was never considered to be over the strip".
+    var scrubPositionForChecks: Double? { scrubPosition }
+
     var markedRange: ClosedRange<Double>? {
         guard inPoint != nil || outPoint != nil else { return nil }
         return (inPoint ?? 0)...(outPoint ?? 1)

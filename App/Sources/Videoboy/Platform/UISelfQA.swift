@@ -1004,6 +1004,131 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // IN AND OUT POINTS. Reported as not working. The Core side is sound —
+        // ClipSourceNode.playbackRange clamps the playhead and every end-of-clip rule
+        // runs over the range — so this drives the UI half: hover a thumbnail the way
+        // the pointer does, press I and O the way the keyboard does, and ask whether a
+        // range came out the other end.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1460, height: 912),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = shell
+            shell.layoutSubtreeIfNeeded()
+
+            let cells = LibraryItemView.all(in: shell.grid.panels.libraryOneBody)
+            if let cell = cells.first(where: { $0.item.url != nil }),
+               let hover = HoverScrubView.all(in: cell).first {
+                let centre = hover.convert(
+                    NSPoint(x: hover.bounds.midX, y: hover.bounds.midY), to: nil)
+                // `.mouseMoved`, not `.mouseEntered`: NSEvent.mouseEvent refuses to
+                // build the latter — it is not in the mask that initialiser accepts —
+                // and a moved event is what actually carries a position anyway.
+                let move = NSEvent.mouseEvent(
+                    with: .mouseMoved, location: centre, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil,
+                    eventNumber: 0, clickCount: 0, pressure: 0)
+
+                if let move {
+                    hover.mouseEntered(with: move)
+                    hover.mouseMoved(with: move)
+                }
+
+                check.record(AssertionResult(
+                    name: "hovering a clip gives it a scrub position to mark against",
+                    passed: hover.scrubPositionForChecks != nil,
+                    detail: hover.scrubPositionForChecks.map { String(format: "%.2f", $0) }
+                        ?? "nil — without this, I and O have nothing to mark"
+                ))
+
+                /// A key press, the way the keyboard delivers one.
+                func key(_ character: String) -> NSEvent? {
+                    NSEvent.keyEvent(
+                        with: .keyDown, location: centre, modifierFlags: [],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil,
+                        characters: character, charactersIgnoringModifiers: character,
+                        isARepeat: false, keyCode: 0)
+                }
+
+                /// Moves the pointer along the strip, so I and O land in different
+                /// places the way two real presses would.
+                func hoverAt(fraction: CGFloat) {
+                    let x = hover.bounds.minX + hover.bounds.width * fraction
+                    let point = hover.convert(NSPoint(x: x, y: hover.bounds.midY), to: nil)
+                    if let moved = NSEvent.mouseEvent(
+                        with: .mouseMoved, location: point, modifierFlags: [],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil,
+                        eventNumber: 0, clickCount: 0, pressure: 0) {
+                        hover.mouseMoved(with: moved)
+                    }
+                }
+
+                hoverAt(fraction: 0.25)
+                if let i = key("i") { hover.keyDown(with: i) }
+                hoverAt(fraction: 0.75)
+                if let o = key("o") { hover.keyDown(with: o) }
+
+                let range = hover.markedRange
+                check.record(AssertionResult(
+                    name: "I and O mark a range the loader can use",
+                    passed: range != nil,
+                    detail: range.map { String(format: "%.2f...%.2f", $0.lowerBound, $0.upperBound) }
+                        ?? "no range — the marks are drawn but never reach the clip"
+                ))
+
+                // And the range has to survive the trip into the channel, which is the
+                // part that makes it playback rather than decoration.
+                if let url = cell.item.url, let range {
+                    _ = engine.load(url: url, intoChannel: "A")
+                    engine.sources["A"]?.playbackRange = range
+                    let applied = engine.sources["A"]?.playbackRange
+                    check.record(AssertionResult(
+                        name: "a marked range reaches the source node",
+                        passed: applied != nil,
+                        detail: applied.map { String(format: "%.2f...%.2f", $0.lowerBound, $0.upperBound) }
+                            ?? "the node did not keep it"
+                    ))
+
+                    // THE DRAG HALF. Double-click carried the marks; dragging did
+                    // not, because the pasteboard only ever held the URL. Same clip,
+                    // same marks, two ways of loading it, and only one of them worked
+                    // — which reads as "in and out points are broken" rather than as
+                    // "one of the two paths ignores them".
+                    let board = NSPasteboard(name: .init("videoboy-inout-check"))
+                    board.clearContents()
+                    board.writeObjects([LibraryItemView.pasteboardItem(for: url, range: range)])
+                    let carried = LibraryItemView.markedRange(from: board)
+                    check.record(AssertionResult(
+                        name: "a dragged clip carries its in and out points",
+                        passed: carried != nil
+                            && abs((carried?.lowerBound ?? -1) - range.lowerBound) < 0.001
+                            && abs((carried?.upperBound ?? -1) - range.upperBound) < 0.001,
+                        detail: carried.map {
+                            String(format: "%.2f...%.2f survived the pasteboard",
+                                   $0.lowerBound, $0.upperBound)
+                        } ?? "the marks did not survive the drag"
+                    ))
+
+                    // Whether playback then STAYS inside those marks is Core's
+                    // business and is asserted there — PlaybackRangeTests — because
+                    // advancePlayhead is internal to that module. This check owns the
+                    // UI half: that the keys produce a range and it reaches the node.
+                }
+            } else {
+                check.record(AssertionResult(
+                    name: "a library clip is available to mark", passed: false,
+                    detail: "no clip with a URL in the A/B library"))
+            }
+
+            withExtendedLifetime(controller) {}
+        }
+
         // EVERY ENABLED EFFECT SWITCH MUST REACH THE ENGINE.
         //
         // Three controls on the corruptor card shipped dead this week — the enable

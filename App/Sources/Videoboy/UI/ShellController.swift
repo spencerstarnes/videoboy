@@ -591,8 +591,10 @@ final class ShellController {
             body.onTimingChanged = { [weak self] timing in
                 self?.engine.sources[letter]?.timing = timing
             }
-            body.onFileDropped = { [weak self] url in
-                self?.loadClip(url, into: letter)
+            body.onClipDropped = { [weak self] url, range in
+                // The range travels with the drag now, so a dragged clip honours its
+                // marks exactly as a double-clicked one does.
+                self?.loadClip(url, into: letter, range: range)
             }
             body.onLoopModeChanged = { [weak self] mode in
                 self?.engine.sources[letter]?.loopMode = mode

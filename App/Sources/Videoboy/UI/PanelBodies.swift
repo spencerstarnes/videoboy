@@ -120,14 +120,20 @@ final class SourcePanelBody: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         isDropTarget = false
-        guard let url = droppedURL(from: sender) else { return false }
-        onFileDropped?(url)
+        guard let clip = droppedClip(from: sender) else { return false }
+        onClipDropped?(clip.url, clip.range)
         return true
     }
 
     /// The first file URL on the pasteboard, if there is one.
     private func droppedURL(from sender: NSDraggingInfo) -> URL? {
         Self.fileURL(from: sender.draggingPasteboard)
+    }
+
+    /// The clip a drop is carrying, with whatever in and out points were marked on it.
+    private func droppedClip(from sender: NSDraggingInfo) -> (url: URL, range: ClosedRange<Double>?)? {
+        guard let url = Self.fileURL(from: sender.draggingPasteboard) else { return nil }
+        return (url, LibraryItemView.markedRange(from: sender.draggingPasteboard))
     }
 
     /// Reads a file URL off a pasteboard, however it was written.
@@ -161,7 +167,10 @@ final class SourcePanelBody: NSView {
     var onLoopModeChanged: ((LoopMode) -> Void)?
 
     /// A file was dropped on this source, from the library or from the Finder.
-    var onFileDropped: ((URL) -> Void)?
+    /// A clip was dropped on this source, with whatever in and out points it was
+    /// marked with in the library. The range is nil when nothing was marked, or when
+    /// the file came from the Finder rather than from a library cell.
+    var onClipDropped: ((URL, ClosedRange<Double>?) -> Void)?
 
     /// Highlighted while a drop is hovering, so the target is obvious before release.
     private var isDropTarget = false {
