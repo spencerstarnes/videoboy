@@ -29,7 +29,7 @@ final class StatusBarView: NSView {
         // The routing reminder is fixed text: A/B always feed ONE and C/D always
         // feed TWO, and that never remaps (SPEC 2).
         let routing = Controls.label(
-            "A/B → Sub Mix One · C/D → Sub Mix Two · ONE↔TWO → Program",
+            "A/B → A/B Sub Mix · C/D → C/D Sub Mix · both → Program",
             font: Theme.Font.mono, color: Theme.Color.textTertiary
         )
 

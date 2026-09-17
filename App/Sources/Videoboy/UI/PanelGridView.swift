@@ -49,8 +49,8 @@ enum PanelGroup: String, CaseIterable {
     var longName: String {
         switch self {
         case .sourcesLeft: "Sources A/B"
-        case .effectsLeft: "Sub Mix 1 FX"
-        case .effectsRight: "Sub Mix 2 FX"
+        case .effectsLeft: "A/B FX"
+        case .effectsRight: "C/D FX"
         case .sourcesRight: "Sources C/D"
         }
     }
@@ -272,6 +272,22 @@ final class PanelGridView: NSView {
             rails[group] = rail
         }
 
+        // Clicking a panel's title and clicking its group's button in the toolbar are
+        // the same act. Panels with no group have nowhere to give their space to, so
+        // their headers say nothing rather than collapsing into a hole the grid still
+        // reserves — which is what "it hides the window but does not collapse it"
+        // looked like.
+        for placed in placedPanels {
+            if let group = placed.group {
+                placed.panel.onHeaderClicked = { [weak self] in
+                    guard let self else { return }
+                    self.setGroup(group, collapsed: !self.isCollapsed(group))
+                }
+            } else {
+                placed.panel.makeHeaderInert()
+            }
+        }
+
         Log.info(.app, "panel grid built with \(placedPanels.count) panels")
     }
 
@@ -282,11 +298,36 @@ final class PanelGridView: NSView {
         if collapsed { collapsedGroups.insert(group) } else { collapsedGroups.remove(group) }
         for placed in placedPanels where placed.group == group {
             placed.panel.isHidden = collapsed
+            placed.panel.setGroupCollapsed(collapsed)
         }
         rails[group]?.isHidden = !collapsed
         needsLayout = true
         Log.info(.app, "\(group.longName) \(collapsed ? "collapsed" : "restored")")
         onGroupCollapseChanged?(group, collapsed)
+    }
+
+    /// What each panel's header does, for the audit.
+    ///
+    /// Three legitimate answers and no fourth: it collapses a group, it is inert, or
+    /// it is a bug. The failure being guarded against is a header that hides its
+    /// panel while the grid keeps reserving the cell.
+    enum HeaderBehaviour: Equatable {
+        case collapsesGroup(PanelGroup)
+        case inert
+        case hidesItselfLeavingAHole
+    }
+
+    /// Every panel's title and what clicking it does.
+    func headerBehaviours() -> [(title: String, behaviour: HeaderBehaviour)] {
+        placedPanels.map { placed in
+            if let group = placed.group {
+                return (placed.panel.title, .collapsesGroup(group))
+            }
+            return (
+                placed.panel.title,
+                placed.panel.isHeaderInert ? .inert : .hidesItselfLeavingAHole
+            )
+        }
     }
 
     /// True when a group is folded away.

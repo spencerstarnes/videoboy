@@ -329,5 +329,23 @@ enum Theme {
         static let tempo = NSFont.monospacedDigitSystemFont(ofSize: 17, weight: .medium)
         /// The letter on a bus button. Big, because that is the whole point of it.
         static let busButton = NSFont.systemFont(ofSize: 17, weight: .bold)
+
+        /// The camcorder on-screen-display face, for the transport readout.
+        ///
+        /// Segmented and slightly crude, the way a viewfinder overlay is. It belongs
+        /// on the numbers you glance at mid-take and nowhere else — used everywhere
+        /// it would be a costume rather than a voice.
+        ///
+        /// Not bundled: it is whatever the machine has. If it is missing, a
+        /// monospaced-digit system font stands in, which keeps the digits from
+        /// jittering as they change even though it loses the character.
+        static func osd(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+            NSFont(name: "VCR OSD Mono", size: size)
+                ?? NSFont.monospacedDigitSystemFont(ofSize: size, weight: weight)
+        }
+
+        /// True when the OSD face is actually available, so the self-QA can say which
+        /// of the two it rendered.
+        static var hasOSDFace: Bool { NSFont(name: "VCR OSD Mono", size: 12) != nil }
     }
 }

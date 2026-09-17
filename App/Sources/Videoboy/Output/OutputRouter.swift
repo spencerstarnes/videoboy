@@ -55,8 +55,8 @@ enum RoutingSource: Hashable {
 
     private static func friendlyName(for slot: String) -> String {
         switch slot {
-        case GraphTopology.subMixOne: "Sub Mix One"
-        case GraphTopology.subMixTwo: "Sub Mix Two"
+        case GraphTopology.subMixOne: "A/B Sub Mix"
+        case GraphTopology.subMixTwo: "C/D Sub Mix"
         case GraphTopology.primary, Engine.busCodecProgramSlot: "Program"
         case GraphTopology.sourceA: "Source A"
         case GraphTopology.sourceB: "Source B"

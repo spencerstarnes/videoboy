@@ -21,7 +21,8 @@ import VideoboyCore
 /// The transport/clock toolbar.
 final class TransportToolbarView: NSView {
 
-    private let playButton: NSButton
+    /// Play, as a proper transport key rather than a push button.
+    private let playKey = VBTransportButton(glyph: "▶")
 
     /// Called when Tap is pressed.
     var onTap: (() -> Void)?
@@ -53,8 +54,30 @@ final class TransportToolbarView: NSView {
     /// The record button, top right.
     let recordButton = RecordButton(frame: .zero)
 
-    /// Which panel groups are shown.
-    private let panelsControl = NSSegmentedControl()
+    /// Which panel groups are shown, split by the side they are on.
+    private let panelsLeftControl = NSSegmentedControl()
+    private let panelsRightControl = NSSegmentedControl()
+
+    /// The groups down each edge, in the order they appear top to bottom.
+    private static let leftGroups: [PanelGroup] = [.sourcesLeft, .effectsLeft]
+    private static let rightGroups: [PanelGroup] = [.sourcesRight, .effectsRight]
+
+    /// Sets up one side's control.
+    private func configure(
+        _ control: NSSegmentedControl, groups: [PanelGroup], action: Selector
+    ) {
+        control.segmentCount = groups.count
+        control.trackingMode = .selectAny
+        control.controlSize = .small
+        control.font = Theme.Font.tinyLabel
+        control.target = self
+        control.action = action
+        for (index, panelGroup) in groups.enumerated() {
+            control.setLabel(panelGroup.displayName, forSegment: index)
+            control.setSelected(true, forSegment: index)
+            control.setToolTip("Show or hide \(panelGroup.longName)", forSegment: index)
+        }
+    }
 
     /// The Shift-to-detect reminder, which lights while Shift is held.
     private let detectButton = Controls.button("⇧ Learn")
@@ -83,16 +106,11 @@ final class TransportToolbarView: NSView {
     }
 
     override init(frame frameRect: NSRect) {
-        playButton = Controls.button("▶")
         super.init(frame: frameRect)
 
         wantsLayer = true
         layer?.backgroundColor = Theme.Color.bar.cgColor
 
-        playButton.target = self
-        playButton.action = #selector(playPressed)
-
-        let tapButton = Controls.button("Tap", target: self, action: #selector(tapPressed))
 
 
         // Shift-to-detect (SPEC 7): held Shift highlights mappable controls.
@@ -136,33 +154,36 @@ final class TransportToolbarView: NSView {
         // segment is a group, selected means shown. One control rather than four
         // buttons, because they are one decision about how much of the window you
         // want given over to edges.
-        panelsControl.segmentCount = PanelGroup.allCases.count
-        panelsControl.trackingMode = .selectAny
-        panelsControl.controlSize = .small
-        panelsControl.font = Theme.Font.tinyLabel
-        panelsControl.target = self
-        panelsControl.action = #selector(panelsChanged(_:))
-        for (index, panelGroup) in PanelGroup.allCases.enumerated() {
-            panelsControl.setLabel(panelGroup.displayName, forSegment: index)
-            panelsControl.setSelected(true, forSegment: index)
-            panelsControl.setToolTip("Show or hide \(panelGroup.longName)", forSegment: index)
-        }
+        // One control per side, each sitting on the side it controls. A single
+        // four-segment control in the corner meant the button for the right-hand FX
+        // column was on the far left, so you had to read it rather than reach for it.
+        configure(panelsLeftControl, groups: Self.leftGroups, action: #selector(leftPanelsChanged(_:)))
+        configure(panelsRightControl, groups: Self.rightGroups, action: #selector(rightPanelsChanged(_:)))
 
         // The cluster is CENTRED, with panels on the left and record on the right.
         // Tempo and clock are what a performer glances at constantly, so they belong
         // in the middle of the window rather than tucked into a corner of a toolbar.
         display.onClockSourceCycled = { [weak self] in self?.cycleClockSource() }
         display.onSubdivisionCycled = { [weak self] in self?.cycleSubdivision() }
+        display.onTap = { [weak self] in self?.onTap?() }
         display.translatesAutoresizingMaskIntoConstraints = false
 
+        // Play is the same key as record now: the two controls that start and stop
+        // everything look like each other and like nothing else in the window.
+        playKey.target = self
+        playKey.action = #selector(playPressed)
+        playKey.toolTip = "Play or stop the transport"
+
         let leftGroup = Controls.row([
-            group("Panels", panelsControl),
-            tapButton,
-            playButton
+            group("Panels", panelsLeftControl),
+            separator(),
+            playKey
         ], spacing: 10)
 
         let rightGroup = Controls.row([
             group("Detect", detectButton),
+            separator(),
+            group("Panels", panelsRightControl),
             separator(),
             recordGroup
         ], spacing: 10)
@@ -257,7 +278,8 @@ final class TransportToolbarView: NSView {
     /// Updates the running indicator.
     func setRunning(_ running: Bool) {
         isRunning = running
-        playButton.title = running ? "■" : "▶"
+        playKey.glyph = running ? "■" : "▶"
+        playKey.isActive = running
         display.setSyncStatus(running ? "running" : "stopped")
     }
 
@@ -270,17 +292,27 @@ final class TransportToolbarView: NSView {
 
     @objc private func tapPressed() { onTap?() }
 
-    @objc private func panelsChanged(_ sender: NSSegmentedControl) {
+    @objc private func leftPanelsChanged(_ sender: NSSegmentedControl) {
+        panelsChanged(sender, groups: Self.leftGroups)
+    }
+
+    @objc private func rightPanelsChanged(_ sender: NSSegmentedControl) {
+        panelsChanged(sender, groups: Self.rightGroups)
+    }
+
+    private func panelsChanged(_ sender: NSSegmentedControl, groups: [PanelGroup]) {
         let index = sender.selectedSegment
-        guard index >= 0, index < PanelGroup.allCases.count else { return }
-        let panelGroup = PanelGroup.allCases[index]
-        onPanelGroupToggled?(panelGroup, !sender.isSelected(forSegment: index))
+        guard index >= 0, index < groups.count else { return }
+        onPanelGroupToggled?(groups[index], !sender.isSelected(forSegment: index))
     }
 
     /// Reflects a collapse that happened elsewhere — clicking a rail, for instance.
     func setPanelGroupShown(_ panelGroup: PanelGroup, _ shown: Bool) {
-        guard let index = PanelGroup.allCases.firstIndex(of: panelGroup) else { return }
-        panelsControl.setSelected(shown, forSegment: index)
+        if let index = Self.leftGroups.firstIndex(of: panelGroup) {
+            panelsLeftControl.setSelected(shown, forSegment: index)
+        } else if let index = Self.rightGroups.firstIndex(of: panelGroup) {
+            panelsRightControl.setSelected(shown, forSegment: index)
+        }
     }
 
     @objc private func recordPressed() {

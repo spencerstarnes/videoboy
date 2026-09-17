@@ -84,9 +84,12 @@ final class PanelSet {
             caption: "\(StandardDefinition.width)×\(StandardDefinition.height)",
             showsBlendControls: true, recordLabel: "P")
 
-        subMixOne = PanelView(title: "Sub Mix One", bus: .one, subtitle: "A ▸ B", body: subMixOneBody)
-        subMixTwo = PanelView(title: "Sub Mix Two", bus: .two, subtitle: "C ▸ D", body: subMixTwoBody)
-        program = PanelView(title: "Program Preview", subtitle: "ONE ▸ TWO", body: programBody)
+        // Named for what they ARE rather than for the routing into them. "A ▸ B" on
+        // the preview and "A → B Fader" on the panel beneath said the same thing
+        // twice, and neither said which sub mix you were looking at.
+        subMixOne = PanelView(title: "A/B Sub Mix", bus: .one, body: subMixOneBody)
+        subMixTwo = PanelView(title: "C/D Sub Mix", bus: .two, body: subMixTwoBody)
+        program = PanelView(title: "Program", body: programBody)
 
         // MARK: Faders
         faderABBody = FaderPanelBody(
@@ -100,16 +103,21 @@ final class PanelSet {
             includesSwap: false
         )
         faderOneTwoBody = FaderPanelBody(
-            leftLabel: "ONE", rightLabel: "TWO",
+            // The ends match the keys above them. Saying "ONE" under a key marked "1"
+            // is two names for one bus in the space of a centimetre.
+            leftLabel: "1", rightLabel: "2",
             leftColor: Theme.Color.busOne, rightColor: Theme.Color.busTwo,
             includesSwap: true,
             // Numbered, the way a switcher numbers its buses — and the way the record
             // indicators on the two sub-mix previews already read.
             leftKeyLabel: "1", rightKeyLabel: "2"
         )
-        faderAB = PanelView(title: "A → B Fader", bus: .one, body: faderABBody)
-        faderCD = PanelView(title: "C → D Fader", bus: .two, body: faderCDBody)
-        faderOneTwo = PanelView(title: "ONE → TWO Fader", body: faderOneTwoBody)
+        // The fader sits directly under the preview it drives, and its bus keys are
+        // labelled with the sources. Repeating the routing in the title was the third
+        // time the same fact appeared in one column.
+        faderAB = PanelView(title: "A/B", bus: .one, body: faderABBody)
+        faderCD = PanelView(title: "C/D", bus: .two, body: faderCDBody)
+        faderOneTwo = PanelView(title: "Program", body: faderOneTwoBody)
 
         // MARK: Effect chains
         //
@@ -253,8 +261,8 @@ final class PanelSet {
             EffectCardModel(name: "Layer Mask", isEnabled: false, isImplemented: false, parameters: [])
         ])
 
-        effectsOne = PanelView(title: "Sub Mix 1 FX", bus: .one, body: effectsOneBody)
-        effectsTwo = PanelView(title: "Sub Mix 2 FX", bus: .two, body: effectsTwoBody)
+        effectsOne = PanelView(title: "A/B FX", bus: .one, body: effectsOneBody)
+        effectsTwo = PanelView(title: "C/D FX", bus: .two, body: effectsTwoBody)
 
         // MARK: Libraries
         // The sub-mix libraries start from what is actually in samples/; the central
@@ -265,9 +273,9 @@ final class PanelSet {
         assetBrowserBody = LibraryPanelBody(
             items: sampleItems + PanelSet.futureSourceKinds(), columns: 6, showsTabs: true)
         libraryOne = PanelView(
-            title: "Sub Mix 1 Library", subtitle: "A/B", body: libraryOneBody)
+            title: "A/B Library", body: libraryOneBody)
         libraryTwo = PanelView(
-            title: "Sub Mix 2 Library", subtitle: "C/D", body: libraryTwoBody)
+            title: "C/D Library", body: libraryTwoBody)
         assetBrowser = PanelView(title: "Asset Browser", body: assetBrowserBody)
 
         // MARK: Settings bar

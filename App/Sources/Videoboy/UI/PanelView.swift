@@ -204,7 +204,19 @@ final class PanelView: NSView {
 
     // MARK: - Collapsing
 
+    /// Called when the header is clicked, for panels that belong to a group.
+    ///
+    /// When this is set the header does NOT collapse the panel by itself: clicking a
+    /// title and clicking that group's button in the toolbar are the same act, and
+    /// having them do two different things is how you end up with a panel hidden in
+    /// a cell that still takes up the room.
+    var onHeaderClicked: (() -> Void)?
+
     @objc private func toggleCollapsed() {
+        if let onHeaderClicked {
+            onHeaderClicked()
+            return
+        }
         setCollapsed(!isCollapsed)
     }
 
@@ -215,5 +227,25 @@ final class PanelView: NSView {
         bodyContainer.isHidden = collapsed
         chevron.stringValue = collapsed ? "▸" : "▾"
         Log.info(.app, "panel '\(title)' \(collapsed ? "collapsed" : "expanded")")
+    }
+
+    /// Hides the chevron and stops the header responding to clicks.
+    ///
+    /// For the panels in the middle of the window, which belong to no group and have
+    /// nowhere to give their space to. A chevron that collapses a panel into a hole
+    /// the grid still reserves is worse than no chevron: it looks like a fault.
+    func makeHeaderInert() {
+        chevron.isHidden = true
+        headerButton.isEnabled = false
+        isHeaderInert = true
+    }
+
+    /// True once the header has been made inert, so the audit can tell a deliberate
+    /// quiet header from one that was simply never wired.
+    private(set) var isHeaderInert = false
+
+    /// Shows the group's state on this panel's chevron.
+    func setGroupCollapsed(_ collapsed: Bool) {
+        chevron.stringValue = collapsed ? "▸" : "▾"
     }
 }

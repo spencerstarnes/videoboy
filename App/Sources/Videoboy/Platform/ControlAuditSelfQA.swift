@@ -197,6 +197,21 @@ enum ControlAuditSelfQA {
         ))
         mainWindow.window?.close()
 
+        // Every panel header, audited. You asked whether the problem was only on
+        // Source: A — it was on all six grouped panels, and the inner ones had the
+        // opposite problem of collapsing into a cell the grid still reserved.
+        let behaviours = shell.grid.headerBehaviours()
+        let broken = behaviours.filter { $0.behaviour == .hidesItselfLeavingAHole }
+        check.record(AssertionResult(
+            name: "no panel header hides its panel and leaves the cell reserved",
+            passed: broken.isEmpty,
+            detail: broken.isEmpty
+                ? "\(behaviours.filter { if case .collapsesGroup = $0.behaviour { return true }; return false }.count)"
+                    + " headers collapse their group, "
+                    + "\(behaviours.filter { $0.behaviour == .inert }.count) are deliberately inert"
+                : broken.map(\.title).joined(separator: ", ")
+        ))
+
         // The failing condition is a control that is enabled and wired to nothing.
         // A disabled control is fine — it is honest about not being built.
         check.record(AssertionResult(

@@ -1,14 +1,15 @@
 check:    audit
 verdict:  PASS
-when:     2026-09-17T01:39:41Z
+when:     2026-09-17T01:52:39Z
 core:     0.3.0
 
 notes:
-  663 controls found: 316 live, 347 disabled, 0 enabled-but-unwired
+  665 controls found: 307 live, 358 disabled, 0 enabled-but-unwired
 
-assertions (5/5 passed):
+assertions (6/6 passed):
   PASS  every fader can be mapped by Shift-clicking it — 43 enabled faders, all carrying a slot and a param code
   PASS  every switch agrees with the engine at launch — 10 effects boot bypassed, both emulations off
   PASS  the main window refuses full screen — fullScreenNone is set
+  PASS  no panel header hides its panel and leaves the cell reserved — 6 headers collapse their group, 10 are deliberately inert
   PASS  no control is enabled but unwired — every enabled control has an action
-  PASS  the interface has controls at all — 663 found
+  PASS  the interface has controls at all — 665 found

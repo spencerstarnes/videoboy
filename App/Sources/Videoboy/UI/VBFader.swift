@@ -91,6 +91,33 @@ final class VBFader: NSControl {
     var leadingTint: NSColor?
     var trailingTint: NSColor?
 
+    /// How far from the middle a position is, 0 at the centre and 1 at either end.
+    ///
+    /// Centre-filling faders read from the middle outwards; the others fill from one
+    /// end, and for those "full" is the committed end rather than the midpoint.
+    static func commitment(of value: Double) -> Double {
+        min(max(abs(value - 0.5) * 2, 0), 1)
+    }
+
+    /// A colour desaturated toward neutral grey.
+    ///
+    /// Toward grey of the SAME brightness rather than toward a fixed grey, so the
+    /// track keeps its weight as the colour drains out of it — fading to a lighter or
+    /// darker neutral would read as the fill changing size.
+    static func saturated(_ colour: NSColor, by amount: Double) -> NSColor {
+        guard let rgb = colour.usingColorSpace(.sRGB) else { return colour }
+        let brightness = 0.299 * rgb.redComponent
+            + 0.587 * rgb.greenComponent
+            + 0.114 * rgb.blueComponent
+        let mix = CGFloat(min(max(amount, 0), 1))
+        return NSColor(
+            srgbRed: brightness + (rgb.redComponent - brightness) * mix,
+            green: brightness + (rgb.greenComponent - brightness) * mix,
+            blue: brightness + (rgb.blueComponent - brightness) * mix,
+            alpha: rgb.alphaComponent
+        )
+    }
+
     /// Overrides the track thickness. The primary crossfader is the heaviest control
     /// in the window and reads as such; a parameter fader does not need to.
     var trackHeightOverride: CGFloat?
@@ -177,10 +204,13 @@ final class VBFader: NSControl {
             NSGraphicsContext.saveGraphicsState()
             trackPath.addClip()
             let half = track.width / 2
-            leadingTint.withAlphaComponent(Theme.Fader.trackTintAlpha * dimmed).setFill()
+            let commitment = Self.commitment(of: normalisedValue)
+            Self.saturated(leadingTint, by: commitment)
+                .withAlphaComponent(Theme.Fader.trackTintAlpha * dimmed).setFill()
             NSBezierPath(rect: NSRect(
                 x: track.minX, y: track.minY, width: half, height: track.height)).fill()
-            trailingTint.withAlphaComponent(Theme.Fader.trackTintAlpha * dimmed).setFill()
+            Self.saturated(trailingTint, by: commitment)
+                .withAlphaComponent(Theme.Fader.trackTintAlpha * dimmed).setFill()
             NSBezierPath(rect: NSRect(
                 x: track.midX, y: track.minY, width: half, height: track.height)).fill()
             NSGraphicsContext.restoreGraphicsState()
@@ -209,7 +239,13 @@ final class VBFader: NSControl {
             } else {
                 fillColour = accentColor
             }
-            fillColour.withAlphaComponent(dimmed).setFill()
+            // Saturation follows commitment. At the ends the bus colour is full; at
+            // the centre it washes out to neutral grey, because the middle of a
+            // crossfader is precisely where neither bus owns the picture. The colour
+            // then reports how far you have gone as well as which way, and a fader
+            // parked in the middle stops shouting a colour it has not earned.
+            Self.saturated(fillColour, by: Self.commitment(of: normalisedValue))
+                .withAlphaComponent(dimmed).setFill()
             fillPath.fill()
         }
 

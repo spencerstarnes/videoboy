@@ -27,6 +27,22 @@ final class TransportDisplayView: NSView {
     var onSubdivisionCycled: (() -> Void)?
     /// Called when the tempo is edited directly.
     var onTempoEdited: ((Double) -> Void)?
+    /// Called when Tap is pressed.
+    var onTap: (() -> Void)?
+
+    /// Tap tempo, which sits inside the readout beside the number it sets.
+    private let tapButton = VBTransportButton(glyph: "TAP")
+
+    @objc private func tapPressed() {
+        // A brief light on the key, so a tap that lands is visibly acknowledged —
+        // otherwise the only feedback is the tempo moving, which it does not do
+        // until the fourth tap.
+        tapButton.isActive = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { [weak self] in
+            self?.tapButton.isActive = false
+        }
+        onTap?()
+    }
 
     private let tempoField = NSTextField(labelWithString: "120.0")
     private let clockField = CyclingField(caption: "CLOCK", value: "Internal")
@@ -43,13 +59,15 @@ final class TransportDisplayView: NSView {
         layer?.borderWidth = Theme.Metrics.hairline
         layer?.borderColor = Theme.Color.displayBorder.cgColor
 
-        // Tempo, large and monospaced-digit so it does not jitter as it changes.
-        tempoField.font = Theme.Font.tempo
+        // Tempo, in the camcorder OSD face. This is the number you glance at without
+        // looking away from the picture, which is exactly what a viewfinder overlay
+        // is for — and it is monospaced, so it does not jitter as it changes.
+        tempoField.font = Theme.Font.osd(size: 20, weight: .medium)
         tempoField.textColor = Theme.Color.displayText
         tempoField.isSelectable = false
 
         let tempoUnit = NSTextField(labelWithString: "BPM")
-        tempoUnit.font = Theme.Font.tinyLabel
+        tempoUnit.font = Theme.Font.osd(size: 10)
         tempoUnit.textColor = Theme.Color.displayDimText
 
         beatLights = (0..<4).map { _ in
@@ -65,7 +83,7 @@ final class TransportDisplayView: NSView {
             return light
         }
 
-        syncLabel.font = Theme.Font.tinyLabel
+        syncLabel.font = Theme.Font.osd(size: 10)
         syncLabel.textColor = Theme.Color.displayDimText
 
         clockField.onClick = { [weak self] in self?.onClockSourceCycled?() }
@@ -78,7 +96,15 @@ final class TransportDisplayView: NSView {
 
         let settingsColumn = Controls.column([clockField, subdivisionField], spacing: 2)
 
+        // Tap lives INSIDE the readout, beside the number it sets. It was a plain
+        // button out in the toolbar, next to things it has nothing to do with; tap
+        // tempo only means anything in relation to the BPM, so it belongs against it.
+        tapButton.target = self
+        tapButton.action = #selector(tapPressed)
+        tapButton.toolTip = "Tap four times to set the tempo"
+
         let row = Controls.row([
+            tapButton,
             tempoColumn,
             divider(),
             settingsColumn,
@@ -164,10 +190,10 @@ private final class CyclingField: NSControl, AuditableControl {
         toolTip = "Click to change \(caption.lowercased())"
 
         let captionLabel = NSTextField(labelWithString: caption)
-        captionLabel.font = NSFont.systemFont(ofSize: 8, weight: .medium)
+        captionLabel.font = Theme.Font.osd(size: 9)
         captionLabel.textColor = Theme.Color.displayDimText
 
-        valueLabel.font = Theme.Font.mono
+        valueLabel.font = Theme.Font.osd(size: 12)
         valueLabel.textColor = Theme.Color.displayText
 
         let row = Controls.row([captionLabel, valueLabel], spacing: 6)
