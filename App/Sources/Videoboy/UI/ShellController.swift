@@ -1088,8 +1088,14 @@ final class ShellController {
     private func slot(forParameter code: ParamCode, bus: Bus) -> String? {
         switch code {
         case .corruptAmount, .corruptMode, .corruptRate, .corruptSeed:
-            return corruptorSlot(bus: bus)
+            return slots(forEffect: "DV · DIF corruptor", bus: bus).first
         default:
+            // A code owned by a card with a channel selector follows that selector,
+            // so a fader writes to whichever copy of the effect the card points at.
+            // Only when no card claims it does this fall back to the fixed bus table.
+            if let owner = Self.cardOwning(code) {
+                return slots(forEffect: owner, bus: bus).first
+            }
             return bus == .one ? Self.subMixOneSlots[code] : Self.subMixTwoSlots[code]
         }
     }
@@ -1097,19 +1103,92 @@ final class ShellController {
     /// Resolves an EFFECT's own slot (what its wet/dry, and so its enable switch and
     /// modulation badges, actually address). The corruptor is the one card whose
     /// slot depends on the channel selector; everything else is the static table.
+    /// Which effect a card's name refers to, as the suffix used in per-channel slot
+    /// names. Nil for the corruptor, which lives on the source node itself.
+    private static let effectNameToChannelSuffix: [String: String] = [
+        "Colour": "colour",
+        "Composite · NTSC": "composite",
+        "Echo / Trails": "echo",
+        "Feedback": "feedback",
+        "MX-1": "mx1"
+    ]
+
     private func slot(forEffect name: String, bus: Bus) -> String? {
-        if name == "DV · DIF corruptor" { return corruptorSlot(bus: bus) }
-        guard let slots = Self.effectNameToSlot[name] else { return nil }
-        return bus == .one ? slots.one : slots.two
+        slots(forEffect: name, bus: bus).first
     }
 
-    /// Every slot a card speaks for — more than one when the card is a per-channel
-    /// (chFX) card, which stands for both of its bus's channels at once.
+    /// Every slot a card currently addresses, which depends on where its A / B / BOTH
+    /// selector points.
+    ///
+    /// A and B address that CHANNEL's own copy of the effect, upstream of the mix.
+    /// BOTH addresses the BUS copy, downstream of it — which is genuinely both,
+    /// rather than two copies set to the same value, and costs one pass instead of
+    /// two. The corruptor is the exception: it lives on the source node itself, so
+    /// there is no bus copy and BOTH writes to both channels.
     private func slots(forEffect name: String, bus: Bus) -> [String] {
+        let letters = bus == .one ? ["A", "B"] : ["C", "D"]
+        let index = cardChannelIndex[name] ?? 0
+        let isBoth = index >= letters.count
+
         if name == "DV · DIF corruptor" {
-            return (bus == .one ? ["A", "B"] : ["C", "D"]).map(Engine.slot(forChannel:))
+            return isBoth
+                ? letters.map(Engine.slot(forChannel:))
+                : [Engine.slot(forChannel: letters[min(index, letters.count - 1)])]
         }
-        return slot(forEffect: name, bus: bus).map { [$0] } ?? []
+        guard let suffix = Self.effectNameToChannelSuffix[name] else { return [] }
+        if isBoth {
+            guard let slots = Self.effectNameToSlot[name] else { return [] }
+            return [bus == .one ? slots.one : slots.two]
+        }
+        return [Engine.channelSlot(letters[min(index, letters.count - 1)], suffix)]
+    }
+
+    /// Where each card's selector currently points, by card name.
+    ///
+    /// Colour starts on BOTH (index 2). A grade is nearly always something you want
+    /// across the whole bus rather than on one channel, and the BUS copy is the one
+    /// declared live at launch — so starting anywhere else would mean the card's
+    /// switch and the engine disagreed on the first frame.
+    private var cardChannelIndex: [String: Int] = ["Colour": 2]
+
+    /// Every copy of an effect on a bus — both channels AND the bus copy — for the
+    /// operations that must not leave one of them running.
+    private func allSlots(forEffect name: String, bus: Bus) -> [String] {
+        let letters = bus == .one ? ["A", "B"] : ["C", "D"]
+        if name == "DV · DIF corruptor" {
+            return letters.map(Engine.slot(forChannel:))
+        }
+        guard let suffix = Self.effectNameToChannelSuffix[name] else { return [] }
+        var all = letters.map { Engine.channelSlot($0, suffix) }
+        if let slots = Self.effectNameToSlot[name] {
+            all.append(bus == .one ? slots.one : slots.two)
+        }
+        return all
+    }
+
+    /// Which card owns a param code, so a fader can follow that card's selector.
+    ///
+    /// Derived from the nodes themselves rather than written out by hand: a list kept
+    /// in parallel with the effects is a list that goes stale, and a code missing from
+    /// it is a fader that silently writes to the wrong copy.
+    private static func cardOwning(_ code: ParamCode) -> String? {
+        switch code {
+        case .brightness, .contrast, .saturation, .shadow,
+             .highlight, .blackLevel, .whiteLevel, .gamma:
+            return "Colour"
+        case .compositePath, .compositeCrawl, .chromaBleed, .lumaBandwidth,
+             .tbcWobble, .headSwitchingNoise, .chromaSubsampling, .compositeGeneration:
+            return "Composite · NTSC"
+        case .echoDecay, .trailLength, .echoThreshold:
+            return "Echo / Trails"
+        case .feedbackGain, .feedbackDelayFrames, .feedbackZoom,
+             .feedbackRotate, .feedbackThreshold:
+            return "Feedback"
+        case .mx1Effect, .mx1Amount:
+            return "MX-1"
+        default:
+            return nil
+        }
     }
 
     /// The card's selector changed. Three things have to follow it, or the toggle
@@ -1118,26 +1197,28 @@ final class ShellController {
     /// channel's own bypass, not a single shared one), and the fader/readout values
     /// themselves.
     private func cardChannelChanged(_ name: String, _ index: Int, bus: Bus) {
-        guard name == "DV · DIF corruptor" else { return }
-        corruptorChannelIndex[bus] = index
-        let slot = corruptorSlot(bus: bus)
+        cardChannelIndex[name] = index
+        if name == "DV · DIF corruptor" { corruptorChannelIndex[bus] = index }
+        guard let slot = slots(forEffect: name, bus: bus).first else { return }
         let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
 
         panel.refreshMappingAddresses()
 
+        // Every parameter the card shows is re-read from whichever node it now points
+        // at. A selector that moved the data without changing what the screen shows
+        // would be worse than no selector.
         guard let node = engine.graph.nodes[slot] else { return }
         var displayed: [String: Double] = [:]
-        for code in [ParamCode.corruptAmount, .corruptMode, .corruptRate] {
-            guard let declared = node.parameters.first(where: { $0.code == code }),
-                  let value = engine.registry.value(slot: slot, code: code) else { continue }
-            displayed[code.rawValue] = declared.normalise(value)
+        for declared in node.parameters where declared.code != .wetDry {
+            guard let value = engine.registry.value(slot: slot, code: declared.code) else { continue }
+            displayed[declared.code.rawValue] = declared.normalise(value)
         }
         panel.setDisplayedParameterValues(effectName: name, values: displayed)
 
         let isEngaged = (engine.registry.value(slot: slot, code: .wetDry) ?? 1) > 0.5
         panel.setEnabled(effectName: name, isOn: isEngaged)
 
-        Log.info(.param, "\(name) on \(bus == .one ? "ONE" : "TWO") now targets channel \(corruptorChannel(bus: bus))")
+        Log.info(.param, "\(name) on \(bus == .one ? "ONE" : "TWO") now targets \(slot)")
     }
 
     /// Which graph slot each armable feed reads from.
@@ -1215,7 +1296,10 @@ final class ShellController {
         // leave the other channel corrupting with no card left in the window to
         // reach it — the same unreachable-wedge problem the channel selector was
         // added to solve, reintroduced by the ✕.
-        let targets = slots(forEffect: name, bus: bus)
+        // Removal clears EVERY copy, whatever the selector happens to point at.
+        // Taking a card out of the chain while leaving the other channel's copy still
+        // running is the unreachable-effect problem all over again.
+        let targets = allSlots(forEffect: name, bus: bus)
         guard !targets.isEmpty else {
             Log.warn(.graph, "cannot remove \(name): no slot on bus \(bus == .one ? "ONE" : "TWO")")
             return
@@ -1542,8 +1626,11 @@ final class ShellController {
 
     /// Enables or bypasses a named effect on one of the buses.
     private func setEffectEnabled(_ name: String, _ isOn: Bool, bus: Bus) {
-        guard let slot = slot(forEffect: name, bus: bus) else { return }
-        engine.registry.setValue(isOn ? 1 : 0, slot: slot, code: .wetDry)
+        let targets = slots(forEffect: name, bus: bus)
+        guard !targets.isEmpty else { return }
+        for slot in targets {
+            engine.registry.setValue(isOn ? 1 : 0, slot: slot, code: .wetDry)
+        }
         Log.info(.app, "\(name) on \(bus == .one ? "ONE" : "TWO") \(isOn ? "enabled" : "bypassed")")
     }
 

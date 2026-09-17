@@ -857,7 +857,9 @@ enum UISelfQA {
             }
             check.record(AssertionResult(
                 name: "both FX chains have a channel selector on the corruptor card",
-                passed: selectorOne.segmentCount == 2 && selectorTwo.segmentCount == 2,
+                // Three now: A, B and BOTH. BOTH addresses the bus copy, which runs
+                // after the mix and so genuinely affects both channels.
+                passed: selectorOne.segmentCount == 3 && selectorTwo.segmentCount == 3,
                 detail: "A/B has \(selectorOne.segmentCount) segments, C/D has \(selectorTwo.segmentCount)"
             ))
 
@@ -1001,7 +1003,7 @@ enum UISelfQA {
                 // no card left in the window to reach it.
                 let remaining = corruptorSlots.map { engine.registry.value(slot: $0, code: .wetDry) ?? -1 }
                 check.record(AssertionResult(
-                    name: "removing a per-channel card bypasses BOTH of its channels",
+                    name: "removing a card bypasses every copy of it, not just the selected one",
                     passed: remaining.allSatisfy { $0 < 0.001 },
                     detail: "C wet/dry \(remaining[0]), D wet/dry \(remaining[1])"
                 ))
@@ -1225,6 +1227,13 @@ enum UISelfQA {
                 // sitting on top of the fader would swallow the gesture in the app
                 // while every check here passed. That is exactly how the library drag
                 // bug hid.
+                // Scrolled into view first. With five cards in a chain the colour
+                // card sits below the fold, and a control you have to scroll to is not
+                // a bug — it is a list. What this check is actually for is whether
+                // anything COVERS the fader once it is on screen, which is how the
+                // library drag bug hid.
+                colourFader.scrollToVisible(colourFader.bounds)
+                shell.layoutSubtreeIfNeeded()
                 let centre = colourFader.convert(
                     NSPoint(x: colourFader.bounds.midX, y: colourFader.bounds.midY), to: nil)
                 let hit = shell.hitTest(centre)

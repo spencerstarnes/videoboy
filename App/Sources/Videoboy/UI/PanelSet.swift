@@ -152,7 +152,7 @@ final class PanelSet {
                 // wedge. This one card reaches whichever of the two is selected here,
                 // rather than being hardwired to A the way it was before this could
                 // be switched at all.
-                channelOptions: ["A", "B"]
+                channelOptions: ["A", "B", "BOTH"]
             ),
             EffectCardModel(
                 name: "Composite · NTSC",
@@ -175,7 +175,8 @@ final class PanelSet {
                                          value: 1.0, enabled: true),
                     EffectParameterModel(name: "gen", code: ParamCode.compositeGeneration.rawValue,
                                          value: 0.0, enabled: true)
-                ]
+                ],
+                channelOptions: ["A", "B", "BOTH"]
             ),
             EffectCardModel(
                 name: "Colour",
@@ -204,7 +205,8 @@ final class PanelSet {
                                          value: 1.0, enabled: true),
                     EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
                                          value: 0.231, enabled: true)
-                ]
+                ],
+                channelOptions: ["A", "B", "BOTH"]
             ),
             EffectCardModel(
                 name: "Echo / Trails",
@@ -217,7 +219,8 @@ final class PanelSet {
                                          value: 0.0, enabled: true),
                     EffectParameterModel(name: "thresh", code: ParamCode.echoThreshold.rawValue,
                                          value: 0.15, enabled: true)
-                ]
+                ],
+                channelOptions: ["A", "B", "BOTH"]
             ),
             EffectCardModel(
                 name: "Feedback",
@@ -232,7 +235,8 @@ final class PanelSet {
                                          value: 0.52, enabled: true),
                     EffectParameterModel(name: "rotate", code: ParamCode.feedbackRotate.rawValue,
                                          value: 0.5, enabled: true)
-                ]
+                ],
+                channelOptions: ["A", "B", "BOTH"]
             ),
             EffectCardModel(
                 name: "MX-1",
@@ -269,7 +273,7 @@ final class PanelSet {
                 // corruption was wired all the way through the registry and never
                 // reachable from anywhere in the window. D reaches it too, by the
                 // selector below.
-                channelOptions: ["C", "D"]
+                channelOptions: ["C", "D", "BOTH"]
             ),
             EffectCardModel(
                 name: "Composite · NTSC",
@@ -284,7 +288,8 @@ final class PanelSet {
                                          value: 0.5, enabled: true),
                     EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
                                          value: 0.2, enabled: true)
-                ]
+                ],
+                channelOptions: ["C", "D", "BOTH"]
             ),
             EffectCardModel(
                 name: "Colour",
@@ -313,7 +318,8 @@ final class PanelSet {
                                          value: 1.0, enabled: true),
                     EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
                                          value: 0.231, enabled: true)
-                ]
+                ],
+                channelOptions: ["C", "D", "BOTH"]
             ),
             EffectCardModel(
                 name: "Echo / Trails",
@@ -324,7 +330,8 @@ final class PanelSet {
                                          value: 0.8, enabled: true),
                     EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
                                          value: 0.0, enabled: true)
-                ]
+                ],
+                channelOptions: ["C", "D", "BOTH"]
             ),
             EffectCardModel(
                 name: "Feedback",
@@ -335,7 +342,8 @@ final class PanelSet {
                                          value: 0.0, enabled: true),
                     EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
                                          value: 0.52, enabled: true)
-                ]
+                ],
+                channelOptions: ["C", "D", "BOTH"]
             ),
             EffectCardModel(
                 name: "MX-1",

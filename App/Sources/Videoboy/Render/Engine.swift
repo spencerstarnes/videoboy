@@ -56,6 +56,9 @@ final class Engine {
     /// Bus effects, one chain per sub-mix (SPEC 2's `bus FX`). The composite codec is
     /// the analog character; echo and feedback sit after it.
     private(set) var compositeCodec: CompositeCodecNode!
+    /// Every channel's own copy of the effect chain, in signal order.
+    private(set) var channelEffects: [String: [Node]] = [:]
+
     private(set) var colour: ColourControlNode!
     private(set) var echo: EchoNode!
     private(set) var feedback: FeedbackNode!
@@ -165,10 +168,46 @@ final class Engine {
         graph.add(subMixTwo)
         graph.add(primary)
 
-        graph.connect(from: GraphTopology.sourceA, to: GraphTopology.subMixOne, inputIndex: 0)
-        graph.connect(from: GraphTopology.sourceB, to: GraphTopology.subMixOne, inputIndex: 1)
-        graph.connect(from: GraphTopology.sourceC, to: GraphTopology.subMixTwo, inputIndex: 0)
-        graph.connect(from: GraphTopology.sourceD, to: GraphTopology.subMixTwo, inputIndex: 1)
+        // PER-CHANNEL FX (SPEC 2's chFX). Each channel gets its own copy of every
+        // effect, between its source and the sub-mix, so an effect can be applied to
+        // A without also applying it to B.
+        //
+        // These do not replace the bus copies downstream of the mix — they sit
+        // alongside them, and that is what makes the card's A / B / BOTH selector
+        // honest: A and B address these, BOTH addresses the bus copy, which affects
+        // both channels because it runs after they are mixed. One pass instead of
+        // two, and genuinely "both" rather than "two things set to the same value".
+        //
+        // Affordable, and measured rather than assumed: one chain is 1.54 ms and all
+        // four channels come to 6.17 ms of a 33.4 ms frame (PerChannelCostBenchmark).
+        // Idle cost is lower still, because every one of these returns its input
+        // untouched while bypassed.
+        for (letter, subMix, index) in [
+            ("A", GraphTopology.subMixOne, 0), ("B", GraphTopology.subMixOne, 1),
+            ("C", GraphTopology.subMixTwo, 0), ("D", GraphTopology.subMixTwo, 1)
+        ] {
+            let source = Engine.slot(forChannel: letter)
+            var upstream = source
+
+            let colour = ColourControlNode(
+                identifier: Engine.channelSlot(letter, "colour"), context: metal)
+            let composite = CompositeCodecNode(
+                identifier: Engine.channelSlot(letter, "composite"), context: metal)
+            let echo = EchoNode(
+                identifier: Engine.channelSlot(letter, "echo"), context: metal)
+            let feedbackNode = FeedbackNode(
+                identifier: Engine.channelSlot(letter, "feedback"), context: metal)
+            let mx1Node = MX1EffectNode(
+                identifier: Engine.channelSlot(letter, "mx1"), context: metal)
+
+            for node in [colour, composite, echo, feedbackNode, mx1Node] as [Node] {
+                graph.add(node)
+                graph.connect(from: upstream, to: node.identifier, inputIndex: 0)
+                upstream = node.identifier
+            }
+            channelEffects[letter] = [colour, composite, echo, feedbackNode, mx1Node]
+            graph.connect(from: upstream, to: subMix, inputIndex: index)
+        }
         // Bus FX on ONE, in order: composite codec, then echo, then feedback. The
         // codec runs first on purpose — the analog character should be applied to the
         // picture, and the trails and loop then act on the already-degraded signal,
@@ -289,6 +328,9 @@ final class Engine {
         // zero so there is nothing to see until someone moves a fader.
         for letter in ["A", "B", "C", "D"] {
             registry.setValue(0, slot: Engine.slot(forChannel: letter), code: .wetDry)
+            for node in channelEffects[letter] ?? [] {
+                registry.setValue(0, slot: node.identifier, code: .wetDry)
+            }
         }
         Log.info(.graph, "graph built: \(graph.nodeCount) nodes, max latency \(graph.maximumLatencyInFrames) frames")
     }
@@ -302,6 +344,11 @@ final class Engine {
     /// Slot names for the bus effects and the extra sources, so mappings and
     /// templates can address them by a stable name.
     static let compositeSlot = "fx.one.composite"
+    /// A per-channel effect's slot name: `fx.a.colour`, `fx.d.mx1`.
+    static func channelSlot(_ letter: String, _ effect: String) -> String {
+        "fx.\(letter.lowercased()).\(effect)"
+    }
+
     static let colourSlot = "fx.one.colour"
     static let echoSlot = "fx.one.echo"
     static let feedbackSlot = "fx.one.feedback"
@@ -445,6 +492,18 @@ final class Engine {
         subMixTwo.applyParameters(from: registry)
         primary.applyParameters(from: registry)
         compositeCodec.applyParameters(from: registry)
+        for nodes in channelEffects.values {
+            for node in nodes {
+                switch node {
+                case let n as ColourControlNode: n.applyParameters(from: registry)
+                case let n as CompositeCodecNode: n.applyParameters(from: registry)
+                case let n as EchoNode: n.applyParameters(from: registry)
+                case let n as FeedbackNode: n.applyParameters(from: registry)
+                case let n as MX1EffectNode: n.applyParameters(from: registry)
+                default: break
+                }
+            }
+        }
         colour.applyParameters(from: registry)
         echo.applyParameters(from: registry)
         feedback.applyParameters(from: registry)

@@ -333,8 +333,12 @@ final class EffectChainPanelBody: NSView {
         // Individual parameters are still individually mappable: hold Shift and click
         // any fader. That gesture arrived after these badges did and quietly made the
         // per-parameter column redundant.
+        // The selector does NOT go in the header. Three segments beside a grip, a
+        // name, a switch and a close button collapsed the effect's name to an
+        // ellipsis in a column this narrow — and a card you cannot identify is worse
+        // than one whose selector costs a row. It joins the badges on the line below,
+        // which is already there and has room.
         var headerViews: [NSView] = [grip, nameLabel]
-        if let channelSelector { headerViews.append(channelSelector) }
         headerViews.append(Controls.spacer())
         if !effect.isImplemented {
             let note = Controls.label("not built", font: Theme.Font.tinyLabel,
@@ -354,6 +358,15 @@ final class EffectChainPanelBody: NSView {
         var modulationRow: NSView?
         if effect.isImplemented {
             var badges: [NSView] = []
+            if let channelSelector {
+                badges.append(channelSelector)
+                // A gap, or BOTH runs straight into MIDI and the two controls read as
+                // one run-on string.
+                let gap = NSView()
+                gap.translatesAutoresizingMaskIntoConstraints = false
+                gap.widthAnchor.constraint(equalToConstant: 8).isActive = true
+                badges.append(gap)
+            }
             for source in ModulationSource.allCases {
                 let button = Controls.mappingBadgeButton(
                     source.badge,
