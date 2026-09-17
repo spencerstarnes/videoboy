@@ -353,6 +353,11 @@ enum Theme {
 
         /// On air. Red means this everywhere in broadcast, and it is not used for
         /// anything else in this window.
+        /// The span between a fader's two sweep marks. Yellow because nothing else
+        /// on a fader is — it has to read as "this one is moving on its own" at a
+        /// glance, across a row of faders that are not.
+        static let sweepMark = NSColor(srgbRed: 0xf2 / 255.0, green: 0xc8 / 255.0, blue: 0x2c / 255.0, alpha: 0.85)
+
         /// What a FOCUS control turns when it is the one receiving your next action.
         ///
         /// Louder than the plain bus tint: focus is a state you need to read across

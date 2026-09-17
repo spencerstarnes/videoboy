@@ -85,6 +85,52 @@ final class VBFader: NSControl {
     /// is which: that is the whole point of param codes, and it means shift-detect
     /// works on a fader without the panel having to know about detect at all.
     var mappingSlot: String?
+
+    // MARK: Sweep marks
+    //
+    // Command-shift click marks an IN point, a second marks an OUT, and the fader
+    // then plays itself between the two on the clock. Command-shift rather than plain
+    // shift because shift alone already means "arm this for detect" — the two
+    // gestures live on the same control and must not collide.
+
+    /// The first mark, if one has been set.
+    private(set) var sweepFirst: Double?
+    /// The second mark. Both present means the sweep is armed.
+    private(set) var sweepSecond: Double?
+
+    /// The armed sweep, if there is one.
+    var sweep: ParameterSweep? {
+        guard let first = sweepFirst, let second = sweepSecond else { return nil }
+        let candidate = ParameterSweep(
+            first: first, second: second,
+            beatsPerCycle: SweepRate.beatsPerCycle(sweepRate) ?? 4)
+        return candidate.isUsable ? candidate : nil
+    }
+
+    /// Which rung of the shared ladder the sweep runs at.
+    var sweepRate: PlaybackTiming = .stepped(subdivision: .whole, frames: 1) {
+        didSet { onSweepChanged?() }
+    }
+
+    /// Called whenever the marks or the rate change, so the row can show or hide its
+    /// STEP key and the controller can start or stop driving this fader.
+    var onSweepChanged: (() -> Void)?
+
+    /// Every fader beneath a view, for finding the armed ones.
+    static func all(in view: NSView) -> [VBFader] {
+        var found: [VBFader] = []
+        if let fader = view as? VBFader { found.append(fader) }
+        return found + view.subviews.flatMap { all(in: $0) }
+    }
+
+    /// Clears both marks.
+    func clearSweep() {
+        guard sweepFirst != nil || sweepSecond != nil else { return }
+        sweepFirst = nil
+        sweepSecond = nil
+        needsDisplay = true
+        onSweepChanged?()
+    }
     var mappingCode: ParamCode?
 
     /// Called when the fader is shift-clicked while detect is available.
@@ -205,6 +251,23 @@ final class VBFader: NSControl {
 
     // MARK: - Drawing
 
+    /// First command-shift click sets the in point, the second sets the out point,
+    /// and a third starts again — so the gesture that arms a sweep is also the one
+    /// that re-aims it, with no separate clear to remember.
+    private func markSweepPoint(at point: NSPoint) {
+        let position = valueForPoint(point)
+        if sweepFirst == nil {
+            sweepFirst = position
+        } else if sweepSecond == nil {
+            sweepSecond = position
+        } else {
+            sweepFirst = position
+            sweepSecond = nil
+        }
+        needsDisplay = true
+        onSweepChanged?()
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let track = trackRect
         let radius = trackHeight / 2
@@ -216,6 +279,31 @@ final class VBFader: NSControl {
         Theme.Color.faderTrack.withAlphaComponent(
             Theme.Color.faderTrack.alphaComponent * dimmed).setFill()
         trackPath.fill()
+
+        // The sweep marks, drawn over the track and under everything else. A single
+        // mark shows as a tick — the gesture is half finished and should look it —
+        // and a pair fills the span between them.
+        if let first = sweepFirst {
+            func x(_ v: Double) -> CGFloat {
+                let span = maximum - minimum
+                let fraction = span > 0 ? (v - minimum) / span : 0
+                return track.minX + track.width * CGFloat(min(max(fraction, 0), 1))
+            }
+            Theme.Color.sweepMark.withAlphaComponent(
+                Theme.Color.sweepMark.alphaComponent * dimmed).setFill()
+            if let second = sweepSecond {
+                let from = min(x(first), x(second))
+                let to = max(x(first), x(second))
+                NSBezierPath(
+                    roundedRect: NSRect(x: from, y: track.minY, width: to - from, height: track.height),
+                    xRadius: radius, yRadius: radius
+                ).fill()
+            } else {
+                NSBezierPath(rect: NSRect(
+                    x: x(first) - 1, y: track.minY - 2,
+                    width: 2, height: track.height + 4)).fill()
+            }
+        }
 
         if let leadingTint, let trailingTint {
             NSGraphicsContext.saveGraphicsState()
@@ -334,6 +422,15 @@ final class VBFader: NSControl {
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
 
+        // Command-shift marks a sweep point. Checked BEFORE plain shift, because a
+        // command-shift click also contains shift and would otherwise be swallowed by
+        // detect-arming — the more specific gesture has to win.
+        if event.modifierFlags.contains(.command), event.modifierFlags.contains(.shift),
+           mappingSlot != nil, mappingCode != nil {
+            markSweepPoint(at: convert(event.locationInWindow, from: nil))
+            return
+        }
+
         // Shift-click arms a mapping instead of moving the fader. Holding shift
         // already highlights every mappable control, so this is the second half of
         // the same gesture (SPEC 7).
@@ -366,11 +463,19 @@ final class VBFader: NSControl {
     }
 
     /// Sets the value from a point in this view's coordinates and fires the action.
+    /// Where a point on the track sits in value terms. Shared by dragging and by
+    /// sweep marking so the two cannot disagree about where a click landed.
+    private func valueForPoint(_ point: NSPoint) -> Double {
+        let track = trackRect
+        guard track.width > 0 else { return value }
+        let fraction = Double((point.x - track.minX) / track.width)
+        return minimum + min(max(fraction, 0), 1) * (maximum - minimum)
+    }
+
     private func setValue(fromPoint point: NSPoint) {
         let track = trackRect
         guard track.width > 0 else { return }
-        let fraction = Double((point.x - track.minX) / track.width)
-        let newValue = minimum + min(max(fraction, 0), 1) * (maximum - minimum)
+        let newValue = valueForPoint(point)
         guard newValue != value else { return }
         value = newValue
         sendAction(action, to: target)

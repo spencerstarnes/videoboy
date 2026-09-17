@@ -976,6 +976,12 @@ final class ShellController {
             // than a separate enable flag threaded through every node.
             self?.setEffectEnabled(name, isOn, bus: .one)
         }
+        shell.grid.panels.effectsOneBody.onSweepsChanged = { [weak self] in
+            self?.refreshArmedSweeps()
+        }
+        shell.grid.panels.effectsTwoBody.onSweepsChanged = { [weak self] in
+            self?.refreshArmedSweeps()
+        }
         shell.grid.panels.effectsOneBody.onCardChannelChanged = { [weak self] name, index in
             self?.cardChannelChanged(name, index, bus: .one)
         }
@@ -1178,6 +1184,54 @@ final class ShellController {
         let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
         panel.restoreEffect(named: name)
         Log.info(.graph, "\(name) added to bus \(bus == .one ? "ONE" : "TWO")")
+    }
+
+    /// Drives every armed fader sweep, once a frame.
+    ///
+    /// A fader with two marks stops being a control you hold and becomes one that
+    /// plays itself between them on the clock. The fader owns the marks and the rate;
+    /// this owns the clock and the registry, which is the only thing that has both.
+    ///
+    /// Writes through the SAME path a drag does — the panel's onParameterChanged
+    /// closure — so a swept parameter and a dragged one cannot end up taking
+    /// different routes into the engine.
+    private func driveSweeps(from engine: Engine) {
+        guard !armedSweeps.isEmpty else { return }
+        guard engine.transport.isRunning else { return }
+        let beats = engine.transport.beats(atHostTime: CACurrentMediaTime())
+
+        for entry in armedSweeps {
+            guard let fader = entry.fader, let sweep = fader.sweep else { continue }
+            let value = sweep.value(atBeats: beats)
+            guard abs(value - fader.value) > 0.0005 else { continue }
+            fader.value = value
+            entry.write(value)
+        }
+    }
+
+    /// Every fader currently carrying a sweep, with how to write its value.
+    private var armedSweeps: [(fader: VBFader?, write: (Double) -> Void)] = []
+
+    /// Rebuilds the list of armed faders. Called when any panel reports a change
+    /// rather than rebuilt every frame, since arming is a gesture and frames are not.
+    private func refreshArmedSweeps() {
+        var found: [(fader: VBFader?, write: (Double) -> Void)] = []
+        let panels: [(EffectChainPanelBody, Bus)] = [
+            (shell.grid.panels.effectsOneBody, .one),
+            (shell.grid.panels.effectsTwoBody, .two)
+        ]
+        for (panel, _) in panels {
+            for fader in VBFader.all(in: panel) where fader.sweep != nil {
+                guard let code = fader.mappingCode else { continue }
+                // The panel's OWN closure — the identical route a drag takes — so a
+                // swept parameter and a dragged one cannot diverge.
+                found.append((fader, { [weak panel] value in
+                    panel?.onParameterChanged?(code.rawValue, value)
+                }))
+            }
+        }
+        armedSweeps = found
+        Log.info(.param, "\(found.count) fader sweep(s) armed")
     }
 
     /// Moves the beat lights, every frame, but only repaints when the beat changes.
@@ -1710,6 +1764,7 @@ final class ShellController {
         updateFadesAndCuts(from: engine)
         updateScopes(from: engine)
         updateBeatLights(from: engine)
+        driveSweeps(from: engine)
 
         // The status and transport readouts are cheap, but not free; once a second is
         // plenty for a human reading them, and it keeps text redraw off the hot path.

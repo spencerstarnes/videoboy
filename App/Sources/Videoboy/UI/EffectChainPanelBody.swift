@@ -158,6 +158,10 @@ final class EffectChainPanelBody: NSView {
     /// Called when the chain is reordered, with the new top-to-bottom name order.
     var onReordered: (([String]) -> Void)?
 
+    /// Called when any fader in this panel gains or loses a sweep, so the controller
+    /// can start or stop driving it.
+    var onSweepsChanged: (() -> Void)?
+
     /// Called when an effect's ✕ is pressed.
     var onEffectRemoved: ((String) -> Void)?
 
@@ -405,7 +409,14 @@ final class EffectChainPanelBody: NSView {
             equalToConstant: Theme.Metrics.valueReadoutWidth).isActive = true
         value.identifier = NSUserInterfaceItemIdentifier("value|\(parameter.code)")
 
-        let topLine = Controls.row([label, Controls.spacer(), value], spacing: 5)
+        // The sweep's rate key, to the LEFT of the value, and only once a sweep is
+        // armed. A rate control on a fader with no marks would be a control for
+        // nothing, on the narrowest rows in the window.
+        let sweepKey = VBStepButton()
+        sweepKey.isHidden = true
+        sweepKey.toolTip = "How long one sweep between the marks takes"
+
+        let topLine = Controls.row([label, Controls.spacer(), sweepKey, value], spacing: 5)
 
         // Line 2 — the fader, full width. This is the whole reason for two lines.
         let fader = Controls.fader(
@@ -416,6 +427,18 @@ final class EffectChainPanelBody: NSView {
         if let code = ParamCode(rawValue: parameter.code) {
             fader.mappingCode = code
             fader.mappingSlot = mappingSlotForCode?(code)
+        }
+
+        // The key drives the fader's rate; the fader's marks decide whether the key
+        // is there at all. Each owns one half so neither has to ask the other.
+        sweepKey.onTimingChanged = { [weak fader] timing in
+            fader?.sweepRate = timing
+        }
+        sweepKey.setTiming(fader.sweepRate)
+        fader.onSweepChanged = { [weak self, weak fader, weak sweepKey] in
+            guard let fader, let sweepKey else { return }
+            sweepKey.isHidden = fader.sweep == nil
+            self?.onSweepsChanged?()
         }
 
         return [topLine, fader]

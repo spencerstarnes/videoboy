@@ -1129,6 +1129,111 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // FADER SWEEPS. Command-shift marks an in and an out on any mappable fader,
+        // and the fader then plays itself between them on the clock. Driven here
+        // through the real mouseDown with real modifier flags, not by setting the
+        // marks directly — the gesture has to survive sharing a control with
+        // shift-to-detect, which is the part most likely to go wrong.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1460, height: 912),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = shell
+            shell.layoutSubtreeIfNeeded()
+
+            let faders = VBFader.all(in: shell.grid.panels.effectsOneBody)
+                .filter { $0.mappingCode != nil && $0.isEnabled }
+
+            if let fader = faders.first {
+                func commandShiftClick(atFraction fraction: CGFloat) {
+                    let x = fader.bounds.minX + fader.bounds.width * fraction
+                    let point = fader.convert(NSPoint(x: x, y: fader.bounds.midY), to: nil)
+                    if let event = NSEvent.mouseEvent(
+                        with: .leftMouseDown, location: point,
+                        modifierFlags: [.command, .shift],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil,
+                        eventNumber: 0, clickCount: 1, pressure: 1) {
+                        fader.mouseDown(with: event)
+                    }
+                }
+
+                let before = fader.value
+                commandShiftClick(atFraction: 0.2)
+                check.record(AssertionResult(
+                    name: "command-shift marks a point instead of moving the fader",
+                    passed: fader.value == before && fader.sweep == nil,
+                    detail: fader.value == before
+                        ? "one mark set, fader did not jump"
+                        : "the fader moved — the gesture fell through to a drag"
+                ))
+
+                commandShiftClick(atFraction: 0.8)
+                let sweep = fader.sweep
+                check.record(AssertionResult(
+                    name: "a second command-shift click arms the sweep",
+                    passed: sweep != nil,
+                    detail: sweep.map {
+                        String(format: "%.2f...%.2f", $0.lower, $0.upper)
+                    } ?? "no sweep armed"
+                ))
+
+                // And it must actually move the parameter, through the same closure a
+                // drag writes through.
+                if let sweep {
+                    engine.setTransportRunning(true)
+                    var seen: Set<String> = []
+                    for beat in stride(from: 0.0, through: 4.0, by: 0.25) {
+                        seen.insert(String(format: "%.2f", sweep.value(atBeats: beat)))
+                    }
+                    check.record(AssertionResult(
+                        name: "an armed sweep travels between its marks",
+                        passed: seen.count > 6,
+                        detail: "\(seen.count) distinct values across one cycle"
+                    ))
+                    engine.setTransportRunning(false)
+                }
+
+                // A third click re-aims rather than leaving the old pair in place.
+                commandShiftClick(atFraction: 0.5)
+                check.record(AssertionResult(
+                    name: "a third click starts a new pair rather than sticking",
+                    passed: fader.sweep == nil,
+                    detail: fader.sweep == nil ? "back to one mark" : "the old pair survived"
+                ))
+
+                // Plain shift must still arm detect, not mark a sweep.
+                fader.clearSweep()
+                var detectAsked = false
+                fader.onDetectRequested = { _, _ in detectAsked = true }
+                let point = fader.convert(
+                    NSPoint(x: fader.bounds.midX, y: fader.bounds.midY), to: nil)
+                if let shiftOnly = NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: point, modifierFlags: [.shift],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil,
+                    eventNumber: 0, clickCount: 1, pressure: 1) {
+                    fader.mouseDown(with: shiftOnly)
+                }
+                check.record(AssertionResult(
+                    name: "plain shift still arms detect rather than marking a sweep",
+                    passed: detectAsked && fader.sweep == nil,
+                    detail: detectAsked
+                        ? "detect armed, no mark set"
+                        : "shift-click stopped arming detect — the two gestures collided"
+                ))
+            } else {
+                check.record(AssertionResult(
+                    name: "a mappable fader exists to sweep", passed: false,
+                    detail: "none found in the A/B chain"))
+            }
+
+            withExtendedLifetime(controller) {}
+        }
+
         // EVERY ENABLED EFFECT SWITCH MUST REACH THE ENGINE.
         //
         // Three controls on the corruptor card shipped dead this week — the enable
