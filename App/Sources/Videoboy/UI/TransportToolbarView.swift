@@ -37,21 +37,21 @@ final class TransportToolbarView: NSView {
     private var clockSourceName = "Internal"
     private var subdivisionName = "1/4"
 
-    /// Which codec recordings use.
-    private var codecPopUp: NSPopUpButton?
-
-    /// The codec currently chosen in the Record group.
+    /// The codec currently chosen, read off the cluster's format field.
     var selectedRecordCodec: FrameRecorder.Codec {
-        guard let title = codecPopUp?.titleOfSelectedItem,
-              let codec = FrameRecorder.Codec(rawValue: title) else { return .proRes422 }
-        return codec
+        FrameRecorder.Codec(rawValue: display.formatField.value) ?? .proRes422
     }
 
-    @objc private func recordCodecChanged(_ sender: NSPopUpButton) {
-        Log.info(.app, "recording codec is now \(sender.titleOfSelectedItem ?? "?")")
+    /// Advances the recording format. Three choices cycle; they do not need a menu.
+    private func cycleRecordFormat() {
+        let all = FrameRecorder.Codec.allCases
+        let index = all.firstIndex(where: { $0.rawValue == display.formatField.value }) ?? 0
+        let next = all[(index + 1) % all.count]
+        display.formatField.value = next.rawValue
+        Log.info(.app, "recording format is now \(next.rawValue)")
     }
 
-    /// The record button, top right.
+    /// The record key, which lives in the centre cluster with the transport.
     let recordButton = RecordButton(frame: .zero)
 
     /// Which panel groups are shown, split by the side they are on.
@@ -122,33 +122,13 @@ final class TransportToolbarView: NSView {
         detectButton.action = #selector(detectPressed)
         detectButton.toolTip = "Hold Shift to see every mappable control, then click one to map it"
 
-        // Record, top right. The codec and stream selection sit beside the button so
-        // the whole recording decision is in one place.
-        // ProRes only, because that is what AVAssetWriter encodes here and what a
-        // capture meant for editing wants. DV was on this list before anything could
-        // record at all; offering it now would be offering something that does not
-        // happen.
-        let codecPopUp = Controls.popUp(
-            FrameRecorder.Codec.allCases.map(\.rawValue),
-            target: self, action: #selector(recordCodecChanged(_:)))
-        self.codecPopUp = codecPopUp
-        // What is recorded is whatever is ARMED, chosen by the dots on the previews,
-        // so a second control naming a fixed combination would only disagree with
-        // them. It stays as a readout of what arming currently means.
-        let streamsPopUp = Controls.popUp(["Armed feeds"], enabled: false)
-        streamsPopUp.toolTip = "Recording follows the arming dots on each preview"
+        // Record is a key in the cluster now, not a corner button with two popups
+        // beside it. Arming is per-preview, so a popup naming a fixed combination of
+        // feeds could only disagree with the dots that actually decide.
         recordButton.translatesAutoresizingMaskIntoConstraints = false
         recordButton.target = self
         recordButton.action = #selector(recordPressed)
-        // Enabled even though the encoder is not built: arming and the
-        // transport-locked indicators are real and worth using, and pressing record
-        // says plainly what is missing rather than being inert with no explanation.
         recordButton.isEnabled = true
-
-        let recordGroup = Controls.row([
-            group("Record", Controls.row([codecPopUp, streamsPopUp], spacing: 4)),
-            recordButton
-        ], spacing: 8)
 
         // Panel show/hide, Resolve-style. A multi-select segmented control: each
         // segment is a group, selected means shown. One control rather than four
@@ -174,18 +154,21 @@ final class TransportToolbarView: NSView {
         playKey.action = #selector(playPressed)
         playKey.toolTip = "Play or stop the transport"
 
+        // The bar radiates from the middle. Panel buttons sit at both edges, the same
+        // distance from their side and from the centre — they were flipped before,
+        // with the control for the RIGHT-hand column over on the left. Everything
+        // that runs a performance moved into the cluster in the middle.
+        display.setTransportKeys([recordButton, playKey])
+        display.formatField.onClick = { [weak self] in self?.cycleRecordFormat() }
+
         let leftGroup = Controls.row([
-            group("Panels", panelsLeftControl),
-            separator(),
-            playKey
+            group("Panels", panelsLeftControl)
         ], spacing: 10)
 
         let rightGroup = Controls.row([
             group("Detect", detectButton),
             separator(),
-            group("Panels", panelsRightControl),
-            separator(),
-            recordGroup
+            group("Panels", panelsRightControl)
         ], spacing: 10)
 
         leftGroup.translatesAutoresizingMaskIntoConstraints = false

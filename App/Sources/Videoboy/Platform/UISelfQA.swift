@@ -702,6 +702,55 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // The step key's ladder. The sequence is the whole feature, so it is walked
+        // rather than assumed: click goes toward faster, control-click toward slower,
+        // and STEP sits between the two halves.
+        do {
+            let key = VBStepButton()
+            var seen: [String] = []
+            key.onTimingChanged = { _ in }
+
+            func click(_ times: Int, control: Bool) {
+                for _ in 0..<times {
+                    let event = NSEvent.mouseEvent(
+                        with: .leftMouseDown, location: .zero,
+                        modifierFlags: control ? [.control] : [],
+                        timestamp: 0, windowNumber: 0, context: nil,
+                        eventNumber: 0, clickCount: 1, pressure: 1)
+                    if let event { key.mouseDown(with: event) }
+                    seen.append(key.timing.displayName)
+                }
+            }
+
+            click(6, control: false)
+            let forward = seen
+            check.record(AssertionResult(
+                name: "clicking the step key walks toward faster and returns to STEP",
+                passed: forward == ["1/1", "1/2", "1/4", "1/8", "1/16", "STEP"],
+                detail: forward.joined(separator: " → ")
+            ))
+
+            seen.removeAll()
+            click(4, control: true)
+            let backward = seen
+            check.record(AssertionResult(
+                name: "control-clicking walks toward slower and returns to STEP",
+                passed: backward == ["2/1", "4/1", "8/1", "STEP"],
+                detail: backward.joined(separator: " → ")
+            ))
+
+            // And from a rung, the other direction comes back the way you came
+            // rather than jumping across to the far half.
+            seen.removeAll()
+            click(3, control: false)      // 1/1, 1/2, 1/4
+            click(1, control: true)       // should be 1/2 again
+            check.record(AssertionResult(
+                name: "the other direction retraces the ladder rather than jumping",
+                passed: seen.last == "1/2",
+                detail: seen.joined(separator: " → ")
+            ))
+        }
+
         return check.finish()
     }
 

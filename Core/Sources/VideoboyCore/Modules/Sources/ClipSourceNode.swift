@@ -30,30 +30,54 @@ import Metal
 public enum PlaybackTiming: Equatable, Codable, Sendable {
     /// Normal playback, retimed to the project clock.
     case continuous
-    /// Advance `frames` every `subdivision`, and hold in between.
-    case stepped(subdivision: Subdivision, frames: Int)
-
-    /// The step presets offered in the shuttle, from slowest to fastest.
+    /// Advance `frames` once every `every` × `subdivision`, and hold in between.
     ///
-    /// Spread across subdivision AND step size on purpose: 1 frame per beat and 4
-    /// frames per beat are musically different ideas, not the same idea twice.
-    public static let presets: [PlaybackTiming] = [
-        .stepped(subdivision: .whole, frames: 1),        // one frame per bar
-        .stepped(subdivision: .half, frames: 1),         // one frame per two beats
-        .stepped(subdivision: .quarter, frames: 1),      // one frame per beat
-        .stepped(subdivision: .eighth, frames: 1),       // half time
-        .stepped(subdivision: .sixteenth, frames: 1),    // quarter time
-        .stepped(subdivision: .quarter, frames: 2),      // double
-        .stepped(subdivision: .quarter, frames: 4)       // quad
+    /// `every` exists so the ladder can reach BELOW one bar per frame — 2/1, 4/1 and
+    /// 8/1 on the shuttle mean one frame every two, four or eight bars. `Subdivision`
+    /// stops at a whole note, and a hold that long is the slowest, most deliberate
+    /// end of step playback rather than an edge case.
+    case stepped(subdivision: Subdivision, frames: Int, every: Int)
+
+    /// The common form: once per subdivision.
+    ///
+    /// A static function shadowing the case, so the many call sites that never wanted
+    /// a multiple read exactly as they did before.
+    public static func stepped(subdivision: Subdivision, frames: Int) -> PlaybackTiming {
+        .stepped(subdivision: subdivision, frames: frames, every: 1)
+    }
+
+    /// Every rung of the shuttle's ladder, slowest first.
+    ///
+    /// Numark's rule: the button reads STEP when it is off, clicking walks toward
+    /// faster, and control-clicking walks toward slower. One ladder, two directions,
+    /// with "off" sitting between the two halves.
+    public static let slowLadder: [PlaybackTiming] = [
+        .stepped(subdivision: .whole, frames: 1, every: 2),  // 2/1 — a frame every two bars
+        .stepped(subdivision: .whole, frames: 1, every: 4),  // 4/1
+        .stepped(subdivision: .whole, frames: 1, every: 8)   // 8/1
     ]
 
-    /// Short label for the shuttle's picker.
+    public static let fastLadder: [PlaybackTiming] = [
+        .stepped(subdivision: .whole, frames: 1),      // 1/1 — a frame a bar
+        .stepped(subdivision: .half, frames: 1),       // 1/2
+        .stepped(subdivision: .quarter, frames: 1),    // 1/4
+        .stepped(subdivision: .eighth, frames: 1),     // 1/8
+        .stepped(subdivision: .sixteenth, frames: 1)   // 1/16
+    ]
+
+    /// Kept for anything that still wants a flat list of the stepped options.
+    public static let presets: [PlaybackTiming] = slowLadder.reversed() + fastLadder
+
+    /// Short label, as it reads on the shuttle button.
     public var displayName: String {
         switch self {
         case .continuous:
-            return "Live"
-        case .stepped(let subdivision, let frames):
-            return frames == 1 ? subdivision.rawValue : "\(subdivision.rawValue)×\(frames)"
+            return "STEP"
+        case .stepped(let subdivision, let frames, let every):
+            // A multiple reads as a ratio the other way round: 2/1 is two bars per
+            // frame, which is how a DJ deck labels the slow end.
+            let name = every > 1 ? "\(every)/1" : subdivision.rawValue
+            return frames == 1 ? name : "\(name)×\(frames)"
         }
     }
 
@@ -62,9 +86,12 @@ public enum PlaybackTiming: Equatable, Codable, Sendable {
         switch self {
         case .continuous:
             return "Normal playback, retimed to the project rate."
-        case .stepped(let subdivision, let frames):
+        case .stepped(let subdivision, let frames, let every):
             let plural = frames == 1 ? "frame" : "frames"
-            return "Advance \(frames) \(plural) every \(subdivision.rawValue) note, holding in between."
+            let unit = every > 1
+                ? "\(every) bars"
+                : "\(subdivision.rawValue) note"
+            return "Advance \(frames) \(plural) every \(unit), holding in between."
         }
     }
 
@@ -72,7 +99,7 @@ public enum PlaybackTiming: Equatable, Codable, Sendable {
     public var beatsPerStep: Double? {
         switch self {
         case .continuous: nil
-        case .stepped(let subdivision, _): subdivision.beats
+        case .stepped(let subdivision, _, let every): subdivision.beats * Double(max(every, 1))
         }
     }
 
@@ -80,7 +107,7 @@ public enum PlaybackTiming: Equatable, Codable, Sendable {
     public var framesPerStep: Int {
         switch self {
         case .continuous: 0
-        case .stepped(_, let frames): frames
+        case .stepped(_, let frames, _): frames
         }
     }
 }
@@ -287,9 +314,8 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// miss a boundary entirely between two render frames. Comparing which step
     /// interval we are in does neither.
     func advanceIfBoundaryCrossed(
-        totalBeats: Double, subdivision: Subdivision, frames: Int, frameCount: Int
+        totalBeats: Double, beatsPerStep: Double, frames: Int, frameCount: Int
     ) {
-        let beatsPerStep = subdivision.beats
         guard beatsPerStep > 0, frameCount > 0 else { return }
 
         let currentInterval = (totalBeats / beatsPerStep).rounded(.down)
@@ -398,15 +424,19 @@ public final class ClipSourceNode: Node, DataEffectProvider {
                     (clipDecoder.frameRate / StandardDefinition.frameRate) * playbackSpeed
                 advancePlayhead(by: sourceFramesPerProjectFrame, frameCount: clipDecoder.frameCount)
 
-            case .stepped(let subdivision, let frames):
-                // Hold the frame, and jump only when a subdivision boundary is
-                // crossed. With the transport stopped there are no boundaries, so a
-                // stepped clip simply holds — which is right: its timing comes from
-                // the music, and there is no music.
-                if let position = renderContext.musicalPosition {
+            case .stepped(_, let frames, _):
+                // Hold the frame, and jump only when a boundary is crossed. With the
+                // transport stopped there are no boundaries, so a stepped clip simply
+                // holds — which is right: its timing comes from the music, and there
+                // is no music.
+                //
+                // The interval comes from `beatsPerStep`, which already folds the bar
+                // multiple in, so 2/1 and 1/2 travel the same code path.
+                if let position = renderContext.musicalPosition,
+                   let beatsPerStep = timing.beatsPerStep {
                     advanceIfBoundaryCrossed(
                         totalBeats: position.totalBeats,
-                        subdivision: subdivision,
+                        beatsPerStep: beatsPerStep,
                         frames: frames,
                         frameCount: clipDecoder.frameCount
                     )

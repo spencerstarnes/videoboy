@@ -33,6 +33,26 @@ final class TransportDisplayView: NSView {
     /// Tap tempo, which sits inside the readout beside the number it sets.
     private let tapButton = VBTransportButton(glyph: "TAP")
 
+    /// The transport keys, filled in by the toolbar which owns record and play.
+    private let transportKeys = NSStackView()
+
+    /// Puts the record and play keys into the cluster, left of Tap.
+    ///
+    /// They are owned by the toolbar because that is where their callbacks live, but
+    /// they belong in the middle of the window with the rest of the transport.
+    func setTransportKeys(_ keys: [NSView]) {
+        for view in transportKeys.arrangedSubviews {
+            transportKeys.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        for key in keys { transportKeys.addArrangedSubview(key) }
+        transportKeys.addArrangedSubview(tapButton)
+    }
+
+    /// The recording format, cycled rather than picked from a popup — three choices
+    /// do not earn a menu, and a menu does not belong in the top pane at all.
+    let formatField = CyclingField(caption: "FMT", value: "ProRes 422")
+
     @objc private func tapPressed() {
         // A brief light on the key, so a tap that lands is visibly acknowledged —
         // otherwise the only feedback is the tempo moving, which it does not do
@@ -94,7 +114,13 @@ final class TransportDisplayView: NSView {
             Controls.row(beatLights, spacing: 3)
         ], spacing: 3)
 
-        let settingsColumn = Controls.column([clockField, subdivisionField], spacing: 2)
+        transportKeys.orientation = .horizontal
+        transportKeys.spacing = 4
+        transportKeys.alignment = .centerY
+        setTransportKeys([])
+
+        let settingsColumn = Controls.column(
+            [clockField, subdivisionField, formatField], spacing: 2)
 
         // Tap lives INSIDE the readout, beside the number it sets. It was a plain
         // button out in the toolbar, next to things it has nothing to do with; tap
@@ -103,8 +129,13 @@ final class TransportDisplayView: NSView {
         tapButton.action = #selector(tapPressed)
         tapButton.toolTip = "Tap four times to set the tempo"
 
+        // Everything that runs a performance lives in this cluster, and it reads
+        // outward from the middle: the transport keys, then what they are locked to,
+        // then how it is being captured. The record key sits beside play because they
+        // are the pair you reach for, and the format beside them because it is the
+        // one thing you set before you press record and never during.
         let row = Controls.row([
-            tapButton,
+            transportKeys,
             tempoColumn,
             divider(),
             settingsColumn,
@@ -166,7 +197,7 @@ final class TransportDisplayView: NSView {
 }
 
 /// A caption above a value, where clicking the value advances it.
-private final class CyclingField: NSControl, AuditableControl {
+final class CyclingField: NSControl, AuditableControl {
 
     /// Clicking cycles the value, so being wired means having somewhere to report to.
     var isWiredForAudit: Bool { onClick != nil }

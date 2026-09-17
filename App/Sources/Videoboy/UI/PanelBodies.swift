@@ -29,7 +29,7 @@ final class SourcePanelBody: NSView {
     private var generatorPopUp: NSPopUpButton?
     /// The shuttle scrub track. Exposed so the shell can give it a mapping address.
     private(set) var scrubFader: VBFader?
-    private var timingPopUp: NSPopUpButton?
+    private var stepButton: VBStepButton?
 
     /// Loads a file into this channel. Wired by the app; nil until then.
     var onLoadRequested: (() -> Void)?
@@ -161,22 +161,20 @@ final class SourcePanelBody: NSView {
         )
         self.generatorPopUp = generatorPopUp
 
-        // Step playback: hold each frame until the next musical subdivision, so a
-        // clip becomes a slideshow locked to the beat. "Live" is ordinary playback.
-        let timingPopUp = Controls.popUp(
-            ["Live"] + PlaybackTiming.presets.map(\.displayName),
-            target: self, action: #selector(timingChanged(_:))
-        )
-        timingPopUp.toolTip = "Playback timing — hold each frame until the next beat subdivision"
-        for (index, preset) in PlaybackTiming.presets.enumerated() {
-            timingPopUp.item(at: index + 1)?.toolTip = preset.explanation
+        // Step playback on a DJ deck's rules: one key, not a menu. The rates are a
+        // ladder you walk by feel while watching the picture, and opening a popup to
+        // do that takes your eyes off the thing you are timing against.
+        let stepButton = VBStepButton()
+        stepButton.onTimingChanged = { [weak self] timing in
+            self?.onTimingChanged?(timing)
         }
-        self.timingPopUp = timingPopUp
+        self.stepButton = stepButton
 
         let stepRow = Controls.row([
             Controls.label("Step", font: Theme.Font.tinyLabel,
                            color: Theme.Color.textTertiary, holdsWidth: true),
-            timingPopUp
+            stepButton,
+            Controls.spacer()
         ], spacing: 4)
 
         let sourceRow = Controls.column([
@@ -229,16 +227,6 @@ final class SourcePanelBody: NSView {
 
     @objc private func scrubbed(_ sender: VBFader) {
         onScrub?(sender.value)
-    }
-
-    @objc private func timingChanged(_ sender: NSPopUpButton) {
-        // Item 0 is Live; the rest are the step presets in order.
-        let index = sender.indexOfSelectedItem
-        let timing: PlaybackTiming = (index <= 0 || index - 1 >= PlaybackTiming.presets.count)
-            ? .continuous
-            : PlaybackTiming.presets[index - 1]
-        Log.info(.dv, "playback timing on \(channel): \(timing.displayName)")
-        onTimingChanged?(timing)
     }
 
     @objc private func loopModeChanged(_ sender: NSSegmentedControl) {
