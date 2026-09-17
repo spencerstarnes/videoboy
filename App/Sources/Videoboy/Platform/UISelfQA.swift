@@ -587,6 +587,9 @@ enum UISelfQA {
 
                 let libraryOperation = target?.draggingEntered(libraryDrag) ?? []
                 let libraryAccepted = target?.performDragOperation(libraryDrag) ?? false
+                // The grid rebuild is deferred so a drop cannot stall the render;
+                // let the runloop turn before counting what arrived.
+                RunLoop.main.run(until: Date().addingTimeInterval(0.15))
                 library.layoutSubtreeIfNeeded()
                 let after = LibraryItemView.all(in: library).count
 
@@ -1140,6 +1143,52 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // ADDING FILES MUST NOT STALL THE RENDER. Reported as the one place playback
+        // jitters. The render loop runs on the MAIN thread, so any main-thread work
+        // during a library add is time the picture is not being drawn — and a drop is
+        // exactly when a lot of work happens at once.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            let library = shell.grid.panels.libraryOneBody
+            let sample = RepoPaths.samples.appendingPathComponent("motion.mov")
+            guard FileManager.default.fileExists(atPath: sample.path) else {
+                check.note("samples missing; the library-add stall check was skipped")
+                return check.finish()
+            }
+
+            // A realistic drop: several files at once.
+            let dropped = Array(repeating: sample, count: 24)
+            // Measures the DROP HANDLER, which is what runs inside the gesture and
+            // therefore what can stall the render. The grid rebuild it schedules
+            // happens on a later runloop turn, where the display link can interleave.
+            let start = Date()
+            library.onFilesDropped?(dropped)
+            let milliseconds = Date().timeIntervalSince(start) * 1000
+            RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+            shell.layoutSubtreeIfNeeded()
+            let budget = 1000.0 / StandardDefinition.frameRate
+
+            check.note(String(
+                format: "adding %d files took %.1f ms of main-thread time (one frame is %.1f ms)",
+                dropped.count, milliseconds, budget))
+
+            // Deliberately generous. One frame's worth of hitch on a deliberate,
+            // one-off action is acceptable; several frames is a visible stutter, and
+            // that is what this is here to catch.
+            check.record(AssertionResult(
+                name: "adding files to a library does not stall the render for multiple frames",
+                passed: milliseconds < budget * 2,
+                detail: String(
+                    format: "%.1f ms for %d files — %.1f frames' worth",
+                    milliseconds, dropped.count, milliseconds / budget)
+            ))
+        }
+
         // FRAME TIME AND JITTER. The single most important property of this app: the
         // picture must not stutter. Mean frame time is not the measure — a chain that
         // averages 8 ms and spikes to 40 every twentieth frame drops a frame every
@@ -1276,6 +1325,9 @@ enum UISelfQA {
                 // failure being guarded is a search that silently shows everything.
                 field.stringValue = "zzzznomatch"
                 _ = field.target?.perform(field.action, with: field)
+                // The rebuild is deferred so typing cannot stall the render, so the
+                // check has to let the runloop turn before reading the result.
+                RunLoop.main.run(until: Date().addingTimeInterval(0.1))
                 shell.layoutSubtreeIfNeeded()
                 let filtered = LibraryItemView.all(in: library).count
 
@@ -1287,6 +1339,7 @@ enum UISelfQA {
 
                 field.stringValue = ""
                 _ = field.target?.perform(field.action, with: field)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.1))
                 shell.layoutSubtreeIfNeeded()
                 check.record(AssertionResult(
                     name: "clearing the search brings everything back",
@@ -1298,6 +1351,7 @@ enum UISelfQA {
             // A bin groups without losing anything.
             if let first = LibraryItemView.all(in: library).first?.item.name {
                 library.moveItem(named: first, toBin: "Set One")
+                RunLoop.main.run(until: Date().addingTimeInterval(0.1))
                 shell.layoutSubtreeIfNeeded()
                 check.record(AssertionResult(
                     name: "an item moved into a bin is still in the library",

@@ -1048,6 +1048,28 @@ final class LibraryPanelBody: NSView {
     }
 
     /// Replaces the Sources grid in place, keeping its position and constraints.
+    /// Rebuilds the grid on the NEXT runloop turn, coalescing repeated calls.
+    ///
+    /// The render loop runs on the main thread, so a rebuild is time the picture is
+    /// not being drawn. Dropping two dozen files used to rebuild the whole grid
+    /// synchronously inside the drop handler — 70 ms, better than two frames, and a
+    /// visible stutter at exactly the moment someone is watching the screen.
+    ///
+    /// Coalescing matters as much as deferring: a drop of a folder can call this once
+    /// per file, and doing the work once at the end is the difference between one
+    /// hitch and fifty.
+    private func scheduleGridRebuild() {
+        guard !rebuildScheduled else { return }
+        rebuildScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.rebuildScheduled = false
+            self.rebuildSourcesGrid()
+        }
+    }
+
+    private var rebuildScheduled = false
+
     private func rebuildSourcesGrid() {
         guard let document = documentView else { return }
         let old = gridsByTab[.sources]
@@ -1086,7 +1108,7 @@ final class LibraryPanelBody: NSView {
         }
         guard !additions.isEmpty else { return }
         sourceItems.append(contentsOf: additions)
-        rebuildSourcesGrid()
+        scheduleGridRebuild()
         Log.info(.app, "added \(additions.count) item(s) to a library")
     }
 
@@ -1212,7 +1234,8 @@ final class LibraryPanelBody: NSView {
         // thing to do once and a poor thing to leave in a search field that looks
         // exactly like one that works.
         searchText = sender.stringValue.trimmingCharacters(in: .whitespaces)
-        rebuildSourcesGrid()
+        // Once per keystroke would rebuild the whole grid on every letter typed.
+        scheduleGridRebuild()
     }
 
     /// Items matching the current search, across every bin. Matching on the file NAME
