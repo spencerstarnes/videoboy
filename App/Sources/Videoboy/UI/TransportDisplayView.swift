@@ -224,11 +224,16 @@ final class CyclingField: NSControl, AuditableControl {
         layer?.cornerRadius = 3
         toolTip = "Click to change \(caption.lowercased())"
 
+        // CLOCK, DIV and FMT are REFERENCE, not readout. The tempo beside them is the
+        // number a hand reaches for and the eye returns to; these three say what mode
+        // the machine is in, which you check occasionally and then stop looking at. At
+        // 9/12 they competed with the tempo for attention. A step down each keeps them
+        // legible and puts the emphasis back where it belongs.
         let captionLabel = NSTextField(labelWithString: caption.uppercased())
-        captionLabel.font = Theme.Font.osd(size: 9)
+        captionLabel.font = Theme.Font.osd(size: 8)
         captionLabel.textColor = Theme.Color.displayDimText
 
-        valueLabel.font = Theme.Font.osd(size: 12)
+        valueLabel.font = Theme.Font.osd(size: 10)
         valueLabel.textColor = Theme.Color.displayText
 
         let row = Controls.row([captionLabel, valueLabel], spacing: 6)

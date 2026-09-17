@@ -699,6 +699,38 @@ enum ShaderSource {
         }
     }
 
+    struct ScopeOverlayParams {
+        float2 origin;   // where the scope sits, in 0...1 of the frame
+        float2 size;
+        float opacity;   // how strongly the trace is added
+        float dim;       // how far the picture behind it is held back
+    };
+
+    /* Composites a scope over the picture.
+     *
+     * SCREEN, not mix. A scope is a light trace on black, so screening adds the trace
+     * and leaves the black doing nothing — which means the picture shows through the
+     * empty parts of the graticule for free. Mixing would grey the whole rectangle
+     * down towards the scope's black background instead.
+     */
+    fragment float4 scope_overlay_fragment(VertexOut in [[stage_in]],
+                                           texture2d<float> picture [[texture(0)]],
+                                           texture2d<float> scope [[texture(1)]],
+                                           constant ScopeOverlayParams &p [[buffer(0)]]) {
+        constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+        float3 base = picture.sample(linearSampler, in.uv).rgb;
+
+        float2 local = (in.uv - p.origin) / max(p.size, float2(0.0001));
+        if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) {
+            return float4(base, 1.0);
+        }
+
+        float3 trace = scope.sample(linearSampler, local).rgb;
+        float3 behind = base * (1.0 - clamp(p.dim, 0.0, 1.0));
+        float3 lit = 1.0 - (1.0 - behind) * (1.0 - trace * clamp(p.opacity, 0.0, 1.0));
+        return float4(clamp(lit, 0.0, 1.0), 1.0);
+    }
+
     fragment float4 composite_blend_fragment(VertexOut in [[stage_in]],
                                              texture2d<float> baseLayer [[texture(0)]],
                                              texture2d<float> blendLayer [[texture(1)]],
@@ -755,6 +787,8 @@ public final class MetalContext {
     public let compositePipeline: MTLRenderPipelineState
     /// Layer compositing with a blend mode and per-layer opacity.
     public let blendPipeline: MTLRenderPipelineState
+    /// A scope screened over the picture, in a chosen rectangle.
+    public let scopeOverlayPipeline: MTLRenderPipelineState
     /// The MX-1 effect set: negative, B&W, mosaic, posterize, flip/mirror.
     public let mx1Pipeline: MTLRenderPipelineState
     /// Synthetic generators: solids, gradients, patterns and noise fields.
@@ -805,6 +839,8 @@ public final class MetalContext {
               let crossfade = makePipeline(vertex: "fullscreen_vertex", fragment: "crossfade_fragment"),
               let composite = makePipeline(vertex: "fullscreen_vertex", fragment: "composite_fragment"),
               let blend = makePipeline(vertex: "fullscreen_vertex", fragment: "composite_blend_fragment"),
+              let scopeOverlay = makePipeline(
+                vertex: "fullscreen_vertex", fragment: "scope_overlay_fragment"),
               let mx1 = makePipeline(vertex: "fullscreen_vertex", fragment: "mx1_fragment"),
               let generator = makePipeline(vertex: "fullscreen_vertex", fragment: "generator_fragment"),
               let echo = makePipeline(vertex: "fullscreen_vertex", fragment: "echo_fragment"),
@@ -821,6 +857,7 @@ public final class MetalContext {
         self.crossfadePipeline = crossfade
         self.compositePipeline = composite
         self.blendPipeline = blend
+        self.scopeOverlayPipeline = scopeOverlay
         self.mx1Pipeline = mx1
         self.generatorPipeline = generator
         self.echoPipeline = echo

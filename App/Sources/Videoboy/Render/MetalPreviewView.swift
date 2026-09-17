@@ -238,17 +238,16 @@ final class MetalPreviewView: NSView {
         // A corner scope takes a quarter of the width in the lower right, with a
         // small margin — big enough to read a waveform's shape, small enough that the
         // picture is still the thing you are looking at.
-        if scopeIsCorner {
-            let margin = frame.width * 0.02
-            let scopeWidth = frame.width * 0.28
-            let scopeHeight = scopeWidth * 0.6
-            scopeLayer.frame = CGRect(
-                x: frame.maxX - scopeWidth - margin,
-                y: frame.minY + margin,
-                width: scopeWidth, height: scopeHeight)
-        } else {
-            scopeLayer.frame = frame
-        }
+        // One rectangle, from the same `ScopePlacement` the output path uses, so what
+        // the preview shows and what SEND puts on air cannot drift apart. The rect is
+        // given with its origin at the TOP, as a picture is described; this layer's
+        // coordinates run the other way, hence the flip.
+        let rect = scopePlacement.rect
+        scopeLayer.frame = CGRect(
+            x: frame.minX + frame.width * rect.x,
+            y: frame.maxY - frame.height * (rect.y + rect.height),
+            width: frame.width * rect.width,
+            height: frame.height * rect.height)
         overlayLayer.frame = frame
         updateOverlays()
     }
@@ -308,8 +307,11 @@ final class MetalPreviewView: NSView {
             : Theme.Color.textTertiary.withAlphaComponent(0.45)
     }
 
-    /// Whether the scope is drawn small in a corner rather than over the frame.
-    var scopeIsCorner = false { didSet { needsLayout = true } }
+    /// Where the scope sits on the picture.
+    ///
+    /// Was a bool for "corner or not". Placement now has three answers and the third —
+    /// the lower-third band — is not expressible as a variation of the other two.
+    var scopePlacement: ScopePlacement = .full { didSet { needsLayout = true } }
 
     func setScopeImage(_ image: ImageBuffer?, dimsPicture: Bool) {
         guard let image, let cgImage = image.makeCGImage() else {

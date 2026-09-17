@@ -110,6 +110,13 @@ final class EffectChainPanelBody: NSView {
 
     private let stack = NSStackView()
     private var cardViews: [NSView] = []
+
+    /// Effects folded down to their header, by name.
+    ///
+    /// By NAME rather than by index, because the chain reorders and a collapsed card
+    /// has to stay collapsed when it moves — an index would fold whichever effect
+    /// happened to slide into that position, which looks like a bug in the drag.
+    private var collapsedEffects: Set<String> = []
     private(set) var effects: [EffectCardModel]
 
     /// Which graph slot a param code belongs to, so a Shift-click on a parameter's
@@ -339,8 +346,20 @@ final class EffectChainPanelBody: NSView {
         // ellipsis in a column this narrow — and a card you cannot identify is worse
         // than one whose selector costs a row. It joins the badges on the line below,
         // which is already there and has room.
+        // The gap between the name and the switch was a plain spacer doing nothing but
+        // pushing the switch right. It is the largest quiet target on the card, so it
+        // folds the effect instead.
+        let collapseStrip = CollapseStripView()
+        collapseStrip.isCollapsed = collapsedEffects.contains(effect.name)
+        collapseStrip.toolTip = collapsedEffects.contains(effect.name)
+            ? "Show \(effect.name)'s controls"
+            : "Hide \(effect.name)'s controls — the effect keeps running"
+        collapseStrip.onClick = { [weak self] in
+            self?.toggleCollapsed(effect.name)
+        }
+
         var headerViews: [NSView] = [grip, nameLabel]
-        headerViews.append(Controls.spacer())
+        headerViews.append(collapseStrip)
         if !effect.isImplemented {
             let note = Controls.label("not built", font: Theme.Font.tinyLabel,
                                       color: Theme.Color.textTertiary)
@@ -387,6 +406,13 @@ final class EffectChainPanelBody: NSView {
         if let modulationRow { rows.append(modulationRow) }
         for parameter in effect.parameters {
             rows.append(contentsOf: makeParameterRows(parameter))
+        }
+
+        // Collapsing hides everything below the header. The header stays because it
+        // carries the switch and the ✕ — a folded effect must still be reachable
+        // without being unfolded first, or folding costs more than it saves.
+        if collapsedEffects.contains(effect.name) {
+            for row in rows.dropFirst() { row.isHidden = true }
         }
 
         let column = Controls.column(rows, spacing: 3)
@@ -530,6 +556,37 @@ final class EffectChainPanelBody: NSView {
         let parts = identifier.split(separator: "|", maxSplits: 1).map(String.init)
         guard parts.count == 2, let source = ModulationSource.fromBadge(parts[1]) else { return }
         onEffectModulationRequested?(parts[0], source, sender)
+    }
+
+    /// Folds an effect down to its header, or opens it again.
+    ///
+    /// COLLAPSING IS NOT DISABLING, and keeping those apart is the whole point of
+    /// putting this on the gap rather than on the name: the switch beside it turns the
+    /// effect OFF, this only puts its controls away. A collapsed effect is still
+    /// running, still processing, and still shows its switch lit.
+    private func toggleCollapsed(_ name: String) {
+        if collapsedEffects.contains(name) {
+            collapsedEffects.remove(name)
+        } else {
+            collapsedEffects.insert(name)
+        }
+        Log.info(.app, "\(name) \(collapsedEffects.contains(name) ? "collapsed" : "expanded")")
+        rebuild()
+    }
+
+    /// Whether an effect is folded. For the self-QA harness, which cannot click.
+    func isCollapsed(effectName: String) -> Bool {
+        collapsedEffects.contains(effectName)
+    }
+
+    /// Folds or opens every effect at once.
+    ///
+    /// Not on a control yet. It exists because "collapse all" is the first thing
+    /// anyone asks for after collapsing three cards by hand, and having it here means
+    /// the answer is a menu item rather than a rewrite.
+    func setAllCollapsed(_ collapsed: Bool) {
+        collapsedEffects = collapsed ? Set(effects.map(\.name)) : []
+        rebuild()
     }
 
     @objc private func effectToggled(_ sender: NSSwitch) {

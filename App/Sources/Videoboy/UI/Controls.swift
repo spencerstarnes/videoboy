@@ -182,6 +182,40 @@ enum Controls {
         return fader
     }
 
+    /// A popup whose items are grouped by separator lines.
+    ///
+    /// Photoshop's convention, which every compositing application since has copied:
+    /// blend modes are grouped by what they DO — the darkening family, the lightening
+    /// family, the contrast family — with a rule between each group. Thirteen names in
+    /// a flat list is a list you read; five labelled clumps is one you aim at.
+    ///
+    /// Selection is looked up BY TITLE rather than by index, because separators occupy
+    /// indices too and any index arithmetic here would be off by the number of rules
+    /// above the item — which is exactly the sort of bug that shows up as "picking Hard
+    /// Light gives me Overlay".
+    static func groupedPopUp(
+        _ groups: [[String]], enabled: Bool = true,
+        target: AnyObject? = nil, action: Selector? = nil
+    ) -> NSPopUpButton {
+        let control = NSPopUpButton(frame: .zero, pullsDown: false)
+        control.controlSize = .small
+        control.font = Theme.Font.label
+        control.isEnabled = enabled
+        control.target = target
+        control.action = action
+        control.translatesAutoresizingMaskIntoConstraints = false
+
+        for (index, group) in groups.enumerated() {
+            if index > 0 { control.menu?.addItem(.separator()) }
+            for title in group {
+                control.menu?.addItem(
+                    withTitle: title, action: nil, keyEquivalent: "")
+            }
+        }
+        control.selectItem(at: 0)
+        return control
+    }
+
     /// A search field for the libraries and the asset browser.
     static func searchField(placeholder: String, enabled: Bool = true) -> NSSearchField {
         let field = NSSearchField()

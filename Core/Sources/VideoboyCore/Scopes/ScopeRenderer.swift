@@ -86,6 +86,112 @@ public enum ScopeDisplayMode: String, CaseIterable, Codable, Sendable {
     public var isCorner: Bool { self == .miniLuma }
 }
 
+/// Where a scope sits on the picture.
+///
+/// Placement is a SEPARATE question from which scopes are showing, which is why it is
+/// its own type. The old design fused them — "quad overlay", "quad blacked out",
+/// "mini luma" — so choosing a vectorscope in the corner was not expressible at all,
+/// and adding it would have meant another case for every combination.
+public enum ScopePlacement: String, CaseIterable, Codable, Sendable {
+    /// Filling the frame.
+    case full
+    /// A band across the bottom third, where a lower-third graphic goes.
+    case lowerThird
+    /// Small, in the lower right, with the picture still the thing you are looking at.
+    case corner
+
+    public var displayName: String {
+        switch self {
+        case .full: "Full"
+        case .lowerThird: "Lower Third"
+        case .corner: "Corner"
+        }
+    }
+
+    /// The rectangle it occupies, in 0...1 of the frame, with the origin top left.
+    public var rect: (x: Double, y: Double, width: Double, height: Double) {
+        switch self {
+        case .full: (0, 0, 1, 1)
+        // The bottom third exactly, with a small inset at the sides so the trace does
+        // not run into the overscan the output path crops.
+        case .lowerThird: (0.04, 0.64, 0.92, 0.30)
+        case .corner: (0.70, 0.66, 0.28, 0.30)
+        }
+    }
+}
+
+/// Which scopes are showing, where, and whether they go to air.
+///
+/// ── WHY A SET AND NOT A MODE ────────────────────────────────────────────────────
+///
+/// This replaced a single cycling mode. One button that stepped through five presets
+/// meant every combination someone might want had to be anticipated as a preset, and
+/// reaching any particular one was a matter of clicking until it came round. Four
+/// independent choices — four scopes — is sixteen combinations from four buttons, and
+/// each one is one click away.
+public struct ScopeSelection: Equatable, Codable, Sendable {
+
+    /// Which instruments are drawn. Empty means the scopes are off.
+    public var kinds: Set<ScopeKind> = []
+
+    /// Drawn over the picture, rather than over black.
+    ///
+    /// Over black is for reading levels without the picture distracting; over the
+    /// picture is for watching both at once. Both are useful and neither is a mode of
+    /// the other.
+    public var isOverlaid: Bool = true
+
+    /// Sits in the lower-third band rather than filling the frame.
+    public var isLowerThird: Bool = false
+
+    /// Composited into the PROGRAMME OUTPUT, not merely shown in the preview.
+    ///
+    /// The scope stops being an instrument and becomes part of the picture going to
+    /// air. Off by default and deliberately a separate button, because everything else
+    /// here is a monitoring choice that cannot affect what an audience sees, and this
+    /// one can.
+    public var isSent: Bool = false
+
+    public init() {}
+
+    public var isShowing: Bool { !kinds.isEmpty }
+
+    /// Where it sits.
+    ///
+    /// A single scope defaults to the corner and several fill the frame, unless the
+    /// lower-third button says otherwise: four instruments crammed into a corner are
+    /// unreadable, and one filling the frame hides a picture for no reason.
+    public var placement: ScopePlacement {
+        if isLowerThird { return .lowerThird }
+        return kinds.count == 1 ? .corner : .full
+    }
+
+    /// How much the picture behind is held back so the trace stays readable.
+    ///
+    /// Nothing at all when the scopes are over black — there is no picture to hold
+    /// back — and nothing in the corner either, where the scope has its own box and
+    /// dimming the whole frame for it would be absurd.
+    public var pictureDimming: Double {
+        guard isOverlaid else { return 1 }
+        return placement == .corner ? 0 : 0.65
+    }
+
+    /// The order instruments are laid out in, so the grid is stable as they are
+    /// switched on and off.
+    ///
+    /// Stable order matters more than it sounds: laying them out in set order would
+    /// move a scope to a different cell every time a neighbour was toggled, and a
+    /// waveform that jumps across the screen when you enable a histogram reads as a
+    /// bug.
+    public var orderedKinds: [ScopeKind] {
+        ScopeKind.allCases.filter { kinds.contains($0) }
+    }
+
+    public mutating func toggle(_ kind: ScopeKind) {
+        if kinds.contains(kind) { kinds.remove(kind) } else { kinds.insert(kind) }
+    }
+}
+
 /// Draws scopes.
 public enum ScopeRenderer {
 
@@ -128,6 +234,38 @@ public enum ScopeRenderer {
             let originX = (index % 2) * halfWidth
             let originY = (index / 2) * halfHeight
             blit(panel, into: &canvas, atX: originX, y: originY)
+        }
+        return canvas
+    }
+
+    /// Lays the chosen instruments out in one image.
+    ///
+    /// One fills the canvas, two sit side by side, three or four go in a 2x2. Three
+    /// leaves its fourth cell empty rather than stretching one panel to fill it —
+    /// scopes are read by shape, and a waveform at a different aspect ratio to the one
+    /// beside it is a waveform you have to re-learn every time.
+    public static func compose(
+        _ selection: ScopeSelection, from source: ImageBuffer, width: Int, height: Int
+    ) -> ImageBuffer? {
+        let kinds = selection.orderedKinds
+        guard !kinds.isEmpty, width > 0, height > 0 else { return nil }
+
+        if kinds.count == 1 {
+            return render(kinds[0], from: source, width: width, height: height)
+        }
+
+        var canvas = ImageBuffer(width: width, height: height)
+        let columns = 2
+        let rows = kinds.count <= 2 ? 1 : 2
+        let cellWidth = width / columns
+        let cellHeight = height / rows
+
+        for (index, kind) in kinds.enumerated() {
+            let panel = render(kind, from: source, width: cellWidth, height: cellHeight)
+            blit(
+                panel, into: &canvas,
+                atX: (index % columns) * cellWidth,
+                y: (index / columns) * cellHeight)
         }
         return canvas
     }

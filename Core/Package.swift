@@ -39,6 +39,11 @@ let package = Package(
             name: "VideoboyCore",
             dependencies: ["CFFmpeg"],
             path: "Sources/VideoboyCore",
+            // The module template's README is documentation for whoever adds the next
+            // node, not a resource to bundle. Excluding it silences a build warning
+            // that has been there long enough to become background noise — which is
+            // exactly how a real warning gets missed.
+            exclude: ["Modules/_Template/README.md"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(

@@ -539,11 +539,27 @@ final class PreviewPanelBody: NSView {
     /// Called when a bus data-effect parameter moves: (param code, 0...1).
     var onDataParameterChanged: ((String, Double) -> Void)?
 
-    /// Called when the scope tab is clicked, to advance the scope cycle.
-    var onScopeTabClicked: (() -> Void)?
+    /// Called when one of the scope keys is pressed, with what it means.
+    ///
+    /// One callback carrying an enum rather than seven callbacks: the panel does not
+    /// decide what any of these DO, it reports which was pressed, and the shell — which
+    /// owns the selection — works out the rest.
+    var onScopeKeyPressed: ((ScopeKey) -> Void)?
 
-    /// The scope tab, so its title can show the current mode.
-    private var scopeTab: NSButton?
+    /// What a scope key stands for.
+    enum ScopeKey: Hashable {
+        /// One of the four instruments.
+        case kind(ScopeKind)
+        /// Over the picture, rather than over black.
+        case overlay
+        /// In the lower-third band.
+        case lowerThird
+        /// Into the programme video feed.
+        case send
+    }
+
+    /// The scope keys, so their lit state can be set from the selection.
+    private var scopeKeys: [ScopeKey: VBOptionButton] = [:]
     private var blendPopUp: NSPopUpButton?
     private var interchangePopUp: NSPopUpButton?
     private var dataEffectRow: NSStackView?
@@ -576,19 +592,61 @@ final class PreviewPanelBody: NSView {
             )
             interchangePopUp = interchange
 
-            // The scope tab. One control that cycles every scope view, so reaching a
-            // vectorscope is never more than a few clicks and never a menu.
-            let scopes = Controls.button("Scopes", target: self, action: #selector(scopeTabPressed))
-            scopes.toolTip = "Cycle the scopes: quad overlay, histogram, parade, quad over black, off"
-            scopeTab = scopes
+            // ── The scope keys ──────────────────────────────────────────────────
+            //
+            // Was ONE button that cycled five presets. Four instruments and three
+            // placement choices is sixteen useful combinations, and a cycle can only
+            // offer the handful someone thought of in advance — reaching a vectorscope
+            // meant clicking until it came round, and a vectorscope in the corner was
+            // not reachable at all.
+            //
+            // Seven keys instead: what to draw, where to put it, and whether it goes to
+            // air. Each is one click. They are VBOptionButtons rather than push buttons
+            // because they are STATES, and a lit key is how this app says "on"
+            // everywhere else.
+            var scopeRow: [NSView] = []
+            let instruments: [(ScopeKind, String)] = [
+                (.waveform, "WFM"), (.parade, "RGB"),
+                (.histogram, "HIST"), (.vectorscope, "VEC")
+            ]
+            for (kind, label) in instruments {
+                let key = makeScopeKey(.kind(kind), title: label,
+                                       tooltip: "\(kind.displayName) — click again to turn it off")
+                scopeRow.append(key)
+            }
+
+            // A gap: the four on the left say WHAT, the three on the right say WHERE
+            // and WHETHER. Without it, seven identical keys read as one undifferentiated
+            // run and the SEND key is the last thing you want lost in a row.
+            let gap = NSView()
+            gap.translatesAutoresizingMaskIntoConstraints = false
+            gap.widthAnchor.constraint(equalToConstant: 8).isActive = true
+            scopeRow.append(gap)
+
+            scopeRow.append(makeScopeKey(
+                .overlay, title: "OVER",
+                tooltip: "Draw the scopes over the picture. Off puts them over black, "
+                    + "for reading levels without the picture distracting."))
+            scopeRow.append(makeScopeKey(
+                .lowerThird, title: "L3",
+                tooltip: "Put the scopes in the lower-third band instead of filling "
+                    + "the frame."))
+
+            // Tally red, because this one changes what an audience sees. Every other
+            // key on this row is a monitoring choice that cannot reach the output.
+            let send = makeScopeKey(
+                .send, title: "SEND", colour: Theme.Color.tallyOnAir,
+                tooltip: "Put the scope INTO the programme video feed, not just the "
+                    + "preview. The trace is screened over the picture, so it goes to "
+                    + "air as part of the image.")
+            scopeRow.append(send)
 
             let row = Controls.row([
                 Controls.label("Data", font: Theme.Font.tinyLabel,
                                color: Theme.Color.textTertiary, holdsWidth: true),
                 interchange,
-                Controls.spacer(),
-                scopes
-            ], spacing: 4)
+                Controls.spacer()
+            ] + scopeRow, spacing: 3)
             row.translatesAutoresizingMaskIntoConstraints = false
             addSubview(row)
 
@@ -640,12 +698,44 @@ final class PreviewPanelBody: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
-    @objc private func scopeTabPressed() { onScopeTabClicked?() }
+    /// Builds one scope key and remembers it, so its lit state can be set later.
+    private func makeScopeKey(
+        _ key: ScopeKey, title: String,
+        colour: NSColor = Theme.Color.accent, tooltip: String
+    ) -> VBOptionButton {
+        let button = VBOptionButton(title: title, onColour: colour)
+        button.toolTip = tooltip
+        button.target = self
+        button.action = #selector(scopeKeyPressed(_:))
+        scopeKeys[key] = button
+        return button
+    }
+
+    @objc private func scopeKeyPressed(_ sender: VBOptionButton) {
+        guard let key = scopeKeys.first(where: { $0.value === sender })?.key else { return }
+        onScopeKeyPressed?(key)
+    }
 
     /// Updates the tab's title to name the mode it is now in.
-    func setScopeMode(_ mode: ScopeDisplayMode) {
-        scopeTab?.title = mode == .off ? "Scopes" : mode.displayName
-        scopeTab?.contentTintColor = mode == .off ? nil : Theme.Color.accent
+    /// Lights the keys to match the selection.
+    ///
+    /// Driven from the selection rather than from the keys' own clicks, so the panel
+    /// has no opinion about state — the shell owns it, and the keys always show what is
+    /// actually happening rather than what was last pressed.
+    func setScopeSelection(_ selection: ScopeSelection) {
+        for kind in ScopeKind.allCases {
+            scopeKeys[.kind(kind)]?.isOn = selection.kinds.contains(kind)
+        }
+        scopeKeys[.overlay]?.isOn = selection.isOverlaid
+        scopeKeys[.lowerThird]?.isOn = selection.isLowerThird
+        scopeKeys[.send]?.isOn = selection.isSent
+
+        // The placement and SEND keys mean nothing with no instrument chosen. Disabled
+        // rather than hidden, per the house rule — a key that vanishes and comes back
+        // is harder to learn than one that greys.
+        for key in [ScopeKey.overlay, .lowerThird, .send] {
+            scopeKeys[key]?.isEnabled = selection.isShowing
+        }
     }
 
     @objc private func interchangeChanged(_ sender: NSPopUpButton) {
@@ -666,7 +756,10 @@ final class PreviewPanelBody: NSView {
     }
 
     @objc private func blendModeChanged(_ sender: NSPopUpButton) {
-        let mode = BlendMode.allCases[min(sender.indexOfSelectedItem, BlendMode.allCases.count - 1)]
+        // By title, not by index: the menu has separator rows between the groups, so
+        // an index here is the item's position INCLUDING the rules above it.
+        guard let title = sender.titleOfSelectedItem,
+              let mode = BlendMode.allCases.first(where: { $0.displayName == title }) else { return }
         Log.info(.graph, "blend mode set to \(mode.displayName)")
         onBlendModeChanged?(mode)
     }
@@ -753,13 +846,16 @@ final class FaderPanelBody: NSView {
 
     /// Points the popup at a mode without firing its action.
     func setBlendMode(_ mode: BlendMode) {
-        blendPopUp?.selectItem(at: min(mode.rawValue, (blendPopUp?.numberOfItems ?? 1) - 1))
+        // `rawValue` is the shader's mode ID and has nothing to do with where the item
+        // sits in a grouped menu. Selecting by title is the only thing that stays true
+        // when the menu is reordered.
+        blendPopUp?.selectItem(withTitle: mode.displayName)
     }
 
     @objc private func blendModeChanged(_ sender: NSPopUpButton) {
-        let modes = BlendMode.allCases
-        guard modes.indices.contains(sender.indexOfSelectedItem) else { return }
-        onBlendModeChanged?(modes[sender.indexOfSelectedItem])
+        guard let title = sender.titleOfSelectedItem,
+              let mode = BlendMode.allCases.first(where: { $0.displayName == title }) else { return }
+        onBlendModeChanged?(mode)
     }
     private var leftName = ""
     private var rightName = ""
@@ -882,8 +978,15 @@ final class FaderPanelBody: NSView {
         for (index, entry) in rateSymbols.enumerated() {
             rateControl.setToolTip(entry.1, forSegment: index)
         }
+        // The same height as CUT, FADE and BEAT. It belongs to that group — it sets
+        // how long FADE takes — and a control half the height of the key it modifies
+        // reads as a lesser thing than it is. `.regular` rather than `.small` so the
+        // bezel fills the height instead of floating inside a stretched one.
+        rateControl.controlSize = .regular
+        rateControl.translatesAutoresizingMaskIntoConstraints = false
+        rateControl.heightAnchor.constraint(
+            equalToConstant: Theme.BusButton.height).isActive = true
         self.rateControl = rateControl
-        buttons.append(rateControl)
         // No mapping badges here. They were decoration — unclickable letters wired to
         // nothing — and one of them read "Slo", which was not an abbreviation of
         // anything. Shift-click the fader to map it; that gesture reaches every fader
@@ -891,12 +994,11 @@ final class FaderPanelBody: NSView {
         // BLEND, moved here from the preview above. How the two layers combine and
         // how much of each are two halves of one question; having them two panels
         // apart meant answering it in two places.
-        let blend = Controls.popUp(
-            BlendMode.allCases.map(\.displayName),
+        let blend = Controls.groupedPopUp(
+            BlendMode.menuGroups.map { $0.map(\.displayName) },
             target: self, action: #selector(blendModeChanged(_:)))
         blend.toolTip = "How this bus's two layers combine. The fader below sets how much of each."
         self.blendPopUp = blend
-        buttons.append(blend)
 
         // The crossfader's own sweep controls, exactly as an FX row has them — this
         // panel had the gesture and the yellow bar but no way to set the rate or to
@@ -906,16 +1008,12 @@ final class FaderPanelBody: NSView {
         sweepKey.isHidden = true
         sweepKey.toolTip = "How long one sweep between the marks takes"
         self.sweepRateKey = sweepKey
-        buttons.append(sweepKey)
 
         let sweepCancel = Controls.glyphButton("✕", tooltip: "Stop this fader driving itself")
         sweepCancel.isHidden = true
         sweepCancel.target = fader
         sweepCancel.action = #selector(VBFader.clearSweep)
         self.sweepCancelButton = sweepCancel
-        buttons.append(sweepCancel)
-
-        buttons.append(Controls.spacer())
         // AUTO is gone rather than left sitting there disabled. It was never
         // implemented, and it could not be without duplicating something: on a vision
         // mixer AUTO performs the transition at the set rate, which is exactly what
@@ -930,7 +1028,48 @@ final class FaderPanelBody: NSView {
             self?.onSweepChanged?()
         }
 
-        let buttonRow = Controls.row(buttons, spacing: 4)
+        // ── The transport cluster, centred ──────────────────────────────────────
+        //
+        // CUT, FADE, BEAT and the rate control are ONE thing: the four keys a hand
+        // reaches for during a transition. Left-aligned in a row that also carried
+        // BLEND and the sweep keys, they read as the first four of seven unrelated
+        // controls. Grouped and centred they read as the instrument they are, and the
+        // panel has a middle again.
+        //
+        // `buttons` still holds CUT, FADE and BEAT in order; the rate joins them here.
+        let transportCluster = Controls.row(buttons + [rateControl], spacing: 4)
+        transportCluster.translatesAutoresizingMaskIntoConstraints = false
+
+        // BLEND and the sweep keys are settings, not performance keys, so they sit out
+        // at the trailing edge rather than inside the cluster. The sweep pair is
+        // hidden until a sweep is armed, so most of the time this is BLEND alone.
+        let optionsRow = Controls.row([blend, sweepKey, sweepCancel], spacing: 4)
+        optionsRow.translatesAutoresizingMaskIntoConstraints = false
+
+        // Both live in a band so the cluster can be centred on the PANEL while the
+        // options stay pinned right. Centring is priority 750 on purpose: when the
+        // panel is too narrow for both, the cluster gives way and slides left rather
+        // than the two overlapping.
+        let buttonRow = NSView()
+        buttonRow.addSubview(transportCluster)
+        buttonRow.addSubview(optionsRow)
+
+        let centring = transportCluster.centerXAnchor.constraint(
+            equalTo: buttonRow.centerXAnchor)
+        centring.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            transportCluster.topAnchor.constraint(equalTo: buttonRow.topAnchor),
+            transportCluster.bottomAnchor.constraint(equalTo: buttonRow.bottomAnchor),
+            transportCluster.leadingAnchor.constraint(
+                greaterThanOrEqualTo: buttonRow.leadingAnchor),
+            transportCluster.trailingAnchor.constraint(
+                lessThanOrEqualTo: optionsRow.leadingAnchor, constant: -8),
+            centring,
+
+            optionsRow.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
+            optionsRow.trailingAnchor.constraint(equalTo: buttonRow.trailingAnchor),
+            buttonRow.heightAnchor.constraint(equalTo: transportCluster.heightAnchor)
+        ])
 
         let left = Controls.label(leftLabel, font: Theme.Font.tinyLabel, color: leftColor,
                                   holdsWidth: true)
@@ -954,8 +1093,10 @@ final class FaderPanelBody: NSView {
         let padding = Theme.Metrics.panelBodyPadding
         NSLayoutConstraint.activate([
             buttonRow.topAnchor.constraint(equalTo: topAnchor, constant: padding),
+            // The band spans the panel, so "centred" means centred in the PANEL
+            // rather than centred in whatever width the controls happened to need.
             buttonRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
-            buttonRow.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -padding),
+            buttonRow.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding),
 
             // End labels and the live value sit on one line above the fader. The
             // gaps are tight because this panel is the shortest in the grid (row

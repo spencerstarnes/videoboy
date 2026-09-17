@@ -101,8 +101,22 @@ public enum AmigaSideScripts {
 
         say 'VBLink: watching' cmddir 'for' port
 
+        /* A heartbeat the HOST can read. Redirecting this script's console output to a
+         * file was the first attempt and it does not survive: ARexx buffers, so the
+         * file stays empty until the script exits, which is exactly never for a loop
+         * like this one. A file the script writes itself is flushed when it is closed,
+         * every time round. */
+        call heartbeat('starting')
+
+        beats = 0
         do forever
             call delay(\(pollTicks))
+
+            /* Roughly every two seconds. Often enough for a link light to be
+             * trustworthy, rare enough not to be writing to disk in a tight loop. */
+            beats = beats + 1
+            if beats // 10 = 0 then
+                call heartbeat('alive')
 
             listing = showdir(cmddir, 'F', ' ')
             if listing = '' then iterate
@@ -181,6 +195,20 @@ public enum AmigaSideScripts {
             if open('ack', ackdir || '/' || seq || '.ack', 'Write') then do
                 call writeln('ack', 'ok')
                 call close('ack')
+            end
+        return 0
+
+        /* Say we are here, and whether the program's port is open. Two different
+         * facts, and telling them apart is most of diagnosing this link. */
+        heartbeat:
+            parse arg what
+            if open('hb', ackdir || '/link.status', 'Write') then do
+                call writeln('hb', what)
+                if show('P', port) then
+                    call writeln('hb', 'port open')
+                else
+                    call writeln('hb', 'port closed')
+                call close('hb')
             end
         return 0
         """

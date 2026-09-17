@@ -752,9 +752,14 @@ final class ShellController {
                 guard let self, let bus = busNames[composite.slot] else { return }
                 self.engine.setInterchange(codec, forBus: bus)
             }
-            composite.body.onScopeTabClicked = { [weak self] in
-                self?.cycleScopes(for: composite.slot, body: composite.body)
+            composite.body.onScopeKeyPressed = { [weak self] key in
+                self?.scopeKeyPressed(key, for: composite.slot, body: composite.body)
             }
+            // Light the keys once at startup. Without this the placement and SEND keys
+            // sit enabled over a scope that is not running until something is clicked,
+            // which invites a click that does nothing.
+            composite.body.setScopeSelection(
+                scopeSelections[composite.slot] ?? defaultScopeSelection())
             composite.body.onDataParameterChanged = { [weak self] code, value in
                 guard let self,
                       let parameter = ParamCode(rawValue: code),
@@ -1289,20 +1294,77 @@ final class ShellController {
         }
     }
 
-    /// Scope mode per composite slot.
-    private var scopeModes: [String: ScopeDisplayMode] = [:]
+    /// What each composite's scopes are showing.
+    private var scopeSelections: [String: ScopeSelection] = [:]
     /// Frame counter for pacing scope refreshes.
     private var scopeRefreshCounter = 0
 
-    /// Advances a preview's scope cycle by one.
-    private func cycleScopes(for slot: String, body: PreviewPanelBody) {
-        let next = (scopeModes[slot] ?? .off).next
-        scopeModes[slot] = next
-        body.setScopeMode(next)
-        if next == .off {
+    /// Handles one scope key, and updates everything that follows from it.
+    private func scopeKeyPressed(
+        _ key: PreviewPanelBody.ScopeKey, for slot: String, body: PreviewPanelBody
+    ) {
+        var selection = scopeSelections[slot] ?? defaultScopeSelection()
+
+        switch key {
+        case .kind(let kind):
+            selection.toggle(kind)
+        case .overlay:
+            selection.isOverlaid.toggle()
+        case .lowerThird:
+            selection.isLowerThird.toggle()
+        case .send:
+            selection.isSent.toggle()
+        }
+
+        // Turning off the last instrument turns everything off, including SEND. A
+        // scope that is "sent" but has nothing to draw would leave the send key lit
+        // over a picture with nothing on it, which reads as the send being broken.
+        if !selection.isShowing {
+            selection.isSent = false
+        }
+
+        scopeSelections[slot] = selection
+        body.setScopeSelection(selection)
+
+        if !selection.isShowing {
             body.preview.setScopeImage(nil, dimsPicture: false)
         }
-        Log.info(.app, "scopes on \(slot): \(next.displayName)")
+        updateScopeSend(for: slot, selection: selection)
+
+        Log.info(.app, "scopes on \(slot): "
+            + (selection.isShowing
+                ? selection.orderedKinds.map(\.displayName).joined(separator: "+")
+                    + " · \(selection.placement.displayName)"
+                    + (selection.isSent ? " · ON AIR" : "")
+                : "off"))
+    }
+
+    /// A fresh selection, with the defaults that make the first click do the obvious
+    /// thing: over the picture, filling the frame, not on air.
+    private func defaultScopeSelection() -> ScopeSelection {
+        var selection = ScopeSelection()
+        selection.isOverlaid = true
+        return selection
+    }
+
+    /// Puts the scope into the programme feed, or takes it out.
+    ///
+    /// Only the PROGRAMME slot can be sent. A sub-mix scope shown on air would be a
+    /// scope of a picture that is not the one going out, which is worse than useless —
+    /// so the key is there for consistency but reports plainly when it cannot act.
+    private func updateScopeSend(for slot: String, selection: ScopeSelection) {
+        guard slot == Engine.scopeSourceSlot else {
+            if selection.isSent {
+                Log.warn(.app, "only PROGRAM's scopes can be sent to air; "
+                    + "\(slot) shows the picture before the mix")
+            }
+            return
+        }
+        engine.scopeOverlay?.placement = selection.placement
+        engine.scopeOverlay?.dimming = selection.isOverlaid ? 0 : 1
+        if !selection.isSent {
+            engine.scopeOverlay?.setOverlay(nil)
+        }
     }
 
     /// Connects each preview's arm indicator and records which feeds are armed.
@@ -1578,37 +1640,39 @@ final class ShellController {
             (panels.subMixOneBody, GraphTopology.subMixOne, Engine.busCodecOneSlot),
             (panels.subMixTwoBody, GraphTopology.subMixTwo, Engine.busCodecTwoSlot),
             // Scopes must read what actually goes OUT, which is the end of the
-            // programme chain, not the mix before its data stage.
-            (panels.programBody, GraphTopology.primary, Engine.outputSlot)
+            // programme chain — but BEFORE the scope overlay, or a sent scope would
+            // measure itself and climb until the trace was solid white.
+            (panels.programBody, GraphTopology.primary, Engine.scopeSourceSlot)
         ]
 
         for composite in composites {
-            let mode = scopeModes[composite.slot] ?? .off
-            guard mode != .off else { continue }
+            let selection = scopeSelections[composite.slot] ?? ScopeSelection()
+            guard selection.isShowing else { continue }
 
             guard let texture = engine.texture(for: composite.texture)
                 ?? engine.texture(for: composite.slot),
                   let image = renderer.readback(texture) else { continue }
 
-            do {
-                let scope: ImageBuffer
-                switch mode {
-                case .miniLuma:
-                    // Small, because it is drawn small. Rendering a full-size scope
-                    // and letting the layer shrink it turns a one-pixel trace into a
-                    // grey smear.
-                    scope = ScopeRenderer.render(.waveform, from: image, width: 240, height: 144)
-                case .quadOverlay, .quadBlack:
-                    scope = ScopeRenderer.renderQuad(from: image, width: 480, height: 360)
-                case .histogram:
-                    scope = ScopeRenderer.render(.histogram, from: image, width: 480, height: 360)
-                case .parade:
-                    scope = ScopeRenderer.render(.parade, from: image, width: 480, height: 360)
-                case .off:
-                    continue
-                }
-                composite.body.preview.scopeIsCorner = mode.isCorner
-                composite.body.preview.setScopeImage(scope, dimsPicture: mode.showsPicture)
+            // Drawn at the size it will be SHOWN at. Rendering full size and letting
+            // the layer shrink it turns a one-pixel trace into a grey smear — which is
+            // why the corner scope is small here rather than scaled down later.
+            let size = selection.placement == .corner
+                ? (width: 240, height: 144)
+                : (width: 480, height: 360)
+            guard let scope = ScopeRenderer.compose(
+                selection, from: image, width: size.width, height: size.height) else { continue }
+
+            composite.body.preview.scopePlacement = selection.placement
+            composite.body.preview.setScopeImage(
+                scope, dimsPicture: selection.isOverlaid)
+
+            // SEND: the same image, handed to the node at the end of the programme
+            // chain, so it lands in the picture that goes to air rather than only in
+            // the preview.
+            if selection.isSent, composite.slot == Engine.scopeSourceSlot {
+                engine.scopeOverlay?.placement = selection.placement
+                engine.scopeOverlay?.dimming = selection.isOverlaid ? 0 : 1
+                engine.scopeOverlay?.setOverlay(scope)
             }
         }
     }

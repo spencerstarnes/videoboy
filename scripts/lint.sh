@@ -22,7 +22,15 @@ done < <(find "$REPO_ROOT/Core/Sources" "$REPO_ROOT/App/Sources" "$REPO_ROOT/Cor
 
 log "lint: stray debug prints"
 # Swift's print() bypasses the tagged logger, so failures become invisible.
-if grep -rn --include='*.swift' '^\s*print(' "$REPO_ROOT/Core/Sources" "$REPO_ROOT/App/Sources" 2>/dev/null; then
+#
+# EXCEPT in a command-line tool, whose entire output IS stdout. Routing a CLI's
+# report through Log would stamp every line with a timestamp and a subsystem tag,
+# which is right for a running app and wrong for something a person reads in a
+# terminal. The exclusion is by PATH rather than by a pragma so it cannot quietly
+# spread: Sources/videoboy-amiga is the only executable target in the repo.
+if grep -rn --include='*.swift' '^\s*print(' \
+    "$REPO_ROOT/Core/Sources" "$REPO_ROOT/App/Sources" 2>/dev/null \
+    | grep -v '/Sources/videoboy-amiga/'; then
   echo "  use Log.info/warn/error instead of print()"
   problems=$((problems + 1))
 fi

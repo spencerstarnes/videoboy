@@ -60,8 +60,15 @@ public struct FSUAEConfiguration: Equatable, Sendable {
     public var sharedDrawer: URL
     /// A CD image, when the software is on one.
     public var cdImage: URL?
-    /// A hard-disk image or a host directory holding an installed copy.
+    /// A host directory holding an installed Amiga system — see AmigaSystemInstaller.
     public var systemDrive: URL?
+    /// What the system drive is called on the Amiga.
+    ///
+    /// Matters more than it looks. Software stores absolute paths in its preferences —
+    /// Scala's config lists `CUCD19:SCALA/BACKGROUNDS/` and friends — so naming the
+    /// volume after the disc it came from is what makes those paths resolve instead of
+    /// producing a file requester on every load.
+    public var systemVolumeName = "Workbench"
     /// Floppy images, in drive order.
     public var floppies: [URL] = []
     /// The window FS-UAE opens, which is also what gets captured.
@@ -94,7 +101,11 @@ public struct FSUAEConfiguration: Equatable, Sendable {
     public var amigaModel: String {
         switch firmware {
         case .aros:
-            return "A500"
+            // AROS is described as an A500-era replacement, but FS-UAE's build comes
+            // up as an A1200 and boots a disc with it — TRIED, not assumed. So the
+            // requested machine is honoured, and the note below still says what is
+            // underneath.
+            return program.machine == .amiga500 ? "A500" : "A1200"
         case .kickstart:
             switch program.machine {
             case .amiga500: return "A500"
@@ -111,7 +122,10 @@ public struct FSUAEConfiguration: Equatable, Sendable {
     /// fastest way to a machine that does not boot.
     public var fastMemory: Int {
         switch firmware {
-        case .aros: return 0
+        case .aros:
+            // Modest rather than none. A large autoconfig space on AROS is the fastest
+            // way to a machine that will not boot, and 8MB is enough for the titler.
+            return program.machine == .amiga500 ? 0 : 8
         case .kickstart:
             switch program.machine {
             case .amiga500: return 0
@@ -151,21 +165,34 @@ public struct FSUAEConfiguration: Equatable, Sendable {
             "fast_memory = \(fastMemory)",
             "",
             "# ── Video ──",
-            "# NTSC throughout, because this app's whole output chain is 480i NTSC and a",
-            "# PAL machine would have to be resampled on the way out.",
-            "ntsc_mode = 1",
+            "# PAL. The output chain is 480i NTSC throughout and every instinct says to",
+            "# match it here — but this software is PAL-authored (640x512, and its own",
+            "# preferences ask for pal.monitor), so an NTSC machine crops its pages. The",
+            "# capture resamples into the project's 720x480 either way, exactly as it",
+            "# does for every other source, so the conversion costs nothing extra here",
+            "# and running the machine as its software expects costs a great deal.",
+            "ntsc_mode = 0",
             "",
             "# ── Drives ──",
-            "# DH0 is the shared drawer: the host writes command files into its cmd/",
-            "# sub-drawer and an ARexx listener inside the machine forwards them.",
-            "hard_drive_0 = \(sharedDrawer.path)",
-            "hard_drive_0_label = \(AmigaSideScripts.volumeName)"
+            "# The BOOT drive goes first. FS-UAE boots the lowest-numbered drive, so a",
+            "# shared drawer in slot 0 gives a machine that comes up with no operating",
+            "# system and no explanation."
         ]
 
+        var slot = 0
         if let systemDrive {
-            lines.append("hard_drive_1 = \(systemDrive.path)")
-            lines.append("hard_drive_1_label = Work")
+            lines.append("hard_drive_\(slot) = \(systemDrive.path)")
+            lines.append("hard_drive_\(slot)_label = \(systemVolumeName)")
+            slot += 1
+        } else {
+            lines.append("# No system drive: AROS will boot to a screen with nothing on it.")
+            lines.append("# Run the installer against a mounted Amiga disc first.")
         }
+
+        // The shared drawer: the host writes command files into its cmd/ sub-drawer and
+        // the ARexx listener inside the machine forwards them.
+        lines.append("hard_drive_\(slot) = \(sharedDrawer.path)")
+        lines.append("hard_drive_\(slot)_label = \(AmigaSideScripts.volumeName)")
         if let cdImage {
             lines.append("cdrom_drive_0 = \(cdImage.path)")
         }

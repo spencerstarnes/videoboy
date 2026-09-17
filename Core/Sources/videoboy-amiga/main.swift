@@ -127,15 +127,51 @@ func runSetup() {
     }
     if let note = firmware.note { print("             \(note)") }
 
+    // Assemble a bootable drive from the disc. AROS supplies the ROM; a machine still
+    // needs AmigaDOS, ARexx and the software on a drive it can boot.
+    let systemDrive = workspace.appendingPathComponent("System")
+    let installer = AmigaSystemInstaller(destination: systemDrive)
+    var volumeName = "Workbench"
+
+    if let disc {
+        do {
+            let mounted = try DiscImage(path: disc).mount()
+            volumeName = mounted.lastPathComponent
+            if installer.isInstalled && !arguments.contains("--reinstall") {
+                print("  system     already built at \(systemDrive.path)")
+                print("             (--reinstall rebuilds it)")
+            } else {
+                print("  system     building from \(mounted.lastPathComponent)...")
+                let result = try installer.install(from: mounted) { drawer in
+                    print("               \(drawer)")
+                }
+                print("  system     \(result.summary)")
+            }
+        } catch {
+            print("  system     FAILED: \(error.localizedDescription)")
+            missing += 1
+        }
+    } else {
+        print("  system     no disc to build from")
+        missing += 1
+    }
+
     var configuration = FSUAEConfiguration(
         program: program, firmware: firmware,
-        sharedDrawer: sharedDrawer, cdImage: disc)
+        sharedDrawer: sharedDrawer,
+        systemDrive: installer.isInstalled ? systemDrive : nil)
+    configuration.systemVolumeName = volumeName
     configuration.windowTitle = "Videoboy Amiga"
 
     do {
         let written = try configuration.write(to: workspace)
+        // Read back off the config rather than restating it here: a readout that
+        // says NTSC while the file says PAL is worse than no readout.
+        let standard = written.path.isEmpty ? "" : ""
+        _ = standard
         print("\n  machine    \(configuration.amigaModel), "
-            + "\(configuration.fastMemory)MB fast, NTSC")
+            + "\(configuration.fastMemory)MB fast, "
+            + (configuration.text.contains("ntsc_mode = 1") ? "NTSC" : "PAL"))
         print("  drawer     \(sharedDrawer.path)")
         print("  config     \(written.path)")
         let contents = AmigaSideScripts.drawerContents()

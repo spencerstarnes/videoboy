@@ -261,16 +261,175 @@ final class AmigaLinkTests: XCTestCase {
         TitlerLibrary.programs.first { $0.name == "Scala MM300" }!
     }
 
-    func testWithoutAKickstartTheModelStepsDownToWhatAROSCanBe() {
-        // AROS is an A500-era ROM replacement. Asking it to be an AGA A1200 produces a
-        // machine that does not come up — and an A1200 in the panel that is secretly
-        // an A500 is worse than an honest A500.
+    func testWithoutAKickstartTheMachineStillComesUpAndSaysWhatItIs() {
+        // This assertion USED to be "AROS can only be an A500". That was reasoning
+        // from AROS being described as an A500-era ROM replacement, and running it
+        // disproved it: FS-UAE's AROS comes up titled "Amiga 1200" and boots a disc.
+        //
+        // So the requested machine is honoured. What must NOT happen is the panel
+        // showing an A1200 while quietly saying nothing about the firmware underneath
+        // it, because AROS is a reimplementation and 1990s commercial software is
+        // exactly the category that notices — Scala's scalamm.gfx device does not load
+        // under it.
         let configuration = FSUAEConfiguration(
             program: scala, firmware: .aros,
             sharedDrawer: URL(fileURLWithPath: "/tmp/vb"))
+        XCTAssertEqual(configuration.amigaModel, "A1200")
+        XCTAssertNotNil(configuration.firmware.note, "it has to say what it is running on")
+        XCTAssertTrue(configuration.firmware.note?.contains("AROS") ?? false)
+    }
+
+    func testAnA500ProgramStillGetsAnA500() {
+        let plain = TitlerProgram(
+            name: "Broadcast Titler II", platform: .amiga, requires: [], boot: [],
+            machine: .amiga500)
+        let configuration = FSUAEConfiguration(
+            program: plain, firmware: .aros,
+            sharedDrawer: URL(fileURLWithPath: "/tmp/vb"))
         XCTAssertEqual(configuration.amigaModel, "A500")
-        XCTAssertEqual(configuration.fastMemory, 0)
-        XCTAssertNotNil(configuration.firmware.note, "and it has to say so")
+        XCTAssertEqual(
+            configuration.fastMemory, 0,
+            "a large autoconfig space on an AROS A500 is the fastest way to a machine "
+                + "that will not boot, and the titler does not need it")
+    }
+
+    func testTheBootDriveComesFirstOrTheMachineHasNoOperatingSystem() {
+        // FS-UAE boots the lowest-numbered drive. A shared drawer in slot 0 gives a
+        // machine that comes up to an empty screen with no explanation — which is
+        // exactly what happened before the system drive existed.
+        let configuration = FSUAEConfiguration(
+            program: scala, firmware: .aros,
+            sharedDrawer: URL(fileURLWithPath: "/tmp/vb"),
+            systemDrive: URL(fileURLWithPath: "/tmp/sys"))
+        let text = configuration.text
+        guard let system = text.range(of: "hard_drive_0 = /tmp/sys"),
+              let shared = text.range(of: "hard_drive_1 = /tmp/vb") else {
+            return XCTFail("expected the system drive in slot 0, got:\n\(text)")
+        }
+        XCTAssertLessThan(system.lowerBound, shared.lowerBound)
+    }
+
+    func testTheSystemVolumeKeepsTheDiscsNameSoStoredPathsResolve() {
+        // Software stores absolute paths in its preferences. Scala's config lists
+        // `CUCD19:SCALA/BACKGROUNDS/`, so a volume called anything else turns every
+        // load into a file requester.
+        var configuration = FSUAEConfiguration(
+            program: scala, firmware: .aros,
+            sharedDrawer: URL(fileURLWithPath: "/tmp/vb"),
+            systemDrive: URL(fileURLWithPath: "/tmp/sys"))
+        configuration.systemVolumeName = "CUCD19"
+        XCTAssertTrue(configuration.text.contains("hard_drive_0_label = CUCD19"))
+    }
+
+    func testTheMachineRunsAsItsSoftwareExpectsRatherThanAsTheOutputDoes() {
+        // Every instinct says match the 480i NTSC output chain. The software is
+        // PAL-authored — 640x512 pages, and its own preferences ask for pal.monitor —
+        // so an NTSC machine crops it. The capture resamples into the project's
+        // 720x480 either way, so matching the software costs nothing and matching the
+        // output costs the top and bottom of every page.
+        let configuration = FSUAEConfiguration(
+            program: scala, firmware: .aros,
+            sharedDrawer: URL(fileURLWithPath: "/tmp/vb"))
+        XCTAssertTrue(configuration.text.contains("ntsc_mode = 0"))
+    }
+
+    // MARK: - Assembling a bootable drive
+
+    func testADirectoryWithoutTheEssentialDrawersIsRefused() throws {
+        let empty = try temporaryDrawer()
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        XCTAssertFalse(AmigaSystemInstaller.looksBootable(empty))
+
+        let installer = AmigaSystemInstaller(destination: try temporaryDrawer())
+        XCTAssertThrowsError(try installer.install(from: empty)) { error in
+            // The message has to say what to do, not only what is wrong.
+            XCTAssertTrue(
+                (error as? AmigaSystemInstaller.InstallError)?
+                    .errorDescription?.contains("C, L, Libs and S") ?? false)
+        }
+    }
+
+    func testABootableDiscIsRecognisedAndCopied() throws {
+        let source = try temporaryDrawer()
+        for drawer in ["C", "L", "Libs", "S", "System", "Rexxc"] {
+            try FileManager.default.createDirectory(
+                at: source.appendingPathComponent(drawer), withIntermediateDirectories: true)
+        }
+        try "old".write(
+            to: source.appendingPathComponent("S/Startup-Sequence"),
+            atomically: true, encoding: .utf8)
+        XCTAssertTrue(AmigaSystemInstaller.looksBootable(source))
+
+        let destination = try temporaryDrawer()
+        let installer = AmigaSystemInstaller(destination: destination)
+        let result = try installer.install(from: source)
+
+        XCTAssertTrue(result.copiedDrawers.contains("C"))
+        XCTAssertTrue(result.skippedDrawers.contains("Scala"), "absent drawers are reported")
+        XCTAssertTrue(installer.isInstalled)
+
+        // The disc's own startup is replaced but KEPT, because it is the only record of
+        // what the disc intended to do.
+        let startup = try String(
+            contentsOf: destination.appendingPathComponent("S/Startup-Sequence"),
+            encoding: .isoLatin1)
+        XCTAssertTrue(startup.contains("RexxMast"), "ARexx has to come up")
+        XCTAssertTrue(startup.contains("VBLink.rexx"), "and so does the listener")
+        XCTAssertEqual(
+            try String(
+                contentsOf: destination.appendingPathComponent("S/Startup-Sequence.original"),
+                encoding: .utf8),
+            "old")
+    }
+
+    func testTheStartupBringsThingsUpInAnOrderThatCanWork() {
+        // ARexx before the listener, because a listener that starts first forwards
+        // into a port that does not exist yet and drops everything.
+        let startup = AmigaSystemInstaller(
+            destination: URL(fileURLWithPath: "/tmp/x")
+        ).startupSequence(titlerPath: "SYS:Scala/ScalaMM")
+
+        guard let rexx = startup.range(of: "RexxMast"),
+              let listener = startup.range(of: "VBLink.rexx"),
+              let titler = startup.range(of: "SYS:Scala/ScalaMM") else {
+            return XCTFail("expected all three to be started")
+        }
+        XCTAssertLessThan(rexx.lowerBound, listener.lowerBound)
+        XCTAssertLessThan(listener.lowerBound, titler.lowerBound)
+        XCTAssertTrue(startup.allSatisfy(\.isASCII))
+    }
+
+    func testTheStartupPutsTheTitlersDevicesWhereOpenDeviceLooks() {
+        // The first boot failed with "Can't open device: scalamm.gfx". Its devices
+        // live in its own System drawer and OpenDevice() searches DEVS:.
+        let startup = AmigaSystemInstaller(
+            destination: URL(fileURLWithPath: "/tmp/x")
+        ).startupSequence(titlerPath: "SYS:Scala/ScalaMM")
+        XCTAssertTrue(startup.contains("Assign DEVS: SYS:Scala/System ADD"))
+    }
+
+    func testTheListenerReportsItsOwnHealthRatherThanRelyingOnARedirect() {
+        // The first attempt redirected the listener's console output to a file in the
+        // shared drawer — a free diagnostic channel, apparently. It is not: ARexx
+        // BUFFERS its output, so the file stays empty until the script exits, and a
+        // watch loop never exits. The file existed, was zero bytes, and told us
+        // nothing while the listener sat there working perfectly.
+        //
+        // The listener writes its own status file instead, closed on every write, so
+        // it is flushed every time. It reports two DIFFERENT facts — that the listener
+        // is alive, and whether the program's port is open — and telling those apart
+        // is most of diagnosing this link.
+        let script = AmigaSideScripts.listener()
+        XCTAssertTrue(script.contains("link.status"))
+        XCTAssertTrue(script.contains("'port open'"))
+        XCTAssertTrue(script.contains("'port closed'"))
+
+        let startup = AmigaSystemInstaller(
+            destination: URL(fileURLWithPath: "/tmp/x")
+        ).startupSequence(titlerPath: "")
+        XCTAssertFalse(
+            startup.contains("link-out.txt"),
+            "redirecting a watch loop's output to a file produces an empty file")
     }
 
     func testWithAKickstartTheRequestedMachineIsHonoured() {

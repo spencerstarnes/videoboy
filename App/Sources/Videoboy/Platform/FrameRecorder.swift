@@ -25,16 +25,69 @@ import VideoboyCore
 final class FrameRecorder {
 
     /// What to encode with. The names match the toolbar's popup.
+    /// What a recording is written as.
+    ///
+    /// ── WHY BOTH KINDS ARE HERE ─────────────────────────────────────────────────
+    ///
+    /// ProRes is an INTERMEDIATE codec: every frame is whole, it survives being cut
+    /// and re-graded, and it is what you want if the recording is going into an edit.
+    /// It is also enormous — SD ProRes 422 runs around 40 Mbit/s, so an hour is about
+    /// 18GB.
+    ///
+    /// H.264 and HEVC are DELIVERY codecs: an order of magnitude smaller, because they
+    /// describe most frames as differences from their neighbours. That makes them the
+    /// right answer for "record the set so I can watch it back" or "put this online",
+    /// and the wrong answer for anything that will be cut up afterwards.
+    ///
+    /// Both belong here because this app is used for both, and picking for someone is
+    /// how you end up with a 40GB file they wanted to text to a friend.
     enum Codec: String, CaseIterable {
         case proRes422 = "ProRes 422"
         case proRes422HQ = "ProRes HQ"
         case appleProRes4444 = "ProRes 4444"
+        case h264 = "H.264"
+        case hevc = "HEVC"
 
         var videoCodecType: AVVideoCodecType {
             switch self {
             case .proRes422: .proRes422
             case .proRes422HQ: .proRes422HQ
             case .appleProRes4444: .proRes4444
+            case .h264: .h264
+            case .hevc: .hevc
+            }
+        }
+
+        /// Whether this one needs a bitrate. ProRes sets its own by quality tier.
+        var isCompressed: Bool {
+            self == .h264 || self == .hevc
+        }
+
+        /// Bits per second at standard definition.
+        ///
+        /// Generous for SD on purpose. The pictures this app makes are full of exactly
+        /// what a delivery codec handles worst — noise, chroma bleed, whole-frame
+        /// changes on the beat, and deliberate bitstream corruption — so a bitrate
+        /// chosen for ordinary footage would smear the very thing being recorded.
+        /// HEVC gets less for the same result because it is roughly that much better.
+        var bitRate: Int {
+            switch self {
+            case .h264: 12_000_000
+            case .hevc: 8_000_000
+            default: 0
+            }
+        }
+
+        /// One line for the tooltip, so the choice can be made without knowing codecs.
+        var explanation: String {
+            switch self {
+            case .proRes422: "Edit-ready, large. About 18GB an hour."
+            case .proRes422HQ: "Edit-ready, larger, more headroom for grading."
+            case .appleProRes4444: "Edit-ready, largest, keeps everything."
+            case .h264: "Compressed and small — for watching back and sharing. "
+                + "About 5GB an hour. Plays anywhere."
+            case .hevc: "Compressed and smaller still, same picture. "
+                + "About 3.5GB an hour. Needs a recent machine to play."
             }
         }
     }
@@ -50,6 +103,33 @@ final class FrameRecorder {
     private let frameDuration: CMTime
     private var hasStarted = false
     private var hasFailed = false
+
+    /// The writer settings for a codec.
+    ///
+    /// Separate from `init` so it can be read and tested on its own — a wrong bitrate
+    /// or a stray B-frame is invisible until someone plays a recording back, which is
+    /// far too late to find out.
+    static func settings(codec: Codec, width: Int, height: Int) -> [String: Any] {
+        var settings: [String: Any] = [
+            AVVideoCodecKey: codec.videoCodecType,
+            AVVideoWidthKey: width,
+            AVVideoHeightKey: height
+        ]
+        guard codec.isCompressed else { return settings }
+
+        settings[AVVideoCompressionPropertiesKey] = [
+            AVVideoAverageBitRateKey: codec.bitRate,
+            // NO FRAME REORDERING. B-frames buy a little efficiency by describing a
+            // frame from the one AFTER it, which means holding frames back before
+            // writing them. For a live recording that costs latency and makes the file
+            // awkward to scrub; for a performance nobody will thank you for the 8%.
+            AVVideoAllowFrameReorderingKey: false,
+            // A keyframe every second, so scrubbing lands somewhere sensible rather
+            // than decoding half a minute to reach a point.
+            AVVideoMaxKeyFrameIntervalKey: 30
+        ] as [String: Any]
+        return settings
+    }
 
     /// Opens a file and gets the writer ready.
     ///
@@ -70,11 +150,8 @@ final class FrameRecorder {
         writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         input = AVAssetWriterInput(
             mediaType: .video,
-            outputSettings: [
-                AVVideoCodecKey: codec.videoCodecType,
-                AVVideoWidthKey: width,
-                AVVideoHeightKey: height
-            ]
+            outputSettings: FrameRecorder.settings(
+                codec: codec, width: width, height: height)
         )
         // Frames arrive from the render loop as it produces them, which is as close
         // to real time as this gets.

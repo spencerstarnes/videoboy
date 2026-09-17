@@ -53,6 +53,9 @@ final class Engine {
     private(set) var subMixTwo: CrossfadeNode!
     private(set) var primary: CrossfadeNode!
 
+    /// The node that puts a scope into the programme picture, when SEND is lit.
+    private(set) var scopeOverlay: ScopeOverlayNode?
+
     /// Bus effects, one chain per sub-mix (SPEC 2's `bus FX`). The composite codec is
     /// the analog character; echo and feedback sit after it.
     private(set) var compositeCodec: CompositeCodecNode!
@@ -296,6 +299,21 @@ final class Engine {
         graph.connect(
             from: Engine.compositeProgramSlot, to: Engine.busCodecProgramSlot, inputIndex: 0)
 
+        // The scope overlay, after everything. SEND on a preview's scope keys puts the
+        // instrument into the picture that goes to air, which is only possible at the
+        // very end — anything earlier and the bus codec and the NTSC stage would chew
+        // the trace up on its way past.
+        //
+        // It costs NOTHING when nothing is being sent: the node returns its input
+        // untouched, with no pass and no upload. That matters because it is on the
+        // path of every frame that goes out.
+        let scopeOverlay = ScopeOverlayNode(
+            identifier: Engine.scopeOverlaySlot, context: metal)
+        graph.add(scopeOverlay)
+        graph.connect(
+            from: Engine.busCodecProgramSlot, to: Engine.scopeOverlaySlot, inputIndex: 0)
+        self.scopeOverlay = scopeOverlay
+
         // A generator per channel, created up front so its parameters are registered
         // and mappable whether or not it is currently the channel's source.
         for letter in ["A", "B", "C", "D"] {
@@ -375,12 +393,24 @@ final class Engine {
     static let mx1OneSlot = "fx.one.mx1"
     static let mx1TwoSlot = "fx.two.mx1"
 
+    /// The scope overlay, last of all — see `scopeOverlaySlot`.
+    static let scopeOverlaySlot = "out.scopeoverlay"
+
     /// The last node in the graph — what output and the programme preview show.
     ///
     /// Named separately from `GraphTopology.primary` because they are not the same
     /// thing: primary is the ONE/TWO mix, and the programme data stage runs after it.
     /// Conflating them is what left that stage unconnected.
-    static var outputSlot: String { busCodecProgramSlot }
+    static var outputSlot: String { scopeOverlaySlot }
+
+    /// What the PROGRAMME scopes measure.
+    ///
+    /// The end of the picture chain, and deliberately NOT `outputSlot`, which now has
+    /// the scope overlay after it. Measuring the output would mean measuring a picture
+    /// with the scope already drawn on it — the trace would feed into its own waveform
+    /// and climb until the whole instrument was white. Scopes read what goes out
+    /// BEFORE the instrument is drawn over it.
+    static var scopeSourceSlot: String { busCodecProgramSlot }
     /// The camera chosen as the live input, by name.
     ///
     /// Stored here so the choice survives and anything opening a capture session asks

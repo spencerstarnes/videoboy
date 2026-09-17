@@ -49,6 +49,39 @@ public enum BlendMode: Int, CaseIterable, Codable, Sendable {
         }
     }
 
+    /// The modes grouped the way Photoshop groups them, for the menu.
+    ///
+    /// ── WHY THIS ORDER IS DIFFERENT FROM `allCases` ─────────────────────────────
+    ///
+    /// Photoshop's blend menu is not alphabetical and not arbitrary: it is grouped by
+    /// WHAT THE MODE DOES TO THE PICTURE, with a separator between each group —
+    /// darkening modes together, lightening modes together, contrast modes together.
+    /// Every compositing application since has copied it, so anyone who has used one
+    /// already knows where to look. A flat list of thirteen names does not.
+    ///
+    /// The groups, in Photoshop's order:
+    ///   1. Normal            — no interaction
+    ///   2. Darken family     — the result is never lighter than what went in
+    ///   3. Lighten family    — the result is never darker
+    ///   4. Contrast family   — darkens the darks and lightens the lights
+    ///   5. Comparative       — the difference between the two layers
+    ///
+    /// THIS IS THE MENU'S ORDER ONLY. `allCases` keeps the declaration order because
+    /// the raw values are the shader's mode IDs and go into saved templates, and
+    /// because `from(normalised:)` maps a 0...1 parameter across `allCases` — so
+    /// reordering that would silently change what every saved MIDI mapping and fader
+    /// sweep resolves to.
+    public static let menuGroups: [[BlendMode]] = [
+        [.normal],
+        [.darken, .multiply, .colorBurn],
+        [.lighten, .screen, .colorDodge, .add],
+        [.overlay, .softLight, .hardLight],
+        [.difference, .subtract]
+    ]
+
+    /// Every mode in menu order, flattened.
+    public static var menuOrder: [BlendMode] { menuGroups.flatMap { $0 } }
+
     /// Selects a mode from a 0...1 parameter (code `65A`).
     public static func from(normalised value: Double) -> BlendMode {
         let all = allCases
