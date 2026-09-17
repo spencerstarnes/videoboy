@@ -306,10 +306,11 @@ final class EffectChainPanelBody: NSView {
         // A/B · C/D toggle on the libraries, so it reads as the same kind of choice.
         var channelSelector: NSSegmentedControl?
         if effect.channelOptions.count > 1 {
+            // Three STATES, two segments. Clicking past the last channel selects
+            // BOTH, and both segments light rather than a third segment appearing —
+            // a word that says "both" takes more width than the two things it is
+            // describing, in the narrowest column in the window.
             let selected = cardChannelSelection[effect.name] ?? 0
-            // The focused channel carries the same caret the library's load focus
-            // uses, so the two read as one kind of switch: the one that receives
-            // what you do next.
             let focusTitles = effect.channelOptions.enumerated().map { index, name in
                 index == selected ? Theme.focusCaret + name : name
             }
@@ -536,23 +537,52 @@ final class EffectChainPanelBody: NSView {
         onEffectToggled?(name, sender.state == .on)
     }
 
-    /// Moves the focus caret to the selected segment.
-    private func restyleFocus(_ control: NSSegmentedControl, options: [String]) {
-        for (index, name) in options.enumerated() {
-            control.setLabel(
-                index == control.selectedSegment ? Theme.focusCaret + name : name,
-                forSegment: index)
+    /// Paints the selector for a state, where a state past the last segment is BOTH.
+    ///
+    /// BOTH lights every segment in the focus orange rather than selecting one. The
+    /// segmented control has no "all selected" mode, so the state lives in
+    /// `cardChannelSelection` and this is what makes it visible.
+    private func restyleFocus(_ control: NSSegmentedControl, options: [String], state: Int) {
+        let isBoth = state >= options.count
+        control.selectedSegmentBezelColor = Theme.Color.focusOn
+        if isBoth {
+            // Nothing is "the" selection, so the control shows the last segment
+            // selected and every label carries the caret — the two together read as
+            // "all of these" rather than "this one".
+            control.selectedSegment = options.count - 1
+            for (index, name) in options.enumerated() {
+                control.setLabel(Theme.focusCaret + name, forSegment: index)
+            }
+        } else {
+            control.selectedSegment = state
+            for (index, name) in options.enumerated() {
+                control.setLabel(index == state ? Theme.focusCaret + name : name, forSegment: index)
+            }
         }
     }
 
     @objc private func cardChannelChanged(_ sender: NSSegmentedControl) {
-        guard let name = sender.identifier?.rawValue else { return }
-        let index = sender.selectedSegment
-        cardChannelSelection[name] = index
-        if let options = effects.first(where: { $0.name == name })?.channelOptions {
-            restyleFocus(sender, options: options)
+        guard let name = sender.identifier?.rawValue,
+              let options = effects.first(where: { $0.name == name })?.channelOptions
+        else { return }
+
+        // Clicking the LAST segment when it is already the state advances to BOTH,
+        // and clicking anything from BOTH goes back to that channel. Three states on
+        // two segments, reached by clicking past the end.
+        let previous = cardChannelSelection[name] ?? 0
+        let clicked = sender.selectedSegment
+        let next: Int
+        if previous >= options.count {
+            next = clicked                       // leaving BOTH for one channel
+        } else if clicked == previous && clicked == options.count - 1 {
+            next = options.count                 // clicked past the last: BOTH
+        } else {
+            next = clicked
         }
-        onCardChannelChanged?(name, index)
+
+        cardChannelSelection[name] = next
+        restyleFocus(sender, options: options, state: next)
+        onCardChannelChanged?(name, next)
     }
 
     /// Pushes new values into a specific card's parameter faders and readouts, for

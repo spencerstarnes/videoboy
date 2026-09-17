@@ -63,12 +63,25 @@ final class VBOptionButton: NSControl {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
+    /// Matches the bus keys' height, for the keys that sit beside them.
+    ///
+    /// Per instance rather than for the whole type: the transport keys on a fader
+    /// panel belong to the same row as A and B and should read as the same kind of
+    /// thing, while the output bar's toggles are a settings strip that was
+    /// deliberately made slim and should stay that way.
+    var isTall = false {
+        didSet {
+            guard isTall != oldValue else { return }
+            invalidateIntrinsicContentSize()
+        }
+    }
+
     override var intrinsicContentSize: NSSize {
         let text = title as NSString
         let width = text.size(withAttributes: [.font: Theme.Font.tinyLabel]).width
         return NSSize(
             width: ceil(width) + Theme.OptionButton.horizontalPadding * 2,
-            height: Theme.OptionButton.height)
+            height: isTall ? Theme.BusButton.height : Theme.OptionButton.height)
     }
 
     override func updateTrackingAreas() {

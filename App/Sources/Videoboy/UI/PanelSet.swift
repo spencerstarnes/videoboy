@@ -147,7 +147,7 @@ final class PanelSet {
                     EffectParameterModel(name: "flip V", code: ParamCode.flipVertical.rawValue,
                                          value: 0.0, enabled: true)
                 ],
-                channelOptions: ["A", "B", "BOTH"]
+                channelOptions: ["A", "B"]
             ),
             EffectCardModel(
                 name: "DV · DIF corruptor",
@@ -168,7 +168,7 @@ final class PanelSet {
                 // wedge. This one card reaches whichever of the two is selected here,
                 // rather than being hardwired to A the way it was before this could
                 // be switched at all.
-                channelOptions: ["A", "B", "BOTH"]
+                channelOptions: ["A", "B"]
             ),
             EffectCardModel(
                 name: "Composite · NTSC",
@@ -192,7 +192,7 @@ final class PanelSet {
                     EffectParameterModel(name: "gen", code: ParamCode.compositeGeneration.rawValue,
                                          value: 0.0, enabled: true)
                 ],
-                channelOptions: ["A", "B", "BOTH"]
+                channelOptions: ["A", "B"]
             ),
             EffectCardModel(
                 name: "Colour",
@@ -222,7 +222,7 @@ final class PanelSet {
                     EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
                                          value: 0.231, enabled: true)
                 ],
-                channelOptions: ["A", "B", "BOTH"]
+                channelOptions: ["A", "B"]
             ),
             EffectCardModel(
                 name: "Echo / Trails",
@@ -236,7 +236,7 @@ final class PanelSet {
                     EffectParameterModel(name: "thresh", code: ParamCode.echoThreshold.rawValue,
                                          value: 0.15, enabled: true)
                 ],
-                channelOptions: ["A", "B", "BOTH"]
+                channelOptions: ["A", "B"]
             ),
             EffectCardModel(
                 name: "Feedback",
@@ -252,7 +252,7 @@ final class PanelSet {
                     EffectParameterModel(name: "rotate", code: ParamCode.feedbackRotate.rawValue,
                                          value: 0.5, enabled: true)
                 ],
-                channelOptions: ["A", "B", "BOTH"]
+                channelOptions: ["A", "B"]
             ),
             EffectCardModel(
                 name: "MX-1",
@@ -284,7 +284,7 @@ final class PanelSet {
                     EffectParameterModel(name: "flip V", code: ParamCode.flipVertical.rawValue,
                                          value: 0.0, enabled: true)
                 ],
-                channelOptions: ["C", "D", "BOTH"]
+                channelOptions: ["C", "D"]
             ),
             EffectCardModel(
                 name: "DV · DIF corruptor",
@@ -305,7 +305,7 @@ final class PanelSet {
                 // corruption was wired all the way through the registry and never
                 // reachable from anywhere in the window. D reaches it too, by the
                 // selector below.
-                channelOptions: ["C", "D", "BOTH"]
+                channelOptions: ["C", "D"]
             ),
             EffectCardModel(
                 name: "Composite · NTSC",
@@ -321,7 +321,7 @@ final class PanelSet {
                     EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
                                          value: 0.2, enabled: true)
                 ],
-                channelOptions: ["C", "D", "BOTH"]
+                channelOptions: ["C", "D"]
             ),
             EffectCardModel(
                 name: "Colour",
@@ -351,7 +351,7 @@ final class PanelSet {
                     EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
                                          value: 0.231, enabled: true)
                 ],
-                channelOptions: ["C", "D", "BOTH"]
+                channelOptions: ["C", "D"]
             ),
             EffectCardModel(
                 name: "Echo / Trails",
@@ -363,7 +363,7 @@ final class PanelSet {
                     EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
                                          value: 0.0, enabled: true)
                 ],
-                channelOptions: ["C", "D", "BOTH"]
+                channelOptions: ["C", "D"]
             ),
             EffectCardModel(
                 name: "Feedback",
@@ -375,7 +375,7 @@ final class PanelSet {
                     EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
                                          value: 0.52, enabled: true)
                 ],
-                channelOptions: ["C", "D", "BOTH"]
+                channelOptions: ["C", "D"]
             ),
             EffectCardModel(
                 name: "MX-1",

@@ -757,6 +757,7 @@ final class FaderPanelBody: NSView {
         cutButton.toolTip = "Cut straight to the other source. "
             + "With Beat on, it waits for the next beat. Shift-click to learn a MIDI button."
         cutButton.mappingCode = .cutTrigger
+        cutButton.isTall = true
         self.cutButton = cutButton
         buttons.append(cutButton)
 
@@ -769,6 +770,7 @@ final class FaderPanelBody: NSView {
         fadeButton.toolTip = "Fade to the other source over the time set by the "
             + "turtle/rabbit control. Shift-click to learn a MIDI button."
         fadeButton.mappingCode = .fadeTrigger
+        fadeButton.isTall = true
         self.fadeButton = fadeButton
         buttons.append(fadeButton)
 
@@ -781,17 +783,35 @@ final class FaderPanelBody: NSView {
         // still fades — they just wait for the next boundary first.
         beatToggle.toolTip = "Hold the next cut or fade until the beat. "
             + "Which beat is set by DIV in the transport readout."
+        beatToggle.isTall = true
         self.beatCutButton = beatToggle
         buttons.append(beatToggle)
 
         // The rate control: three positions, turtle to rabbit. A performance wants
         // "slow" without choosing a number, and the exact seconds matter far less
         // than the feel — which is why this is not a continuous slider.
+        // SF Symbols rather than emoji. An emoji is a full-colour glyph rendered by
+        // the system font — it cannot be tinted, it does not match the flat monochrome
+        // language of every other key in this row, and it renders differently across
+        // OS versions. These are real icons and take the control's own colour.
         let rateControl = Controls.segmented(
-            ["🐢", "•", "🐇"], selected: 1, target: self, action: #selector(rateChanged(_:)))
-        rateControl.setToolTip("Slow fade", forSegment: 0)
-        rateControl.setToolTip("Medium fade", forSegment: 1)
-        rateControl.setToolTip("Fast fade", forSegment: 2)
+            ["", "", ""], selected: 1, target: self, action: #selector(rateChanged(_:)))
+        let rateSymbols = [
+            ("tortoise.fill", "Slow fade"),
+            ("minus", "Medium fade"),
+            ("hare.fill", "Fast fade")
+        ]
+        for (index, entry) in rateSymbols.enumerated() {
+            if let image = NSImage(
+                systemSymbolName: entry.0, accessibilityDescription: entry.1) {
+                image.isTemplate = true
+                rateControl.setImage(image, forSegment: index)
+                rateControl.setLabel("", forSegment: index)
+            }
+        }
+        for (index, entry) in rateSymbols.enumerated() {
+            rateControl.setToolTip(entry.1, forSegment: index)
+        }
         self.rateControl = rateControl
         buttons.append(rateControl)
         // No mapping badges here. They were decoration — unclickable letters wired to

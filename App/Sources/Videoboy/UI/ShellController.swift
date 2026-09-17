@@ -856,6 +856,7 @@ final class ShellController {
         ]
         for bus in buses {
             bus.body.setMappingSlot(bus.slot)
+            bus.body.fader.onSweepChanged = { [weak self] in self?.refreshArmedSweeps() }
 
             // Blend lives on the fader panel now, and writes to the same slot the
             // composite above it reads — the control moved, the wiring did not.
@@ -1391,6 +1392,10 @@ final class ShellController {
         }
     }
 
+    /// Drives the sweeps once, for checks that step the graph by hand rather than
+    /// through the display link.
+    func driveSweepsForChecks() { driveSweeps(from: engine) }
+
     /// Drives every armed fader sweep, once a frame.
     ///
     /// A fader with two marks stops being a control you hold and becomes one that
@@ -1434,6 +1439,20 @@ final class ShellController {
                     panel?.onParameterChanged?(code.rawValue, value)
                 }))
             }
+        }
+
+        // THE CROSSFADERS TOO. They accepted the gesture and drew the bar, so a
+        // sweep looked armed — but only the FX chains were ever scanned here, so
+        // nothing drove them. A marked fader that never moves is worse than one that
+        // refuses the gesture, because it says it worked.
+        for body in [shell.grid.panels.faderABBody,
+                     shell.grid.panels.faderCDBody,
+                     shell.grid.panels.faderOneTwoBody] {
+            let fader = body.fader
+            guard fader.sweep != nil else { continue }
+            found.append((fader, { [weak body] value in
+                body?.onFaderMoved?(value)
+            }))
         }
         armedSweeps = found
         Log.info(.param, "\(found.count) fader sweep(s) armed")

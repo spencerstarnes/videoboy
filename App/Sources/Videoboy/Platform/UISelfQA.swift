@@ -860,9 +860,11 @@ enum UISelfQA {
             }
             check.record(AssertionResult(
                 name: "both FX chains have a channel selector on the corruptor card",
-                // Three now: A, B and BOTH. BOTH addresses the bus copy, which runs
-                // after the mix and so genuinely affects both channels.
-                passed: selectorOne.segmentCount == 3 && selectorTwo.segmentCount == 3,
+                // TWO segments and three states: clicking past the last channel
+                // selects BOTH, which lights both segments rather than adding a
+                // third. A word meaning "both" costs more width than the two things
+                // it describes.
+                passed: selectorOne.segmentCount == 2 && selectorTwo.segmentCount == 2,
                 detail: "A/B has \(selectorOne.segmentCount) segments, C/D has \(selectorTwo.segmentCount)"
             ))
 
@@ -1262,6 +1264,69 @@ enum UISelfQA {
                 passed: worst < mean * 3.0 || worst < 4.0,
                 detail: String(format: "worst is %.1fx the mean", mean > 0 ? worst / mean : 0)
             ))
+        }
+
+        // A SWEEP ON A CROSSFADER IS ACTUALLY DRIVEN. The crossfaders took the
+        // gesture and drew the bar, so a sweep LOOKED armed — but only the FX chains
+        // were scanned by the driver, so nothing moved them. A control that says it
+        // worked and then does nothing is worse than one that refuses.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1460, height: 912),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = shell
+            shell.layoutSubtreeIfNeeded()
+
+            let fader = shell.grid.panels.faderABBody.fader
+            func mark(_ fraction: CGFloat) {
+                let x = fader.bounds.minX + fader.bounds.width * fraction
+                let point = fader.convert(NSPoint(x: x, y: fader.bounds.midY), to: nil)
+                if let event = NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: point, modifierFlags: [.command, .option],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil,
+                    eventNumber: 0, clickCount: 1, pressure: 1) {
+                    fader.mouseDown(with: event)
+                }
+            }
+
+            var written: [Double] = []
+            let existing = shell.grid.panels.faderABBody.onFaderMoved
+            shell.grid.panels.faderABBody.onFaderMoved = { value in
+                written.append(value)
+                existing?(value)
+            }
+
+            mark(0.2)
+            mark(0.8)
+            check.record(AssertionResult(
+                name: "a crossfader accepts sweep marks",
+                passed: fader.sweep != nil,
+                detail: fader.sweep.map { String(format: "%.2f...%.2f", $0.lower, $0.upper) }
+                    ?? "no sweep armed"
+            ))
+
+            // And, the part that was missing: something actually moves it.
+            // A sweep reads the TRANSPORT, which follows wall-clock time — so a tight
+            // loop would advance the beat by almost nothing and measure a fader that
+            // correctly barely moved. Real time has to pass for this to mean anything.
+            engine.setTransportRunning(true)
+            for _ in 0..<12 {
+                controller.driveSweepsForChecks()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.04))
+            }
+            engine.setTransportRunning(false)
+
+            check.record(AssertionResult(
+                name: "an armed crossfader is actually driven, not just marked",
+                passed: Set(written.map { String(format: "%.3f", $0) }).count > 2,
+                detail: "\(Set(written.map { String(format: "%.3f", $0) }).count) distinct values written"
+            ))
+
+            withExtendedLifetime(controller) {}
         }
 
         // ACTION KEYS CAN BE LEARNED. Shift-to-map reached faders only, so the keys
