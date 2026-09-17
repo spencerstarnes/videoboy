@@ -67,7 +67,7 @@ final class TransportDisplayView: NSView {
     private let tempoField = NSTextField(labelWithString: "120.0")
     private let clockField = CyclingField(caption: "CLOCK", value: "Internal")
     private let subdivisionField = CyclingField(caption: "DIV", value: "1/4")
-    private let syncLabel = NSTextField(labelWithString: "stopped")
+    private let syncLabel = NSTextField(labelWithString: "STOPPED")
     private var beatLights: [NSView] = []
 
     override init(frame frameRect: NSRect) {
@@ -183,7 +183,7 @@ final class TransportDisplayView: NSView {
     }
 
     func setSyncStatus(_ text: String) {
-        syncLabel.stringValue = text
+        syncLabel.stringValue = text.uppercased()
     }
 
     func setBeat(_ beatInBar: Int) {
@@ -205,7 +205,11 @@ final class CyclingField: NSControl, AuditableControl {
     var onClick: (() -> Void)?
 
     var value: String {
-        didSet { valueLabel.stringValue = value }
+        // Upper-cased on the way to the screen, not at the call sites. The camcorder
+        // face is an all-caps OSD — a real one has no lower case to draw — so every
+        // caller would otherwise have to remember, and one that forgot would be the
+        // only mixed-case word on the display.
+        didSet { valueLabel.stringValue = value.uppercased() }
     }
 
     private let valueLabel: NSTextField
@@ -214,13 +218,13 @@ final class CyclingField: NSControl, AuditableControl {
 
     init(caption: String, value: String) {
         self.value = value
-        self.valueLabel = NSTextField(labelWithString: value)
+        self.valueLabel = NSTextField(labelWithString: value.uppercased())
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 3
         toolTip = "Click to change \(caption.lowercased())"
 
-        let captionLabel = NSTextField(labelWithString: caption)
+        let captionLabel = NSTextField(labelWithString: caption.uppercased())
         captionLabel.font = Theme.Font.osd(size: 9)
         captionLabel.textColor = Theme.Color.displayDimText
 

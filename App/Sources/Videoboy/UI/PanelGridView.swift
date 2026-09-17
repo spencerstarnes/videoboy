@@ -527,11 +527,22 @@ final class PanelGridView: NSView {
         let gutterTotal = gutter * CGFloat(max(weights.filter { $0 > 0 }.count - 1, 0))
         let available = max(total - gutterTotal, 0)
 
+        // The output bar is a FIXED height, taken off the top before anything else
+        // shares out what is left.
+        //
+        // It was a weight like every other row, which meant it grew in proportion to
+        // the window — and it holds one strip of 22pt controls that cannot use the
+        // height, so every extra pixel went into empty space inside the panel. That
+        // is the whole reason it kept looking chunky no matter how much the weight
+        // was trimmed: a proportion of a bigger window is a bigger bar.
+        let outputBar = min(Theme.Grid.outputBarHeight, available)
+        let availableAboveBar = max(available - outputBar, 0)
+
         // What the previews want, and what the rest of the grid must keep.
         let wanted = previewColumnWidth / Theme.Metrics.previewAspectRatio
-        let lowerWeights = Array(weights.dropFirst(2))
+        let lowerWeights = Array(weights.dropFirst(2).dropLast())
         let lowerMinimum = Theme.Grid.minimumLowerRowsHeight
-        let previewBand = min(max(wanted, 0), max(available - lowerMinimum, 0))
+        let previewBand = min(max(wanted, 0), max(availableAboveBar - lowerMinimum, 0))
 
         // The band is split between rows 0 and 1 in their existing proportion, so a
         // source panel above another keeps the relationship it had.
@@ -539,11 +550,11 @@ final class PanelGridView: NSView {
         let row0 = upperSum > 0 ? previewBand * weights[0] / upperSum : previewBand / 2
         let row1 = previewBand - row0
 
-        let lowerAvailable = max(available - previewBand, 0)
+        let lowerAvailable = max(availableAboveBar - previewBand, 0)
         let lowerSum = lowerWeights.reduce(0, +)
         let heights = [row0, row1] + lowerWeights.map { weight -> CGFloat in
             lowerSum > 0 ? lowerAvailable * weight / lowerSum : 0
-        }
+        } + [outputBar]
 
         var result: [(start: CGFloat, end: CGFloat)] = []
         var cursor = origin

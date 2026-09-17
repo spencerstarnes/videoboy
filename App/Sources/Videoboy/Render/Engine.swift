@@ -468,6 +468,17 @@ final class Engine {
         return loaded
     }
 
+    /// Takes whatever is loaded out of a channel. Safe to call on an empty one.
+    ///
+    /// Returns false only when the letter names no source at all, so a caller can
+    /// tell "there was nothing to eject" from "that channel does not exist".
+    @discardableResult
+    func unload(channel letter: String) -> Bool {
+        guard let node = sources[letter] else { return false }
+        node.unload()
+        return true
+    }
+
     /// Starts or stops a channel's playback.
     func setPlaying(_ playing: Bool, channel letter: String) {
         sources[letter]?.isPlaying = playing

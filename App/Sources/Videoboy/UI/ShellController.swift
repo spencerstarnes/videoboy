@@ -42,6 +42,9 @@ final class ShellController {
         wireLibraries()
         wireRouting()
         setPreviewFill(preferences.preferences.previewFill)
+        // The key has to show the SAVED mode from the first frame, or it would read
+        // FIT while the previews were doing something else.
+        shell.grid.panels.settingsBarBody.setPreviewFill(preferences.preferences.previewFill)
         wireDetect()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
@@ -79,6 +82,18 @@ final class ShellController {
             engine.setPlaying(true, channel: channel)
         }
         Log.info(.dv, "loaded \(url.lastPathComponent) into channel \(channel)")
+    }
+
+    /// Takes whatever is in a channel back out.
+    ///
+    /// The panel is told the channel is empty as well as the engine, because the
+    /// caption and the Load/Eject button both read from that — an eject that cleared
+    /// the picture but left the button saying Eject would strand the channel with no
+    /// way to put anything back into it.
+    private func ejectClip(fromChannel channel: String) {
+        engine.unload(channel: channel)
+        shell.grid.panels.sourceBodies[channel]?.setMediaName(nil)
+        Log.info(.dv, "ejected channel \(channel)")
     }
 
     /// Wires the libraries: double-click loads into the pair's next channel.
@@ -476,6 +491,7 @@ final class ShellController {
         for letter in Self.channels {
             guard let body = shell.grid.panels.sourceBodies[letter] else { continue }
             body.onLoadRequested = { [weak self] in self?.presentOpenPanel(forChannel: letter) }
+            body.onEjectRequested = { [weak self] in self?.ejectClip(fromChannel: letter) }
             body.onPlayToggled = { [weak self] in self?.togglePlayback(channel: letter) }
             body.onGeneratorSelected = { [weak self] kind in
                 self?.setGenerator(kind, channel: letter)
@@ -611,9 +627,6 @@ final class ShellController {
             }
             composite.body.onScopeTabClicked = { [weak self] in
                 self?.cycleScopes(for: composite.slot, body: composite.body)
-            }
-            composite.body.onZebraToggled = { [weak self] on in
-                self?.zebraEnabled[composite.slot] = on
             }
             composite.body.onDataParameterChanged = { [weak self] code, value in
                 guard let self,
@@ -1009,8 +1022,6 @@ final class ShellController {
 
     /// Scope mode per composite slot.
     private var scopeModes: [String: ScopeDisplayMode] = [:]
-    /// Zebra on/off per composite slot.
-    private var zebraEnabled: [String: Bool] = [:]
     /// Frame counter for pacing scope refreshes.
     private var scopeRefreshCounter = 0
 
@@ -1094,13 +1105,13 @@ final class ShellController {
         Log.info(.graph, "\(name) added to bus \(bus == .one ? "ONE" : "TWO")")
     }
 
-    /// Refreshes scopes and zebra overlays, well below frame rate.
+    /// Refreshes the scopes, well below frame rate.
     ///
     /// A scope reads a signal's shape, which does not change meaningfully between
     /// one frame and the next, and producing one needs a GPU readback plus a CPU
     /// pass. Refreshing every frame would put that in the render loop's way for no
     /// benefit a person could see. Roughly six times a second is plenty.
-    private func updateScopesAndZebra(from engine: Engine) {
+    private func updateScopes(from engine: Engine) {
         scopeRefreshCounter += 1
         guard scopeRefreshCounter % Self.scopeRefreshInterval == 0 else { return }
         guard let renderer = offscreenRenderer else { return }
@@ -1116,14 +1127,13 @@ final class ShellController {
 
         for composite in composites {
             let mode = scopeModes[composite.slot] ?? .off
-            let wantsZebra = zebraEnabled[composite.slot] ?? false
-            guard mode != .off || wantsZebra else { continue }
+            guard mode != .off else { continue }
 
             guard let texture = engine.texture(for: composite.texture)
                 ?? engine.texture(for: composite.slot),
                   let image = renderer.readback(texture) else { continue }
 
-            if mode != .off {
+            do {
                 let scope: ImageBuffer
                 switch mode {
                 case .quadOverlay, .quadBlack:
@@ -1136,21 +1146,6 @@ final class ShellController {
                     continue
                 }
                 composite.body.preview.setScopeImage(scope, dimsPicture: mode.showsPicture)
-            }
-
-            // Zebra is suppressed while scopes are up: two overlays on one monitor
-            // fight each other, and the scope already says what the zebra would.
-            if wantsZebra && mode == .off {
-                // Animated from the transport so the stripes crawl, which is what
-                // makes them read as a warning rather than as part of the picture.
-                let phase = engine.transport.isRunning
-                    ? engine.transport.beats(atHostTime: CACurrentMediaTime())
-                        .truncatingRemainder(dividingBy: 1.0)
-                    : 0
-                composite.body.preview.setZebraImage(
-                    BroadcastSafety.applyZebra(to: image, phase: phase))
-            } else {
-                composite.body.preview.setZebraImage(nil)
             }
         }
     }
@@ -1451,6 +1446,13 @@ final class ShellController {
     }
 
     private func wireSettingsBar() {
+        shell.grid.panels.settingsBarBody.onPreviewFillChanged = { [weak self] fill in
+            guard let self else { return }
+            self.setPreviewFill(fill)
+            // Persisted, so the choice survives a relaunch the way the Preferences
+            // version of this control always did.
+            self.preferences.preferences.previewFill = fill
+        }
         shell.grid.panels.settingsBarBody.onOutputNTSCToggled = { [weak self] isOn in
             self?.engine.isOutputNTSCEnabled = isOn
         }
@@ -1602,7 +1604,7 @@ final class ShellController {
         }
 
         updateFadesAndCuts(from: engine)
-        updateScopesAndZebra(from: engine)
+        updateScopes(from: engine)
 
         // The status and transport readouts are cheap, but not free; once a second is
         // plenty for a human reading them, and it keeps text redraw off the hot path.

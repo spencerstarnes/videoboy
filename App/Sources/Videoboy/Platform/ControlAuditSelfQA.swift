@@ -216,6 +216,32 @@ enum ControlAuditSelfQA {
                 ? "fullScreenNone is set"
                 : "full screen is still reachable, and there is no way back from it"
         ))
+        // ...but MAXIMISE must stay available, which is a different thing. The zoom
+        // button was disabled along with full screen, which took maximise and the
+        // title-bar double-click with it. Refusing full screen is deliberate;
+        // refusing to maximise was collateral.
+        let zoomEnabled = mainWindow.window?.standardWindowButton(.zoomButton)?.isEnabled ?? false
+        check.record(AssertionResult(
+            name: "the main window can still be maximised",
+            passed: zoomEnabled,
+            detail: zoomEnabled
+                ? "the zoom button is enabled, and with fullScreenNone set it zooms rather than going full screen"
+                : "the zoom button is disabled, so neither the green button nor a title-bar double-click can maximise"
+        ))
+
+        // And zoom has to mean the whole screen, not AppKit's best-fit guess around
+        // the content — a grid that fills any size gives it nothing to fit to.
+        if let window = mainWindow.window, let screen = window.screen {
+            let standard = (window.delegate as? NSWindowDelegate)?
+                .windowWillUseStandardFrame?(window, defaultFrame: screen.visibleFrame)
+            check.record(AssertionResult(
+                name: "maximising fills the screen rather than best-fitting the content",
+                passed: standard == screen.visibleFrame,
+                detail: "standard frame \(standard.map { "\(Int($0.width))x\(Int($0.height))" } ?? "nil"), "
+                    + "visible frame \(Int(screen.visibleFrame.width))x\(Int(screen.visibleFrame.height))"
+            ))
+        }
+
         mainWindow.window?.close()
 
         // Every panel header, audited. You asked whether the problem was only on

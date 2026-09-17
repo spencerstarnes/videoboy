@@ -35,6 +35,10 @@ final class SettingsBarPanelBody: NSView {
     private let overscanToggle = VBOptionButton(title: "Overscan")
     private let bfiToggle = VBOptionButton(title: "BFI")
     private let testToggle = VBOptionButton(title: "Test Pat")
+    /// Cycles Fit ▸ Fill ▸ Stretch ▸ Centre. A cycling key, not a popup, for the same
+    /// reason the step and loop keys are: it names its current state in the width of
+    /// one control, and the set is short enough to walk by clicking.
+    private let fillKey = VBOptionButton(title: PreviewFill.fit.displayName.uppercased())
     private let ntscToggle = VBOptionButton(title: "NTSC")
     private let dvToggle = VBOptionButton(title: "DV")
 
@@ -46,6 +50,18 @@ final class SettingsBarPanelBody: NSView {
     var onSafeZoneToggled: ((Bool) -> Void)?
     /// Called when the overscan toggle changes.
     var onOverscanToggled: ((Bool) -> Void)?
+
+    /// The preview fill mode changed. It was reachable only from Preferences before,
+    /// which is a long way to go to answer "why is this clip letterboxed".
+    var onPreviewFillChanged: ((PreviewFill) -> Void)?
+
+    /// Which fill mode the key is showing.
+    private var previewFill: PreviewFill = .fit {
+        didSet {
+            fillKey.setTitle(previewFill.displayName.uppercased())
+            fillKey.toolTip = "How a picture that is not 4:3 fills its window — \(previewFill.displayName)"
+        }
+    }
     /// Called when black-frame insertion is toggled.
     var onBlackFrameInsertionToggled: ((Bool) -> Void)?
     /// NTSC signal emulation on the output was switched.
@@ -80,7 +96,9 @@ final class SettingsBarPanelBody: NSView {
             option(safeToggle, #selector(safeZoneChanged), "Show the action and title safe areas"),
             option(overscanToggle, #selector(overscanChanged), "Crop to the overscanned area a CRT shows"),
             option(bfiToggle, #selector(blackFrameChanged), "Insert a black frame between fields"),
-            option(testToggle, #selector(testPatternChanged), "Send colour bars instead of the mix")
+            option(testToggle, #selector(testPatternChanged), "Send colour bars instead of the mix"),
+            option(fillKey, #selector(previewFillCycled),
+                   "How a picture that is not 4:3 fills its window. Click to cycle; Control-click to go back.")
         ], spacing: Theme.BarSpacing.withinGroup)
 
         // EMULATE — what the signal becomes on its way out. Their three variables
@@ -198,6 +216,26 @@ final class SettingsBarPanelBody: NSView {
     @objc private func testPatternChanged(_ sender: VBOptionButton) {
         Log.info(.output, "test pattern \(sender.isOn ? "on" : "off")")
         onTestPatternToggled?(sender.isOn)
+    }
+
+    @objc private func previewFillCycled() {
+        // Control-click walks the set backwards, the same rule the step key uses, so
+        // overshooting by one click does not mean going all the way round again.
+        let all = PreviewFill.allCases
+        guard let index = all.firstIndex(of: previewFill) else { return }
+        let backwards = NSEvent.modifierFlags.contains(.control)
+        let next = backwards
+            ? (index - 1 + all.count) % all.count
+            : (index + 1) % all.count
+        previewFill = all[next]
+        onPreviewFillChanged?(previewFill)
+        Log.info(.app, "preview fill set to \(previewFill.displayName)")
+    }
+
+    /// Points the key at a mode without firing its action — for restoring the saved
+    /// preference at launch, so the key and the previews agree from the first frame.
+    func setPreviewFill(_ fill: PreviewFill) {
+        previewFill = fill
     }
 
     @objc private func safeZoneChanged(_ sender: VBOptionButton) {

@@ -76,13 +76,21 @@ final class PanelSet {
         // MARK: Previews
         // Subtitles state the fixed routing, which never remaps (SPEC 2).
         // The three composites each carry a blend mode and a layer opacity (SPEC 12).
+        // No caption on any of the three.
+        //
+        // These read "100 IRE", "7.5 IRE" and "720×480" — lifted from the mockup,
+        // where they were sample text. Nothing measured them: the first two are
+        // simply the two ends of the NTSC legal range printed as decoration, one on
+        // each panel, and the third stated a frame size that is fixed for the whole
+        // app and identical on all three. Three labels saying three different KINDS
+        // of thing, none of them true of the picture underneath. The scopes report
+        // levels, and they do it by measuring.
         subMixOneBody = PreviewPanelBody(
-            caption: "100 IRE", showsBlendControls: true, recordLabel: "1")
+            caption: "", showsBlendControls: true, recordLabel: "1")
         subMixTwoBody = PreviewPanelBody(
-            caption: "7.5 IRE", showsBlendControls: true, recordLabel: "2")
+            caption: "", showsBlendControls: true, recordLabel: "2")
         programBody = PreviewPanelBody(
-            caption: "\(StandardDefinition.width)×\(StandardDefinition.height)",
-            showsBlendControls: true, recordLabel: "P")
+            caption: "", showsBlendControls: true, recordLabel: "P")
 
         // Named for what they ARE rather than for the routing into them. "A ▸ B" on
         // the preview and "A → B Fader" on the panel beneath said the same thing
@@ -295,10 +303,15 @@ final class PanelSet {
         libraryTwoBody = LibraryPanelBody(items: sampleItems, columns: 3, showsTabs: false)
         assetBrowserBody = LibraryPanelBody(
             items: sampleItems + PanelSet.futureSourceKinds(), columns: 6, showsTabs: true)
+        // Bus-coloured like every other A/B and C/D panel. These two were the only
+        // pair in the window carrying a bus in their NAME while showing none of the
+        // colour that says which bus it is — so the one place you go to put a clip
+        // on a bus was the one place that would not tell you which bus you were
+        // looking at.
         libraryOne = PanelView(
-            title: "A/B Library", body: libraryOneBody)
+            title: "A/B Library", bus: .one, body: libraryOneBody)
         libraryTwo = PanelView(
-            title: "C/D Library", body: libraryTwoBody)
+            title: "C/D Library", bus: .two, body: libraryTwoBody)
         assetBrowser = PanelView(title: "Asset Browser", body: assetBrowserBody)
 
         // MARK: Settings bar

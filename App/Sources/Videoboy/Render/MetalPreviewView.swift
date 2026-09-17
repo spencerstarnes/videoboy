@@ -60,8 +60,6 @@ final class MetalPreviewView: NSView {
     /// The scope image drawn over the picture, when scopes are on for this preview.
     private let scopeLayer = CALayer()
 
-    /// Zebra stripes drawn over the picture, marking illegal levels.
-    private let zebraLayer = CALayer()
 
     /// - Parameters:
     ///   - caption: overlay text, e.g. "A" or "720x480 · 480i".
@@ -90,16 +88,12 @@ final class MetalPreviewView: NSView {
             Log.warn(.render, "preview '\(caption)' has no Metal device; showing empty state only")
         }
 
-        // Scope and zebra sit above the picture, below the safe-zone lines. Neither
-        // intercepts clicks: they are readouts drawn on the monitor, not controls.
+        // The scope sits above the picture, below the safe-zone lines. It does not
+        // intercept clicks: it is a readout drawn on the monitor, not a control.
         scopeLayer.contentsGravity = .resize
         scopeLayer.isHidden = true
         layer?.addSublayer(scopeLayer)
 
-        zebraLayer.contentsGravity = .resize
-        zebraLayer.isHidden = true
-        zebraLayer.compositingFilter = "screenBlendMode"
-        layer?.addSublayer(zebraLayer)
 
         // Overlays sit above the picture and never intercept clicks.
         overlayLayer.fillColor = nil
@@ -209,7 +203,6 @@ final class MetalPreviewView: NSView {
         metalLayer.frame = frame
         metalLayer.drawableSize = CGSize(width: max(frame.width, 1), height: max(frame.height, 1))
         scopeLayer.frame = frame
-        zebraLayer.frame = frame
         overlayLayer.frame = frame
         updateOverlays()
     }
@@ -270,17 +263,6 @@ final class MetalPreviewView: NSView {
         // Over a picture the scope needs the picture held back, or the trace is lost
         // in it. Over black there is nothing to hold back.
         metalLayer?.opacity = dimsPicture ? 0.35 : 0.0
-    }
-
-    /// Shows a zebra overlay, or clears it.
-    func setZebraImage(_ image: ImageBuffer?) {
-        guard let image, let cgImage = image.makeCGImage() else {
-            zebraLayer.isHidden = true
-            zebraLayer.contents = nil
-            return
-        }
-        zebraLayer.contents = cgImage
-        zebraLayer.isHidden = false
     }
 
     override func draw(_ dirtyRect: NSRect) {

@@ -336,6 +336,27 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         return true
     }
 
+    /// Takes the media out of this source — the exact inverse of `load`.
+    ///
+    /// Every field `load` sets is put back, including the cached texture: without
+    /// that last one the panel would keep showing the frame that was on screen when
+    /// the clip was ejected, which looks like a source that is still loaded and
+    /// merely paused. Ejecting has to LOOK like ejecting.
+    ///
+    /// Playback stops too. A source with nothing in it that still reports itself as
+    /// playing would leave the transport lit for a deck holding no tape.
+    public func unload() {
+        clipDecoder = nil
+        mediaURL = nil
+        playheadFrame = 0
+        isPlaying = false
+        isPlayingBackwards = false
+        texture = nil
+        textureFrameIndex = -1
+        playbackRange = nil
+        Log.info(.dv, "\(identifier) ejected")
+    }
+
     /// Steps the playhead if a subdivision boundary has been crossed since the last one.
     ///
     /// Boundary-crossing rather than "is the phase near zero": at slow subdivisions a

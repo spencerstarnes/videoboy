@@ -235,56 +235,6 @@ final class ScopeTests: XCTestCase {
         XCTAssertFalse(BroadcastSafety.analyse(image).isIllegal)
     }
 
-    // MARK: - Zebra
-
-    func testZebraMarksOnlyHotPixels() {
-        // Left half legal, right half blown out.
-        var image = ImageBuffer(width: 200, height: 100)
-        for y in 0..<100 {
-            for x in 0..<200 {
-                let value: UInt8 = x < 100 ? 100 : 255
-                image.setPixel(x: x, y: y, r: value, g: value, b: value)
-            }
-        }
-        let striped = BroadcastSafety.applyZebra(to: image)
-
-        // The legal half must be untouched.
-        let legalHalf = FrameAssertions.meanColor(
-            striped, region: (x: 0, y: 0, width: 100, height: 100))
-        XCTAssertEqual(legalHalf.r, 100, accuracy: 1)
-
-        // The hot half must be striped, so darker on average than the 255 it was.
-        let hotHalf = FrameAssertions.meanColor(
-            striped, region: (x: 100, y: 0, width: 100, height: 100))
-        XCTAssertLessThan(hotHalf.r, 200, "hot areas must be striped")
-        XCTAssertGreaterThan(hotHalf.r, 50, "the stripes must not cover everything")
-    }
-
-    func testZebraPhaseMovesTheStripes() {
-        let hot = TestPattern.solid(width: 120, height: 80, r: 255, g: 255, b: 255)
-        let atRest = BroadcastSafety.applyZebra(to: hot, phase: 0)
-        let moved = BroadcastSafety.applyZebra(to: hot, phase: 0.5)
-        // Movement is what makes a zebra read as a warning rather than as content.
-        XCTAssertTrue(FrameAssertions.framesDiffer(atRest, moved, minimumFraction: 0.1).passed)
-    }
-
-    func testCrushZebraMarksOnlyDarkPixels() {
-        var image = ImageBuffer(width: 200, height: 100)
-        for y in 0..<100 {
-            for x in 0..<200 {
-                let value: UInt8 = x < 100 ? 4 : 128
-                image.setPixel(x: x, y: y, r: value, g: value, b: value)
-            }
-        }
-        let striped = BroadcastSafety.applyCrushZebra(to: image)
-        let legalHalf = FrameAssertions.meanColor(
-            striped, region: (x: 100, y: 0, width: 100, height: 100))
-        XCTAssertEqual(legalHalf.r, 128, accuracy: 1, "legal areas must not be marked")
-        let crushedHalf = FrameAssertions.meanColor(
-            striped, region: (x: 0, y: 0, width: 100, height: 100))
-        XCTAssertGreaterThan(crushedHalf.r, 20, "crushed areas must be marked in red")
-    }
-
     // MARK: - Evidence
 
     func testWriteScopeEvidence() throws {
@@ -305,10 +255,6 @@ final class ScopeTests: XCTestCase {
 
         let quad = ScopeRenderer.renderQuad(from: bars, width: 640, height: 480)
         try check.writeImage(quad, named: "quad.png")
-
-        // A blown-out frame, striped, so the zebra can be looked at.
-        let hot = TestPattern.solid(r: 250, g: 250, b: 250)
-        try check.writeImage(BroadcastSafety.applyZebra(to: hot), named: "zebra.png")
 
         let report = BroadcastSafety.analyse(bars)
         check.note("colour bars read: \(report.summary)")

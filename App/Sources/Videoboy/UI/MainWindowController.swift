@@ -74,18 +74,22 @@ final class MainWindowController: NSWindowController {
         // amber/cyan bus identity only reads correctly against dark chrome.
         window.appearance = NSAppearance(named: .darkAqua)
 
-        // Full screen is OFF until the layout is settled. The grid is built for a
-        // window with a title bar, and in full screen the toolbar goes under the
-        // menu bar and there is no reliable way back with the pointer — you end up
-        // trapped in a window you cannot leave. A feature you cannot get out of is
-        // worse than one you cannot get into, so both the green button and the menu
-        // item are disabled rather than left half-working.
+        // Full screen is OFF. The grid is built for a window with a title bar, and in
+        // full screen the toolbar goes under the menu bar with no reliable way back
+        // with the pointer — you end up trapped in a window you cannot leave.
+        //
+        // MAXIMISE is a different thing and it stays. With `.fullScreenNone` set the
+        // green button is already a zoom button rather than a full-screen one, so
+        // disabling it took maximise away as collateral damage rather than by
+        // intent — and double-clicking the title bar, which routes to the same zoom,
+        // went with it. Zoom keeps the title bar, keeps the pointer, and is
+        // reversible by clicking the same button again.
         window.collectionBehavior.insert(.fullScreenNone)
-        window.standardWindowButton(.zoomButton)?.isEnabled = false
         window.center()
         window.setFrameAutosaveName("VideoboyMainWindow")
 
         super.init(window: window)
+        window.delegate = self
 
         let shell = ShellView()
         window.contentView = shell
@@ -100,5 +104,23 @@ final class MainWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("MainWindowController is created in code, never from a nib")
+    }
+}
+
+// MARK: - Zooming
+
+extension MainWindowController: NSWindowDelegate {
+
+    /// What "zoom" means for this window: the whole visible screen.
+    ///
+    /// AppKit's default standard frame is a best-fit around the content, which for a
+    /// grid that will happily fill any size is an arbitrary rectangle rather than
+    /// "maximised". Returning the visible frame makes the green button, the Window ▸
+    /// Zoom menu item and a double-click on the title bar all do the obvious thing.
+    ///
+    /// `visibleFrame` rather than `frame`, so the Dock and the menu bar keep their
+    /// space — this is maximise, not full screen.
+    func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame: NSRect) -> NSRect {
+        window.screen?.visibleFrame ?? defaultFrame
     }
 }

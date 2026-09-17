@@ -243,7 +243,15 @@ enum Theme {
         /// column width so the preview panels come out 4:3. Their weights here only
         /// decide how that band is split between them. Rows 2-4 share what is left,
         /// in the proportions given.
+        /// Row weights. The LAST entry is ignored for sizing — the output bar is a
+        /// fixed height (`outputBarHeight`), not a share of what is left — but it
+        /// stays in the list so the row count and the gutter arithmetic still line up.
         static let rowWeights: [CGFloat] = [1.0, 1.0, 0.6, 1.45, 0.31]
+
+        /// Height of the output bar, which holds one row of 22pt controls and a
+        /// little padding. Fixed rather than weighted: as a weight it grew with the
+        /// window and spent the difference on empty space.
+        static let outputBarHeight: CGFloat = 34
 
         /// The least the rows below the previews may be squeezed to.
         ///
@@ -373,6 +381,16 @@ enum Theme {
         /// toward a colour. A dark room gets brighter when something flashes at you,
         /// which pulls the eye off the picture — the whole point of this is to be felt
         /// at the edge of vision, and a dip does that without competing.
+        /// The resting playhead line on a source preview. Grey, low contrast: it is
+        /// a readout you glance at, not a control competing with the picture.
+        static let miniPlayBarTrack = NSColor.white.withAlphaComponent(0.22)
+        static let miniPlayBarFill = NSColor.white.withAlphaComponent(0.75)
+
+        /// Behind the shuttle where it floats over a source's picture. Dark and
+        /// mostly opaque: the keys sit on arbitrary video, and a transport you can
+        /// only read against dark footage is one you cannot trust in a set.
+        static let shuttleScrim = NSColor.black.withAlphaComponent(0.62)
+
         static let beatPulse = NSColor.black
         /// The stronger flash when the tempo itself changes.
         static let tempoChangeFlash = NSColor(srgbRed: 0.30, green: 0.70, blue: 1.0, alpha: 1)
@@ -411,5 +429,23 @@ enum Theme {
         /// True when the OSD face is actually available, so the self-QA can say which
         /// of the two it rendered.
         static var hasOSDFace: Bool { NSFont(name: "VCR OSD Mono", size: 12) != nil }
+    }
+
+    /// The resting playhead line on a source preview (`VBMiniPlayBar`).
+    enum MiniPlayBar {
+        /// Height of the view, which is mostly the hit-free margin around the line.
+        static let height: CGFloat = 10
+        /// Thickness of the drawn line itself — AVKit's resting scrubber is about
+        /// this, and thinner reads as an artefact rather than a control.
+        static let thickness: CGFloat = 3
+
+        /// How far above a preview's bottom edge its floating controls sit.
+        ///
+        /// A preview already draws its own caption bottom-left and its routing button
+        /// bottom-right. Anything overlaid at the bottom lands on top of both — and
+        /// the routing button is CLICKABLE, so the hover transport covering it made
+        /// it unreachable precisely when the pointer was there to press it. This is
+        /// the height of that strip plus a little air.
+        static let bottomClearance: CGFloat = 20
     }
 }

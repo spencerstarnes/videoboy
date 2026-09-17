@@ -1,17 +1,19 @@
 check:    audit
 verdict:  PASS
-when:     2026-09-17T03:47:59Z
+when:     2026-09-17T08:34:38Z
 core:     0.3.0
 
 notes:
-  593 controls found: 253 live, 340 disabled, 0 enabled-but-unwired
+  590 controls found: 253 live, 337 disabled, 0 enabled-but-unwired
 
-assertions (8/8 passed):
+assertions (10/10 passed):
   PASS  every fader can be mapped by Shift-clicking it — 46 enabled faders, all carrying a slot and a param code
   PASS  every switch agrees with the engine at launch — 10 effects boot bypassed, both emulations off
   PASS  the main window refuses full screen — fullScreenNone is set
+  PASS  the main window can still be maximised — the zoom button is enabled, and with fullScreenNone set it zooms rather than going full screen
+  PASS  maximising fills the screen rather than best-fitting the content — standard frame 1920x1055, visible frame 1920x1055
   PASS  no panel header hides its panel and leaves the cell reserved — 6 headers collapse their group, 10 are deliberately inert
   PASS  no label in the output bar is cut off — every label fits
   PASS  no modulation badge is cut off — MIDI, AUD and LFO all fit in both chains
   PASS  no control is enabled but unwired — every enabled control has an action
-  PASS  the interface has controls at all — 593 found
+  PASS  the interface has controls at all — 590 found

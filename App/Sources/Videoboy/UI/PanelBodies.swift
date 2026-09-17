@@ -60,6 +60,31 @@ final class SourcePanelBody: NSView {
     /// Loads a file into this channel. Wired by the app; nil until then.
     var onLoadRequested: (() -> Void)?
 
+    /// Called when the button is pressed while media IS loaded.
+    var onEjectRequested: (() -> Void)?
+
+    /// The Load/Eject button, retitled as the channel fills and empties.
+    private weak var loadButton: NSButton?
+
+    /// The full transport, shown only while the pointer is over this panel.
+    private weak var shuttleScrim: NSView?
+
+    /// The resting playhead line, shown when the pointer is not.
+    private weak var miniPlayBar: VBMiniPlayBar?
+
+    /// Swaps the resting line for the full transport, and back.
+    private var isHovered = false {
+        didSet {
+            guard isHovered != oldValue else { return }
+            shuttleScrim?.isHidden = !isHovered
+            miniPlayBar?.isHidden = isHovered
+        }
+    }
+
+    /// Whether this channel currently holds media, which is the only thing that
+    /// decides whether the button loads or ejects.
+    private var hasMedia = false
+
     /// Switches this channel to a generator, or back to its file.
     /// A nil kind means "go back to the file".
     var onGeneratorSelected: ((GeneratorKind?) -> Void)?
@@ -71,6 +96,14 @@ final class SourcePanelBody: NSView {
     /// pictures look alike at thumbnail size.
     func setMediaName(_ name: String?) {
         preview.caption = name.map { "\(channel) · \($0)" } ?? channel
+        // One button, two jobs, and the media is what says which. Keeping a separate
+        // eject key next to Load would mean a control that is dead half the time in
+        // the narrowest panel in the window.
+        hasMedia = name != nil
+        loadButton?.title = hasMedia ? "Eject" : "Load"
+        loadButton?.toolTip = hasMedia
+            ? "Take this clip out of channel \(channel)"
+            : "Choose a video file for channel \(channel)"
     }
 
     // MARK: - Drop target
@@ -185,10 +218,44 @@ final class SourcePanelBody: NSView {
         let shuttle = Controls.row([toStart, back, play, forward, scrub, loopKey], spacing: 3)
         shuttle.translatesAutoresizingMaskIntoConstraints = false
         scrub.setContentHuggingPriority(.init(1), for: .horizontal)
-        addSubview(shuttle)
 
-        let load = Controls.button("Load", target: self, action: #selector(loadPressed))
+        // The shuttle sits ON the picture rather than under it.
+        //
+        // In a source panel nothing sets the preview's height — it is whatever is
+        // left once the controls have taken theirs — so every row of chrome comes
+        // straight out of the picture, and these panels are the shortest in the
+        // window. Floating the transport over the bottom of the image is what every
+        // video player does for the same reason, and it hands a whole row back to
+        // the preview.
+        //
+        // The scrim is what makes it legible: white keys over an arbitrary frame of
+        // video are unreadable about half the time, and a live instrument cannot
+        // have a play button you have to hunt for against bright footage.
+        let shuttleScrim = NSView()
+        shuttleScrim.wantsLayer = true
+        shuttleScrim.layer?.backgroundColor = Theme.Color.shuttleScrim.cgColor
+        shuttleScrim.layer?.cornerRadius = Theme.Metrics.buttonCornerRadius
+        shuttleScrim.translatesAutoresizingMaskIntoConstraints = false
+        shuttleScrim.addSubview(shuttle)
+        shuttleScrim.isHidden = true
+        addSubview(shuttleScrim)
+        self.shuttleScrim = shuttleScrim
+
+        // At rest the panel shows one slim line instead of the whole transport, the
+        // way QuickTime and anything else built on AVKit does. The keys are one
+        // pointer-move away, and in the meantime the picture is not competing with a
+        // row of buttons it does not need.
+        let miniBar = VBMiniPlayBar()
+        miniBar.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(miniBar)
+        self.miniPlayBar = miniBar
+
+        // Load becomes Eject once there is something to eject, the way a deck's one
+        // slot both takes a tape and gives it back. There was no eject at all before
+        // this: a clip could be put into a channel and never taken out again.
+        let load = Controls.button("Load", target: self, action: #selector(loadOrEjectPressed))
         load.setContentCompressionResistancePriority(.required, for: .horizontal)
+        self.loadButton = load
 
         // A generator is an alternative source for the channel, not a separate panel:
         // SPEC 6A says generators are selectable anywhere A/B/C/D.
@@ -223,30 +290,57 @@ final class SourcePanelBody: NSView {
         let loadRowForConstraints = sourceRow
 
         let padding = Theme.Metrics.panelBodyPadding
+        let scrimInset: CGFloat = 4
         NSLayoutConstraint.activate([
-            preview.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            preview.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            preview.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
-
-            shuttle.topAnchor.constraint(equalTo: preview.bottomAnchor, constant: 2),
-            shuttle.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
-            shuttle.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding),
-
-            loadRowForConstraints.topAnchor.constraint(equalTo: shuttle.bottomAnchor, constant: 2),
+            // The source row is pinned to the BOTTOM and the preview fills whatever
+            // is above it, rather than the preview being pinned to the top and the
+            // rows stacking downward from it. Same picture in a tall panel, and in a
+            // short one the picture is what shrinks instead of the controls falling
+            // off the bottom edge.
             loadRowForConstraints.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
             loadRowForConstraints.trailingAnchor.constraint(
                 lessThanOrEqualTo: trailingAnchor, constant: -padding),
-            loadRowForConstraints.bottomAnchor.constraint(
-                lessThanOrEqualTo: bottomAnchor, constant: -padding)
+            loadRowForConstraints.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -padding),
+
+            preview.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            preview.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            preview.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            preview.bottomAnchor.constraint(
+                equalTo: loadRowForConstraints.topAnchor, constant: -2),
+
+            miniBar.leadingAnchor.constraint(
+                equalTo: preview.leadingAnchor, constant: scrimInset + 4),
+            miniBar.trailingAnchor.constraint(
+                equalTo: preview.trailingAnchor, constant: -(scrimInset + 4)),
+            miniBar.bottomAnchor.constraint(
+                equalTo: preview.bottomAnchor, constant: -Theme.MiniPlayBar.bottomClearance),
+            miniBar.heightAnchor.constraint(equalToConstant: Theme.MiniPlayBar.height),
+
+            shuttleScrim.leadingAnchor.constraint(
+                equalTo: preview.leadingAnchor, constant: scrimInset),
+            shuttleScrim.trailingAnchor.constraint(
+                equalTo: preview.trailingAnchor, constant: -scrimInset),
+            shuttleScrim.bottomAnchor.constraint(
+                equalTo: preview.bottomAnchor, constant: -Theme.MiniPlayBar.bottomClearance),
+
+            shuttle.leadingAnchor.constraint(equalTo: shuttleScrim.leadingAnchor, constant: 4),
+            shuttle.trailingAnchor.constraint(equalTo: shuttleScrim.trailingAnchor, constant: -4),
+            shuttle.topAnchor.constraint(equalTo: shuttleScrim.topAnchor, constant: 3),
+            shuttle.bottomAnchor.constraint(equalTo: shuttleScrim.bottomAnchor, constant: -3)
         ])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
-    @objc private func loadPressed() {
-        Log.info(.app, "load requested for source \(channel)")
-        onLoadRequested?()
+    @objc private func loadOrEjectPressed() {
+        if hasMedia {
+            Log.info(.app, "eject requested for source \(channel)")
+            onEjectRequested?()
+        } else {
+            Log.info(.app, "load requested for source \(channel)")
+            onLoadRequested?()
+        }
     }
 
     /// Play/pause for this channel. Wired by the app.
@@ -266,9 +360,37 @@ final class SourcePanelBody: NSView {
         onScrub?(sender.value)
     }
 
+    // MARK: - Hover
+
+    // The transport appears on hover, so the panel needs a tracking area and has to
+    // rebuild it whenever it resizes — an area is in fixed coordinates and does not
+    // follow the view's bounds on its own.
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        isHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        isHovered = false
+    }
+
     /// Moves the scrub track to follow playback, without firing its action.
     func setScrubPosition(_ position: Double) {
         scrubFader?.value = position
+        // The resting line reads the same playhead as the shuttle's track, so the
+        // two never disagree about where the clip is when hovering swaps them.
+        miniPlayBar?.progress = position
     }
 
     @objc private func generatorChanged(_ sender: NSPopUpButton) {
@@ -300,13 +422,9 @@ final class PreviewPanelBody: NSView {
 
     /// Called when the scope tab is clicked, to advance the scope cycle.
     var onScopeTabClicked: (() -> Void)?
-    /// Called when the zebra toggle changes.
-    var onZebraToggled: ((Bool) -> Void)?
 
     /// The scope tab, so its title can show the current mode.
     private var scopeTab: NSButton?
-    /// The zebra toggle, hidden while scopes are showing.
-    private var zebraToggle: NSButton?
     private var blendPopUp: NSPopUpButton?
     private var interchangePopUp: NSPopUpButton?
     private var dataEffectRow: NSStackView?
@@ -347,15 +465,6 @@ final class PreviewPanelBody: NSView {
             )
             interchangePopUp = interchange
 
-            // The zebra: a striped-animal glyph, because the pattern it draws is
-            // literally called a zebra. It toggles, and it hides itself while scopes
-            // are up — with a scope on screen the stripes are redundant and the two
-            // overlays fight each other.
-            let zebra = Controls.button("🦓", target: self, action: #selector(zebraPressed))
-            zebra.toolTip = "Zebra — stripe pixels outside the NTSC legal range"
-            zebra.setButtonType(.pushOnPushOff)
-            zebraToggle = zebra
-
             // The scope tab. One control that cycles every scope view, so reaching a
             // vectorscope is never more than a few clicks and never a menu.
             let scopes = Controls.button("Scopes", target: self, action: #selector(scopeTabPressed))
@@ -370,7 +479,6 @@ final class PreviewPanelBody: NSView {
                                color: Theme.Color.textTertiary, holdsWidth: true),
                 interchange,
                 Controls.spacer(),
-                zebra,
                 scopes
             ], spacing: 4)
             row.translatesAutoresizingMaskIntoConstraints = false
@@ -426,16 +534,10 @@ final class PreviewPanelBody: NSView {
 
     @objc private func scopeTabPressed() { onScopeTabClicked?() }
 
-    @objc private func zebraPressed(_ sender: NSButton) {
-        onZebraToggled?(sender.state == .on)
-    }
-
-    /// Updates the tab's title to name the mode it is now in, and hides the zebra
-    /// while scopes are up.
+    /// Updates the tab's title to name the mode it is now in.
     func setScopeMode(_ mode: ScopeDisplayMode) {
         scopeTab?.title = mode == .off ? "Scopes" : mode.displayName
         scopeTab?.contentTintColor = mode == .off ? nil : Theme.Color.accent
-        zebraToggle?.isHidden = mode != .off
     }
 
     @objc private func interchangeChanged(_ sender: NSPopUpButton) {
@@ -472,6 +574,13 @@ final class FaderPanelBody: NSView {
     /// The crossfader. 0 is the left source, 1 is the right.
     let fader: VBFader
     /// Live numeric readout beside the fader.
+    /// The numeric readout that used to sit above the centre of the crossfader.
+    ///
+    /// Kept as an object but no longer added to the view: the cap's position on the
+    /// track already says where the fader is, continuously and without being read,
+    /// and a number floating over the middle of a crossfader is both redundant and
+    /// exactly where the eye goes during a transition. Still updated, so anything
+    /// that wants to show it again — or read it in a test — has it.
     private let valueLabel = Controls.monoLabel("0.50")
 
     /// Called whenever the fader moves, with the new 0...1 position.
@@ -591,7 +700,6 @@ final class FaderPanelBody: NSView {
         // with it for width, which is what squeezed it to nothing before.
         addSubview(left)
         addSubview(right)
-        addSubview(valueLabel)
         addSubview(fader)
         buttonRow.translatesAutoresizingMaskIntoConstraints = false
         addSubview(buttonRow)
@@ -609,9 +717,6 @@ final class FaderPanelBody: NSView {
             left.topAnchor.constraint(equalTo: buttonRow.bottomAnchor, constant: 3),
             left.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
 
-            valueLabel.centerYAnchor.constraint(equalTo: left.centerYAnchor),
-            valueLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            valueLabel.widthAnchor.constraint(equalToConstant: Theme.Metrics.valueReadoutWidth),
 
             right.centerYAnchor.constraint(equalTo: left.centerYAnchor),
             right.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding),
