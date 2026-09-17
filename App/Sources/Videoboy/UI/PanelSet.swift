@@ -280,7 +280,9 @@ final class PanelSet {
 
         // MARK: Settings bar
         settingsBarBody = SettingsBarPanelBody(negotiatedMode: "not yet negotiated")
-        settingsBar = PanelView(title: "Output", body: settingsBarBody)
+        // No header: this is a bar, not a panel. A title over it cost as much height
+        // as the row itself and said nothing the controls do not.
+        settingsBar = PanelView(title: "Output", showsHeader: false, body: settingsBarBody)
         settingsBar.setCollapsed(false)
     }
 

@@ -22,6 +22,22 @@ import VideoboyCore
 /// Audits the interface's controls.
 enum ControlAuditSelfQA {
 
+    /// Labels whose text does not fit the width they were given.
+    ///
+    /// Measured rather than looked for: an NSTextField shows an ellipsis at draw
+    /// time, so the string itself is intact and only the geometry tells you.
+    private static func collectTruncatedLabels(in view: NSView, into found: inout [String]) {
+        if let field = view as? NSTextField, !field.stringValue.isEmpty,
+           field.frame.width > 0 {
+            let needed = (field.stringValue as NSString).size(
+                withAttributes: [.font: field.font ?? NSFont.systemFont(ofSize: 11)]).width
+            if needed > field.frame.width + 1 {
+                found.append("\(field.stringValue) needs \(Int(needed))pt, has \(Int(field.frame.width))pt")
+            }
+        }
+        for subview in view.subviews { collectTruncatedLabels(in: subview, into: &found) }
+    }
+
     /// Walks the tree for faders and whether each one carries a mapping address.
     private static func collectFaders(
         from view: NSView, panel: String,
@@ -210,6 +226,17 @@ enum ControlAuditSelfQA {
                     + " headers collapse their group, "
                     + "\(behaviours.filter { $0.behaviour == .inert }.count) are deliberately inert"
                 : broken.map(\.title).joined(separator: ", ")
+        ))
+
+        // Nothing in the output bar may be showing truncated text. A label that ends
+        // in an ellipsis has been cut off by the layout, and "not yet negotiat…" says
+        // less than nothing — it is the shape of writing without the content.
+        var truncated: [String] = []
+        collectTruncatedLabels(in: shell.grid.panels.settingsBar, into: &truncated)
+        check.record(AssertionResult(
+            name: "no label in the output bar is cut off",
+            passed: truncated.isEmpty,
+            detail: truncated.isEmpty ? "every label fits" : truncated.joined(separator: ", ")
         ))
 
         // The failing condition is a control that is enabled and wired to nothing.

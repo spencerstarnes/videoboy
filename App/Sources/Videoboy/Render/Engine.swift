@@ -594,6 +594,19 @@ final class Engine {
         }
     }
 
+    /// Which boundary beat-synced moves wait for, from the toolbar's DIV field.
+    ///
+    /// It was a control that changed a label and nothing else — the scheduler's own
+    /// subscriptions are per-node, and nothing read the setting. Beat-syncing a cut
+    /// to "the next 1/16" is a different musical decision from the next bar, so the
+    /// field has to mean something.
+    var beatSubdivision: Subdivision = .quarter {
+        didSet {
+            guard beatSubdivision != oldValue else { return }
+            Log.info(.clock, "beat-synced moves now wait for \(beatSubdivision.rawValue)")
+        }
+    }
+
     // MARK: - Feedback sends (SPEC 10)
 
     /// Which slot, if any, feeds each bus's feedback loop from elsewhere.

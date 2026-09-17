@@ -1,6 +1,6 @@
 check:    phase-3/analog-chain
 verdict:  PASS
-when:     2026-09-17T01:54:01Z
+when:     2026-09-17T02:09:12Z
 core:     0.3.0
 
 notes:

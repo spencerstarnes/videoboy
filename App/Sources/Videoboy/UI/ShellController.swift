@@ -638,9 +638,17 @@ final class ShellController {
         let now = CACurrentMediaTime()
 
         for (slot, cut) in pendingCuts where cut.isDue(atHostTime: now) {
-            applyFaderPosition(cut.target, to: slot)
             pendingCuts.removeValue(forKey: slot)
-            Log.info(.clock, "cut on beat \(String(format: "%.2f", cut.targetBeat)) taken for \(slot)")
+            if let rate = cut.rate,
+               let code = Self.faderCode(for: slot),
+               let current = engine.registry.value(slot: slot, code: code) {
+                activeFades[slot] = FadeAutomation(
+                    from: current, to: cut.target, duration: rate.seconds, startedAt: now)
+                Log.info(.clock, "fade started on beat \(String(format: "%.2f", cut.targetBeat)) for \(slot)")
+            } else {
+                applyFaderPosition(cut.target, to: slot)
+                Log.info(.clock, "cut on beat \(String(format: "%.2f", cut.targetBeat)) taken for \(slot)")
+            }
         }
 
         for (slot, fade) in activeFades {
@@ -682,32 +690,49 @@ final class ShellController {
     /// - Parameter destination: where to land, or nil to travel to the far end.
     ///   A bus key names its own side, so it passes one; Fade does not, because
     ///   "fade" means "to the other one".
+    /// Moves a bus, now or on the next beat.
+    ///
+    /// - Parameters:
+    ///   - rate: nil for a cut, or how long to take over the fade. This is WHAT the
+    ///     move is.
+    ///   - waitsForBeat: whether to hold until the next subdivision boundary. This is
+    ///     WHEN it happens. The two are independent — a fade can start on the beat
+    ///     just as a cut can land on it — and one flag answering both is why pressing
+    ///     Fade with beat-sync on produced a hard cut instead.
+    ///   - destination: where to land, or nil to travel to the far end.
     private func beginMove(
-        on slot: String, isCut: Bool, rate: FadeRate, to destination: Double? = nil
+        on slot: String, rate: FadeRate?, waitsForBeat: Bool, to destination: Double? = nil
     ) {
         guard let code = Self.faderCode(for: slot),
               let current = engine.registry.value(slot: slot, code: code) else { return }
         let target: Double = destination ?? (current < 0.5 ? 1.0 : 0.0)
         let now = CACurrentMediaTime()
 
-        if isCut {
-            guard engine.transport.isRunning else {
-                // With the transport stopped there are no beats to wait for, so a
-                // beat-cut is just a cut. Waiting forever would look like a dead button.
+        // A move supersedes whatever was already in flight on this bus, so pressing
+        // Fade during a fade restarts it rather than the two fighting.
+        activeFades.removeValue(forKey: slot)
+        pendingCuts.removeValue(forKey: slot)
+
+        guard waitsForBeat, engine.transport.isRunning else {
+            // With the transport stopped there are no beats to wait for, so the move
+            // happens now. Waiting forever would look like a dead button.
+            if let rate {
+                activeFades[slot] = FadeAutomation(
+                    from: current, to: target, duration: rate.seconds, startedAt: now)
+            } else {
                 applyFaderPosition(target, to: slot)
-                return
             }
-            pendingCuts[slot] = PendingCut.scheduled(
-                target: target,
-                transport: engine.transport,
-                subdivision: .quarter,
-                hostTime: now,
-                latencyInFrames: engine.graph.maximumLatencyInFrames
-            )
-        } else {
-            activeFades[slot] = FadeAutomation(
-                from: current, to: target, duration: rate.seconds, startedAt: now)
+            return
         }
+
+        pendingCuts[slot] = PendingCut.scheduled(
+            target: target,
+            transport: engine.transport,
+            subdivision: engine.beatSubdivision,
+            hostTime: now,
+            latencyInFrames: engine.graph.maximumLatencyInFrames,
+            rate: rate
+        )
     }
 
     private func wireFaders() {
@@ -723,20 +748,22 @@ final class ShellController {
         for bus in buses {
             bus.body.onFade = { [weak self] rate in
                 guard let self else { return }
+                // Fade always fades. Beat only decides when it starts.
                 self.beginMove(
                     on: bus.slot,
-                    isCut: self.beatCutEnabled[bus.slot] ?? false,
-                    rate: rate)
+                    rate: rate,
+                    waitsForBeat: self.beatCutEnabled[bus.slot] ?? false)
             }
             bus.body.onBeatCutToggled = { [weak self] on in
                 self?.beatCutEnabled[bus.slot] = on
             }
             bus.body.onCutTo = { [weak self] target in
                 guard let self else { return }
-                // Cut-on-beat turns an immediate cut into a scheduled one.
-                if self.beatCutEnabled[bus.slot] == true {
-                    self.beginMove(on: bus.slot, isCut: true, rate: .fast, to: target)
-                }
+                // The key has already moved the fader for an immediate cut; with beat
+                // sync on it is put back and scheduled instead.
+                guard self.beatCutEnabled[bus.slot] == true else { return }
+                self.beginMove(
+                    on: bus.slot, rate: nil, waitsForBeat: true, to: target)
             }
         }
 
@@ -1173,6 +1200,10 @@ final class ShellController {
             } else {
                 self.stopRecording()
             }
+        }
+        shell.toolbar.onSubdivisionChanged = { [weak self] name in
+            guard let subdivision = Subdivision(rawValue: name) else { return }
+            self?.engine.beatSubdivision = subdivision
         }
         shell.toolbar.onClockSourceChanged = { [weak self] choice in
             guard let self else { return false }

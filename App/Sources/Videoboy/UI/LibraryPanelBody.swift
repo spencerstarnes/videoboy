@@ -166,27 +166,35 @@ final class LibraryItemView: NSView {
         guard item.isAvailable else { return }
         if event.clickCount >= 2 {
             onOpen?(item, thumbnail.markedRange)
+            pressOrigin = nil
             return
         }
-        guard let url = item.url else { return }
-
-        // Wait for the pointer to TRAVEL before starting a drag. Beginning one on the
-        // press itself hands the rest of the interaction to the drag session, so a
-        // plain click became a drag nobody asked for and the second click of a
-        // double-click was swallowed before it could arrive. The comment here used to
-        // claim this was what happened; it was not.
-        let start = event.locationInWindow
-        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
-            if next.type == .leftMouseUp { return }
-
-            let travelled = hypot(
-                next.locationInWindow.x - start.x, next.locationInWindow.y - start.y)
-            if travelled >= Self.dragThreshold {
-                beginDrag(url: url, from: next)
-                return
-            }
-        }
+        // Remember where the press began and wait. A press is not yet a drag, and a
+        // drag is not yet a click.
+        pressOrigin = item.url == nil ? nil : event.locationInWindow
     }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let origin = pressOrigin, let url = item.url else { return }
+        let travelled = hypot(
+            event.locationInWindow.x - origin.x, event.locationInWindow.y - origin.y)
+        guard travelled >= Self.dragThreshold else { return }
+
+        // AppKit delivers mouseDragged to whichever view took the mouseDown, so this
+        // is the idiomatic place to start a drag. The previous version pulled events
+        // out of the window itself in a loop inside mouseDown, which works only as
+        // long as nothing else is reading the queue — and is a strange way to ask a
+        // question AppKit is already answering.
+        pressOrigin = nil
+        beginDrag(url: url, from: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        pressOrigin = nil
+    }
+
+    /// Where the current press started, or nil when there is no press in progress.
+    private var pressOrigin: NSPoint?
 
     /// How far the pointer must move before a press counts as a drag. Three points is
     /// the usual allowance for a hand that is not quite still.
@@ -194,10 +202,24 @@ final class LibraryItemView: NSView {
 
     /// Drags the clip's file, so it can be dropped on a source panel — or anywhere
     /// else that takes a file, which is the point of using the standard type.
+    /// Set by the self-QA to observe that a drag was started, without a real mouse.
+    ///
+    /// Drag and drop is the one gesture the offscreen harness cannot perform, so the
+    /// alternative is having no check at all on the half that kept breaking.
+    static var onDragStartedForChecks: ((URL) -> Void)?
+
     private func beginDrag(url: URL, from event: NSEvent) {
+        Self.onDragStartedForChecks?(url)
         let dragItem = NSDraggingItem(pasteboardWriter: Self.pasteboardItem(for: url))
         dragItem.setDraggingFrame(thumbnail.frame, contents: thumbnailSnapshot())
         beginDraggingSession(with: [dragItem], event: event, source: self)
+    }
+
+    /// Every library cell beneath a view, for the self-QA.
+    static func all(in view: NSView) -> [LibraryItemView] {
+        var found: [LibraryItemView] = []
+        if let cell = view as? LibraryItemView { found.append(cell) }
+        return found + view.subviews.flatMap { all(in: $0) }
     }
 
     /// What the library puts on the pasteboard for a clip.
@@ -271,6 +293,30 @@ final class HoverScrubView: NSView {
     override func mouseEntered(with event: NSEvent) {
         window?.makeFirstResponder(self)
         updateScrub(with: event)
+    }
+
+    /// Hands the press to the cell, which owns opening and dragging.
+    ///
+    /// Explicitly, rather than leaving it to NSResponder's default forwarding. This
+    /// view sits on top of the whole thumbnail, so it is what a press actually lands
+    /// on, and "the default probably forwards it" is not a thing to rest drag and
+    /// drop on.
+    override func mouseDown(with event: NSEvent) {
+        guard let cell = superview as? LibraryItemView else {
+            super.mouseDown(with: event)
+            return
+        }
+        cell.mouseDown(with: event)
+    }
+
+    // The rest of the gesture has to follow the press. Forwarding only mouseDown
+    // would leave the cell waiting for a drag that AppKit is delivering here.
+    override func mouseDragged(with event: NSEvent) {
+        (superview as? LibraryItemView)?.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        (superview as? LibraryItemView)?.mouseUp(with: event)
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -456,7 +502,7 @@ final class LibraryPanelBody: NSView {
     /// What the Sources tab shows. Held because a drop adds to it.
     private var sourceItems: [LibraryItem] = []
     /// The scrolling document, so a rebuilt grid goes back in the same place.
-    private var documentView: FlippedView?
+    private var documentView: LibraryDropView?
     private var emptyLabelsByTab: [AssetTab: NSTextField] = [:]
     private var currentTab: AssetTab = .sources
     private let columns: Int
@@ -563,8 +609,9 @@ final class LibraryPanelBody: NSView {
         addSubview(headerRow)
 
         // A flipped document view keeps the grid anchored to the top of the panel.
-        let document = FlippedView()
+        let document = LibraryDropView()
         document.translatesAutoresizingMaskIntoConstraints = false
+        document.onFilesDropped = { [weak self] urls in self?.onFilesDropped?(urls) }
         documentView = document
         sourceItems = items
 
@@ -814,4 +861,43 @@ final class LibraryPanelBody: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+}
+
+/// The library's scrolling document, which also takes drops.
+///
+/// The panel body beneath it is registered too, and AppKit walks up from the view
+/// under the pointer to find a registered one — so in principle this is redundant.
+/// In practice the grid fills the panel, a drop landing on it is the ordinary case,
+/// and relying on that walk is the kind of assumption that leaves a feature quietly
+/// not working. Registering the view people actually aim at costs one class.
+final class LibraryDropView: FlippedView {
+
+    var onFilesDropped: (([URL]) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        urls(from: sender).isEmpty ? [] : .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let dropped = urls(from: sender)
+        guard !dropped.isEmpty else { return false }
+        onFilesDropped?(dropped)
+        return true
+    }
+
+    private func urls(from sender: NSDraggingInfo) -> [URL] {
+        let pasteboard = sender.draggingPasteboard
+        if let found = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !found.isEmpty {
+            return found
+        }
+        return SourcePanelBody.fileURL(from: pasteboard).map { [$0] } ?? []
+    }
 }

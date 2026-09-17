@@ -1,6 +1,6 @@
 check:    phase-0/blocked-check-self-test
 verdict:  BLOCKED
-when:     2026-09-17T01:53:49Z
+when:     2026-09-17T02:09:01Z
 core:     0.3.0
 
 notes:
@@ -10,4 +10,4 @@ assertions (1/1 passed):
   PASS  irrelevant — ignored
 
 recent log:
-  1789610029.978 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1789610941.623 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored

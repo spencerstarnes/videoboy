@@ -57,7 +57,7 @@ enum Theme {
         /// Height of a panel header.
         static let panelHeaderHeight: CGFloat = 22
         /// Height of the record/stream/output/toggles bar.
-        static let settingsBarHeight: CGFloat = 34
+        static let settingsBarHeight: CGFloat = 26
         /// Diameter of the bus-identity dot in a panel header.
         static let busDotDiameter: CGFloat = 6
         /// Thickness of hairline separators.
@@ -105,6 +105,29 @@ enum Theme {
         static let cornerRadius: CGFloat = 3
         /// The highlight along the top edge that gives the key its height.
         static let lipHeight: CGFloat = 4
+    }
+
+    // MARK: - Option buttons
+    //
+    // Sized from AppKit's own mini metrics (a mini button is 16pt) so these sit
+    // correctly beside the system controls they share a bar with, rather than to
+    // numbers invented for the occasion.
+    enum OptionButton {
+        static let height: CGFloat = 17
+        static let horizontalPadding: CGFloat = 7
+        static let cornerRadius: CGFloat = 3
+    }
+
+    // MARK: - Bar spacing
+    //
+    // Cocoa's guidance: related controls sit close, unrelated groups sit apart. The
+    // old bar used one spacing for both, so nothing read as grouped and the whole
+    // strip spread out.
+    enum BarSpacing {
+        /// Between controls that belong together.
+        static let withinGroup: CGFloat = 4
+        /// Between one group and the next, either side of a divider.
+        static let betweenGroups: CGFloat = 14
     }
 
     enum Pulse {
@@ -199,7 +222,11 @@ enum Theme {
         /// a shuttle, a step-timing picker and a source selector under their preview,
         /// and cramming those into the old height left every one of them too small to
         /// read. The library row gives up the space — it is a grid and scrolls.
-        static let rowWeights: [CGFloat] = [1.25, 1.25, 0.6, 1.35, 0.55]
+        // The last row is the output bar, which is one 26pt strip with no header. It
+        // had been given nearly twice the height it can use, and the slack went to
+        // empty space inside the panel — which is most of what made it look chunky.
+        // The height it gives back goes to the previews and the libraries.
+        static let rowWeights: [CGFloat] = [1.32, 1.32, 0.6, 1.45, 0.31]
 
         /// Column weight of a folded-away column — just enough for its rail.
         static let railWeight: CGFloat = 0.14

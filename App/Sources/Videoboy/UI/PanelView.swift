@@ -38,6 +38,8 @@ final class PanelView: NSView {
 
     /// Whether the body is hidden. The panel keeps its grid cell either way.
     private(set) var isCollapsed = false
+    /// False for the strips that carry no title.
+    private let showsHeader: Bool
 
     private let headerButton = NSButton()
     private let chevron = NSTextField(labelWithString: "▾")
@@ -61,9 +63,17 @@ final class PanelView: NSView {
     ///   - bus: bus identity, which colours the header dot.
     ///   - subtitle: right-aligned monospaced text (e.g. `A ▸ B`, `720x480 · 480i`).
     ///   - body: the panel's contents.
-    init(title: String, bus: BusIdentity = .none, subtitle: String = "", body: NSView) {
+    /// - Parameter showsHeader: false for the strips that are not really panels.
+    ///   The output bar is a bar: a title over it costs as much height as the row
+    ///   itself, says nothing the controls do not, and gives it a collapse
+    ///   affordance it has nowhere to collapse into.
+    init(
+        title: String, bus: BusIdentity = .none, subtitle: String = "",
+        showsHeader: Bool = true, body: NSView
+    ) {
         self.title = title
         self.body = body
+        self.showsHeader = showsHeader
         super.init(frame: .zero)
 
         wantsLayer = true
@@ -138,6 +148,7 @@ final class PanelView: NSView {
         headerButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(headerButton)
 
+        headerButton.isHidden = !showsHeader
         chevron.font = Theme.Font.tinyLabel
         chevron.textColor = Theme.Color.textTertiary
 
@@ -162,13 +173,15 @@ final class PanelView: NSView {
         row.translatesAutoresizingMaskIntoConstraints = false
         // The spacer view between title and subtitle pushes the subtitle right.
         row.setHuggingPriority(.defaultLow, for: .horizontal)
+        row.isHidden = !showsHeader
         addSubview(row)
 
         NSLayoutConstraint.activate([
             headerButton.topAnchor.constraint(equalTo: topAnchor),
             headerButton.leadingAnchor.constraint(equalTo: leadingAnchor),
             headerButton.trailingAnchor.constraint(equalTo: trailingAnchor),
-            headerButton.heightAnchor.constraint(equalToConstant: Theme.Metrics.panelHeaderHeight),
+            headerButton.heightAnchor.constraint(
+                equalToConstant: showsHeader ? Theme.Metrics.panelHeaderHeight : 0),
 
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Metrics.panelHeaderPaddingX),
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Metrics.panelHeaderPaddingX),
@@ -190,7 +203,8 @@ final class PanelView: NSView {
         bodyContainer.addSubview(body)
 
         NSLayoutConstraint.activate([
-            bodyContainer.topAnchor.constraint(equalTo: headerButton.bottomAnchor),
+            bodyContainer.topAnchor.constraint(
+                equalTo: showsHeader ? headerButton.bottomAnchor : topAnchor),
             bodyContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
             bodyContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
             bodyContainer.bottomAnchor.constraint(equalTo: bottomAnchor),

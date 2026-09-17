@@ -24,9 +24,19 @@ final class SettingsBarPanelBody: NSView {
     private let destinationLabel = Controls.monoLabel("no display")
     /// The mode actually negotiated with that display.
     private let modeLabel = Controls.monoLabel("—")
+    /// The dot between destination and mode, hidden along with the mode.
+    private let modeSeparator = Controls.label(
+        "·", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary, holdsWidth: true)
 
-    /// Whether output is live.
-    private let outputSwitch: NSSwitch
+    /// Whether output is live. Tally red, because this one means "on air".
+    private let outputToggle = VBOptionButton(title: "OUTPUT", onColour: Theme.Color.tallyOnAir)
+
+    private let safeToggle = VBOptionButton(title: "Safe")
+    private let overscanToggle = VBOptionButton(title: "Overscan")
+    private let bfiToggle = VBOptionButton(title: "BFI")
+    private let testToggle = VBOptionButton(title: "Test Pat")
+    private let ntscToggle = VBOptionButton(title: "NTSC")
+    private let dvToggle = VBOptionButton(title: "DV")
 
     /// Called when output is switched on or off.
     var onOutputEnabledChanged: ((Bool) -> Void)?
@@ -42,72 +52,65 @@ final class SettingsBarPanelBody: NSView {
     var onOutputNTSCToggled: ((Bool) -> Void)?
     /// DV colour-space emulation on the output was switched.
     var onOutputDVToggled: ((Bool) -> Void)?
-    /// The chevron beside an emulation toggle was clicked, to open its variables.
-    /// The view is what the popover hangs from.
+    /// An emulation toggle was right-clicked, to open its variables. The view is
+    /// what the popover hangs from.
     var onEmulationDetailRequested: ((OutputEmulation, NSView) -> Void)?
 
     init(negotiatedMode: String) {
-        outputSwitch = NSSwitch()
         super.init(frame: .zero)
+        setOutput(destination: "no display", mode: negotiatedMode)
 
-        modeLabel.stringValue = negotiatedMode
+        // OUTPUT — on or off, to where, in what format. The enable is tally red
+        // rather than accent blue: this one means "on air", not "option selected".
+        outputToggle.target = self
+        outputToggle.action = #selector(outputToggleChanged)
+        outputToggle.toolTip = "Send PROGRAM to the output display"
 
-        outputSwitch.state = .off
-        outputSwitch.controlSize = .mini
-        outputSwitch.target = self
-        outputSwitch.action = #selector(outputEnabledChanged(_:))
-
-        // OUTPUT — the only section here that does anything yet, so it leads and
-        // gets the room. It answers: on or off, to where, and in what format.
-        let output = section("Output", views: [
-            outputSwitch,
-            Controls.label("PROGRAM →", font: Theme.Font.tinyLabel,
-                           color: Theme.Color.textTertiary, holdsWidth: true),
+        let output = Controls.row([
+            outputToggle,
             destinationLabel,
-            Controls.label("·", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary),
+            modeSeparator,
             modeLabel
-        ])
+        ], spacing: Theme.BarSpacing.withinGroup)
 
-        // TOGGLES — what the CRT sees.
-        let safeToggle = Controls.toggle(on: false, target: self, action: #selector(safeZoneChanged(_:)))
-        let testToggle = Controls.toggle(on: false, target: self, action: #selector(testPatternChanged(_:)))
-        let overscanToggle = Controls.toggle(on: false, target: self, action: #selector(overscanChanged(_:)))
-        let bfiToggle = Controls.toggle(on: false, target: self, action: #selector(blackFrameChanged(_:)))
-        let toggles = section("View", views: [
-            labelled("Safe", safeToggle),
-            labelled("Overscan", overscanToggle),
-            labelled("BFI", bfiToggle),
-            labelled("Test Pat", testToggle)
-        ])
+        // VIEW — what the CRT sees. No section heading: "Safe", "Overscan", "BFI" and
+        // "Test Pat" describe themselves, and a heading over four self-describing
+        // buttons is a fifth thing to read for no gain.
+        let view = Controls.row([
+            option(safeToggle, #selector(safeZoneChanged), "Show the action and title safe areas"),
+            option(overscanToggle, #selector(overscanChanged), "Crop to the overscanned area a CRT shows"),
+            option(bfiToggle, #selector(blackFrameChanged), "Insert a black frame between fields"),
+            option(testToggle, #selector(testPatternChanged), "Send colour bars instead of the mix")
+        ], spacing: Theme.BarSpacing.withinGroup)
 
-        // EMULATION — what the signal becomes on its way out. Two switches, because
-        // the point is that they are two switches: sensible defaults, and the detail
-        // behind a chevron for when the look is not quite right.
-        let ntscToggle = Controls.toggle(on: false, target: self, action: #selector(outputNTSCChanged(_:)))
-        let dvToggle = Controls.toggle(on: false, target: self, action: #selector(outputDVChanged(_:)))
-        let ntscDetail = Controls.button("⌄", target: self, action: #selector(ntscDetailPressed(_:)))
-        let dvDetail = Controls.button("⌄", target: self, action: #selector(dvDetailPressed(_:)))
-        ntscDetail.toolTip = "NTSC signal variables"
-        dvDetail.toolTip = "DV colour variables"
-        self.ntscDetailButton = ntscDetail
-        self.dvDetailButton = dvDetail
-        let emulation = section("Emulate", views: [
-            labelled("NTSC", Controls.row([ntscToggle, ntscDetail], spacing: 1)),
-            labelled("DV", Controls.row([dvToggle, dvDetail], spacing: 1))
-        ])
+        // EMULATE — what the signal becomes on its way out. Their three variables
+        // each live behind a RIGHT-CLICK rather than a chevron: a truncated mini
+        // popup beside a toggle is two controls where one will do, and six of them
+        // are what made this bar look busy.
+        ntscToggle.onSecondaryClick = { [weak self] anchor in
+            self?.onEmulationDetailRequested?(.ntsc, anchor)
+        }
+        dvToggle.onSecondaryClick = { [weak self] anchor in
+            self?.onEmulationDetailRequested?(.dv, anchor)
+        }
+        let emulate = Controls.row([
+            option(ntscToggle, #selector(outputNTSCChanged),
+                   "NTSC signal character. Right-click for its settings."),
+            option(dvToggle, #selector(outputDVChanged),
+                   "DV colour space. Right-click for its settings.")
+        ], spacing: Theme.BarSpacing.withinGroup)
 
-        // STREAM — what is going out to OBS, if anything. A readout rather than a
-        // control: the route is chosen from the send glyph under a preview, and a
-        // second way to start a stream would be a second thing to keep in step.
+        // STREAM — a readout, not a control. The route is chosen from the send glyph
+        // under a preview, and a second way to start a stream would be a second thing
+        // to keep in step.
         streamLabel.stringValue = "idle"
         streamLabel.font = Theme.Font.tinyLabel
         streamLabel.textColor = Theme.Color.textTertiary
-        let stream = section("Stream", views: [streamLabel])
 
         let row = Controls.row([
-            output, divider(), toggles, divider(), emulation, divider(),
-            stream, Controls.spacer()
-        ], spacing: 12)
+            output, divider(), view, divider(), emulate, divider(),
+            streamLabel, Controls.spacer()
+        ], spacing: Theme.BarSpacing.betweenGroups)
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
 
@@ -116,6 +119,16 @@ final class SettingsBarPanelBody: NSView {
             row.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
             row.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
+    }
+
+    /// Wires one option button and hands it back, so the rows above stay readable.
+    private func option(
+        _ button: VBOptionButton, _ action: Selector, _ tooltip: String
+    ) -> VBOptionButton {
+        button.target = self
+        button.action = action
+        button.toolTip = tooltip
+        return button
     }
 
     @available(*, unavailable)
@@ -132,51 +145,35 @@ final class SettingsBarPanelBody: NSView {
     }
     private var dvDetailButton: NSButton?
 
-    @objc private func outputNTSCChanged(_ sender: NSSwitch) {
-        onOutputNTSCToggled?(sender.state == .on)
+    @objc private func outputNTSCChanged(_ sender: VBOptionButton) {
+        onOutputNTSCToggled?(sender.isOn)
     }
 
-    @objc private func outputDVChanged(_ sender: NSSwitch) {
-        onOutputDVToggled?(sender.state == .on)
-    }
-
-    @objc private func ntscDetailPressed(_ sender: NSButton) {
-        onEmulationDetailRequested?(.ntsc, sender)
-    }
-
-    @objc private func dvDetailPressed(_ sender: NSButton) {
-        onEmulationDetailRequested?(.dv, sender)
+    @objc private func outputDVChanged(_ sender: VBOptionButton) {
+        onOutputDVToggled?(sender.isOn)
     }
 
     /// Updates the destination and mode after the output window has negotiated.
     func setOutput(destination: String, mode: String) {
         destinationLabel.stringValue = destination
-        modeLabel.stringValue = mode
+        // With no display there is no mode to report, and "not yet negotiated" only
+        // truncated to "not yet negotiat…" — which says less than nothing. The
+        // separator goes with it, so the group reads as one fact rather than one fact
+        // and a stub.
+        let hasDisplay = !destination.isEmpty && destination != "no display"
+        modeLabel.stringValue = hasDisplay ? mode : ""
+        modeLabel.isHidden = !hasDisplay
+        modeSeparator.isHidden = !hasDisplay
     }
 
     /// Reflects output state set from elsewhere, without firing the action.
     func setOutputEnabled(_ enabled: Bool) {
-        outputSwitch.state = enabled ? .on : .off
+        outputToggle.isOn = enabled
     }
 
     /// Kept for callers that only have a mode string.
     func setNegotiatedMode(_ mode: String) {
         modeLabel.stringValue = mode
-    }
-
-    /// One labelled section of the bar.
-    private func section(_ title: String, views: [NSView]) -> NSStackView {
-        let heading = Controls.label(
-            title, font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary, holdsWidth: true)
-        return Controls.row([heading] + views, spacing: 5)
-    }
-
-    /// A toggle with its caption, as the mockup pairs them.
-    private func labelled(_ title: String, _ control: NSView) -> NSStackView {
-        Controls.row([
-            control,
-            Controls.label(title, font: Theme.Font.tinyLabel, holdsWidth: true)
-        ], spacing: 3)
     }
 
     /// A vertical rule between sections — a rule rather than more space, so the bar
@@ -193,28 +190,28 @@ final class SettingsBarPanelBody: NSView {
         return line
     }
 
-    @objc private func outputEnabledChanged(_ sender: NSSwitch) {
-        Log.info(.output, "program output \(sender.state == .on ? "on" : "off")")
-        onOutputEnabledChanged?(sender.state == .on)
+    @objc private func outputToggleChanged(_ sender: VBOptionButton) {
+        Log.info(.output, "program output \(sender.isOn ? "on" : "off")")
+        onOutputEnabledChanged?(sender.isOn)
     }
 
-    @objc private func testPatternChanged(_ sender: NSSwitch) {
-        Log.info(.output, "test pattern \(sender.state == .on ? "on" : "off")")
-        onTestPatternToggled?(sender.state == .on)
+    @objc private func testPatternChanged(_ sender: VBOptionButton) {
+        Log.info(.output, "test pattern \(sender.isOn ? "on" : "off")")
+        onTestPatternToggled?(sender.isOn)
     }
 
-    @objc private func safeZoneChanged(_ sender: NSSwitch) {
-        Log.info(.output, "safe zones \(sender.state == .on ? "on" : "off")")
-        onSafeZoneToggled?(sender.state == .on)
+    @objc private func safeZoneChanged(_ sender: VBOptionButton) {
+        Log.info(.output, "safe zones \(sender.isOn ? "on" : "off")")
+        onSafeZoneToggled?(sender.isOn)
     }
 
-    @objc private func overscanChanged(_ sender: NSSwitch) {
-        Log.info(.output, "overscan \(sender.state == .on ? "on" : "off")")
-        onOverscanToggled?(sender.state == .on)
+    @objc private func overscanChanged(_ sender: VBOptionButton) {
+        Log.info(.output, "overscan \(sender.isOn ? "on" : "off")")
+        onOverscanToggled?(sender.isOn)
     }
 
-    @objc private func blackFrameChanged(_ sender: NSSwitch) {
-        Log.info(.output, "black-frame insertion \(sender.state == .on ? "on" : "off")")
-        onBlackFrameInsertionToggled?(sender.state == .on)
+    @objc private func blackFrameChanged(_ sender: VBOptionButton) {
+        Log.info(.output, "black-frame insertion \(sender.isOn ? "on" : "off")")
+        onBlackFrameInsertionToggled?(sender.isOn)
     }
 }

@@ -158,3 +158,63 @@ final class FadeTests: XCTestCase {
         XCTAssertEqual(onTheEighth.targetBeat, 0.5, accuracy: 1e-9)
     }
 }
+
+// MARK: - What a move is, versus when it happens
+
+extension FadeTests {
+
+    /// A scheduled move carries its rate, so the beat decides WHEN and the rate
+    /// decides HOW. One flag answering both is why Fade with beat-sync on produced a
+    /// hard cut instead of a fade.
+    func testAScheduledMoveRemembersItIsAFade() {
+        let transport = Transport()
+        transport.beatsPerMinute = 120
+        transport.start(atHostTime: 1000)
+
+        let fade = PendingCut.scheduled(
+            target: 1.0, transport: transport, subdivision: .quarter,
+            hostTime: 1000, latencyInFrames: 0, rate: .slow)
+        XCTAssertEqual(fade.rate, .slow, "a scheduled fade must still be a fade when it fires")
+
+        let cut = PendingCut.scheduled(
+            target: 1.0, transport: transport, subdivision: .quarter,
+            hostTime: 1000, latencyInFrames: 0)
+        XCTAssertNil(cut.rate, "a scheduled cut has no rate; it snaps")
+    }
+
+    /// The subdivision is honoured, so beat-syncing to 1/16 is a different decision
+    /// from beat-syncing to a bar.
+    func testAScheduledMoveLandsOnTheChosenSubdivision() {
+        let transport = Transport()
+        transport.beatsPerMinute = 120
+        transport.start(atHostTime: 1000)
+
+        // Part way into a beat, so the next boundary of each subdivision differs.
+        let now = 1000.3
+        let quarter = PendingCut.scheduled(
+            target: 1, transport: transport, subdivision: .quarter,
+            hostTime: now, latencyInFrames: 0)
+        let sixteenth = PendingCut.scheduled(
+            target: 1, transport: transport, subdivision: .sixteenth,
+            hostTime: now, latencyInFrames: 0)
+
+        XCTAssertLessThan(
+            sixteenth.targetBeat, quarter.targetBeat,
+            "a sixteenth boundary comes sooner than the next quarter")
+        XCTAssertGreaterThan(sixteenth.targetBeat, transport.beats(atHostTime: now))
+    }
+
+    /// A fade started on the beat still takes its full time afterwards.
+    func testAFadeStartedOnTheBeatRunsForItsFullDuration() {
+        let started = 2000.0
+        let fade = FadeAutomation(
+            from: 0, to: 1, duration: FadeRate.slow.seconds, startedAt: started)
+
+        XCTAssertEqual(fade.position(atHostTime: started), 0, accuracy: 0.001)
+        XCTAssertFalse(fade.isFinished(atHostTime: started + FadeRate.slow.seconds / 2))
+        XCTAssertEqual(
+            fade.position(atHostTime: started + FadeRate.slow.seconds), 1, accuracy: 0.001,
+            "the fade must arrive at the target, not stop short")
+        XCTAssertTrue(fade.isFinished(atHostTime: started + FadeRate.slow.seconds + 0.01))
+    }
+}

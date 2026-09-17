@@ -14,6 +14,8 @@
 import AppKit
 
 /// A plain container view that lays out from the top down.
-final class FlippedView: NSView {
+/// Subclassed by `LibraryDropView`, which adds drop handling, so this is open
+/// rather than final.
+class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }

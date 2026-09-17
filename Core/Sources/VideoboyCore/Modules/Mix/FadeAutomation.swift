@@ -128,15 +128,25 @@ public struct FadeAutomation: Equatable {
 public struct PendingCut: Equatable {
     /// Where the fader should end up.
     public let target: Double
-    /// The musical position the cut should be visible at.
+    /// The musical position the move should be visible at.
     public let targetBeat: Double
     /// Host time to actually perform it — the beat's time, less the graph's latency.
     public let fireHostTime: Double
 
-    public init(target: Double, targetBeat: Double, fireHostTime: Double) {
+    /// How to travel when the moment arrives: nil cuts, a rate fades over that long.
+    ///
+    /// Waiting for the beat and cutting rather than fading are two different
+    /// questions — WHEN and HOW — and one flag answering both is why pressing Fade
+    /// with beat-sync on produced a hard cut.
+    public let rate: FadeRate?
+
+    public init(
+        target: Double, targetBeat: Double, fireHostTime: Double, rate: FadeRate? = nil
+    ) {
         self.target = target
         self.targetBeat = targetBeat
         self.fireHostTime = fireHostTime
+        self.rate = rate
     }
 
     /// Whether it is time to perform the cut.
@@ -154,13 +164,15 @@ public struct PendingCut: Equatable {
     ///   - latencyInFrames: the graph's worst-case latency, so the cut is taken early
     ///     enough for the result to be visible on the beat.
     ///   - frameRate: for converting that latency to seconds.
+    ///   - rate: nil to cut when the moment comes, or a rate to start fading then.
     public static func scheduled(
         target: Double,
         transport: Transport,
         subdivision: Subdivision,
         hostTime: Double,
         latencyInFrames: Int,
-        frameRate: Double = StandardDefinition.frameRate
+        frameRate: Double = StandardDefinition.frameRate,
+        rate: FadeRate? = nil
     ) -> PendingCut {
         let nowBeats = transport.beats(atHostTime: hostTime)
         let boundary = transport.nextBoundary(after: nowBeats, subdivision: subdivision)
@@ -169,7 +181,8 @@ public struct PendingCut: Equatable {
         return PendingCut(
             target: target,
             targetBeat: boundary,
-            fireHostTime: boundaryHostTime - latencySeconds
+            fireHostTime: boundaryHostTime - latencySeconds,
+            rate: rate
         )
     }
 }

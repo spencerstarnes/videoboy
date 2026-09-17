@@ -483,6 +483,156 @@ enum UISelfQA {
             pasteboard.clearContents()
             pasteboard.writeObjects([LibraryItemView.pasteboardItem(for: sample)])
 
+            // WHICH VIEW GETS THE CLICK. A drag that never starts is almost always
+            // this: the press lands on a subview that handles it, or on one whose
+            // responder chain does not reach the thing that knows how to drag.
+            shell.layoutSubtreeIfNeeded()
+            let items = LibraryItemView.all(in: shell)
+            var unreachable: [String] = []
+            for item in items where item.item.url != nil {
+                let centre = item.convert(
+                    NSPoint(x: item.bounds.midX, y: item.bounds.midY), to: shell)
+                let hit = shell.hitTest(centre)
+
+                // Walk up from whatever was hit. If no LibraryItemView is on that
+                // chain, a press there can never reach the code that starts a drag.
+                var responder: NSResponder? = hit
+                var reaches = false
+                while let current = responder {
+                    if current === item { reaches = true; break }
+                    responder = current.nextResponder
+                }
+                if !reaches {
+                    unreachable.append(
+                        "\(item.item.name) hit \(hit.map { String(describing: type(of: $0)) } ?? "nothing")")
+                }
+            }
+            check.record(AssertionResult(
+                name: "a press on a library item reaches the view that starts the drag",
+                passed: unreachable.isEmpty && !items.isEmpty,
+                detail: unreachable.isEmpty
+                    ? "\(items.count) items, all reachable"
+                    : unreachable.joined(separator: "; ")
+            ))
+
+            // PERFORM REAL DROPS. Everything above proves the parts; this drives the
+            // actual handlers on the actual views and checks the file lands. It is
+            // the only one of these checks that would have caught a drop that is
+            // registered, readable, reachable — and still does nothing.
+            let dv = RepoPaths.samples.appendingPathComponent("motion.dv")
+            if FileManager.default.fileExists(atPath: dv.path) {
+                // Onto a source panel: the clip should load into that channel.
+                if let sourceB = shell.grid.panels.sourceBodies["B"] {
+                    let drag = FakeDragging(urls: [dv], pasteboardName: "vb-drop-source")
+                    let operation = sourceB.draggingEntered(drag)
+                    let accepted = sourceB.performDragOperation(drag)
+                    check.record(AssertionResult(
+                        name: "dropping a clip on a source loads it",
+                        passed: operation == .copy && accepted
+                            && engine.sources["B"]?.mediaURL?.lastPathComponent == dv.lastPathComponent,
+                        detail: "entered \(operation == .copy ? "copy" : "refused"), "
+                            + "accepted \(accepted), "
+                            + "channel B holds \(engine.sources["B"]?.mediaURL?.lastPathComponent ?? "nothing")"
+                    ))
+                }
+
+                // Onto a library — and onto the view a drop ACTUALLY lands on, which
+                // is the scrolling grid rather than the panel behind it. Driving the
+                // panel directly would pass while a real drop hit the grid and did
+                // nothing.
+                let library = shell.grid.panels.libraryOneBody
+                library.layoutSubtreeIfNeeded()
+
+                // A file the library does not already hold, since duplicates are
+                // skipped on purpose and would make this pass without adding anything.
+                let newClip = URL(fileURLWithPath: NSTemporaryDirectory())
+                    .appendingPathComponent("videoboy-dropped-\(UUID().uuidString).dv")
+                try? FileManager.default.copyItem(at: dv, to: newClip)
+                defer { try? FileManager.default.removeItem(at: newClip) }
+
+                let before = LibraryItemView.all(in: library).count
+                let libraryDrag = FakeDragging(urls: [newClip], pasteboardName: "vb-drop-library")
+
+                // Find the deepest registered view under the middle of the grid, the
+                // way AppKit does, and drop on THAT.
+                let centre = NSPoint(x: library.bounds.midX, y: library.bounds.midY)
+                var target = library.hitTest(centre)
+                while let current = target, !current.registeredDraggedTypes.contains(.fileURL) {
+                    target = current.superview
+                }
+                let landedOn = target.map { String(describing: type(of: $0)) } ?? "nothing"
+
+                let libraryOperation = target?.draggingEntered(libraryDrag) ?? []
+                let libraryAccepted = target?.performDragOperation(libraryDrag) ?? false
+                library.layoutSubtreeIfNeeded()
+                let after = LibraryItemView.all(in: library).count
+
+                check.record(AssertionResult(
+                    name: "a drop on the library grid adds the clip",
+                    passed: libraryOperation == .copy && libraryAccepted && after == before + 1,
+                    detail: "landed on \(landedOn), entered "
+                        + "\(libraryOperation == .copy ? "copy" : "refused"), "
+                        + "accepted \(libraryAccepted), \(before) items before, \(after) after"
+                ))
+            }
+
+            // STARTING a drag, driven as the real gesture: a press on the thumbnail,
+            // then movement. This is the half that was broken, and it was broken in
+            // the part no check could see — so this drives the actual mouse handlers
+            // on the actual views and watches for the drag to begin.
+            if let cell = LibraryItemView.all(in: shell).first(where: { $0.item.url != nil }),
+               let window = NSWindow(
+                contentRect: shell.frame, styleMask: [.borderless],
+                backing: .buffered, defer: false) as NSWindow? {
+                window.contentView = shell
+                shell.layoutSubtreeIfNeeded()
+
+                var draggedURL: URL?
+                LibraryItemView.onDragStartedForChecks = { draggedURL = $0 }
+                defer { LibraryItemView.onDragStartedForChecks = nil }
+
+                let origin = cell.convert(
+                    NSPoint(x: cell.bounds.midX, y: cell.bounds.midY), to: nil)
+                func mouse(_ type: NSEvent.EventType, at point: NSPoint, clicks: Int) -> NSEvent? {
+                    NSEvent.mouseEvent(
+                        with: type, location: point, modifierFlags: [],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil,
+                        eventNumber: 0, clickCount: clicks, pressure: 1)
+                }
+
+                // Sent to the view a press ACTUALLY lands on — the thumbnail, which
+                // covers the cell — not to the cell itself. Driving the cell directly
+                // would pass while a real press hit the thumbnail and stopped there,
+                // which is precisely the shape of the bug being fixed.
+                let pressTarget = shell.hitTest(origin) ?? cell
+                let landedOn = String(describing: type(of: pressTarget))
+
+                // The press alone must NOT start a drag — that was the bug where a
+                // plain click became one and swallowed the double-click.
+                if let press = mouse(.leftMouseDown, at: origin, clicks: 1) {
+                    pressTarget.mouseDown(with: press)
+                }
+                let startedOnPressAlone = draggedURL != nil
+
+                // Movement past the threshold must start it.
+                let moved = NSPoint(x: origin.x + 20, y: origin.y)
+                if let drag = mouse(.leftMouseDragged, at: moved, clicks: 1) {
+                    pressTarget.mouseDragged(with: drag)
+                }
+
+                check.record(AssertionResult(
+                    name: "a press then a drag on a thumbnail starts a drag",
+                    passed: !startedOnPressAlone && draggedURL != nil,
+                    detail: startedOnPressAlone
+                        ? "the press alone started a drag, which swallows clicks"
+                        : (draggedURL.map { "pressed \(landedOn), dragged \($0.lastPathComponent)" }
+                            ?? "pressed \(landedOn), movement started nothing")
+                ))
+
+                window.contentView = nil
+            }
+
             let readBack = SourcePanelBody.fileURL(from: pasteboard)
             check.record(AssertionResult(
                 name: "a drop target can read what the library writes",

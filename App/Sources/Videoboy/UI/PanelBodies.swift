@@ -522,14 +522,18 @@ final class FaderPanelBody: NSView {
         buttons.append(leftKey)
         buttons.append(rightKey)
         let fadeButton = Controls.button("Fade", target: self, action: #selector(fadePressed))
-        fadeButton.toolTip = "Auto-fade to the other source at the chosen rate"
+        fadeButton.toolTip = "Fade to the other source over the time set by the "
+            + "turtle/rabbit control"
         buttons.append(fadeButton)
 
         // Cut-on-beat. With this on, a cut waits for the next subdivision and is
         // taken early by the graph's latency so the picture changes ON the beat.
         let beatToggle = Controls.button("Beat", target: self, action: #selector(beatCutPressed))
         beatToggle.setButtonType(.pushOnPushOff)
-        beatToggle.toolTip = "Cut on the next beat instead of immediately"
+        // Beat answers WHEN, not WHAT. With it on, a bus key still cuts and Fade
+        // still fades — they just wait for the next boundary first.
+        beatToggle.toolTip = "Hold the next cut or fade until the beat. "
+            + "Which beat is set by DIV in the transport readout."
         self.beatCutButton = beatToggle
         buttons.append(beatToggle)
 
