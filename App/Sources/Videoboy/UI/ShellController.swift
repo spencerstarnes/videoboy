@@ -914,6 +914,10 @@ final class ShellController {
     /// enough to know where a slider's value should land. This table is that mapping,
     /// written out rather than inferred so adding an effect is a one-line change.
     private static let subMixOneSlots: [ParamCode: String] = [
+        .scale: Engine.transformSlot,
+        .rotation: Engine.transformSlot,
+        .flipHorizontal: Engine.transformSlot,
+        .flipVertical: Engine.transformSlot,
         .brightness: Engine.colourSlot,
         .contrast: Engine.colourSlot,
         .saturation: Engine.colourSlot,
@@ -948,6 +952,10 @@ final class ShellController {
 
     /// Which slot each param code in the Sub Mix 2 chain belongs to.
     private static let subMixTwoSlots: [ParamCode: String] = [
+        .scale: Engine.transformTwoSlot,
+        .rotation: Engine.transformTwoSlot,
+        .flipHorizontal: Engine.transformTwoSlot,
+        .flipVertical: Engine.transformTwoSlot,
         .brightness: Engine.colourTwoSlot,
         .contrast: Engine.colourTwoSlot,
         .saturation: Engine.colourTwoSlot,
@@ -980,6 +988,7 @@ final class ShellController {
 
     /// Effect card names to the slot they bypass, per bus.
     private static let effectNameToSlot: [String: (one: String, two: String)] = [
+        "Transform": (Engine.transformSlot, Engine.transformTwoSlot),
         "Colour": (Engine.colourSlot, Engine.colourTwoSlot),
         "Composite · NTSC": (Engine.compositeSlot, Engine.compositeTwoSlot),
         "Echo / Trails": (Engine.echoSlot, Engine.echoTwoSlot),
@@ -1106,6 +1115,7 @@ final class ShellController {
     /// Which effect a card's name refers to, as the suffix used in per-channel slot
     /// names. Nil for the corruptor, which lives on the source node itself.
     private static let effectNameToChannelSuffix: [String: String] = [
+        "Transform": "transform",
         "Colour": "colour",
         "Composite · NTSC": "composite",
         "Echo / Trails": "echo",
@@ -1173,6 +1183,8 @@ final class ShellController {
     /// it is a fader that silently writes to the wrong copy.
     private static func cardOwning(_ code: ParamCode) -> String? {
         switch code {
+        case .scale, .rotation, .flipHorizontal, .flipVertical:
+            return "Transform"
         case .brightness, .contrast, .saturation, .shadow,
              .highlight, .blackLevel, .whiteLevel, .gamma:
             return "Colour"

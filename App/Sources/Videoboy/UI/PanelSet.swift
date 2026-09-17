@@ -134,6 +134,22 @@ final class PanelSet {
         // visible from the first run.
         effectsOneBody = EffectChainPanelBody(effects: [
             EffectCardModel(
+                name: "Transform",
+                isEnabled: false,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "scale", code: ParamCode.scale.rawValue,
+                                         value: 0.231, enabled: true),
+                    EffectParameterModel(name: "rotate", code: ParamCode.rotation.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "flip H", code: ParamCode.flipHorizontal.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "flip V", code: ParamCode.flipVertical.rawValue,
+                                         value: 0.0, enabled: true)
+                ],
+                channelOptions: ["A", "B", "BOTH"]
+            ),
+            EffectCardModel(
                 name: "DV · DIF corruptor",
                 // OFF, like every effect except the grade. The wedge is the loudest
                 // thing in the app and it should be something you switch on, not
@@ -254,6 +270,22 @@ final class PanelSet {
         // Sub Mix TWO's chain: the same effects, on its own instances, so the two
         // buses can carry different looks at once.
         effectsTwoBody = EffectChainPanelBody(effects: [
+            EffectCardModel(
+                name: "Transform",
+                isEnabled: false,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "scale", code: ParamCode.scale.rawValue,
+                                         value: 0.231, enabled: true),
+                    EffectParameterModel(name: "rotate", code: ParamCode.rotation.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "flip H", code: ParamCode.flipHorizontal.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "flip V", code: ParamCode.flipVertical.rawValue,
+                                         value: 0.0, enabled: true)
+                ],
+                channelOptions: ["C", "D", "BOTH"]
+            ),
             EffectCardModel(
                 name: "DV · DIF corruptor",
                 // OFF, like every effect except the grade. The wedge is the loudest

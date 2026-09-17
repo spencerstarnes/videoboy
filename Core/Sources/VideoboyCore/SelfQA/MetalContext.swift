@@ -254,6 +254,56 @@ enum ShaderSource {
     }
 
     // ---------------------------------------------------------------------------
+    // Transform: scale, rotate, flip.
+    //
+    // Sampling runs BACKWARDS, which is the whole trick and the thing to understand
+    // before editing it. For each output pixel this asks "where in the SOURCE did
+    // this come from", so the transform applied to the coordinate is the INVERSE of
+    // the transform you see on screen: to make the picture twice as big, sample half
+    // as far from the centre.
+    //
+    // Everything happens about the centre, because a video frame rotated about its
+    // corner leaves the screen.
+    // ---------------------------------------------------------------------------
+
+    struct TransformParams {
+        float scale;        // 0.1..4, 1 is unchanged
+        float rotation;     // turns, 0..1
+        float flipH;        // 0 or 1
+        float flipV;        // 0 or 1
+    };
+
+    fragment float4 transform_fragment(VertexOut in [[stage_in]],
+                                       texture2d<float> source [[texture(0)]],
+                                       constant TransformParams &p [[buffer(0)]]) {
+        constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+
+        float2 centred = in.uv - 0.5;
+
+        // Flips first, and they are their own inverse, so no special care needed.
+        if (p.flipH > 0.5) { centred.x = -centred.x; }
+        if (p.flipV > 0.5) { centred.y = -centred.y; }
+
+        // Inverse rotation: negative angle.
+        float angle = -p.rotation * 6.28318530718;
+        float c = cos(angle);
+        float s = sin(angle);
+        float2 rotated = float2(centred.x * c - centred.y * s,
+                                centred.x * s + centred.y * c);
+
+        // Inverse scale: divide.
+        float2 sampleUV = rotated / max(p.scale, 0.01) + 0.5;
+
+        // Outside the frame is BLACK, not the clamped edge pixel. Clamping smears the
+        // border outward into a streaked mess, which reads as a broken render rather
+        // than as a picture that has been scaled down.
+        if (any(sampleUV < float2(0.0)) || any(sampleUV > float2(1.0))) {
+            return float4(0.0, 0.0, 0.0, 1.0);
+        }
+        return float4(source.sample(linearSampler, sampleUV).rgb, 1.0);
+    }
+
+    // ---------------------------------------------------------------------------
     // Colour controls.
     //
     // The ordinary grade stage every mixer has, in the order a grade is actually
@@ -712,6 +762,7 @@ public final class MetalContext {
     /// Echo/trails: blends a frame with the decaying history behind it.
     public let echoPipeline: MTLRenderPipelineState
     public let colourPipeline: MTLRenderPipelineState
+    public let transformPipeline: MTLRenderPipelineState
     /// Feedback: the previous output, transformed, mixed back in.
     public let feedbackPipeline: MTLRenderPipelineState
 
@@ -758,6 +809,7 @@ public final class MetalContext {
               let generator = makePipeline(vertex: "fullscreen_vertex", fragment: "generator_fragment"),
               let echo = makePipeline(vertex: "fullscreen_vertex", fragment: "echo_fragment"),
               let colour = makePipeline(vertex: "fullscreen_vertex", fragment: "colour_fragment"),
+              let transform = makePipeline(vertex: "fullscreen_vertex", fragment: "transform_fragment"),
               let feedback = makePipeline(vertex: "fullscreen_vertex", fragment: "feedback_fragment") else {
             return nil
         }
@@ -773,6 +825,7 @@ public final class MetalContext {
         self.generatorPipeline = generator
         self.echoPipeline = echo
         self.colourPipeline = colour
+        self.transformPipeline = transform
         self.feedbackPipeline = feedback
         Log.info(.render, "Metal ready on \(device.name)")
     }

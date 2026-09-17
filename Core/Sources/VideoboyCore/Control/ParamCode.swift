@@ -46,6 +46,10 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case positionX = "12A"
     case positionY = "13A"
     case rotation = "14A"
+    /// Mirror left-to-right, above the halfway point.
+    case flipHorizontal = "15A"
+    /// Mirror top-to-bottom, above the halfway point.
+    case flipVertical = "16A"
 
     // MARK: Time-domain effects (2xA)
 
@@ -209,6 +213,8 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .positionX: "x"
         case .positionY: "y"
         case .rotation: "rotate"
+        case .flipHorizontal: "flip H"
+        case .flipVertical: "flip V"
         case .echoDecay: "echo decay"
         case .trailLength: "trail length"
         case .corruptAmount: "corrupt amount"

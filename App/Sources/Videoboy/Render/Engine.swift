@@ -59,6 +59,8 @@ final class Engine {
     /// Every channel's own copy of the effect chain, in signal order.
     private(set) var channelEffects: [String: [Node]] = [:]
 
+    private(set) var transformOne: TransformNode!
+    private(set) var transformTwo: TransformNode!
     private(set) var colour: ColourControlNode!
     private(set) var echo: EchoNode!
     private(set) var feedback: FeedbackNode!
@@ -189,6 +191,8 @@ final class Engine {
             let source = Engine.slot(forChannel: letter)
             var upstream = source
 
+            let transform = TransformNode(
+                identifier: Engine.channelSlot(letter, "transform"), context: metal)
             let colour = ColourControlNode(
                 identifier: Engine.channelSlot(letter, "colour"), context: metal)
             let composite = CompositeCodecNode(
@@ -200,12 +204,12 @@ final class Engine {
             let mx1Node = MX1EffectNode(
                 identifier: Engine.channelSlot(letter, "mx1"), context: metal)
 
-            for node in [colour, composite, echo, feedbackNode, mx1Node] as [Node] {
+            for node in [transform, colour, composite, echo, feedbackNode, mx1Node] as [Node] {
                 graph.add(node)
                 graph.connect(from: upstream, to: node.identifier, inputIndex: 0)
                 upstream = node.identifier
             }
-            channelEffects[letter] = [colour, composite, echo, feedbackNode, mx1Node]
+            channelEffects[letter] = [transform, colour, composite, echo, feedbackNode, mx1Node]
             graph.connect(from: upstream, to: subMix, inputIndex: index)
         }
         // Bus FX on ONE, in order: composite codec, then echo, then feedback. The
@@ -216,16 +220,19 @@ final class Engine {
         // four sources to each other is something you do to a clean picture; doing it
         // after the NTSC path means grading artefacts as well as the image, and the
         // corrections stop behaving the way the controls say they do.
+        transformOne = TransformNode(identifier: Engine.transformSlot, context: metal)
         colour = ColourControlNode(identifier: Engine.colourSlot, context: metal)
         compositeCodec = CompositeCodecNode(identifier: Engine.compositeSlot, context: metal)
         echo = EchoNode(identifier: Engine.echoSlot, context: metal)
         feedback = FeedbackNode(identifier: Engine.feedbackSlot, context: metal)
+        graph.add(transformOne)
         graph.add(colour)
         graph.add(compositeCodec)
         graph.add(echo)
         graph.add(feedback)
 
-        graph.connect(from: GraphTopology.subMixOne, to: Engine.colourSlot, inputIndex: 0)
+        graph.connect(from: GraphTopology.subMixOne, to: Engine.transformSlot, inputIndex: 0)
+        graph.connect(from: Engine.transformSlot, to: Engine.colourSlot, inputIndex: 0)
         graph.connect(from: Engine.colourSlot, to: Engine.compositeSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeSlot, to: Engine.echoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoSlot, to: Engine.feedbackSlot, inputIndex: 0)
@@ -252,16 +259,19 @@ final class Engine {
         // The same chain on TWO. Separate instances rather than a shared one: the two
         // buses must be able to carry different looks at once, which is the whole
         // point of having two of them.
+        transformTwo = TransformNode(identifier: Engine.transformTwoSlot, context: metal)
         colourTwo = ColourControlNode(identifier: Engine.colourTwoSlot, context: metal)
         compositeCodecTwo = CompositeCodecNode(identifier: Engine.compositeTwoSlot, context: metal)
         echoTwo = EchoNode(identifier: Engine.echoTwoSlot, context: metal)
         feedbackTwo = FeedbackNode(identifier: Engine.feedbackTwoSlot, context: metal)
+        graph.add(transformTwo)
         graph.add(colourTwo)
         graph.add(compositeCodecTwo)
         graph.add(echoTwo)
         graph.add(feedbackTwo)
 
-        graph.connect(from: GraphTopology.subMixTwo, to: Engine.colourTwoSlot, inputIndex: 0)
+        graph.connect(from: GraphTopology.subMixTwo, to: Engine.transformTwoSlot, inputIndex: 0)
+        graph.connect(from: Engine.transformTwoSlot, to: Engine.colourTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.colourTwoSlot, to: Engine.compositeTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeTwoSlot, to: Engine.echoTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoTwoSlot, to: Engine.feedbackTwoSlot, inputIndex: 0)
@@ -349,10 +359,12 @@ final class Engine {
         "fx.\(letter.lowercased()).\(effect)"
     }
 
+    static let transformSlot = "fx.one.transform"
     static let colourSlot = "fx.one.colour"
     static let echoSlot = "fx.one.echo"
     static let feedbackSlot = "fx.one.feedback"
     static let compositeTwoSlot = "fx.two.composite"
+    static let transformTwoSlot = "fx.two.transform"
     static let colourTwoSlot = "fx.two.colour"
     static let echoTwoSlot = "fx.two.echo"
     static let feedbackTwoSlot = "fx.two.feedback"
@@ -382,8 +394,8 @@ final class Engine {
     /// and nothing on screen said so. A node left off here is invisible until someone
     /// notices the output looks wrong.
     static let busEffectSlots = [
-        colourSlot, compositeSlot, echoSlot, feedbackSlot, mx1OneSlot,
-        colourTwoSlot, compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot,
+        transformSlot, colourSlot, compositeSlot, echoSlot, feedbackSlot, mx1OneSlot,
+        transformTwoSlot, colourTwoSlot, compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot,
         compositeProgramSlot, busCodecProgramSlot
     ]
 
@@ -495,6 +507,7 @@ final class Engine {
         for nodes in channelEffects.values {
             for node in nodes {
                 switch node {
+                case let n as TransformNode: n.applyParameters(from: registry)
                 case let n as ColourControlNode: n.applyParameters(from: registry)
                 case let n as CompositeCodecNode: n.applyParameters(from: registry)
                 case let n as EchoNode: n.applyParameters(from: registry)
@@ -504,6 +517,8 @@ final class Engine {
                 }
             }
         }
+        transformOne.applyParameters(from: registry)
+        transformTwo.applyParameters(from: registry)
         colour.applyParameters(from: registry)
         echo.applyParameters(from: registry)
         feedback.applyParameters(from: registry)
