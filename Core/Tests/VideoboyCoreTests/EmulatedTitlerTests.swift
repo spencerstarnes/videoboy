@@ -77,6 +77,46 @@ final class EmulatedTitlerTests: XCTestCase {
         }
     }
 
+    // MARK: - Machines
+
+    func testScalaAsksForAnAcceleratedA1200RatherThanAStockMachine() {
+        guard let scala = TitlerLibrary.programs.first(where: { $0.name == "Scala MM300" }) else {
+            return XCTFail("Scala MM300 is not in the library")
+        }
+        XCTAssertEqual(scala.machine, .amiga1200Vampire)
+        // The distinction that matters: Scala is an authoring environment, not a
+        // titler, and a stock A500 either crawls or refuses.
+        XCTAssertNotEqual(scala.machine, .amiga500)
+    }
+
+    func testEachMachineConfiguresTheCoreDifferently() {
+        let stock = TitlerProgram.Machine.amiga500.coreOptions
+        let a1200 = TitlerProgram.Machine.amiga1200.coreOptions
+        let vampire = TitlerProgram.Machine.amiga1200Vampire.coreOptions
+
+        XCTAssertEqual(stock["puae_model"], "A500")
+        XCTAssertEqual(a1200["puae_model"], "A1200")
+        XCTAssertNotEqual(a1200["puae_fastmem"], vampire["puae_fastmem"],
+                          "an accelerated machine has more fast RAM, and the core has to be told")
+        XCTAssertEqual(vampire["puae_cpu_compatibility"], "turbo")
+    }
+
+    func testTheVampireIsApproximatedRatherThanClaimed() {
+        // PUAE has no 68080. The accelerated profile picks the fastest CPU it does
+        // offer, which runs the software comfortably — it is not a cycle-accurate
+        // Vampire and the code should not imply that it is.
+        let vampire = TitlerProgram.Machine.amiga1200Vampire.coreOptions
+        XCTAssertEqual(vampire["puae_cpu_model"], "68040")
+        XCTAssertNotEqual(vampire["puae_cpu_model"], "68080")
+    }
+
+    func testEveryMachineHasAName() {
+        for machine in [TitlerProgram.Machine.amiga500, .amiga1200, .amiga1200Vampire] {
+            XCTAssertFalse(machine.displayName.isEmpty)
+            XCTAssertFalse(machine.coreOptions.isEmpty)
+        }
+    }
+
     // MARK: - Driving it, against a mock
 
     func testBootingRunsTheRecipeInOrder() {

@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T20:21:22Z
+when:     2026-09-17T20:23:51Z
 core:     0.3.0
 
 notes:
@@ -11,19 +11,19 @@ notes:
   collapsed-both-edges: folded A/B, FX 1, C/D, FX 2
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
-  adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 11.42 ms, p95 12.54 ms, worst 12.94 ms, budget 33.37 ms
+  adding 24 files took 0.1 ms of main-thread time (one frame is 33.4 ms)
+  frame time with everything on: mean 11.16 ms, p95 12.19 ms, worst 12.68 ms, budget 33.37 ms
 
 assertions (88/88 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 815.5
+  PASS  wide is not blank — luminance variance 812.2
   PASS  dimensions — expected 1000x760, got 1000x760
   PASS  compact is not blank — luminance variance 800.4
   PASS  dimensions — expected 760x640, got 760x640
   PASS  narrow is not blank — luminance variance 1038.0
-  PASS  collapsed-left is not blank — luminance variance 718.7
+  PASS  collapsed-left is not blank — luminance variance 718.9
   PASS  collapsed-both-edges is not blank — luminance variance 614.1
-  PASS  collapsed-sources-only is not blank — luminance variance 836.3
+  PASS  collapsed-sources-only is not blank — luminance variance 832.8
   PASS  collapsed-effects-only is not blank — luminance variance 601.5
   PASS  holding Shift lights the mappable faders — 70 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
@@ -80,8 +80,8 @@ assertions (88/88 passed):
   PASS  I and O mark a range the loader can use — 0.25...0.75
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
-  PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 12.94 ms against a 33.37 ms budget (mean 11.42, p95 12.54)
+  PASS  adding files to a library does not stall the render for multiple frames — 0.1 ms for 24 files — 0.0 frames' worth
+  PASS  no frame misses the budget with every effect running — worst frame 12.68 ms against a 33.37 ms budget (mean 11.16, p95 12.19)
   PASS  frame time is even, not just fast on average — worst is 1.1x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there

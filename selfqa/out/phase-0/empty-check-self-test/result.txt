@@ -1,6 +1,6 @@
 check:    phase-0/empty-check-self-test
 verdict:  FAIL
-when:     2026-09-17T20:21:01Z
+when:     2026-09-17T20:24:08Z
 core:     0.3.0
 
 notes:
@@ -9,5 +9,33 @@ notes:
 assertions (0/0 passed):
 
 recent log:
-  1789676461.942 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
-  1789676461.944 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt
+  1789676647.871 ERROR [app] preferences at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-7CD3154E-ECA5-4629-AEDA-5E0E08FE7449/preferences.json could not be read (dataCorrupted(Swift.DecodingError.Context(codingPath: [], debugDescription: "The given data was not valid JSON.", underlyingError: Optional(Error Domain=NSCocoaErrorDomain Code=3840 "Unexpected character 't' around line 1, column 4." UserInfo={NSJSONSerializationErrorIndex=3, NSDebugDescription=Unexpected character 't' around line 1, column 4.})))); using defaults
+  1789676647.875 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-41A2E2A6-4CC9-49AD-9A32-5E979140D50D/preferences.json; using defaults
+  1789676647.876 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-5A8E6494-A693-4B90-A93F-2B3BA0AB3AEB/preferences.json; using defaults
+  1789676647.877 INFO [app] reminder 'setSaveLocation' suppressed
+  1789676647.877 INFO [app] reminder 'noOutputsSelected' suppressed
+  1789676647.877 INFO [app] reminder 'saveOnQuit' suppressed
+  1789676647.878 INFO [app] reminder 'midiWithNoDevice' suppressed
+  1789676647.878 INFO [app] reminder 'audioMappingWithoutAudioClock' suppressed
+  1789676647.878 INFO [app] all reminders restored
+  1789676647.878 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-87F7A13E-1AFE-482E-8851-EB51BDA60165/preferences.json; using defaults
+  1789676647.879 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-2FEFE7F1-AB58-40B1-8962-5CD89195DE35/preferences.json; using defaults
+  1789676647.880 INFO [app] reminder 'saveOnQuit' suppressed
+  1789676648.182 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/00-source.png
+  1789676648.221 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/waveform.png
+  1789676648.221 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1789676648.236 INFO [selfqa] phase-5/scopes: PASS  Waveform draws a trace — variance 437
+  1789676648.276 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/parade.png
+  1789676648.276 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1789676648.291 INFO [selfqa] phase-5/scopes: PASS  RGB Parade draws a trace — variance 432
+  1789676648.317 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/histogram.png
+  1789676648.317 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1789676648.332 INFO [selfqa] phase-5/scopes: PASS  Histogram draws a trace — variance 409
+  1789676648.413 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/vectorscope.png
+  1789676648.413 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1789676648.429 INFO [selfqa] phase-5/scopes: PASS  Vectorscope draws a trace — variance 185
+  1789676648.654 INFO [selfqa] wrote 640x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/quad.png
+  1789676648.675 INFO [selfqa] phase-5/scopes: colour bars read: 12.5% crushed
+  1789676648.676 INFO [selfqa] phase-5/scopes: PASS -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/result.txt
+  1789676648.677 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1789676648.678 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt

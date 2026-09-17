@@ -34,10 +34,60 @@ public struct TitlerProgram: Equatable, Codable, Sendable, Identifiable {
     public let name: String
     /// The machine it needs, which decides the core.
     public let platform: Platform
+    /// The machine to configure the core as. Defaults to the platform's plainest.
+    public let machine: Machine
     /// What a person has to supply before it can run, in plain words.
     public let requires: [String]
     /// The boot recipe — see `TitlerBootStep`.
     public let boot: [TitlerBootStep]
+
+    /// Which machine the core should be configured as.
+    ///
+    /// Separate from the platform because "Amiga" is not one machine. Scala MM300
+    /// wants an A1200 with fast RAM and will crawl or refuse on a stock A500, and an
+    /// accelerator changes the core's CPU and memory settings rather than the core
+    /// itself.
+    public enum Machine: String, Codable, Sendable {
+        case amiga500
+        case amiga1200
+        /// An A1200 with a Vampire accelerator — 68080, lots of fast RAM.
+        case amiga1200Vampire
+
+        public var displayName: String {
+            switch self {
+            case .amiga500: "Amiga 500"
+            case .amiga1200: "Amiga 1200"
+            case .amiga1200Vampire: "Amiga 1200 + Vampire"
+            }
+        }
+
+        /// The core options this machine needs, as a libretro core would take them.
+        ///
+        /// PUAE has no 68080, so a Vampire is approximated with the fastest CPU it
+        /// does offer and the memory an accelerated machine has. Worth saying plainly:
+        /// this is a machine that RUNS the software comfortably, not a cycle-accurate
+        /// Vampire.
+        public var coreOptions: [String: String] {
+            switch self {
+            case .amiga500:
+                return ["puae_model": "A500", "puae_cpu_compatibility": "normal"]
+            case .amiga1200:
+                return [
+                    "puae_model": "A1200",
+                    "puae_cpu_compatibility": "normal",
+                    "puae_fastmem": "8"
+                ]
+            case .amiga1200Vampire:
+                return [
+                    "puae_model": "A1200",
+                    "puae_cpu_model": "68040",
+                    "puae_cpu_compatibility": "turbo",
+                    "puae_fastmem": "64",
+                    "puae_video_resolution": "hires"
+                ]
+            }
+        }
+    }
 
     public enum Platform: String, Codable, Sendable {
         case amiga
@@ -62,9 +112,13 @@ public struct TitlerProgram: Equatable, Codable, Sendable, Identifiable {
         }
     }
 
-    public init(name: String, platform: Platform, requires: [String], boot: [TitlerBootStep]) {
+    public init(
+        name: String, platform: Platform, requires: [String], boot: [TitlerBootStep],
+        machine: Machine = .amiga500
+    ) {
         self.name = name
         self.platform = platform
+        self.machine = machine
         self.requires = requires
         self.boot = boot
     }
@@ -144,17 +198,21 @@ public enum TitlerLibrary {
             ]
         ),
         TitlerProgram(
-            name: "Scala MM",
+            name: "Scala MM300",
             platform: .amiga,
             requires: [
-                "An Amiga Kickstart ROM",
-                "Scala disk images (.adf)",
+                "An Amiga Kickstart ROM (3.0 or 3.1, for the A1200)",
+                "Scala MM300 disk images or a hard-disk image (.adf / .hdf)",
                 "A libretro Amiga core (puae_libretro)"
             ],
+            // Scala is the slowest of these to come up — it is a whole authoring
+            // environment rather than a titler — so the timeout is generous and the
+            // save state matters more here than anywhere else.
             boot: [
-                .waitForStableScreen(timeout: 90),
-                .loadState(named: "scala-text-page")
-            ]
+                .waitForStableScreen(timeout: 120),
+                .loadState(named: "scala-mm300-text-page")
+            ],
+            machine: .amiga1200Vampire
         )
     ]
 }
