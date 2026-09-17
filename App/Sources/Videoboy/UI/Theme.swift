@@ -255,18 +255,22 @@ enum Theme {
 
         /// Least share of the height above the output bar that the preview band takes.
         ///
-        /// The band used to be exactly 4:3 of one column's width and nothing more, so
-        /// it could not grow no matter how much room the window had — the source
-        /// monitors were small as a matter of arithmetic, not layout. This is a
-        /// FLOOR: the 4:3 height still wins when it is the larger of the two, which
-        /// is what happens in a wide, short window.
+        /// ZERO, deliberately, which means the band is exactly 4:3 of one column's
+        /// width and never taller.
         ///
-        /// The cost is visible and worth stating: above this share the three centre
-        /// panels are taller than 4:3, so their picture letterboxes inside them. The
-        /// video stays correctly proportioned — that is what the fill mode is for —
-        /// but there is black above and below it. Sources getting bigger is paid for
-        /// out of the centre panels' spare height.
-        static let previewBandShare: CGFloat = 0.48
+        /// This briefly ran at 0.48 to make the source monitors bigger, and that was
+        /// wrong for THIS app. Every texture in the graph is 720x480 (see
+        /// `RenderContext`: "Project geometry. Every texture in the graph is this
+        /// size"), the signal in and out is SD NTSC, and a source node's output is
+        /// already fitted into that frame. So all seven preview panels show 4:3
+        /// content, always — and a panel taller than 4:3 is not a trade, it is
+        /// permanent black bars that nothing will ever fill.
+        ///
+        /// The height the source monitors needed came out of their own chrome
+        /// instead. Left here as a deliberate zero rather than deleted, because the
+        /// next person to think "the previews could be taller" should find the reason
+        /// they are not.
+        static let previewBandShare: CGFloat = 0
 
         /// The least the rows below the previews may be squeezed to.
         ///

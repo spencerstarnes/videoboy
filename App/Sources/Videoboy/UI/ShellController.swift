@@ -240,9 +240,24 @@ final class ShellController {
         panels.libraryTwoBody.setDestinationPair(.cd)
         panels.assetBrowserBody.setDestinationPair(.ab)
 
+        // The keys must show the SAVED state from the first frame, not their own
+        // hardcoded default.
+        for library in [panels.libraryOneBody, panels.libraryTwoBody, panels.assetBrowserBody] {
+            library.setAutoPlay(preferences.preferences.playOnLoad)
+        }
+
         for library in [panels.libraryOneBody, panels.libraryTwoBody, panels.assetBrowserBody] {
             library.onFilesDropped = { [weak self] urls in
                 self?.addToLibrary(urls, library: library)
+            }
+            library.onAutoPlayChanged = { [weak self] isOn in
+                guard let self else { return }
+                self.preferences.preferences.playOnLoad = isOn
+                // One preference, three libraries — they must not disagree about it.
+                for other in [panels.libraryOneBody, panels.libraryTwoBody, panels.assetBrowserBody] {
+                    other.setAutoPlay(isOn)
+                }
+                Log.info(.app, "auto-play on load \(isOn ? "on" : "off")")
             }
             library.onItemQueued = { [weak self] item, channel, playNext in
                 guard let self, let url = item.url else { return }

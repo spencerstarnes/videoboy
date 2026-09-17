@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T18:05:46Z
+when:     2026-09-17T18:10:56Z
 core:     0.3.0
 
 notes:
@@ -14,15 +14,15 @@ notes:
 
 assertions (62/62 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 878.0
+  PASS  wide is not blank — luminance variance 811.7
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 872.3
+  PASS  compact is not blank — luminance variance 831.5
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 1108.1
-  PASS  collapsed-left is not blank — luminance variance 763.3
-  PASS  collapsed-both-edges is not blank — luminance variance 633.0
-  PASS  collapsed-sources-only is not blank — luminance variance 878.6
-  PASS  collapsed-effects-only is not blank — luminance variance 697.5
+  PASS  narrow is not blank — luminance variance 1057.9
+  PASS  collapsed-left is not blank — luminance variance 723.0
+  PASS  collapsed-both-edges is not blank — luminance variance 627.5
+  PASS  collapsed-sources-only is not blank — luminance variance 802.3
+  PASS  collapsed-effects-only is not blank — luminance variance 607.2
   PASS  holding Shift lights the mappable faders — 46 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
@@ -30,7 +30,7 @@ assertions (62/62 passed):
   PASS  a driven fader's bar follows the value driving it — 8 distinct bar positions over eight LFO steps
   PASS  removing the driver clears the mark — 0 faders still marked
   PASS  preferences save has content — luminance variance 157.6
-  PASS  preferences defaults has content — luminance variance 312.9
+  PASS  preferences defaults has content — luminance variance 314.1
   PASS  preferences outputs has content — luminance variance 247.1
   PASS  preferences inputs has content — luminance variance 175.8
   PASS  preferences hotKeys has content — luminance variance 163.1

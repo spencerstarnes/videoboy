@@ -91,7 +91,12 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var defaultLoopMode: LoopMode = .loop
     public var defaultBlendMode: BlendMode = .normal
     /// Whether a source starts playing as soon as it is loaded.
-    public var playOnLoad: Bool = false
+    /// Whether a clip starts playing the moment it lands in a channel.
+    ///
+    /// ON by default. Loading a clip and then having to find its play button is a
+    /// beat you do not have during a set, and a channel that is loaded but stopped
+    /// looks identical to one that is still empty.
+    public var playOnLoad: Bool = true
     /// How a picture is placed when its shape and its window's disagree.
     public var previewFill: PreviewFill = .fit
 
@@ -139,7 +144,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         defaultTempo = decode(.defaultTempo, 120)
         defaultLoopMode = decode(.defaultLoopMode, LoopMode.loop)
         defaultBlendMode = decode(.defaultBlendMode, BlendMode.normal)
-        playOnLoad = decode(.playOnLoad, false)
+        playOnLoad = decode(.playOnLoad, true)
         previewFill = decode(.previewFill, PreviewFill.fit)
         suppressedReminders = decode(.suppressedReminders, Set<ReminderKind>())
         // Element by element, so one destination of a kind this build no longer has

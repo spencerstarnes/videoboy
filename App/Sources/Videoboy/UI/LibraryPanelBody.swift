@@ -594,6 +594,13 @@ final class LibraryPanelBody: NSView {
     /// Which channels this library keeps playlists for. Empty in the asset browser.
     private let playlistChannels: [String]
 
+    /// The AUTO key, so every library can be kept showing the same state.
+    private var autoPlayKey: VBOptionButton?
+
+    /// Called when AUTO is toggled. The preference is global, so all three libraries
+    /// are told about it.
+    var onAutoPlayChanged: ((Bool) -> Void)?
+
     /// Which channels the focus control offers. A bus library offers its own pair;
     /// the asset browser, which belongs to no bus, offers all four.
     private var focusChannels: [String] {
@@ -679,6 +686,20 @@ final class LibraryPanelBody: NSView {
         destinationToggle.setContentCompressionResistancePriority(.required, for: .horizontal)
         destinationControl = destinationToggle
         bottomRow.append(destinationToggle)
+
+        // AUTO — does a clip start playing when it lands in a channel.
+        //
+        // The behaviour already existed as a preference and had no control anywhere
+        // in the window, which meant the only way to discover it was to go looking in
+        // Preferences for something you did not know was there.
+        let autoPlayKey = VBOptionButton(title: "AUTO")
+        autoPlayKey.isOn = true
+        autoPlayKey.target = self
+        autoPlayKey.action = #selector(autoPlayToggled)
+        autoPlayKey.toolTip = "Play a clip as soon as it is loaded into a channel"
+        autoPlayKey.setContentCompressionResistancePriority(.required, for: .horizontal)
+        self.autoPlayKey = autoPlayKey
+        bottomRow.append(autoPlayKey)
 
         let search = Controls.searchField(
             placeholder: showsTabs ? "Search library…" : "Search…", enabled: showsTabs)
@@ -961,6 +982,16 @@ final class LibraryPanelBody: NSView {
         sourceItems.append(contentsOf: additions)
         rebuildSourcesGrid()
         Log.info(.app, "added \(additions.count) item(s) to a library")
+    }
+
+    @objc private func autoPlayToggled() {
+        onAutoPlayChanged?(autoPlayKey?.isOn ?? true)
+    }
+
+    /// Points the key at a state without firing its action, for restoring the saved
+    /// preference and for keeping the three libraries agreeing with each other.
+    func setAutoPlay(_ isOn: Bool) {
+        autoPlayKey?.isOn = isOn
     }
 
     @objc private func destinationChanged(_ sender: NSSegmentedControl) {

@@ -236,7 +236,6 @@ final class SourcePanelBody: NSView {
         shuttleScrim.layer?.backgroundColor = Theme.Color.shuttleScrim.cgColor
         shuttleScrim.layer?.cornerRadius = Theme.Metrics.buttonCornerRadius
         shuttleScrim.translatesAutoresizingMaskIntoConstraints = false
-        shuttleScrim.addSubview(shuttle)
         shuttleScrim.isHidden = true
         addSubview(shuttleScrim)
         self.shuttleScrim = shuttleScrim
@@ -286,27 +285,35 @@ final class SourcePanelBody: NSView {
         let sourceRow = Controls.row([load, generatorPopUp, stepButton, Controls.spacer()],
                                      spacing: 4)
         sourceRow.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(sourceRow)
-        let loadRowForConstraints = sourceRow
+
+        // Load, source and step live ON the picture with the shuttle, not under it.
+        //
+        // Everything in this graph is 720x480 — the signal in and out is SD NTSC and
+        // every texture is that size — so a source panel's cell is very nearly 4:3
+        // already. Any row of chrome below the picture is therefore height the
+        // picture could have had, and these panels are the shortest in the window.
+        // The shuttle moved onto the image for this reason; this row follows it.
+        let overlayStack = NSStackView(views: [sourceRow, shuttle])
+        overlayStack.orientation = .vertical
+        overlayStack.alignment = .leading
+        overlayStack.spacing = 4
+        overlayStack.translatesAutoresizingMaskIntoConstraints = false
+        shuttleScrim.addSubview(overlayStack)
 
         let padding = Theme.Metrics.panelBodyPadding
         let scrimInset: CGFloat = 4
         NSLayoutConstraint.activate([
-            // The source row is pinned to the BOTTOM and the preview fills whatever
-            // is above it, rather than the preview being pinned to the top and the
-            // rows stacking downward from it. Same picture in a tall panel, and in a
-            // short one the picture is what shrinks instead of the controls falling
-            // off the bottom edge.
-            loadRowForConstraints.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
-            loadRowForConstraints.trailingAnchor.constraint(
-                lessThanOrEqualTo: trailingAnchor, constant: -padding),
-            loadRowForConstraints.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -padding),
-
+            // The picture takes the WHOLE cell. Every control that used to sit under
+            // it is now on it, appearing on hover.
             preview.topAnchor.constraint(equalTo: topAnchor, constant: 2),
             preview.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             preview.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
-            preview.bottomAnchor.constraint(
-                equalTo: loadRowForConstraints.topAnchor, constant: -2),
+            preview.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+
+            overlayStack.leadingAnchor.constraint(equalTo: shuttleScrim.leadingAnchor, constant: 4),
+            overlayStack.trailingAnchor.constraint(equalTo: shuttleScrim.trailingAnchor, constant: -4),
+            overlayStack.topAnchor.constraint(equalTo: shuttleScrim.topAnchor, constant: 4),
+            overlayStack.bottomAnchor.constraint(equalTo: shuttleScrim.bottomAnchor, constant: -4),
 
             miniBar.leadingAnchor.constraint(
                 equalTo: preview.leadingAnchor, constant: scrimInset + 4),
@@ -323,10 +330,9 @@ final class SourcePanelBody: NSView {
             shuttleScrim.bottomAnchor.constraint(
                 equalTo: preview.bottomAnchor, constant: -Theme.MiniPlayBar.bottomClearance),
 
-            shuttle.leadingAnchor.constraint(equalTo: shuttleScrim.leadingAnchor, constant: 4),
-            shuttle.trailingAnchor.constraint(equalTo: shuttleScrim.trailingAnchor, constant: -4),
-            shuttle.topAnchor.constraint(equalTo: shuttleScrim.topAnchor, constant: 3),
-            shuttle.bottomAnchor.constraint(equalTo: shuttleScrim.bottomAnchor, constant: -3)
+            sourceRow.leadingAnchor.constraint(equalTo: overlayStack.leadingAnchor),
+            shuttle.leadingAnchor.constraint(equalTo: overlayStack.leadingAnchor),
+            shuttle.trailingAnchor.constraint(equalTo: overlayStack.trailingAnchor)
         ])
     }
 
