@@ -1471,6 +1471,11 @@ final class ShellController {
             do {
                 let scope: ImageBuffer
                 switch mode {
+                case .miniLuma:
+                    // Small, because it is drawn small. Rendering a full-size scope
+                    // and letting the layer shrink it turns a one-pixel trace into a
+                    // grey smear.
+                    scope = ScopeRenderer.render(.waveform, from: image, width: 240, height: 144)
                 case .quadOverlay, .quadBlack:
                     scope = ScopeRenderer.renderQuad(from: image, width: 480, height: 360)
                 case .histogram:
@@ -1480,6 +1485,7 @@ final class ShellController {
                 case .off:
                     continue
                 }
+                composite.body.preview.scopeIsCorner = mode.isCorner
                 composite.body.preview.setScopeImage(scope, dimsPicture: mode.showsPicture)
             }
         }

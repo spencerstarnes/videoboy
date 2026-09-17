@@ -45,6 +45,13 @@ public enum ScopeKind: String, CaseIterable, Codable, Sendable {
 /// off — so the tab is a single control that reaches every view without a menu.
 public enum ScopeDisplayMode: String, CaseIterable, Codable, Sendable {
     case off
+    /// A small luma waveform in the corner of the picture.
+    ///
+    /// FIRST in the cycle, and deliberately so. The usual reason to touch this
+    /// control at all is "are my levels sane" — a question a corner-sized waveform
+    /// answers without giving up the monitor. Going straight to a full quad meant
+    /// trading the picture away to ask it.
+    case miniLuma
     /// All four, over the picture.
     case quadOverlay
     case histogram
@@ -55,6 +62,7 @@ public enum ScopeDisplayMode: String, CaseIterable, Codable, Sendable {
     public var displayName: String {
         switch self {
         case .off: "Scopes Off"
+        case .miniLuma: "Mini Luma"
         case .quadOverlay: "Quad Overlay"
         case .histogram: "Histogram"
         case .parade: "RGB Parade"
@@ -71,8 +79,11 @@ public enum ScopeDisplayMode: String, CaseIterable, Codable, Sendable {
 
     /// Whether the picture shows through behind the scopes.
     public var showsPicture: Bool {
-        self == .quadOverlay
+        self == .quadOverlay || self == .miniLuma
     }
+
+    /// Whether this mode draws small, in a corner, rather than over the whole frame.
+    public var isCorner: Bool { self == .miniLuma }
 }
 
 /// Draws scopes.

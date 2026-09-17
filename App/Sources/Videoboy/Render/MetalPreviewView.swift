@@ -202,7 +202,20 @@ final class MetalPreviewView: NSView {
         // per screen pixel; see contentsScale above.
         metalLayer.frame = frame
         metalLayer.drawableSize = CGSize(width: max(frame.width, 1), height: max(frame.height, 1))
-        scopeLayer.frame = frame
+        // A corner scope takes a quarter of the width in the lower right, with a
+        // small margin — big enough to read a waveform's shape, small enough that the
+        // picture is still the thing you are looking at.
+        if scopeIsCorner {
+            let margin = frame.width * 0.02
+            let scopeWidth = frame.width * 0.28
+            let scopeHeight = scopeWidth * 0.6
+            scopeLayer.frame = CGRect(
+                x: frame.maxX - scopeWidth - margin,
+                y: frame.minY + margin,
+                width: scopeWidth, height: scopeHeight)
+        } else {
+            scopeLayer.frame = frame
+        }
         overlayLayer.frame = frame
         updateOverlays()
     }
@@ -251,6 +264,9 @@ final class MetalPreviewView: NSView {
     /// The scope arrives as a finished image rather than as data to plot here: the
     /// drawing lives in Core where it can be tested by measuring its output, and this
     /// view's only job is to put it on screen.
+    /// Whether the scope is drawn small in a corner rather than over the frame.
+    var scopeIsCorner = false { didSet { needsLayout = true } }
+
     func setScopeImage(_ image: ImageBuffer?, dimsPicture: Bool) {
         guard let image, let cgImage = image.makeCGImage() else {
             scopeLayer.isHidden = true

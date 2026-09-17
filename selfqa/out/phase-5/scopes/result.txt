@@ -1,6 +1,6 @@
 check:    phase-5/scopes
 verdict:  PASS
-when:     2026-09-17T19:26:05Z
+when:     2026-09-17T19:28:27Z
 core:     0.3.0
 
 notes:
