@@ -98,7 +98,6 @@ public final class DVDecoder {
     public func decode(frameBytes bytes: [UInt8]) -> ImageBuffer? {
         guard let codecContext, let frame, let packet else { return nil }
 
-        var mutableBytes = bytes
         // av_packet_from_data wants a buffer it can own; giving libav a pointer into
         // a Swift array would be a use-after-free the moment this function returns.
         // Copying into an av_malloc'd buffer with the required padding is the
@@ -108,8 +107,11 @@ public final class DVDecoder {
             Log.error(.dv, "could not allocate a \(paddedSize)-byte packet buffer")
             return nil
         }
-        mutableBytes.withUnsafeBytes { raw in
-            memcpy(buffer, raw.baseAddress!, bytes.count)
+        // Copied straight out of `bytes`. This used to copy the whole frame into a
+        // `var mutableBytes` first and then copy THAT into the libav buffer — 120KB
+        // of DV per frame, copied twice, for a local that was never mutated.
+        bytes.withUnsafeBytes { raw in
+            _ = memcpy(buffer, raw.baseAddress!, bytes.count)
         }
         // libav reads past the end of a packet when parsing; the padding must be zero.
         memset(buffer.advanced(by: bytes.count), 0, Int(AV_INPUT_BUFFER_PADDING_SIZE))

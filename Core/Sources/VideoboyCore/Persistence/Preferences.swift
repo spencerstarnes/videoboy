@@ -145,9 +145,13 @@ public struct Preferences: Codable, Equatable, Sendable {
         // Element by element, so one destination of a kind this build no longer has
         // does not take the whole list down with it. Capture cards were offered as
         // destinations once and are not any more — a card is an input.
+        // `try?` flattens the double optional that decodeIfPresent returns, so `raw`
+        // is already non-optional here — the `?? []` this used to carry could never
+        // run. Behaviour is unchanged: a missing key leaves `destinations` at its
+        // default, which is what the absent branch did anyway.
         if let raw = try? container.decodeIfPresent(
             [FailableDestination].self, forKey: .destinations) {
-            destinations = (raw ?? []).compactMap(\.value)
+            destinations = raw.compactMap(\.value)
         }
         hotKeys = decode(.hotKeys, [String: String]())
     }
