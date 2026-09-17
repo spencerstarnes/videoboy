@@ -25,6 +25,19 @@ final class ShellView: NSView {
     /// How bright the tempo-change flash currently is, 0...1.
     private var flashAmount: Double = 0
 
+    /// The fade timer, held so a second flash replaces the first rather than running
+    /// alongside it. Tap tempo calls `flashTempoChange` once per TAP, so without this
+    /// four taps leave four 30fps timers running, every one of them decaying the same
+    /// value — the fade goes four times too fast and does four times the redrawing.
+    /// `RecordButton` already holds its pulse timer for the same reason.
+    private var flashTimer: Timer?
+
+    // The timer captures self weakly and stops itself once the view is gone, so this
+    // is belt-and-braces rather than a leak fix — but it is what RecordButton does
+    // with its own pulse timer, and two timers in the same window should not have two
+    // different lifecycles.
+    deinit { flashTimer?.invalidate() }
+
     init() {
         super.init(frame: .zero)
         wantsLayer = true
@@ -95,12 +108,14 @@ final class ShellView: NSView {
         // Fade on a timer rather than a CABasicAnimation: the tint is a computed
         // blend of two sources, and animating the layer colour directly would fight
         // the beat pulse writing to the same property.
-        Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] timer in
+        flashTimer?.invalidate()
+        flashTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] timer in
             guard let self else { return timer.invalidate() }
             self.flashAmount -= Theme.Pulse.flashDecayPerFrame
             if self.flashAmount <= 0 {
                 self.flashAmount = 0
                 timer.invalidate()
+                self.flashTimer = nil
             }
             self.updateChromeTint()
         }
