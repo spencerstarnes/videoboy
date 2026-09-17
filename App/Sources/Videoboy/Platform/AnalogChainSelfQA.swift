@@ -56,7 +56,7 @@ enum AnalogChainSelfQA {
             check.record(AssertionResult(name: "ONE renders", passed: false, detail: "no texture"))
             return check.finish()
         }
-        try? check.writeImage(clean, named: "01-sub-mix-one-clean.png")
+        _ = try? check.writeImage(clean, named: "01-sub-mix-one-clean.png")
         check.record(FrameAssertions.hasDimensions(clean, width: 720, height: 480))
 
         // 2. The composite codec, on its default VHS-ish settings.
@@ -65,7 +65,7 @@ enum AnalogChainSelfQA {
             check.record(AssertionResult(name: "composite renders", passed: false, detail: "no texture"))
             return check.finish()
         }
-        try? check.writeImage(composited, named: "02-after-composite-codec.png")
+        _ = try? check.writeImage(composited, named: "02-after-composite-codec.png")
         check.record(FrameAssertions.framesDiffer(
             clean, composited, minimumFraction: 0.05,
             name: "the composite codec changes the picture"))
@@ -81,7 +81,7 @@ enum AnalogChainSelfQA {
             check.record(AssertionResult(name: "s-video renders", passed: false, detail: "no texture"))
             return check.finish()
         }
-        try? check.writeImage(sVideo, named: "03-s-video-path.png")
+        _ = try? check.writeImage(sVideo, named: "03-s-video-path.png")
         let compositeDeparture = FrameAssertions.differingPixelFraction(clean, composited)
         let sVideoDeparture = FrameAssertions.differingPixelFraction(clean, sVideo)
         check.record(AssertionResult(
@@ -99,7 +99,7 @@ enum AnalogChainSelfQA {
         var lastFeedback: ImageBuffer?
         for frame in 3..<25 { lastFeedback = render(frame, node: Engine.feedbackSlot) }
         if let lastFeedback {
-            try? check.writeImage(lastFeedback, named: "04-feedback-tunnel.png")
+            _ = try? check.writeImage(lastFeedback, named: "04-feedback-tunnel.png")
             check.record(FrameAssertions.hasSignal(lastFeedback))
             check.record(FrameAssertions.framesDiffer(
                 composited, lastFeedback, minimumFraction: 0.05,
@@ -125,7 +125,7 @@ enum AnalogChainSelfQA {
         engine.registry.setValue(4.0, slot: Engine.compositeSlot, code: .compositeGeneration)
         let fourthGeneration = render(31, node: Engine.compositeSlot)
         if let firstGeneration, let fourthGeneration {
-            try? check.writeImage(fourthGeneration, named: "05-fourth-generation.png")
+            _ = try? check.writeImage(fourthGeneration, named: "05-fourth-generation.png")
             let firstDetail = FrameAssertions.horizontalDetail(firstGeneration)
             let fourthDetail = FrameAssertions.horizontalDetail(fourthGeneration)
             check.record(AssertionResult(

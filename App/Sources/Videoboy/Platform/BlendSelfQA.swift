@@ -69,7 +69,7 @@ enum BlendSelfQA {
                 continue
             }
             results[mode] = image
-            try? check.writeImage(
+            _ = try? check.writeImage(
                 image, named: String(format: "%02d-%@.png", index, mode.displayName
                     .lowercased().replacingOccurrences(of: " ", with: "-")))
             check.record(FrameAssertions.hasDimensions(image, width: 720, height: 480))

@@ -131,7 +131,7 @@ enum StreamSelfQA {
         let sync = firstByte
         lock.unlock()
 
-        if let lastFrame { try? check.writeImage(lastFrame, named: "streamed-frame.png") }
+        if let lastFrame { _ = try? check.writeImage(lastFrame, named: "streamed-frame.png") }
 
         check.record(AssertionResult(
             name: "a receiver gets the programme",

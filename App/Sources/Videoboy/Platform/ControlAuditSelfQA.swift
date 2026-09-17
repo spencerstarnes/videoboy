@@ -232,7 +232,9 @@ enum ControlAuditSelfQA {
         // And zoom has to mean the whole screen, not AppKit's best-fit guess around
         // the content — a grid that fills any size gives it nothing to fit to.
         if let window = mainWindow.window, let screen = window.screen {
-            let standard = (window.delegate as? NSWindowDelegate)?
+            // `window.delegate` is already `NSWindowDelegate?`, so the downcast this
+            // used to carry did nothing at all.
+            let standard = window.delegate?
                 .windowWillUseStandardFrame?(window, defaultFrame: screen.visibleFrame)
             check.record(AssertionResult(
                 name: "maximising fills the screen rather than best-fitting the content",

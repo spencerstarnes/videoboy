@@ -94,7 +94,7 @@ enum PlaybackSelfQA {
             check.record(AssertionResult(name: "PRIMARY renders", passed: false, detail: "no texture came back"))
             return check.finish()
         }
-        try? check.writeImage(atA, named: "01-fader-at-A.png")
+        _ = try? check.writeImage(atA, named: "01-fader-at-A.png")
         check.record(FrameAssertions.hasDimensions(atA, width: 720, height: 480))
         check.record(FrameAssertions.hasSignal(atA))
 
@@ -106,7 +106,7 @@ enum PlaybackSelfQA {
             check.record(AssertionResult(name: "fader to B renders", passed: false, detail: "no texture"))
             return check.finish()
         }
-        try? check.writeImage(atB, named: "02-fader-at-B.png")
+        _ = try? check.writeImage(atB, named: "02-fader-at-B.png")
         let bars = FrameAssertions.looksLikeColorBars(atB, tolerance: 45)
         check.record(AssertionResult(
             name: "fader at B shows source B",
@@ -122,7 +122,7 @@ enum PlaybackSelfQA {
             check.record(AssertionResult(name: "mid-fade renders", passed: false, detail: "no texture"))
             return check.finish()
         }
-        try? check.writeImage(atMiddle, named: "03-fader-midpoint.png")
+        _ = try? check.writeImage(atMiddle, named: "03-fader-midpoint.png")
         check.record(AssertionResult(
             name: "mid-fade is a blend of both",
             passed: FrameAssertions.differingPixelFraction(atMiddle, atA) > 0.05
@@ -137,7 +137,7 @@ enum PlaybackSelfQA {
         for frame in 4..<34 { _ = renderFrame(frame) }
         let later = renderFrame(34)
         if let first, let later {
-            try? check.writeImage(later, named: "04-after-30-frames.png")
+            _ = try? check.writeImage(later, named: "04-after-30-frames.png")
             check.record(FrameAssertions.framesDiffer(
                 first, later, minimumFraction: 0.05, name: "playback advances the picture"))
         } else {
@@ -152,8 +152,8 @@ enum PlaybackSelfQA {
         engine.registry.setValue(0.0, slot: GraphTopology.sourceA, code: .corruptMode)
         let afterCorruption = renderFrame(35)
         if let beforeCorruption, let afterCorruption {
-            try? check.writeImage(beforeCorruption, named: "05-clean.png")
-            try? check.writeImage(afterCorruption, named: "06-corrupted.png")
+            _ = try? check.writeImage(beforeCorruption, named: "05-clean.png")
+            _ = try? check.writeImage(afterCorruption, named: "06-corrupted.png")
             check.record(FrameAssertions.framesDiffer(
                 beforeCorruption, afterCorruption,
                 minimumFraction: 0.05,
@@ -192,7 +192,7 @@ enum PlaybackSelfQA {
                 engine.setPlaying(false, channel: "A")
 
                 if let movieFirst, let movieLater {
-                    try? check.writeImage(movieLater, named: "07-mov-playing.png")
+                    _ = try? check.writeImage(movieLater, named: "07-mov-playing.png")
                     check.record(FrameAssertions.hasSignal(movieFirst))
                     check.record(FrameAssertions.framesDiffer(
                         movieFirst, movieLater, minimumFraction: 0.05,
@@ -227,7 +227,7 @@ enum PlaybackSelfQA {
         let programDamaged = renderFrame(80)
 
         if let programClean, let programDamaged {
-            try? check.writeImage(programDamaged, named: "08-program-data-stage.png")
+            _ = try? check.writeImage(programDamaged, named: "08-program-data-stage.png")
             check.record(FrameAssertions.framesDiffer(
                 programClean, programDamaged, minimumFraction: 0.02,
                 name: "the PROGRAM data stage reaches the output"))
@@ -260,7 +260,7 @@ enum PlaybackSelfQA {
         let viaOne = renderFrame(60)
 
         if let viaTwo, let viaOne {
-            try? check.writeImage(viaTwo, named: "09-sources-cd-via-two.png")
+            _ = try? check.writeImage(viaTwo, named: "09-sources-cd-via-two.png")
             check.record(FrameAssertions.framesDiffer(
                 viaOne, viaTwo, minimumFraction: 0.05,
                 name: "PRIMARY carries C/D's picture when cut to TWO, not ONE's"))
@@ -292,7 +292,7 @@ enum PlaybackSelfQA {
         engine.isOutputNTSCEnabled = true
         let outputNTSC = renderFrame(91)
         if let outputClean, let outputNTSC {
-            try? check.writeImage(outputNTSC, named: "09-output-ntsc.png")
+            _ = try? check.writeImage(outputNTSC, named: "09-output-ntsc.png")
             let difference = FrameAssertions.differingPixelFraction(outputClean, outputNTSC)
             check.record(AssertionResult(
                 name: "NTSC output emulation changes the picture, subtly",
@@ -305,7 +305,7 @@ enum PlaybackSelfQA {
         engine.isOutputDVEnabled = true
         let outputDV = renderFrame(92)
         if let outputClean, let outputDV {
-            try? check.writeImage(outputDV, named: "10-output-dv.png")
+            _ = try? check.writeImage(outputDV, named: "10-output-dv.png")
             let difference = FrameAssertions.differingPixelFraction(outputClean, outputDV)
             // A low bar on purpose. One DV generation over the synthetic colour bars
             // in samples/ genuinely changes very little: 4:1:1 subsampling preserves
@@ -325,7 +325,7 @@ enum PlaybackSelfQA {
             engine.registry.setValue(
                 4, slot: Engine.busCodecProgramSlot, code: .compositeGeneration)
             if let fourth = renderFrame(93) {
-                try? check.writeImage(fourth, named: "11-output-dv-4-generations.png")
+                _ = try? check.writeImage(fourth, named: "11-output-dv-4-generations.png")
                 let oneGeneration = FrameAssertions.differingPixelFraction(outputClean, outputDV)
                 let fourGenerations = FrameAssertions.differingPixelFraction(outputClean, fourth)
                 check.record(AssertionResult(
@@ -365,12 +365,12 @@ enum PlaybackSelfQA {
         }
 
         if let mx1Bypassed, sweptFrames.count == MX1Effect.allCases.count {
-            try? check.writeImage(mx1Bypassed, named: "12-mx1-bypassed.png")
+            _ = try? check.writeImage(mx1Bypassed, named: "12-mx1-bypassed.png")
             for swept in sweptFrames {
                 let safeName = swept.name.lowercased()
                     .replacingOccurrences(of: " ", with: "-")
                     .replacingOccurrences(of: "&", with: "and")
-                try? check.writeImage(swept.image, named: "13-mx1-\(safeName).png")
+                _ = try? check.writeImage(swept.image, named: "13-mx1-\(safeName).png")
             }
 
             // Colour-aware, not luma. Black and white is a luma-weighted
@@ -433,7 +433,7 @@ enum PlaybackSelfQA {
         engine.setPlaying(false, channel: "A")
 
         if let frozenFirst, let frozenLater {
-            try? check.writeImage(frozenLater, named: "14-mx1-freeze-held.png")
+            _ = try? check.writeImage(frozenLater, named: "14-mx1-freeze-held.png")
             check.record(AssertionResult(
                 name: "MX-1 freeze holds the picture while the clip runs on",
                 passed: FrameAssertions.differingColourFraction(frozenFirst, frozenLater) < 0.02,
@@ -477,7 +477,7 @@ enum PlaybackSelfQA {
         ))
 
         if let withoutSend, let withSend = sendFrames.last {
-            try? check.writeImage(withSend, named: "15-feedback-send.png")
+            _ = try? check.writeImage(withSend, named: "15-feedback-send.png")
             check.record(FrameAssertions.framesDiffer(
                 withoutSend, withSend, minimumFraction: 0.02,
                 name: "the feedback send changes the picture"))
@@ -524,10 +524,10 @@ enum PlaybackSelfQA {
             engine.registry.setValue(0, slot: GraphTopology.sourceA, code: .corruptAmount)
 
             if let mpegClean {
-                try? check.writeImage(mpegClean, named: "16-mpeg-clean.png")
+                _ = try? check.writeImage(mpegClean, named: "16-mpeg-clean.png")
                 for damaged in damagedFrames {
                     let safeName = damaged.name.lowercased().replacingOccurrences(of: " ", with: "-")
-                    try? check.writeImage(damaged.image, named: "17-mpeg-\(safeName).png")
+                    _ = try? check.writeImage(damaged.image, named: "17-mpeg-\(safeName).png")
                 }
 
                 // Reported per mode, with the number, because the three are NOT the
@@ -588,7 +588,7 @@ enum PlaybackSelfQA {
                 musicalPosition: nil)
             let produced = engine.evaluateGraph(context: context)
             if let texture = produced[slot], let image = renderer.readback(texture) {
-                try? check.writeImage(
+                _ = try? check.writeImage(
                     image,
                     named: "18-generator-\(kind.displayName.lowercased().replacingOccurrences(of: " ", with: "-")).png")
                 check.record(AssertionResult(

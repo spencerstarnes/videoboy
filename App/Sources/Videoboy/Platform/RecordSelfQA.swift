@@ -136,7 +136,7 @@ enum RecordSelfQA {
                     detail: "the recorded file would not decode"))
                 continue
             }
-            try? check.writeImage(frame, named: "\(label)-read-back.png")
+            _ = try? check.writeImage(frame, named: "\(label)-read-back.png")
             check.record(AssertionResult(
                 name: "\(label) contains a picture, not black",
                 passed: FrameAssertions.signalPresent(frame, varianceThreshold: 25.0),

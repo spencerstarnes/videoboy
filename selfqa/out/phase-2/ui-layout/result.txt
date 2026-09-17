@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T09:17:42Z
+when:     2026-09-17T09:20:10Z
 core:     0.3.0
 
 notes:
@@ -22,7 +22,7 @@ assertions (62/62 passed):
   PASS  collapsed-left is not blank — luminance variance 743.8
   PASS  collapsed-both-edges is not blank — luminance variance 624.4
   PASS  collapsed-sources-only is not blank — luminance variance 838.0
-  PASS  collapsed-effects-only is not blank — luminance variance 634.6
+  PASS  collapsed-effects-only is not blank — luminance variance 632.6
   PASS  holding Shift lights the mappable faders — 46 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked

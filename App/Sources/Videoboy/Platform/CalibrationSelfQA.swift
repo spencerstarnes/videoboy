@@ -114,7 +114,7 @@ enum CalibrationSelfQA {
             )
         } catch let error as CalibrationFailure {
             // An unconnected loop is an environment condition, not a defect.
-            try? check.writeImage(stream.latestFrame() ?? blackImage, named: "what-the-grabber-saw.png")
+            _ = try? check.writeImage(stream.latestFrame() ?? blackImage, named: "what-the-grabber-saw.png")
             return check.finish(blockedReason: error.description)
         } catch {
             check.record(AssertionResult(name: "calibration", passed: false, detail: "\(error)"))
@@ -124,10 +124,10 @@ enum CalibrationSelfQA {
         // Evidence: the frame before the flash and the one that carried it back.
         if let flashIndex {
             if let before = stream.frame(at: flashIndex) {
-                try? check.writeImage(before, named: "01-before-flash.png")
+                _ = try? check.writeImage(before, named: "01-before-flash.png")
             }
             if let after = stream.frame(at: flashIndex + latency.frames) {
-                try? check.writeImage(after, named: "02-marker-returned.png")
+                _ = try? check.writeImage(after, named: "02-marker-returned.png")
             }
         }
 

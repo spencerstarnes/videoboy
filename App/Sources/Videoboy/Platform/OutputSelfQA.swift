@@ -99,7 +99,7 @@ enum OutputSelfQA {
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
 
         if let program, let image = renderer.readback(program) {
-            try? check.writeImage(image, named: "program-sent-to-output.png")
+            _ = try? check.writeImage(image, named: "program-sent-to-output.png")
             check.record(FrameAssertions.hasDimensions(image, width: 720, height: 480))
             check.record(FrameAssertions.looksLikeColorBars(image, tolerance: 45))
             check.record(FrameAssertions.hasSignal(image))

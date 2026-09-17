@@ -89,7 +89,7 @@ enum UISelfQA {
                     name: "\(collapseCase.name) renders", passed: false, detail: "no bitmap"))
                 continue
             }
-            try? check.writeImage(image, named: "\(collapseCase.name).png")
+            _ = try? check.writeImage(image, named: "\(collapseCase.name).png")
 
             // The centre must have grown. Program Preview sits in the middle column,
             // so a widened centre shows up as more non-background pixels across the
@@ -125,7 +125,7 @@ enum UISelfQA {
             ))
 
             if let image = render(view: shell) {
-                try? check.writeImage(image, named: "detect-armed.png")
+                _ = try? check.writeImage(image, named: "detect-armed.png")
             }
 
             // And releasing it puts them back — a highlight that sticks would be
@@ -183,7 +183,7 @@ enum UISelfQA {
             for fader in drivenFaders(in: shell) { fader.pulsePhase = 0.35 }
             shell.displayIfNeeded()
             if let image = render(view: shell) {
-                try? check.writeImage(image, named: "driven-parameters.png")
+                _ = try? check.writeImage(image, named: "driven-parameters.png")
             }
 
             // A driven fader must MOVE, not just glow. The value is in the registry
@@ -253,7 +253,7 @@ enum UISelfQA {
                         passed: false, detail: "no bitmap"))
                     continue
                 }
-                try? check.writeImage(image, named: "preferences-\(pane.rawValue).png")
+                _ = try? check.writeImage(image, named: "preferences-\(pane.rawValue).png")
                 check.record(AssertionResult(
                     name: "preferences \(pane.rawValue) has content",
                     passed: FrameAssertions.signalPresent(image, varianceThreshold: 5.0),
@@ -311,7 +311,7 @@ enum UISelfQA {
             shell.layoutSubtreeIfNeeded()
             shell.displayIfNeeded()
             if let image = render(view: shell) {
-                try? check.writeImage(image, named: "library-scrubbing.png")
+                _ = try? check.writeImage(image, named: "library-scrubbing.png")
             }
             withExtendedLifetime(controller) {}
         }
@@ -374,7 +374,7 @@ enum UISelfQA {
                         name: "\(name) popover renders", passed: false, detail: "no bitmap"))
                     continue
                 }
-                try? check.writeImage(image, named: "emulation-\(name).png")
+                _ = try? check.writeImage(image, named: "emulation-\(name).png")
                 check.record(AssertionResult(
                     name: "\(name) emulation popover has content",
                     passed: FrameAssertions.signalPresent(image, varianceThreshold: 5.0),
@@ -446,7 +446,7 @@ enum UISelfQA {
                 if let tiled = router.tiled(textures),
                    let renderer = OffscreenRenderer(context: metal),
                    let image = renderer.readback(tiled) {
-                    try? check.writeImage(image, named: "four-up.png")
+                    _ = try? check.writeImage(image, named: "four-up.png")
 
                     // Each quadrant must hold its own colour, and the missing one must
                     // stay black rather than shifting the others along.
@@ -486,7 +486,7 @@ enum UISelfQA {
             backing.layoutSubtreeIfNeeded()
             backing.displayIfNeeded()
             if let image = render(view: backing) {
-                try? check.writeImage(image, named: "routing-popover.png")
+                _ = try? check.writeImage(image, named: "routing-popover.png")
             }
             try? FileManager.default.removeItem(at: store.fileURL)
         }
@@ -720,7 +720,7 @@ enum UISelfQA {
             ))
 
             if let image = render(view: shell) {
-                try? check.writeImage(image, named: "bus-keys-on-air.png")
+                _ = try? check.writeImage(image, named: "bus-keys-on-air.png")
             }
             withExtendedLifetime(controller) {}
         }
@@ -896,8 +896,11 @@ enum UISelfQA {
             // The C/D chain had NO corruptor card at all before this. Prove D — the
             // channel that was never reachable even in principle — through the same
             // path, all the way to a rendered pixel difference on PROGRAM.
-            guard let motionClip = try? RepoPaths.samples.appendingPathComponent("motion.dv"),
-                  FileManager.default.fileExists(atPath: motionClip.path) else {
+            // `appendingPathComponent` neither throws nor returns an optional, so the
+            // `try?` this used to carry only wrapped it in one. The fileExists check
+            // below is what actually guards the clip being there.
+            let motionClip = RepoPaths.samples.appendingPathComponent("motion.dv")
+            guard FileManager.default.fileExists(atPath: motionClip.path) else {
                 check.note("samples/motion.dv is missing; the C/D chFX render check was skipped")
                 return check.finish()
             }
@@ -938,7 +941,7 @@ enum UISelfQA {
             let damaged = renderProgram(frameIndex: 50)
 
             if let clean, let damaged {
-                try? check.writeImage(damaged, named: "channel-d-chfx-damaged.png")
+                _ = try? check.writeImage(damaged, named: "channel-d-chfx-damaged.png")
                 check.record(FrameAssertions.framesDiffer(
                     clean, damaged, minimumFraction: 0.02,
                     name: "channel D's wedge — unreachable before this — now damages PROGRAM"))
