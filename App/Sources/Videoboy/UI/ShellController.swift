@@ -80,7 +80,9 @@ final class ShellController {
             range == nil
                 ? url.lastPathComponent
                 : "\(url.lastPathComponent) [trimmed]")
-        if preferences.preferences.playOnLoad {
+        // The channel's own checkbox wins; the preference is only what a fresh
+        // channel starts out agreeing with.
+        if autoPlayByChannel[channel] ?? preferences.preferences.playOnLoad {
             engine.setPlaying(true, channel: channel)
         }
         Log.info(.dv, "loaded \(url.lastPathComponent) into channel \(channel)")
@@ -120,6 +122,16 @@ final class ShellController {
             self.engine.setPlaying(true, channel: channel)
             self.refreshPlaylists()
         }
+    }
+
+    /// Whether each channel starts playing when a clip lands in it.
+    private var autoPlayByChannel: [String: Bool] = [:]
+
+    @objc private func sourceAutoPlayToggled(_ sender: NSButton) {
+        guard let raw = sender.identifier?.rawValue,
+              let letter = raw.split(separator: "|").last.map(String.init) else { return }
+        autoPlayByChannel[letter] = sender.state == .on
+        Log.info(.app, "source \(letter) auto-play \(sender.state == .on ? "on" : "off")")
     }
 
     /// Takes whatever is in a channel back out.
@@ -607,6 +619,17 @@ final class ShellController {
             body.onTimingChanged = { [weak self] timing in
                 self?.engine.sources[letter]?.timing = timing
             }
+            // Per-source auto-play. The library's AUTO sets the default for a fresh
+            // source; this decides it for THIS one, which is what you want when three
+            // channels should start on load and one should not.
+            body.preview.autoPlayCheckbox?.target = self
+            body.preview.autoPlayCheckbox?.action = #selector(sourceAutoPlayToggled(_:))
+            body.preview.autoPlayCheckbox?.identifier =
+                NSUserInterfaceItemIdentifier("autoplay|\(letter)")
+            body.preview.autoPlayCheckbox?.state =
+                preferences.preferences.playOnLoad ? .on : .off
+            autoPlayByChannel[letter] = preferences.preferences.playOnLoad
+
             body.onFillChanged = { [weak self] fill in
                 // The most recently chosen mode becomes what a fresh source starts
                 // with, so setting it once does not mean setting it four times.
@@ -856,7 +879,7 @@ final class ShellController {
         ]
         for bus in buses {
             bus.body.setMappingSlot(bus.slot)
-            bus.body.fader.onSweepChanged = { [weak self] in self?.refreshArmedSweeps() }
+            bus.body.onSweepChanged = { [weak self] in self?.refreshArmedSweeps() }
 
             // Blend lives on the fader panel now, and writes to the same slot the
             // composite above it reads — the control moved, the wiring did not.

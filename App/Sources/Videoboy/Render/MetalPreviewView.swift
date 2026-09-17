@@ -147,6 +147,35 @@ final class MetalPreviewView: NSView {
             indicator.translatesAutoresizingMaskIntoConstraints = false
             addSubview(indicator)
             recordIndicator = indicator
+            // Auto-play, directly under the arm marker. A checkbox and a play glyph
+            // rather than a word: it sits on the picture, where a label would be one
+            // more thing covering the image.
+            let autoPlay = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+            autoPlay.translatesAutoresizingMaskIntoConstraints = false
+            autoPlay.toolTip = "Play this source as soon as a clip is loaded into it"
+            autoPlay.state = .on
+            autoPlayCheckbox = autoPlay
+            addSubview(autoPlay)
+
+            let playGlyph = NSImageView()
+            playGlyph.translatesAutoresizingMaskIntoConstraints = false
+            playGlyph.image = NSImage(
+                systemSymbolName: "play.fill", accessibilityDescription: "Auto-play")
+            playGlyph.contentTintColor = Theme.Color.textSecondary
+            playGlyph.toolTip = autoPlay.toolTip
+            addSubview(playGlyph)
+
+            NSLayoutConstraint.activate([
+                playGlyph.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+                playGlyph.topAnchor.constraint(equalTo: indicator.bottomAnchor, constant: 4),
+                playGlyph.widthAnchor.constraint(equalToConstant: 9),
+                playGlyph.heightAnchor.constraint(equalToConstant: 9),
+
+                autoPlay.trailingAnchor.constraint(
+                    equalTo: playGlyph.leadingAnchor, constant: -1),
+                autoPlay.centerYAnchor.constraint(equalTo: playGlyph.centerYAnchor)
+            ])
+
             NSLayoutConstraint.activate([
                 indicator.topAnchor.constraint(equalTo: topAnchor, constant: 3),
                 indicator.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -3),
@@ -264,6 +293,9 @@ final class MetalPreviewView: NSView {
     /// The scope arrives as a finished image rather than as data to plot here: the
     /// drawing lives in Core where it can be tested by measuring its output, and this
     /// view's only job is to put it on screen.
+    /// The auto-play checkbox, when this preview has one (the four sources do).
+    private(set) weak var autoPlayCheckbox: NSButton?
+
     /// Whether the scope is drawn small in a corner rather than over the frame.
     var scopeIsCorner = false { didSet { needsLayout = true } }
 

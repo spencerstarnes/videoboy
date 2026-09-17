@@ -668,8 +668,34 @@ final class FaderPanelBody: NSView {
     /// Called when CUT is pressed: take the other source, now.
     var onCutRequested: (() -> Void)?
 
+    /// Called when this fader gains or loses a sweep, so the controller can start or
+    /// stop driving it.
+    var onSweepChanged: (() -> Void)?
+
     private weak var cutButton: VBOptionButton?
     private weak var fadeButton: VBOptionButton?
+    private weak var sweepRateKey: VBStepButton?
+    private weak var sweepCancelButton: NSButton?
+
+    /// Everything that would fight an automated fader, so it can be greyed while one
+    /// is running.
+    private var manualControls: [NSControl] {
+        [leftKey, rightKey, cutButton, fadeButton, beatCutButton, rateControl]
+            .compactMap { $0 }
+    }
+
+    /// Shows or hides the sweep controls and disables the manual ones.
+    ///
+    /// A fader driving itself and a CUT key that still works are two things fighting
+    /// over the same value — whichever ran last wins, which looks like the control is
+    /// broken rather than overridden. Greying them says so.
+    private func sweepStateChanged() {
+        let armed = fader.sweep != nil
+        sweepRateKey?.isHidden = !armed
+        sweepCancelButton?.isHidden = !armed
+        for control in manualControls { control.isEnabled = !armed }
+        fader.isEnabled = true   // the fader itself stays live so the marks can be re-aimed
+    }
 
     /// Tells the action keys which slot they belong to, so they can be learned.
     func setMappingSlot(_ slot: String) {
@@ -828,12 +854,38 @@ final class FaderPanelBody: NSView {
         self.blendPopUp = blend
         buttons.append(blend)
 
+        // The crossfader's own sweep controls, exactly as an FX row has them — this
+        // panel had the gesture and the yellow bar but no way to set the rate or to
+        // stop it, which made an armed crossfader a thing you could start and not
+        // steer.
+        let sweepKey = VBStepButton()
+        sweepKey.isHidden = true
+        sweepKey.toolTip = "How long one sweep between the marks takes"
+        self.sweepRateKey = sweepKey
+        buttons.append(sweepKey)
+
+        let sweepCancel = Controls.glyphButton("✕", tooltip: "Stop this fader driving itself")
+        sweepCancel.isHidden = true
+        sweepCancel.target = fader
+        sweepCancel.action = #selector(VBFader.clearSweep)
+        self.sweepCancelButton = sweepCancel
+        buttons.append(sweepCancel)
+
         buttons.append(Controls.spacer())
         // AUTO is gone rather than left sitting there disabled. It was never
         // implemented, and it could not be without duplicating something: on a vision
         // mixer AUTO performs the transition at the set rate, which is exactly what
         // FADE already does with the turtle/rabbit control beside it. A permanently
         // dead key that would duplicate its neighbour is worse than no key.
+        sweepKey.onTimingChanged = { [weak self] timing in
+            self?.fader.sweepRate = timing
+        }
+        sweepKey.setTiming(fader.sweepRate)
+        fader.onSweepChanged = { [weak self] in
+            self?.sweepStateChanged()
+            self?.onSweepChanged?()
+        }
+
         let buttonRow = Controls.row(buttons, spacing: 4)
 
         let left = Controls.label(leftLabel, font: Theme.Font.tinyLabel, color: leftColor,
