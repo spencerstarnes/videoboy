@@ -102,6 +102,20 @@ final class DetectSession {
                 }
             }
         }
+
+        // Action keys — CUT, FADE — light up too. They are momentary rather than
+        // continuous, but "which control does this MIDI button drive" is the same
+        // question for both, and a performer holding Shift should see everything that
+        // can be learned, not only the things that happen to be faders.
+        if let key = view as? VBOptionButton {
+            let mappable = key.mappingSlot != nil && key.mappingCode != nil
+            key.isDetectHighlighted = isArmed && mappable
+            if mappable && key.onDetectRequested == nil {
+                key.onDetectRequested = { [weak self] slot, code in
+                    self?.onDetectRequested?(slot, code)
+                }
+            }
+        }
         for subview in view.subviews { apply(to: subview) }
     }
 }

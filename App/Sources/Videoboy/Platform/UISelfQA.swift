@@ -1140,6 +1140,50 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // ACTION KEYS CAN BE LEARNED. Shift-to-map reached faders only, so the keys
+        // you most want on a controller — CUT and FADE — were the ones you could not
+        // put there.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1460, height: 912),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = shell
+            shell.layoutSubtreeIfNeeded()
+
+            let keys = VBOptionButton.all(in: shell.grid.panels.faderABBody)
+                .filter { $0.mappingCode != nil }
+            check.record(AssertionResult(
+                name: "CUT and FADE carry a mapping address",
+                passed: keys.count >= 2,
+                detail: "\(keys.count) learnable action keys on the A/B fader: "
+                    + keys.compactMap { $0.mappingCode?.displayName }.joined(separator: ", ")
+            ))
+
+            if let cut = keys.first(where: { $0.mappingCode == .cutTrigger }) {
+                var asked: (String, ParamCode)?
+                cut.onDetectRequested = { asked = ($0, $1) }
+                let point = cut.convert(
+                    NSPoint(x: cut.bounds.midX, y: cut.bounds.midY), to: nil)
+                if let shiftClick = NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: point, modifierFlags: [.shift],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil,
+                    eventNumber: 0, clickCount: 1, pressure: 1) {
+                    cut.mouseDown(with: shiftClick)
+                }
+                check.record(AssertionResult(
+                    name: "shift-clicking CUT arms it for learning rather than cutting",
+                    passed: asked?.1 == .cutTrigger,
+                    detail: asked.map { "\($0.0) · \($0.1.rawValue)" } ?? "detect was never asked"
+                ))
+            }
+
+            withExtendedLifetime(controller) {}
+        }
+
         // LIBRARY BINS AND SEARCH. Search used to log "not built yet" and do nothing,
         // in a field that looks exactly like one that works.
         do {

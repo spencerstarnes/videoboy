@@ -128,6 +128,19 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     /// where it is. A jog wheel wants the second one.
     case scrubPosition = "67A"
 
+    // MARK: Momentary actions
+    //
+    // These are not settings, they are BUTTONS — a controller sends a note, the value
+    // goes to 1, the action fires and it falls back to 0. They live in the param table
+    // anyway so that learning, storing and recalling them is the same machinery as
+    // everything else rather than a second mapping system alongside it (SPEC 2's one
+    // extension point applies to control as well as to nodes).
+
+    /// Cut to the other source on this bus.
+    case cutTrigger = "68A"
+    /// Fade to the other source on this bus, at the set rate.
+    case fadeTrigger = "69A"
+
     // MARK: Composite emulation (7xA)
 
     case compositeCrawl = "71A"
@@ -236,6 +249,8 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .crossfadeOneTwo: "ONE/TWO crossfade"
         case .playbackSpeed: "speed"
         case .scrubPosition: "position"
+        case .cutTrigger: "cut"
+        case .fadeTrigger: "fade"
         case .mx1Effect: "MX-1 effect"
         case .mx1Amount: "MX-1 amount"
         case .blendMode: "blend mode"

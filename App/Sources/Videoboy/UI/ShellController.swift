@@ -855,6 +855,8 @@ final class ShellController {
             (panels.faderOneTwoBody, GraphTopology.primary)
         ]
         for bus in buses {
+            bus.body.setMappingSlot(bus.slot)
+
             // Blend lives on the fader panel now, and writes to the same slot the
             // composite above it reads — the control moved, the wiring did not.
             bus.body.onBlendModeChanged = { [weak self] mode in
@@ -1360,6 +1362,32 @@ final class ShellController {
         if cleared > 0 {
             Log.info(.param, "cleared \(cleared) sweep(s) aimed at ejected channel \(channel)")
             refreshArmedSweeps()
+        }
+    }
+
+    /// Fires CUT and FADE when a learned MIDI button pushes their trigger to 1.
+    ///
+    /// Edge-triggered, not level-triggered. A controller holding a note down would
+    /// otherwise cut on every frame for as long as it was held, which is a strobe
+    /// rather than a cut. The value is put back to 0 once the action has fired, so
+    /// the next press is a fresh edge.
+    private func fireActionTriggers(from engine: Engine) {
+        let buses: [(body: FaderPanelBody, slot: String)] = [
+            (shell.grid.panels.faderABBody, GraphTopology.subMixOne),
+            (shell.grid.panels.faderCDBody, GraphTopology.subMixTwo),
+            (shell.grid.panels.faderOneTwoBody, GraphTopology.primary)
+        ]
+        for bus in buses {
+            for code in [ParamCode.cutTrigger, .fadeTrigger] {
+                guard let value = engine.registry.value(slot: bus.slot, code: code),
+                      value > 0.5 else { continue }
+                engine.registry.setValue(0, slot: bus.slot, code: code)
+                switch code {
+                case .cutTrigger: bus.body.onCutRequested?()
+                default: bus.body.onFade?(bus.body.currentRate)
+                }
+                Log.info(.midi, "\(code.displayName) fired on \(bus.slot) from a mapping")
+            }
         }
     }
 
@@ -1944,6 +1972,7 @@ final class ShellController {
         updateScopes(from: engine)
         updateBeatLights(from: engine)
         driveSweeps(from: engine)
+        fireActionTriggers(from: engine)
 
         // The status and transport readouts are cheap, but not free; once a second is
         // plenty for a human reading them, and it keeps text redraw off the hot path.

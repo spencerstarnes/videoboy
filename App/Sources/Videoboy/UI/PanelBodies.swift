@@ -668,6 +668,15 @@ final class FaderPanelBody: NSView {
     /// Called when CUT is pressed: take the other source, now.
     var onCutRequested: (() -> Void)?
 
+    private weak var cutButton: VBOptionButton?
+    private weak var fadeButton: VBOptionButton?
+
+    /// Tells the action keys which slot they belong to, so they can be learned.
+    func setMappingSlot(_ slot: String) {
+        cutButton?.mappingSlot = slot
+        fadeButton?.mappingSlot = slot
+    }
+
     /// Called when this bus's blend mode changes.
     var onBlendModeChanged: ((BlendMode) -> Void)?
 
@@ -746,7 +755,9 @@ final class FaderPanelBody: NSView {
         cutButton.target = self
         cutButton.action = #selector(cutPressed)
         cutButton.toolTip = "Cut straight to the other source. "
-            + "With Beat on, it waits for the next beat."
+            + "With Beat on, it waits for the next beat. Shift-click to learn a MIDI button."
+        cutButton.mappingCode = .cutTrigger
+        self.cutButton = cutButton
         buttons.append(cutButton)
 
         // Fade and Beat are instrument keys now, not bezelled push buttons. They sat
@@ -756,7 +767,9 @@ final class FaderPanelBody: NSView {
         fadeButton.target = self
         fadeButton.action = #selector(fadePressed)
         fadeButton.toolTip = "Fade to the other source over the time set by the "
-            + "turtle/rabbit control"
+            + "turtle/rabbit control. Shift-click to learn a MIDI button."
+        fadeButton.mappingCode = .fadeTrigger
+        self.fadeButton = fadeButton
         buttons.append(fadeButton)
 
         // Cut-on-beat. With this on, a cut waits for the next subdivision and is
@@ -882,8 +895,10 @@ final class FaderPanelBody: NSView {
         Log.info(.app, "fade rate: \(currentRate.displayName)")
     }
 
-    /// The rate the three-position control is set to.
-    private var currentRate: FadeRate {
+    /// The rate the three-position control is set to. Readable from outside so a
+    /// MIDI-fired FADE uses the same rate a clicked one would, rather than the
+    /// controller keeping a second copy that can drift.
+    var currentRate: FadeRate {
         FadeRate.from(index: rateControl?.selectedSegment ?? 1)
     }
 

@@ -1,6 +1,6 @@
 check:    phase-4/generators
 verdict:  PASS
-when:     2026-09-17T19:28:23Z
+when:     2026-09-17T19:32:46Z
 core:     0.3.0
 
 notes:

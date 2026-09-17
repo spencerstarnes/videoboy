@@ -19,6 +19,7 @@
 //
 
 import AppKit
+import VideoboyCore
 
 /// A small toggle that carries its own label and lights when on.
 final class VBOptionButton: NSControl {
@@ -89,7 +90,40 @@ final class VBOptionButton: NSControl {
         needsDisplay = true
     }
 
+    /// Every option button beneath a view.
+    static func all(in view: NSView) -> [VBOptionButton] {
+        var found: [VBOptionButton] = []
+        if let key = view as? VBOptionButton { found.append(key) }
+        return found + view.subviews.flatMap { all(in: $0) }
+    }
+
+    // MARK: Detect
+    //
+    // An action key can be learned to a MIDI button exactly as a fader can be learned
+    // to a knob. The gesture is the same one — hold Shift, click the control — so a
+    // performer does not have to know which kind of thing they are pointing at.
+
+    /// The slot and code this key stands for, when it can be learned.
+    var mappingSlot: String?
+    var mappingCode: ParamCode?
+
+    /// Called when the key is shift-clicked while detect is available.
+    var onDetectRequested: ((String, ParamCode) -> Void)?
+
+    /// Lit while Shift is held and this key can be learned.
+    var isDetectHighlighted = false {
+        didSet {
+            guard isDetectHighlighted != oldValue else { return }
+            needsDisplay = true
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.shift),
+           let slot = mappingSlot, let code = mappingCode {
+            onDetectRequested?(slot, code)
+            return
+        }
         guard isEnabled else { return }
         isPressed = true
         needsDisplay = true
