@@ -236,6 +236,42 @@ enum PlaybackSelfQA {
                 name: "PROGRAM data stage renders", passed: false, detail: "a frame failed to render"))
         }
 
+        // 8. Sources C and D actually reach PRIMARY through the TWO path with real
+        // pixels, not just a graph-order check. The routing assertion at the top of
+        // this file proves C and D are upstream of PRIMARY in the evaluation order;
+        // it says nothing about whether a picture loaded into C is what comes out.
+        // This loads a corrupted clip into C, cuts PRIMARY hard over to TWO, and
+        // reads back a frame that has to carry that specific damage.
+        engine.load(url: fileA, intoChannel: "C")
+        engine.load(url: fileB, intoChannel: "D")
+        engine.registry.setValue(0.0, slot: GraphTopology.subMixTwo, code: .crossfadeCD)
+        engine.registry.setValue(0.9, slot: GraphTopology.sourceC, code: .corruptAmount)
+        engine.registry.setValue(0.0, slot: GraphTopology.sourceC, code: .corruptMode)
+        engine.registry.setValue(1.0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
+        engine.setInterchange(.none, forBus: GraphTopology.primary)
+        engine.registry.setValue(0, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
+
+        let viaTwo = renderFrame(60)
+
+        // Same fader hard over to ONE instead, with C's damage still armed: if
+        // PRIMARY were silently still reading ONE — the actual shape a routing bug
+        // here would take — this frame would look like the first one.
+        engine.registry.setValue(0.0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
+        let viaOne = renderFrame(60)
+
+        if let viaTwo, let viaOne {
+            try? check.writeImage(viaTwo, named: "09-sources-cd-via-two.png")
+            check.record(FrameAssertions.framesDiffer(
+                viaOne, viaTwo, minimumFraction: 0.05,
+                name: "PRIMARY carries C/D's picture when cut to TWO, not ONE's"))
+            check.record(FrameAssertions.hasSignal(viaTwo))
+        } else {
+            check.record(AssertionResult(
+                name: "sources C/D reach PRIMARY", passed: false,
+                detail: "a frame failed to render"))
+        }
+        engine.registry.setValue(0, slot: GraphTopology.sourceC, code: .corruptAmount)
+
         // 9. The output emulation toggles. Both are meant to be subtle, so "subtle"
         // is checked as a range rather than just "different": a change too small to
         // see is as much a failure as one that wrecks the picture.
@@ -531,6 +567,43 @@ enum PlaybackSelfQA {
         } else {
             check.note("samples/motion.m2v is missing; the MPEG wedge was not exercised")
         }
+
+        // 13. A generator reaches its own SOURCE WINDOW, not just the bus. The
+        // preview read the file slot unconditionally, so picking a gradient or a
+        // checkerboard lit up the mix while the source window it came from stayed
+        // empty — which reads as the generator not working at all.
+        for kind in [GeneratorKind.linearGradient, .checkerboard] {
+            engine.generators["A"]?.generator = kind
+            engine.setChannelSource(.generator, channel: "A")
+
+            let slot = engine.sourceSlot(forChannel: "A")
+            check.record(AssertionResult(
+                name: "\(kind.displayName) is read from the generator node, not the file node",
+                passed: slot == Engine.generatorSlot(forChannel: "A"),
+                detail: "source window reads \(slot)"
+            ))
+
+            let context = RenderContext(
+                frameIndex: 210, presentationTime: 7.0,
+                musicalPosition: nil)
+            let produced = engine.evaluateGraph(context: context)
+            if let texture = produced[slot], let image = renderer.readback(texture) {
+                try? check.writeImage(
+                    image,
+                    named: "18-generator-\(kind.displayName.lowercased().replacingOccurrences(of: " ", with: "-")).png")
+                check.record(AssertionResult(
+                    name: "\(kind.displayName) draws a picture in its source window",
+                    passed: FrameAssertions.signalPresent(image, varianceThreshold: 25.0),
+                    detail: "luminance variance "
+                        + String(format: "%.1f", FrameAssertions.luminanceVariance(image))
+                ))
+            } else {
+                check.record(AssertionResult(
+                    name: "\(kind.displayName) renders", passed: false,
+                    detail: "the generator node produced no texture"))
+            }
+        }
+        engine.setChannelSource(.file, channel: "A")
 
         check.note("all frames rendered through the engine's own nodes and Metal pipelines")
         return check.finish()

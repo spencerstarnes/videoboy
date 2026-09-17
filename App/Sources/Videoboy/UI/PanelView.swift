@@ -80,18 +80,21 @@ final class PanelView: NSView {
         // A panel belonging to a bus carries a trace of that bus's colour, so the
         // crossfader's tinted track and the windows it mixes are visibly the same
         // two things. Very low strength: this is orientation, not decoration.
+        // Opaque, so the canvas behind cannot show through. The canvas pulses on the
+        // beat; a translucent panel passes that straight through and the pulse
+        // appears inside the window instead of only around it.
         let fill: NSColor
         switch bus {
         case .one:
-            fill = Theme.Color.panelFill.blended(
+            fill = Theme.Color.panelFillOpaque.blended(
                 withFraction: Theme.Color.busTintStrength, of: Theme.Color.busOne)
-                ?? Theme.Color.panelFill
+                ?? Theme.Color.panelFillOpaque
         case .two:
-            fill = Theme.Color.panelFill.blended(
+            fill = Theme.Color.panelFillOpaque.blended(
                 withFraction: Theme.Color.busTintStrength, of: Theme.Color.busTwo)
-                ?? Theme.Color.panelFill
+                ?? Theme.Color.panelFillOpaque
         case .none:
-            fill = Theme.Color.panelFill
+            fill = Theme.Color.panelFillOpaque
         }
         layer?.backgroundColor = fill.cgColor
         layer?.borderColor = Theme.Color.panelBorder.cgColor

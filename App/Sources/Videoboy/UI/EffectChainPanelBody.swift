@@ -48,6 +48,54 @@ struct EffectCardModel {
     /// False when the effect's implementation is not built yet.
     let isImplemented: Bool
     let parameters: [EffectParameterModel]
+    /// Which modulation sources are driving anything on this effect, by badge.
+    var activeModulation: Set<String> = []
+}
+
+/// Where a parameter's movement can come from, other than a hand on the fader.
+///
+/// Spelled out rather than initialled. "M S C" was three single letters in a column,
+/// and the first two are exactly what a mixer uses for Mute and Solo — so the badges
+/// read as channel controls on a device that has neither. These are three-letter
+/// words instead: short enough for a narrow card, long enough to mean something.
+enum ModulationSource: String, CaseIterable {
+    case midi
+    case audio
+    case lfo
+
+    /// What appears on the badge.
+    var badge: String {
+        switch self {
+        case .midi: "MIDI"
+        case .audio: "AUD"
+        case .lfo: "LFO"
+        }
+    }
+
+    /// The letter the engine and the menus have always used for this source.
+    ///
+    /// The internal identifier does not change with the label: mappings, templates
+    /// and `setBadgeActive` all key off these, and renaming what is on screen must
+    /// not rename what is saved to disk.
+    var legacyLetter: String {
+        switch self {
+        case .midi: "M"
+        case .audio: "S"
+        case .lfo: "C"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .midi: "Drive this effect from a MIDI controller"
+        case .audio: "Drive this effect from the audio input"
+        case .lfo: "Drive this effect from an LFO locked to the transport"
+        }
+    }
+
+    static func fromBadge(_ badge: String) -> ModulationSource? {
+        allCases.first { $0.badge == badge }
+    }
 }
 
 /// A scrolling, reorderable chain of effect cards.
@@ -90,7 +138,9 @@ final class EffectChainPanelBody: NSView {
     var onParameterChanged: ((String, Double) -> Void)?
 
     /// Called when a mapping badge is clicked: (param code, which badge, the badge view).
-    var onMappingBadgeClicked: ((String, String, NSView) -> Void)?
+    /// A modulation badge on an effect header was clicked: (effect name, source,
+    /// the badge view to hang a menu from).
+    var onEffectModulationRequested: ((String, ModulationSource, NSView) -> Void)?
 
     /// Called when an effect's enable switch is toggled: (effect name, on).
     var onEffectToggled: ((String, Bool) -> Void)?
@@ -229,6 +279,15 @@ final class EffectChainPanelBody: NSView {
                                            target: self, action: #selector(effectRemoved(_:)))
         removeButton.identifier = NSUserInterfaceItemIdentifier(effect.name)
 
+        // The three modulation sources, once per EFFECT rather than once per
+        // parameter. Spelled out, because "M S C" reads as Mute/Solo/... to anyone
+        // who has used an audio mixer — and this app has no mute and no solo. They
+        // were also a column of decoration on every parameter row, repeated five or
+        // six times down a card that is already narrow.
+        //
+        // Individual parameters are still individually mappable: hold Shift and click
+        // any fader. That gesture arrived after these badges did and quietly made the
+        // per-parameter column redundant.
         var headerViews: [NSView] = [grip, nameLabel, Controls.spacer()]
         if !effect.isImplemented {
             let note = Controls.label("not built", font: Theme.Font.tinyLabel,
@@ -236,9 +295,21 @@ final class EffectChainPanelBody: NSView {
             note.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             headerViews.append(note)
         }
+        if effect.isImplemented {
+            for source in ModulationSource.allCases {
+                let button = Controls.mappingBadgeButton(
+                    source.badge,
+                    isActive: effect.activeModulation.contains(source.badge),
+                    target: self, action: #selector(effectBadgeClicked(_:))
+                )
+                button.identifier = NSUserInterfaceItemIdentifier("\(effect.name)|\(source.badge)")
+                button.toolTip = source.explanation
+                headerViews.append(button)
+            }
+        }
         headerViews.append(enableSwitch)
         headerViews.append(removeButton)
-        let header = Controls.row(headerViews, spacing: 5)
+        let header = Controls.row(headerViews, spacing: 4)
 
         // ---- Parameters: two lines each ----
         var rows: [NSView] = [header]
@@ -264,23 +335,9 @@ final class EffectChainPanelBody: NSView {
 
     /// The two lines for one parameter: badges/name/value, then a full-width fader.
     private func makeParameterRows(_ parameter: EffectParameterModel) -> [NSView] {
-        // Line 1 — badges, name with its param code, and the current value.
-        let badges: NSStackView
-        if parameter.enabled {
-            let buttons = ["M", "S", "C"].map { letter -> NSButton in
-                let button = Controls.mappingBadgeButton(
-                    letter,
-                    isActive: parameter.activeBadges.contains(letter),
-                    target: self, action: #selector(badgeClicked(_:))
-                )
-                button.identifier = NSUserInterfaceItemIdentifier("\(parameter.code)|\(letter)")
-                return button
-            }
-            badges = Controls.row(buttons, spacing: 0)
-        } else {
-            badges = Controls.mappingBadges(["M", "S", "C"], active: parameter.activeBadges)
-        }
-
+        // Line 1 — name with its param code, and the current value. No badge column:
+        // it said the same three things on every row of every card, and Shift-click
+        // maps a parameter without needing a control of its own.
         let label = Controls.monoLabel(
             "\(parameter.name)·\(parameter.code)",
             color: parameter.enabled ? Theme.Color.textSecondary : Theme.Color.textTertiary
@@ -294,7 +351,7 @@ final class EffectChainPanelBody: NSView {
             equalToConstant: Theme.Metrics.valueReadoutWidth).isActive = true
         value.identifier = NSUserInterfaceItemIdentifier("value|\(parameter.code)")
 
-        let topLine = Controls.row([badges, label, Controls.spacer(), value], spacing: 5)
+        let topLine = Controls.row([label, Controls.spacer(), value], spacing: 5)
 
         // Line 2 — the fader, full width. This is the whole reason for two lines.
         let fader = Controls.fader(
@@ -363,11 +420,13 @@ final class EffectChainPanelBody: NSView {
         onParameterChanged?(code, sender.value)
     }
 
-    @objc private func badgeClicked(_ sender: NSButton) {
+    /// A badge on an effect's header. Reports the effect name and the source's
+    /// internal letter, which is what the engine and the saved templates key off.
+    @objc private func effectBadgeClicked(_ sender: NSButton) {
         guard let identifier = sender.identifier?.rawValue else { return }
         let parts = identifier.split(separator: "|", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { return }
-        onMappingBadgeClicked?(parts[0], parts[1], sender)
+        guard parts.count == 2, let source = ModulationSource.fromBadge(parts[1]) else { return }
+        onEffectModulationRequested?(parts[0], source, sender)
     }
 
     @objc private func effectToggled(_ sender: NSSwitch) {
@@ -405,9 +464,11 @@ final class EffectChainPanelBody: NSView {
         rebuild()
     }
 
-    /// Repaints a badge to show whether its parameter is currently driven.
-    func setBadgeActive(code: String, badge: String, isActive: Bool) {
-        let identifier = NSUserInterfaceItemIdentifier("\(code)|\(badge)")
+    /// Repaints an effect's badge to show whether that source is driving it.
+    func setEffectModulationActive(
+        effect: String, source: ModulationSource, isActive: Bool
+    ) {
+        let identifier = NSUserInterfaceItemIdentifier("\(effect)|\(source.badge)")
         for case let button as NSButton in allSubviews(of: stack)
         where button.identifier == identifier {
             button.contentTintColor = isActive ? Theme.Color.accent : Theme.Color.textTertiary

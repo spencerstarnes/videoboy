@@ -449,18 +449,11 @@ final class ShellController {
                 guard let self else { return }
                 self.shell.statusBar.setMIDIDevice(self.engine.midi.connectedSourceNames.first)
                 self.refreshDrivenParameters()
-                // Light the badge if this parameter has one, on the bus it belongs
-                // to. Faders outside the effect chains have no badge, and that is
-                // fine — the mapping is no less real for having nowhere to show
-                // itself; the status bar reported it.
-                if Self.subMixOneSlots[code] == slot {
-                    self.shell.grid.panels.effectsOneBody
-                        .setBadgeActive(code: code.rawValue, badge: "M", isActive: true)
-                }
-                if Self.subMixTwoSlots[code] == slot {
-                    self.shell.grid.panels.effectsTwoBody
-                        .setBadgeActive(code: code.rawValue, badge: "M", isActive: true)
-                }
+                // Light the effect's MIDI badge when the thing just mapped is that
+                // effect's wet/dry. A mapping to one of its individual parameters has
+                // nowhere to light up, and that is fine — it is no less real for it,
+                // and the fader itself now carries the driven outline.
+                self.lightEffectBadge(forSlot: slot, code: code, source: .midi)
                 Log.info(.midi, "learned \(binding.source.description) for \(binding.slot)/\(binding.code.rawValue)")
             }
         }
@@ -862,11 +855,11 @@ final class ShellController {
             self.engine.registry.setValue(declared.denormalise(value), slot: slot, code: parameter)
         }
 
-        shell.grid.panels.effectsOneBody.onMappingBadgeClicked = { [weak self] code, badge, view in
-            self?.presentModulationMenu(code: code, badge: badge, from: view, bus: .one)
+        shell.grid.panels.effectsOneBody.onEffectModulationRequested = { [weak self] name, source, view in
+            self?.presentModulationMenu(effect: name, source: source, from: view, bus: .one)
         }
-        shell.grid.panels.effectsTwoBody.onMappingBadgeClicked = { [weak self] code, badge, view in
-            self?.presentModulationMenu(code: code, badge: badge, from: view, bus: .two)
+        shell.grid.panels.effectsTwoBody.onEffectModulationRequested = { [weak self] name, source, view in
+            self?.presentModulationMenu(effect: name, source: source, from: view, bus: .two)
         }
 
         shell.grid.panels.effectsOneBody.onEffectRemoved = { [weak self] name in
@@ -1093,20 +1086,46 @@ final class ShellController {
     }
 
     /// Opens the MIDI / audio / LFO menu for a parameter and applies the choice.
-    private func presentModulationMenu(code: String, badge: String, from view: NSView, bus: Bus) {
-        guard let parameter = ParamCode(rawValue: code) else { return }
-        let table = bus == .one ? Self.subMixOneSlots : Self.subMixTwoSlots
-        guard let slot = table[parameter] else {
-            Log.warn(.param, "no slot registered for \(code); cannot map it")
+    /// Lights an effect's badge when the mapping just made is that effect's wet/dry.
+    private func lightEffectBadge(forSlot slot: String, code: ParamCode, source: ModulationSource) {
+        guard code == .wetDry else { return }
+        for (name, slots) in Self.effectNameToSlot {
+            if slots.one == slot {
+                shell.grid.panels.effectsOneBody.setEffectModulationActive(
+                    effect: name, source: source, isActive: true)
+            }
+            if slots.two == slot {
+                shell.grid.panels.effectsTwoBody.setEffectModulationActive(
+                    effect: name, source: source, isActive: true)
+            }
+        }
+    }
+
+    /// Opens the modulation menu for a whole EFFECT.
+    ///
+    /// What gets driven is the effect's wet/dry — "how much of this effect", which is
+    /// the thing you reach for at the effect level rather than at one parameter. It
+    /// is also the toggle: wet/dry at zero is bypassed, so an LFO here gates the
+    /// effect in and out in time, which is what makes it worth having on a badge.
+    ///
+    /// Individual parameters are mapped by holding Shift and clicking their fader.
+    private func presentModulationMenu(
+        effect name: String, source: ModulationSource, from view: NSView, bus: Bus
+    ) {
+        guard let slots = Self.effectNameToSlot[name] else {
+            Log.warn(.param, "no slot registered for effect '\(name)'; cannot map it")
             return
         }
+        let slot = bus == .one ? slots.one : slots.two
+        let parameter = ParamCode.wetDry
+        let badge = source.legacyLetter
 
         let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
         let isDriven: Bool
-        switch badge {
-        case "M": isDriven = engine.registry.bindings.contains { $0.slot == slot && $0.code == parameter }
-        case "S": isDriven = engine.audioReactivity.isDriven(slot: slot, code: parameter)
-        default:  isDriven = engine.lfos.isDriven(slot: slot, code: parameter)
+        switch source {
+        case .midi: isDriven = engine.registry.bindings.contains { $0.slot == slot && $0.code == parameter }
+        case .audio: isDriven = engine.audioReactivity.isDriven(slot: slot, code: parameter)
+        case .lfo: isDriven = engine.lfos.isDriven(slot: slot, code: parameter)
         }
 
         ModulationMenus.present(badge: badge, isCurrentlyDriven: isDriven, from: view) { [weak self] choice in
@@ -1121,7 +1140,7 @@ final class ShellController {
             case .audio(let tap, let shape):
                 self.engine.audioReactivity.assign(ReactivityAssignment(
                     tap: tap, shape: shape, slot: slot, code: parameter))
-                panel.setBadgeActive(code: code, badge: "S", isActive: true)
+                panel.setEffectModulationActive(effect: name, source: .audio, isActive: true)
                 if self.engine.clockSource != .audio {
                     // An audio mapping with no audio running would silently do
                     // nothing, which is the kind of thing found out mid-set. Worth
@@ -1141,7 +1160,7 @@ final class ShellController {
                 self.engine.lfos.assign(LFOBank.Assignment(
                     lfo: LFO(shape: shape, rate: rate, depth: 1.0),
                     slot: slot, code: parameter, latencyInFrames: latency))
-                panel.setBadgeActive(code: code, badge: "C", isActive: true)
+                panel.setEffectModulationActive(effect: name, source: .lfo, isActive: true)
 
             case .clear:
                 switch badge {
@@ -1155,7 +1174,7 @@ final class ShellController {
                 default:
                     self.engine.lfos.remove(slot: slot, code: parameter)
                 }
-                panel.setBadgeActive(code: code, badge: badge, isActive: false)
+                panel.setEffectModulationActive(effect: name, source: source, isActive: false)
             }
             // Whatever was chosen, the set of driven parameters may have changed.
             self.refreshDrivenParameters()
@@ -1385,7 +1404,11 @@ final class ShellController {
         updateRecordPulse(from: engine)
 
         for letter in Self.channels {
-            let slot = Engine.slot(forChannel: letter)
+            // Ask the engine WHICH node this channel is playing from. Reading the
+            // file slot unconditionally meant a channel showing a generator drew its
+            // empty file node — the generator was reaching the bus and the mix, and
+            // the one window that should have shown it stayed blank.
+            let slot = engine.sourceSlot(forChannel: letter)
             panels.sourceBodies[letter]?.preview.texture = engine.texture(for: slot)
             panels.sourceBodies[letter]?.preview.present()
             // The scrub track follows playback, so it reads as a position indicator

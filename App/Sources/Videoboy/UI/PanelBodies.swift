@@ -547,10 +547,10 @@ final class FaderPanelBody: NSView {
         rateControl.setToolTip("Fast fade", forSegment: 2)
         self.rateControl = rateControl
         buttons.append(rateControl)
-        // The mapping badges ride on this row rather than getting a line of their
-        // own. This is the shortest panel in the grid and a fourth line does not fit
-        // at the compact breakpoint — it clipped instead of laying out.
-        buttons.append(Controls.mappingBadges(includesSwap ? ["M", "S", "C", "Slo"] : ["M", "S", "Slo"]))
+        // No mapping badges here. They were decoration — unclickable letters wired to
+        // nothing — and one of them read "Slo", which was not an abbreviation of
+        // anything. Shift-click the fader to map it; that gesture reaches every fader
+        // in the window and does not cost a column of the shortest panel in the grid.
         buttons.append(Controls.spacer())
         buttons.append(Controls.button("Auto", enabled: false))
         let buttonRow = Controls.row(buttons, spacing: 4)

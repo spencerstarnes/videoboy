@@ -195,17 +195,6 @@ enum Controls {
     /// Shown for every mappable parameter so the param code and its bindings are
     /// legible at a glance (SPEC 14.2).
     ///
-    /// Non-interactive version, for rows whose feature is not built yet.
-    static func mappingBadges(_ letters: [String], active: Set<String> = []) -> NSStackView {
-        let badges = letters.map { letter -> NSTextField in
-            let badge = label(letter, font: Theme.Font.tinyLabel,
-                              color: active.contains(letter) ? Theme.Color.accent : Theme.Color.textTertiary)
-            badge.alignment = .center
-            return badge
-        }
-        return row(badges, spacing: 2)
-    }
-
     /// A clickable mapping badge.
     ///
     /// These are small on purpose — the mockup's geometry is tight — so they are

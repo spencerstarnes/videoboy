@@ -262,6 +262,15 @@ enum Theme {
         static let content = NSColor(srgbRed: 0x1e / 255.0, green: 0x1e / 255.0, blue: 0x20 / 255.0, alpha: 1)
         /// Panel fill (`--box`).
         static let panelFill = NSColor(white: 1.0, alpha: 0.045)
+
+        /// `panelFill` already composited over the canvas, as an OPAQUE colour.
+        ///
+        /// Panels were drawn with the translucent fill straight onto a canvas that
+        /// pulses, so every panel pulsed with it — the beat showed up inside the
+        /// windows instead of only in the gutters between them. An opaque panel is
+        /// what confines the pulse to the space behind everything.
+        static let panelFillOpaque: NSColor = content.blended(
+            withFraction: 0.045, of: .white) ?? content
         /// Slightly darker fill for nested areas (`--box2`).
         static let panelFillNested = NSColor(white: 1.0, alpha: 0.028)
         /// Panel border (`--boxln`).
@@ -336,7 +345,11 @@ enum Theme {
         /// Deliberately faint. The point is to feel the tempo in peripheral vision
         /// while watching the picture — anything strong enough to notice directly
         /// would compete with the thing you are actually looking at.
-        static let beatPulse = NSColor(srgbRed: 0.42, green: 0.55, blue: 0.85, alpha: 1)
+        /// The beat pulse darkens the canvas toward black rather than lifting it
+        /// toward a colour. A dark room gets brighter when something flashes at you,
+        /// which pulls the eye off the picture — the whole point of this is to be felt
+        /// at the edge of vision, and a dip does that without competing.
+        static let beatPulse = NSColor.black
         /// The stronger flash when the tempo itself changes.
         static let tempoChangeFlash = NSColor(srgbRed: 0.30, green: 0.70, blue: 1.0, alpha: 1)
     }

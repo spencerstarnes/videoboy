@@ -1,6 +1,6 @@
 check:    phase-2/playback
 verdict:  PASS
-when:     2026-09-17T02:09:12Z
+when:     2026-09-17T02:26:16Z
 core:     0.3.0
 
 notes:
@@ -8,7 +8,7 @@ notes:
   MPEG damage at a fixed playhead: Frame Drop 0.971, Motion Vector Corrupt 0.564, Reference Hold 0.239
   all frames rendered through the engine's own nodes and Metal pipelines
 
-assertions (29/29 passed):
+assertions (35/35 passed):
   PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (25 nodes)
   PASS  dimensions — expected 720x480, got 720x480
   PASS  signal present — luminance variance 4188.7, threshold 25.0
@@ -23,6 +23,8 @@ assertions (29/29 passed):
   PASS  signal present — luminance variance 3134.8, threshold 25.0
   PASS  ordinary video advances through PRIMARY — 0.079 of sampled pixels differ, needed >= 0.05
   PASS  the PROGRAM data stage reaches the output — 0.505 of sampled pixels differ, needed >= 0.02
+  PASS  PRIMARY carries C/D's picture when cut to TWO, not ONE's — 0.483 of sampled pixels differ, needed >= 0.05
+  PASS  signal present — luminance variance 3893.1, threshold 25.0
   PASS  NTSC output emulation changes the picture, subtly — 0.787 of sampled pixels differ
   PASS  the DV round trip runs rather than passing through — 0.0027 of sampled pixels differ at one generation — small because flat colour bars survive 4:1:1 well
   PASS  each DV generation costs more than the last — 1 generation differs by 0.003, 4 by 0.017
@@ -38,3 +40,7 @@ assertions (29/29 passed):
   PASS  Frame Drop leaves a picture, not a dead decoder — luminance variance 2419.6
   PASS  Motion Vector Corrupt leaves a picture, not a dead decoder — luminance variance 1823.3
   PASS  Reference Hold leaves a picture, not a dead decoder — luminance variance 2018.8
+  PASS  Linear Gradient is read from the generator node, not the file node — source window reads generator.a
+  PASS  Linear Gradient draws a picture in its source window — luminance variance 7669.5
+  PASS  Checkerboard is read from the generator node, not the file node — source window reads generator.a
+  PASS  Checkerboard draws a picture in its source window — luminance variance 13806.2

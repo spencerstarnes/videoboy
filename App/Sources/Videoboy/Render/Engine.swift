@@ -515,6 +515,17 @@ final class Engine {
     /// This is a module swap in the sense SPEC 13 means: the graph edge moves, and
     /// any mapping whose param code exists on the new source keeps working. That is
     /// the whole reason mappings target codes rather than node pointers.
+    /// Which node a channel is currently taking its picture from.
+    ///
+    /// The preview has to ask, rather than assume the file slot: a channel showing a
+    /// generator renders from a different node entirely, and a preview wired to the
+    /// file node shows an empty rectangle while the generator plays into the bus.
+    func sourceSlot(forChannel letter: String) -> String {
+        channelSourceKinds[letter] == .generator
+            ? Engine.generatorSlot(forChannel: letter)
+            : Engine.slot(forChannel: letter)
+    }
+
     func setChannelSource(_ kind: ChannelSourceKind, channel letter: String) {
         let subMix = GraphTopology.subMix(forChannel: Engine.slot(forChannel: letter))
         // A and C are the lower layer of their bus; B and D the upper.
