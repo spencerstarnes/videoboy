@@ -243,6 +243,50 @@ final class CharacterGeneratorTests: XCTestCase {
             "disabling kerning must still render text, not blank the node")
     }
 
+    // MARK: - Paragraph style (leading and alignment reach CoreText intact)
+
+    /// Leading is passed to CoreText through a pointer that must outlive the call
+    /// building the paragraph style. It did not — `&lineSpacing` is valid only for
+    /// the initializer it is handed to, and `CTParagraphStyleCreate` dereferences it
+    /// afterwards — so this parameter was reading whatever that memory held.
+    ///
+    /// Measuring the drawn height of two lines is what actually proves the value
+    /// arrived: a leading that was read as garbage would not reliably move it.
+    func testLeadingChangesTheHeightOfATwoLineBlock() {
+        func litRowSpan(_ node: CharacterGeneratorNode) -> Int {
+            let image = node.renderToImage()
+            var top: Int?
+            var bottom = 0
+            for y in 0..<image.height {
+                for x in 0..<image.width where image.pixel(x: x, y: y).r > 150 {
+                    if top == nil { top = y }
+                    bottom = y
+                    break
+                }
+            }
+            guard let top else { return 0 }
+            return bottom - top
+        }
+
+        let tight = node()
+        tight.text = "LINE ONE\nLINE TWO"
+        tight.leading = 0
+
+        let loose = node()
+        loose.text = "LINE ONE\nLINE TWO"
+        loose.leading = 40
+
+        let tightSpan = litRowSpan(tight)
+        let looseSpan = litRowSpan(loose)
+        artifact(loose.renderToImage(), "11-leading-40.png")
+
+        XCTAssertGreaterThan(tightSpan, 0, "two lines of type should light some rows")
+        XCTAssertGreaterThan(
+            looseSpan, tightSpan + 20,
+            "40pt of extra leading must visibly separate the two lines — if this is flaky, "
+                + "the paragraph-style pointers are being read after they expired again")
+    }
+
     // MARK: - Outline and shadow
 
     func testOutlineWidthAddsVisibleStrokePixels() {

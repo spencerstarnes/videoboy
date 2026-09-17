@@ -186,17 +186,34 @@ enum CharacterGeneratorRenderer {
     }
 
     private static func makeParagraphStyle(style node: CharacterGeneratorNode) -> CTParagraphStyle {
-        let alignment = TitlerAlignment.from(normalised: node.alignmentPosition).ctAlignment
-        var mutableAlignment = alignment
+        var alignment = TitlerAlignment.from(normalised: node.alignmentPosition).ctAlignment
         var lineSpacing = Float(node.leading)
 
-        let settings = [
-            CTParagraphStyleSetting(
-                spec: .alignment, valueSize: MemoryLayout<CTTextAlignment>.size, value: &mutableAlignment),
-            CTParagraphStyleSetting(
-                spec: .lineSpacingAdjustment, valueSize: MemoryLayout<Float>.size, value: &lineSpacing)
-        ]
-        return CTParagraphStyleCreate(settings, settings.count)
+        // The pointers must OUTLIVE the CTParagraphStyleCreate call, which is why
+        // this is nested rather than a flat array of settings.
+        //
+        // `CTParagraphStyleSetting(value: &x)` does not copy what x points at — it
+        // keeps the pointer, and CoreText dereferences it later, inside Create. An
+        // `&x` argument is only guaranteed valid for the duration of the call it is
+        // passed to, so by the time Create read them both pointers had expired and
+        // the alignment and the leading were whatever that memory happened to hold.
+        // It usually held the right thing, which is exactly what makes this class of
+        // bug dangerous: the tests passed.
+        return withUnsafePointer(to: &alignment) { alignmentPointer in
+            withUnsafePointer(to: &lineSpacing) { spacingPointer in
+                let settings = [
+                    CTParagraphStyleSetting(
+                        spec: .alignment,
+                        valueSize: MemoryLayout<CTTextAlignment>.size,
+                        value: alignmentPointer),
+                    CTParagraphStyleSetting(
+                        spec: .lineSpacingAdjustment,
+                        valueSize: MemoryLayout<Float>.size,
+                        value: spacingPointer)
+                ]
+                return CTParagraphStyleCreate(settings, settings.count)
+            }
+        }
     }
 
     // MARK: - Placement
