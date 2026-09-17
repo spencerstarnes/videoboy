@@ -246,7 +246,12 @@ enum Theme {
         /// Row weights. The LAST entry is ignored for sizing — the output bar is a
         /// fixed height (`outputBarHeight`), not a share of what is left — but it
         /// stays in the list so the row count and the gutter arithmetic still line up.
-        static let rowWeights: [CGFloat] = [1.0, 1.0, 0.6, 1.45, 0.31]
+        // Row 2 (the faders) came down from 0.6 and row 3 (the libraries) went up by
+        // the same amount. A fader panel holds a header, one row of keys and one
+        // fader, and at 0.6 roughly a third of it was empty below the track — while
+        // the libraries underneath were the one place in the window that can always
+        // use more height, because they are grids that scroll.
+        static let rowWeights: [CGFloat] = [1.0, 1.0, 0.44, 1.61, 0.31]
 
         /// Height of the output bar, which holds one row of 22pt controls and a
         /// little padding. Fixed rather than weighted: as a weight it grew with the
