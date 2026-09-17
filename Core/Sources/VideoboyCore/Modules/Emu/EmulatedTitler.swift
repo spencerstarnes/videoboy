@@ -1,0 +1,251 @@
+//
+//  EmulatedTitler.swift — running real vintage titling software as a source (SPEC 18.2).
+//
+//  Purpose : Boot something like Broadcast Titler II on an emulated Amiga, drive it
+//            from a modern panel, and take its output as a video source so it can be
+//            overlaid on the programme.
+//  Inputs  : a `TitlerProgram` (which software), and text/controls from the panel.
+//  Outputs : frames, as a source in the graph.
+//  Connects: EmulatorHost (the out-of-process emulator), the EMU tab in the centre
+//            column, the render graph.
+//  Extend  : a new piece of software is a `TitlerProgram` entry plus a boot recipe.
+//            It should need no code.
+//
+//  ── TWO CONSTRAINTS THAT SHAPE ALL OF THIS ──────────────────────────────────────
+//
+//  LICENSING. libretro emulator cores are GPL. This app is distributed, so a GPL core
+//  may never be linked into it — it runs OUT OF PROCESS and is spoken to over a pipe,
+//  which is why `EmulatorHost` is a protocol describing a separate process rather
+//  than an emulator API. That is not a design preference; linking it would relicense
+//  the whole app.
+//
+//  ASSETS. Kickstart ROMs and Broadcast Titler disk images are copyrighted. They are
+//  USER-SUPPLIED, referenced by path, never bundled and never downloaded. Everything
+//  here therefore has to degrade to a labelled, greyed state when they are absent —
+//  which is also what makes it testable without them.
+//
+
+import Foundation
+
+/// One piece of vintage software this app knows how to drive.
+public struct TitlerProgram: Equatable, Codable, Sendable, Identifiable {
+    public var id: String { name }
+
+    public let name: String
+    /// The machine it needs, which decides the core.
+    public let platform: Platform
+    /// What a person has to supply before it can run, in plain words.
+    public let requires: [String]
+    /// The boot recipe — see `TitlerBootStep`.
+    public let boot: [TitlerBootStep]
+
+    public enum Platform: String, Codable, Sendable {
+        case amiga
+        case atariST
+        case dos
+
+        public var displayName: String {
+            switch self {
+            case .amiga: "Amiga"
+            case .atariST: "Atari ST"
+            case .dos: "DOS"
+            }
+        }
+
+        /// The libretro core normally used for this platform. Named, not bundled.
+        public var suggestedCore: String {
+            switch self {
+            case .amiga: "puae_libretro"
+            case .atariST: "hatari_libretro"
+            case .dos: "dosbox_pure_libretro"
+            }
+        }
+    }
+
+    public init(name: String, platform: Platform, requires: [String], boot: [TitlerBootStep]) {
+        self.name = name
+        self.platform = platform
+        self.requires = requires
+        self.boot = boot
+    }
+}
+
+/// One step of getting a program from cold boot to the point where it will take text.
+///
+/// This is the "smart config macro": a recipe, as data, rather than a hand-written
+/// script per program. Data because a recipe that is data can be edited by someone
+/// who does not write Swift, shipped as a file, and — the part that matters here —
+/// TESTED without an emulator, by checking the steps rather than the pixels.
+public enum TitlerBootStep: Equatable, Codable, Sendable {
+    /// Wait for the machine to settle, in emulated seconds.
+    case wait(seconds: Double)
+    /// Wait until the screen stops changing, which is how you know a load finished
+    /// without timing it by hand on a machine that may run at any speed.
+    case waitForStableScreen(timeout: Double)
+    /// Press a key, by name: "return", "f1", "escape".
+    case key(String)
+    /// Type a string, one character at a time.
+    case type(String)
+    /// Click at a position given in FRACTIONS of the screen, so a recipe does not
+    /// break when the emulated resolution changes.
+    case click(x: Double, y: Double)
+    /// Restore a save state, which is by far the most reliable way to land in the
+    /// right place — see the note on `TitlerProgram.boot` below.
+    case loadState(named: String)
+
+    /// A short description, for the progress readout while a program boots.
+    public var description: String {
+        switch self {
+        case .wait(let seconds): "waiting \(String(format: "%.1f", seconds))s"
+        case .waitForStableScreen: "waiting for the screen to settle"
+        case .key(let name): "pressing \(name)"
+        case .type(let text): "typing \"\(text)\""
+        case .click(let x, let y): "clicking \(Int(x * 100))%, \(Int(y * 100))%"
+        case .loadState(let name): "restoring \(name)"
+        }
+    }
+}
+
+/// The software this app ships recipes for.
+///
+/// Recipes only. None of these programs are included — every one needs disk images
+/// the person running it must already own.
+public enum TitlerLibrary {
+
+    public static let programs: [TitlerProgram] = [
+        TitlerProgram(
+            name: "Broadcast Titler II",
+            platform: .amiga,
+            requires: [
+                "An Amiga Kickstart ROM (1.3 or 2.0)",
+                "Broadcast Titler II disk images (.adf)",
+                "A libretro Amiga core (puae_libretro)"
+            ],
+            // Deliberately short. Driving a boot by timed keystrokes is fragile —
+            // a disk that loads a second slower puts every later step in the wrong
+            // place. The reliable path is to boot ONCE by hand, save a state sitting
+            // at the text entry screen, and land there every time after.
+            boot: [
+                .waitForStableScreen(timeout: 60),
+                .loadState(named: "broadcast-titler-text-entry")
+            ]
+        ),
+        TitlerProgram(
+            name: "Deluxe Paint IV",
+            platform: .amiga,
+            requires: [
+                "An Amiga Kickstart ROM",
+                "Deluxe Paint IV disk images (.adf)",
+                "A libretro Amiga core (puae_libretro)"
+            ],
+            boot: [
+                .waitForStableScreen(timeout: 60),
+                .loadState(named: "dpaint-canvas")
+            ]
+        ),
+        TitlerProgram(
+            name: "Scala MM",
+            platform: .amiga,
+            requires: [
+                "An Amiga Kickstart ROM",
+                "Scala disk images (.adf)",
+                "A libretro Amiga core (puae_libretro)"
+            ],
+            boot: [
+                .waitForStableScreen(timeout: 90),
+                .loadState(named: "scala-text-page")
+            ]
+        )
+    ]
+}
+
+/// What an emulator has to be able to do for this app to drive it.
+///
+/// A protocol describing a SEPARATE PROCESS, not an emulator API. GPL cores cannot be
+/// linked into a distributed app, so the real implementation launches a helper and
+/// talks to it; this is the shape of that conversation.
+public protocol EmulatorHost: AnyObject {
+    /// Whether a core and the assets it needs are actually present.
+    var isReady: Bool { get }
+    /// Why it is not ready, in words a person can act on.
+    var unavailableReason: String? { get }
+
+    /// Starts the program. Returns false when something it needs is missing.
+    func boot(_ program: TitlerProgram) -> Bool
+    /// The most recent frame, or nil before the first one arrives.
+    func latestFrame() -> ImageBuffer?
+    /// Sends one boot step or one piece of user input.
+    func send(_ step: TitlerBootStep)
+    /// Stops and releases the process.
+    func shutdown()
+}
+
+/// An emulator that is not there.
+///
+/// The state the app is in on any machine without a core and the disk images — which
+/// is every machine until someone supplies them. It reports WHY rather than failing
+/// silently, because "nothing happened" is the least useful thing a missing dependency
+/// can say.
+public final class UnavailableEmulatorHost: EmulatorHost {
+    public let unavailableReason: String?
+    public var isReady: Bool { false }
+
+    public init(reason: String) {
+        self.unavailableReason = reason
+    }
+
+    public func boot(_ program: TitlerProgram) -> Bool {
+        Log.warn(.titler, "cannot boot \(program.name): \(unavailableReason ?? "unavailable")")
+        return false
+    }
+    public func latestFrame() -> ImageBuffer? { nil }
+    public func send(_ step: TitlerBootStep) {}
+    public func shutdown() {}
+}
+
+/// An emulator that produces a test picture and records what it was told.
+///
+/// Not only for tests. It is what the EMU tab runs against while no core is
+/// installed, so the panel, the boot sequencing and the text plumbing can all be
+/// built and looked at before anyone owns a Kickstart ROM.
+public final class MockEmulatorHost: EmulatorHost {
+    public var isReady: Bool = true
+    public var unavailableReason: String? { isReady ? nil : "the mock was switched off" }
+
+    /// Every step it has been sent, in order — which is how a boot recipe is checked
+    /// without an emulator to run it on.
+    public private(set) var received: [TitlerBootStep] = []
+    public private(set) var bootedProgram: TitlerProgram?
+
+    /// Text typed so far, assembled from the `.type` steps.
+    public var typedText: String {
+        received.compactMap { if case .type(let text) = $0 { return text } else { return nil } }
+            .joined()
+    }
+
+    private var frame: ImageBuffer?
+
+    public init() {}
+
+    public func boot(_ program: TitlerProgram) -> Bool {
+        guard isReady else { return false }
+        bootedProgram = program
+        received.removeAll()
+        // A recognisable picture, so "is anything coming out of it" has an answer.
+        frame = TestPattern.colorBars()
+        for step in program.boot { send(step) }
+        return true
+    }
+
+    public func latestFrame() -> ImageBuffer? { frame }
+
+    public func send(_ step: TitlerBootStep) {
+        received.append(step)
+    }
+
+    public func shutdown() {
+        bootedProgram = nil
+        frame = nil
+        received.removeAll()
+    }
+}
