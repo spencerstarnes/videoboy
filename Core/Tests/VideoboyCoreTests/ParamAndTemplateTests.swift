@@ -332,3 +332,36 @@ private final class StubNode: Node {
 
     func render(inputs: [MTLTexture], context: RenderContext) -> MTLTexture? { nil }
 }
+
+// MARK: - Reading a parameter back for a readout
+
+extension ParamAndTemplateTests {
+
+    /// A fader showing a driven parameter needs the inverse of `denormalise`, and a
+    /// round trip that drifts would show up as a bar that sits slightly wrong.
+    func testNormaliseIsTheInverseOfDenormalise() {
+        let wide = Parameter(code: .corruptSeed, range: 0...65535, defaultValue: 1)
+        let offset = Parameter(code: .playbackSpeed, range: 0.5...2.0, defaultValue: 1)
+
+        for parameter in [wide, offset, Parameter(code: .opacity)] {
+            for normalised in stride(from: 0.0, through: 1.0, by: 0.125) {
+                let round = parameter.normalise(parameter.denormalise(normalised))
+                XCTAssertEqual(
+                    round, normalised, accuracy: 1e-9,
+                    "\(parameter.code.rawValue) drifted at \(normalised)")
+            }
+        }
+    }
+
+    func testNormaliseClampsOutsideTheRange() {
+        let parameter = Parameter(code: .playbackSpeed, range: 0.5...2.0, defaultValue: 1)
+        XCTAssertEqual(parameter.normalise(-10), 0, accuracy: 1e-9)
+        XCTAssertEqual(parameter.normalise(99), 1, accuracy: 1e-9)
+    }
+
+    /// A range of zero width must answer, not divide by zero.
+    func testNormaliseSurvivesAZeroWidthRange() {
+        let pinned = Parameter(code: .enabled, range: 1...1, defaultValue: 1)
+        XCTAssertEqual(pinned.normalise(1), 0, accuracy: 1e-9)
+    }
+}

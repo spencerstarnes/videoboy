@@ -30,6 +30,32 @@ final class SourcePanelBody: NSView {
     /// The shuttle scrub track. Exposed so the shell can give it a mapping address.
     private(set) var scrubFader: VBFader?
     private var stepButton: VBStepButton?
+    private var loopKey: VBOptionButton?
+    private var loopMode: LoopMode = .loop
+
+    /// One flat transport key, in the same family as the bus keys.
+    private func shuttleKey(
+        _ glyph: String, _ tooltip: String, _ action: Selector
+    ) -> VBOptionButton {
+        let key = VBOptionButton(title: glyph)
+        key.target = self
+        key.action = action
+        key.toolTip = tooltip
+        return key
+    }
+
+    /// Cycles loop → ping-pong → one shot, the way the step key cycles its ladder.
+    @objc private func loopKeyPressed(_ sender: VBOptionButton) {
+        let all = LoopMode.allCases
+        let index = all.firstIndex(of: loopMode) ?? 0
+        loopMode = all[(index + 1) % all.count]
+        // Always lit: every mode is a real mode, so "off" would be a lie. The glyph
+        // says which one, and the tooltip spells it out.
+        sender.isOn = true
+        sender.setTitle(loopMode.shuttleGlyph)
+        sender.toolTip = loopMode.displayName
+        onLoopModeChanged?(loopMode)
+    }
 
     /// Loads a file into this channel. Wired by the app; nil until then.
     var onLoadRequested: (() -> Void)?
@@ -131,21 +157,32 @@ final class SourcePanelBody: NSView {
 
         // Shuttle strip: transport buttons, a scrub track, and the loop-mode toggle.
         // Every source gets one (SPEC 14.2).
-        let toStart = Controls.button("⇤", target: self, action: #selector(seekStartPressed))
-        let back = Controls.button("◀", target: self, action: #selector(stepBackPressed))
-        let play = Controls.button("▶", target: self, action: #selector(playPressed))
-        let toEnd = Controls.button("⇥", target: self, action: #selector(seekEndPressed))
+        // Four keys and a scrub track, in the same flat family as the bus keys and
+        // the option buttons — they were small bezelled push buttons, which is the
+        // one visual language in this window that belongs to a settings dialogue
+        // rather than to a piece of video kit.
+        //
+        // Simplified as well as restyled: the step-back and step-forward pair became
+        // one key each side of play, and the loop mode stopped being a three-segment
+        // control. Segments cost the width of all three states to show one, in the
+        // narrowest column of the window; a key that cycles costs the width of one.
+        let toStart = shuttleKey("⇤", "Jump to the start", #selector(seekStartPressed))
+        let back = shuttleKey("◀", "Step back one frame", #selector(stepBackPressed))
+        let play = shuttleKey("▶", "Play or pause this source", #selector(playPressed))
+        let forward = shuttleKey("▶|", "Step forward one frame", #selector(stepForwardPressed))
+
         let scrub = Controls.fader(
             value: 0, compact: true, target: self, action: #selector(scrubbed(_:)))
         self.scrubFader = scrub
-        // Loop / ping-pong / one-shot, per SPEC 12.
-        let loopMode = Controls.segmented(
-            ["↻", "⇄", "1"], selected: 0, target: self, action: #selector(loopModeChanged(_:)))
-        loopMode.setToolTip("Loop", forSegment: 0)
-        loopMode.setToolTip("Ping-pong", forSegment: 1)
-        loopMode.setToolTip("One shot", forSegment: 2)
 
-        let shuttle = Controls.row([toStart, back, play, toEnd, scrub, loopMode], spacing: 2)
+        let loopKey = VBOptionButton(title: LoopMode.loop.shuttleGlyph)
+        loopKey.isOn = true
+        loopKey.target = self
+        loopKey.action = #selector(loopKeyPressed)
+        loopKey.toolTip = "Loop, ping-pong or one shot"
+        self.loopKey = loopKey
+
+        let shuttle = Controls.row([toStart, back, play, forward, scrub, loopKey], spacing: 3)
         shuttle.translatesAutoresizingMaskIntoConstraints = false
         scrub.setContentHuggingPriority(.init(1), for: .horizontal)
         addSubview(shuttle)
@@ -227,10 +264,6 @@ final class SourcePanelBody: NSView {
 
     @objc private func scrubbed(_ sender: VBFader) {
         onScrub?(sender.value)
-    }
-
-    @objc private func loopModeChanged(_ sender: NSSegmentedControl) {
-        onLoopModeChanged?(LoopMode.from(index: sender.selectedSegment))
     }
 
     /// Moves the scrub track to follow playback, without firing its action.

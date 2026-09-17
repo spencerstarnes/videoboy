@@ -186,6 +186,29 @@ enum UISelfQA {
                 try? check.writeImage(image, named: "driven-parameters.png")
             }
 
+            // A driven fader must MOVE, not just glow. The value is in the registry
+            // being rewritten every frame; a bar that ignores it says something is
+            // happening and refuses to say what.
+            let programFader = shell.grid.panels.faderOneTwoBody.fader
+            var positions: Set<String> = []
+            engine.transport.beatsPerMinute = 120
+            engine.transport.start(atHostTime: CACurrentMediaTime())
+            for step in 0..<8 {
+                let hostTime = CACurrentMediaTime() + Double(step) * 0.12
+                engine.lfos.update(atHostTime: hostTime, into: engine.registry)
+                if let value = engine.registry.value(
+                    slot: GraphTopology.primary, code: .crossfadeOneTwo) {
+                    programFader.setDisplayedValue(value)
+                    positions.insert(String(format: "%.3f", programFader.value))
+                }
+            }
+            engine.transport.stop(atHostTime: CACurrentMediaTime())
+            check.record(AssertionResult(
+                name: "a driven fader's bar follows the value driving it",
+                passed: positions.count > 1,
+                detail: "\(positions.count) distinct bar positions over eight LFO steps"
+            ))
+
             engine.lfos.remove(slot: GraphTopology.primary, code: .crossfadeOneTwo)
             engine.audioReactivity.remove(slot: GraphTopology.sourceA, code: .corruptAmount)
             controller.refreshDrivenParameters()

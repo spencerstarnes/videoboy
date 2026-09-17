@@ -192,14 +192,21 @@ enum Theme {
         static let disabledAlpha: CGFloat = 0.35
         /// Fraction of the range one arrow-key press moves.
         static let keyboardStep: Double = 0.01
-        /// Height of the taller crossfader used in the fader panels.
-        static let crossfaderHeight: CGFloat = 20
+        /// Height of the taller crossfader used in the fader panels. Must leave room
+        /// for the track PLUS the cap's overhang on both sides, or the cap is clipped.
+        static let crossfaderHeight: CGFloat = 32
         /// How strongly a tinted track shows its bus colour. Low: it must say which
         /// way you are heading without competing with the picture above it.
         static let trackTintAlpha: CGFloat = 0.30
         /// Track thickness for the primary crossfader — the heaviest control in the
         /// window, and the one a hand finds without looking.
-        static let primaryTrackHeight: CGFloat = 18
+        static let primaryTrackHeight: CGFloat = 22
+
+        /// How far the cap stands proud of its track, top and bottom.
+        ///
+        /// A constant rather than a fixed cap height, so growing a track can never
+        /// again leave its cap sunk into the slot.
+        static let capOverhang: CGFloat = 8
         /// Height of the compact fader used in a shuttle strip, where the scrub track
         /// is a readout more than a control and must not dominate the row.
         static let compactHeight: CGFloat = 11

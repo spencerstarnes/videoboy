@@ -23,7 +23,15 @@ import AppKit
 /// A small toggle that carries its own label and lights when on.
 final class VBOptionButton: NSControl {
 
-    let title: String
+    private(set) var title: String
+
+    /// Changes the label, for keys that cycle through states.
+    func setTitle(_ newTitle: String) {
+        guard newTitle != title else { return }
+        title = newTitle
+        invalidateIntrinsicContentSize()
+        needsDisplay = true
+    }
 
     var isOn = false {
         didSet {

@@ -34,6 +34,17 @@ public struct Parameter {
         let clamped = min(max(normalised, 0), 1)
         return range.lowerBound + clamped * (range.upperBound - range.lowerBound)
     }
+
+    /// Maps a value in this parameter's range back to 0...1.
+    ///
+    /// The inverse of `denormalise`, and the direction a READOUT needs: a fader
+    /// showing a parameter that something else is driving has a real value and needs
+    /// a bar position. A zero-width range answers zero rather than dividing by it.
+    public func normalise(_ value: Double) -> Double {
+        let span = range.upperBound - range.lowerBound
+        guard span > 0 else { return 0 }
+        return min(max((value - range.lowerBound) / span, 0), 1)
+    }
 }
 
 /// Where a mapped control value came from. Every source normalises to 0...1 here,

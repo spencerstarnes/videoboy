@@ -37,6 +37,17 @@ final class VBFader: NSControl {
     var minimum: Double = 0
     var maximum: Double = 1
 
+    /// Moves the bar to show a value something else is driving.
+    ///
+    /// Ignored while the fader is being dragged: a hand on the control wins over an
+    /// LFO writing to the same parameter, or the bar fights the finger.
+    func setDisplayedValue(_ normalised: Double) {
+        guard !isDragging else { return }
+        let target = minimum + normalised * (maximum - minimum)
+        guard abs(target - value) > 0.0005 else { return }
+        value = target
+    }
+
     /// Drawn behind the fill. Used to tint a fader with its bus identity.
     var accentColor: NSColor = Theme.Color.accent {
         didSet { needsDisplay = true }
@@ -141,7 +152,13 @@ final class VBFader: NSControl {
     }
 
     private var capBaseHeight: CGFloat {
-        isCompact ? Theme.Fader.compactHeight : Theme.Fader.capHeight
+        if isCompact { return Theme.Fader.compactHeight }
+        // The cap must always stand PROUD of its track. It was a fixed 17pt while the
+        // primary crossfader's track had grown to 18, so on the one fader where the
+        // overhang matters most the cap was recessed into the slot — the opposite of
+        // the intent, and the reason that control looked slightly wrong without it
+        // being obvious why.
+        return max(Theme.Fader.capHeight, trackHeight + Theme.Fader.capOverhang)
     }
 
     override var isEnabled: Bool {

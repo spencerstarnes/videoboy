@@ -1093,7 +1093,18 @@ final class ShellController {
             ? { let b = engine.transport.beats(atHostTime: CACurrentMediaTime())
                 return b - b.rounded(.down) }()
             : 0
-        for fader in drivenFaders { fader.pulsePhase = drivenPhase }
+        for fader in drivenFaders {
+            fader.pulsePhase = drivenPhase
+            // And show WHERE the parameter actually is. A driven fader that glows but
+            // never moves says something is happening and refuses to say what; the
+            // value is right there in the registry, being written every frame by
+            // whatever is driving it. The bar is the readout.
+            guard let slot = fader.mappingSlot, let code = fader.mappingCode,
+                  let declared = engine.graph.nodes[slot]?.parameters
+                      .first(where: { $0.code == code }),
+                  let value = engine.registry.value(slot: slot, code: code) else { continue }
+            fader.setDisplayedValue(declared.normalise(value))
+        }
     }
 
     /// Opens the MIDI / audio / LFO menu for a parameter and applies the choice.

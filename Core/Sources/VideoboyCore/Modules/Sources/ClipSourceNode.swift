@@ -114,12 +114,22 @@ public enum PlaybackTiming: Equatable, Codable, Sendable {
 
 /// How a clip behaves when it reaches its end (SPEC 12).
 public enum LoopMode: String, CaseIterable, Codable, Sendable {
+
     /// Wrap back to the start and keep going.
     case loop
     /// Reverse direction at each end.
     case pingPong
     /// Stop on the last frame.
     case oneShot
+
+    /// One character for the shuttle key, which cycles through the three.
+    public var shuttleGlyph: String {
+        switch self {
+        case .loop: "↻"
+        case .pingPong: "⇄"
+        case .oneShot: "1"
+        }
+    }
 
     public var displayName: String {
         switch self {

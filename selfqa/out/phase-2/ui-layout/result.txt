@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T02:42:59Z
+when:     2026-09-17T02:49:39Z
 core:     0.3.0
 
 notes:
@@ -12,21 +12,22 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
 
-assertions (53/53 passed):
+assertions (54/54 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 863.9
+  PASS  wide is not blank — luminance variance 853.7
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 743.4
+  PASS  compact is not blank — luminance variance 769.0
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 1036.8
-  PASS  collapsed-left is not blank — luminance variance 720.1
-  PASS  collapsed-both-edges is not blank — luminance variance 567.4
-  PASS  collapsed-sources-only is not blank — luminance variance 785.4
-  PASS  collapsed-effects-only is not blank — luminance variance 636.4
+  PASS  narrow is not blank — luminance variance 1066.2
+  PASS  collapsed-left is not blank — luminance variance 722.8
+  PASS  collapsed-both-edges is not blank — luminance variance 585.9
+  PASS  collapsed-sources-only is not blank — luminance variance 798.8
+  PASS  collapsed-effects-only is not blank — luminance variance 627.2
   PASS  holding Shift lights the mappable faders — 43 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
+  PASS  a driven fader's bar follows the value driving it — 8 distinct bar positions over eight LFO steps
   PASS  removing the driver clears the mark — 0 faders still marked
   PASS  preferences save has content — luminance variance 157.6
   PASS  preferences defaults has content — luminance variance 312.9
