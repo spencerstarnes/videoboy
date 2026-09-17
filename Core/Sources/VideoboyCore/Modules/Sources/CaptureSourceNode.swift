@@ -44,6 +44,18 @@ public final class CaptureSourceNode: Node {
     /// Name of the device this node is showing, for the panel subtitle.
     public private(set) var deviceName: String?
 
+    /// The camera this source should use, when one has been chosen.
+    ///
+    /// Distinct from `deviceName`, which reports what actually delivered the last
+    /// frame. One is a request and the other is a fact, and conflating them is how a
+    /// panel ends up claiming a camera is live because somebody picked it.
+    public private(set) var preferredDeviceName: String?
+
+    public func setPreferredDeviceName(_ name: String?) {
+        preferredDeviceName = name
+        Log.info(.output, "\(identifier) will use \(name ?? "no camera") when a session opens")
+    }
+
     private let context: MetalContext?
     private let lock = NSLock()
     private var pendingImage: ImageBuffer?

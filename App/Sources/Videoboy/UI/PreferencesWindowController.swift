@@ -81,6 +81,9 @@ final class PreferencesWindowController: NSWindowController {
     /// rather than at the next relaunch.
     var onPreviewFillChanged: ((PreviewFill) -> Void)?
 
+    /// Called when the camera choice changes, so the engine can open it.
+    var onCaptureDeviceChanged: ((String?) -> Void)?
+
     private var selected: Pane = .save
     private var tabButtons: [Pane: NSButton] = [:]
     private let detail = FlippedView()

@@ -381,6 +381,20 @@ final class Engine {
     /// thing: primary is the ONE/TWO mix, and the programme data stage runs after it.
     /// Conflating them is what left that stage unconnected.
     static var outputSlot: String { busCodecProgramSlot }
+    /// The camera chosen as the live input, by name.
+    ///
+    /// Stored here so the choice survives and anything opening a capture session asks
+    /// one place which device to open. Setting it does NOT itself start a feed —
+    /// `AVFoundationCaptureSource` currently captures a finite sequence for the
+    /// loopback check rather than running continuously, and a live camera source is a
+    /// separate piece of work. Recorded rather than implied.
+    private(set) var captureDeviceName: String?
+
+    func setCaptureDeviceName(_ name: String?) {
+        captureDeviceName = name
+        capture.setPreferredDeviceName(name)
+    }
+
     static let captureSlot = "source.capture"
     static let testPatternSlot = "source.testpattern"
 

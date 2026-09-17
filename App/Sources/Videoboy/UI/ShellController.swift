@@ -43,6 +43,7 @@ final class ShellController {
         refreshPlaylists()
         wireRouting()
         setPreviewFill(preferences.preferences.previewFill)
+        setCaptureDevice(preferences.preferences.captureDeviceName)
         wireDetect()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
@@ -153,6 +154,16 @@ final class ShellController {
 
     /// Wires the libraries: double-click loads into the pair's next channel.
     /// Applies a picture fill to every preview in the window.
+    /// Points the capture source at a named camera, or at nothing.
+    ///
+    /// By name, matching how the preference is stored: a grabber gets a different
+    /// unique ID on a different USB port, and someone who chose a camera means that
+    /// camera wherever it is plugged in.
+    func setCaptureDevice(_ name: String?) {
+        engine.setCaptureDeviceName(name)
+        Log.info(.output, "capture device set to \(name ?? "none")")
+    }
+
     func setPreviewFill(_ fill: PreviewFill) {
         let panels = shell.grid.panels
         // Seeds each SOURCE with the saved preference; from then on each one carries

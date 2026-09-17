@@ -100,6 +100,13 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// How a picture is placed when its shape and its window's disagree.
     public var previewFill: PreviewFill = .fit
 
+    /// The camera chosen as the live input, by its localised name.
+    ///
+    /// By NAME rather than by unique ID: a USB grabber gets a different unique ID on
+    /// a different port, and someone who picked "PC-LM1E Camera" means that camera
+    /// wherever it is plugged in. Nil means no camera has been chosen.
+    public var captureDeviceName: String?
+
     // MARK: Reminders
 
     /// Which prompts have been answered with "don't remind me again".
@@ -146,6 +153,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         defaultBlendMode = decode(.defaultBlendMode, BlendMode.normal)
         playOnLoad = decode(.playOnLoad, true)
         previewFill = decode(.previewFill, PreviewFill.fit)
+        captureDeviceName = try? container.decodeIfPresent(String.self, forKey: .captureDeviceName)
         suppressedReminders = decode(.suppressedReminders, Set<ReminderKind>())
         // Element by element, so one destination of a kind this build no longer has
         // does not take the whole list down with it. Capture cards were offered as

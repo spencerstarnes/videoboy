@@ -222,10 +222,21 @@ extension PreferencesWindowController {
         rows.append(field("MIDI sources", Controls.column(
             midi.map { Controls.label($0, color: Theme.Color.textSecondary) }, spacing: 2)))
 
+        // CHOOSABLE, not merely listed. This pane used to print the camera names as
+        // labels, which told you the app could see your webcam and gave you no way to
+        // use it — the gap was never discovery, it was that nothing let you pick one.
         let captureNames = AVFoundationCaptureSource().enumerateDeviceNames()
-        rows.append(field("Capture devices", Controls.column(
-            (captureNames.isEmpty ? ["None found"] : captureNames)
-                .map { Controls.label($0, color: Theme.Color.textSecondary) }, spacing: 2)))
+        if captureNames.isEmpty {
+            rows.append(field("Camera", Controls.label(
+                "None found", color: Theme.Color.textTertiary)))
+        } else {
+            let picker = Controls.popUp(
+                ["None"] + captureNames, target: self, action: #selector(captureDeviceChanged(_:)))
+            let chosen = store.preferences.captureDeviceName
+            picker.selectItem(at: chosen.flatMap { captureNames.firstIndex(of: $0).map { $0 + 1 } } ?? 0)
+            picker.toolTip = "The camera used as a live input"
+            rows.append(field("Camera", picker))
+        }
 
         rows.append(spacer(10))
         rows.append(Controls.note(
@@ -233,6 +244,16 @@ extension PreferencesWindowController {
             width: Self.noteWidth))
 
         return Controls.column(rows, spacing: 8)
+    }
+
+    @objc func captureDeviceChanged(_ sender: NSPopUpButton) {
+        // Item 0 is "None".
+        let names = AVFoundationCaptureSource().enumerateDeviceNames()
+        let index = sender.indexOfSelectedItem - 1
+        let chosen = names.indices.contains(index) ? names[index] : nil
+        store.preferences.captureDeviceName = chosen
+        onCaptureDeviceChanged?(chosen)
+        Log.info(.output, "camera set to \(chosen ?? "none")")
     }
 
     // MARK: - Hot keys

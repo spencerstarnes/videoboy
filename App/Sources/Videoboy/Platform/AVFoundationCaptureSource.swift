@@ -30,15 +30,29 @@ final class AVFoundationCaptureSource: NSObject, CaptureSource {
     private let finished = DispatchSemaphore(value: 0)
     private var hasSignalled = false
 
-    /// Devices that can produce video: built-in cameras plus anything external,
-    /// which is where a USB grabber like the DVC100 appears.
+    /// Every device that can produce video.
+    ///
+    /// `.external` covers USB grabbers like the DVC100 and virtual cameras such as
+    /// OBS's. The two Continuity types are listed separately because macOS asks for
+    /// them by name: an iPhone does appear under `.external`, but the system logs
+    /// that this is deprecated and asks for `.continuityCamera` plus
+    /// `NSCameraUseContinuityCameraDeviceType` in the Info.plist. Without that key
+    /// the continuity types return nothing at all, which is why asking for them and
+    /// adding the key had to happen together.
     private func discoverDevices() -> [AVCaptureDevice] {
+        var types: [AVCaptureDevice.DeviceType] = [.external, .builtInWideAngleCamera]
+        types.append(.continuityCamera)
+        types.append(.deskViewCamera)
+
         let session = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.external, .builtInWideAngleCamera],
+            deviceTypes: types,
             mediaType: .video,
             position: .unspecified
         )
-        return session.devices
+        // De-duplicated by unique ID: a Continuity camera answers to more than one
+        // type, and listing the same iPhone twice reads as two cameras.
+        var seen: Set<String> = []
+        return session.devices.filter { seen.insert($0.uniqueID).inserted }
     }
 
     func enumerateDeviceNames() -> [String] {

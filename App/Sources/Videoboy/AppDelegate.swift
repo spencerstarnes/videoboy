@@ -208,6 +208,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             preferencesController = PreferencesWindowController(
                 store: preferences, engine: engine)
         }
+        preferencesController?.onCaptureDeviceChanged = { [weak self] name in
+            self?.mainWindowController?.shellController?.setCaptureDevice(name)
+        }
         preferencesController?.onPreviewFillChanged = { [weak self] fill in
             self?.mainWindowController?.shellController?.setPreviewFill(fill)
         }
