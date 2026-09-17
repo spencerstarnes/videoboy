@@ -10,6 +10,8 @@
 	<string>com.spencerstarnes.videoboy</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleIconFile</key>
+	<string>Videoboy</string>
 	<key>CFBundleName</key>
 	<string>Videoboy</string>
 	<key>CFBundleDisplayName</key>

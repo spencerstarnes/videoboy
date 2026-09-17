@@ -39,6 +39,19 @@ log "embedding LGPL FFmpeg"
 cp -a "$VENDOR_FFMPEG"/lib/*.dylib "$APP_BUNDLE/Contents/Frameworks/"
 cp "$REPO_ROOT/docs/THIRD-PARTY.md" "$APP_BUNDLE/Contents/Resources/THIRD-PARTY.md"
 
+# The app icon, drawn rather than checked in — see scripts/make-icon.swift. Generated
+# every build so editing the numbers in that file is all it takes to change the icon.
+log "drawing the app icon"
+ICONSET="$(mktemp -d)/Videoboy.iconset"
+if swift "$REPO_ROOT/scripts/make-icon.swift" "$ICONSET" >/dev/null 2>&1 \
+   && iconutil -c icns "$ICONSET" -o "$APP_BUNDLE/Contents/Resources/Videoboy.icns" 2>/dev/null; then
+  :
+else
+  # Never fatal: an app that will not build because its icon would not draw is a
+  # worse trade than an app wearing the generic one.
+  log "icon could not be drawn; the app will use the default"
+fi
+
 # Ad-hoc signature only. CLAUDE.md rules out the Apple Developer Program,
 # notarization, and distribution signing; this is what lets the app run locally.
 log "ad-hoc signing"
