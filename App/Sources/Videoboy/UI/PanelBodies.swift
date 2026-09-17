@@ -745,7 +745,8 @@ final class PreviewPanelBody: NSView {
     /// that: a setting you touch when setting a bus up and then leave alone, which has
     /// no business occupying the most prominent slot on a row of performance keys.
     override func menu(for event: NSEvent) -> NSMenu? {
-        guard interchangePopUp != nil else { return super.menu(for: event) }
+        guard FeatureFlag.busDataStage.isOn,
+              interchangePopUp != nil else { return super.menu(for: event) }
         let menu = NSMenu()
         let heading = NSMenuItem(title: "Bus data codec", action: nil, keyEquivalent: "")
         heading.isEnabled = false

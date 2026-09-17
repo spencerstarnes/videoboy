@@ -282,7 +282,13 @@ final class MetalPreviewView: NSView {
             width: frame.width * rect.width,
             height: frame.height * rect.height)
         overlayLayer.frame = frame
-        tallyLayer.frame = frame
+        // The tally gets the VIEW's bounds, not the picture's.
+        //
+        // The picture is often cropped by the fill mode — taller or wider than what is
+        // visible — so an outline drawn on IT loses whichever pair of edges falls
+        // outside, which is why the first version showed only the left and right sides.
+        // A broadcast tally outlines the MONITOR anyway, not the image inside it.
+        tallyLayer.frame = bounds
         updateTally()
         updateOverlays()
     }
@@ -383,9 +389,12 @@ final class MetalPreviewView: NSView {
             tallyLayer.opacity = 0
             return
         }
+        // Inset by the full line width so the stroke sits wholly inside — a stroke is
+        // centred on its path, so an inset of half that would put the outer half of the
+        // line outside the view and the layer's clip would eat it.
         let path = CGPath(
-            roundedRect: frame.insetBy(dx: 1, dy: 1),
-            cornerWidth: 2, cornerHeight: 2, transform: nil)
+            roundedRect: frame.insetBy(dx: 2, dy: 2),
+            cornerWidth: 3, cornerHeight: 3, transform: nil)
 
         CATransaction.begin()
         // No implicit animation: this is driven from the fader, which already moves

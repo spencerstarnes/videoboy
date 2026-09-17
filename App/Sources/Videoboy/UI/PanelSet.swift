@@ -142,263 +142,11 @@ final class PanelSet {
         // The DV DIF corruptor is the one effect that is real in this phase — it is
         // the wedge. Everything else is present and disabled so the chain's shape is
         // visible from the first run.
-        effectsOneBody = EffectChainPanelBody(effects: [
-            EffectCardModel(
-                name: "Transform",
-                isEnabled: false,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "scale", code: ParamCode.scale.rawValue,
-                                         value: 0.231, enabled: true),
-                    EffectParameterModel(name: "rotate", code: ParamCode.rotation.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "flip H", code: ParamCode.flipHorizontal.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "flip V", code: ParamCode.flipVertical.rawValue,
-                                         value: 0.0, enabled: true)
-                ],
-                channelOptions: ["A", "B"]
-            ),
-            EffectCardModel(
-                name: "DV · DIF corruptor",
-                // OFF, like every effect except the grade. The wedge is the loudest
-                // thing in the app and it should be something you switch on, not
-                // something you discover is already on.
-                isEnabled: false,
-                isImplemented: FeatureFlag.bitstreamCorruptor.isOn,
-                parameters: [
-                    EffectParameterModel(name: "amount", code: ParamCode.corruptAmount.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "mode", code: ParamCode.corruptMode.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "rate", code: ParamCode.corruptRate.rawValue,
-                                         value: 0.25, enabled: true)
-                ],
-                // SPEC 2's chFX runs once per CHANNEL — A and B each carry their own
-                // wedge. This one card reaches whichever of the two is selected here,
-                // rather than being hardwired to A the way it was before this could
-                // be switched at all.
-                channelOptions: ["A", "B"]
-            ),
-            EffectCardModel(
-                name: "Composite · NTSC",
-                isEnabled: false,
-                isImplemented: FeatureFlag.compositeCodec.isOn,
-                parameters: [
-                    EffectParameterModel(name: "path", code: ParamCode.compositePath.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
-                                         value: 0.6, enabled: true),
-                    EffectParameterModel(name: "bleed", code: ParamCode.chromaBleed.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "luma bw", code: ParamCode.lumaBandwidth.rawValue,
-                                         value: 0.7, enabled: true),
-                    EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
-                                         value: 0.2, enabled: true),
-                    EffectParameterModel(name: "head sw", code: ParamCode.headSwitchingNoise.rawValue,
-                                         value: 0.3, enabled: true),
-                    EffectParameterModel(name: "chroma", code: ParamCode.chromaSubsampling.rawValue,
-                                         value: 1.0, enabled: true),
-                    EffectParameterModel(name: "gen", code: ParamCode.compositeGeneration.rawValue,
-                                         value: 0.0, enabled: true)
-                ],
-                channelOptions: ["A", "B"]
-            ),
-            EffectCardModel(
-                name: "Colour",
-                // ON by default, unlike every other effect here. A grade at its
-                // neutral settings changes nothing and costs nothing — the node skips
-                // its render pass entirely when it is neutral — so there is no reason
-                // to make someone switch it on before they can touch a fader. Every
-                // other card in this chain alters the picture the moment it is armed,
-                // which is why they all start off.
-                isEnabled: true,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "bright", code: ParamCode.brightness.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "sat", code: ParamCode.saturation.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "shadow", code: ParamCode.shadow.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "highlt", code: ParamCode.highlight.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "black", code: ParamCode.blackLevel.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "white", code: ParamCode.whiteLevel.rawValue,
-                                         value: 1.0, enabled: true),
-                    EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
-                                         value: 0.231, enabled: true)
-                ],
-                channelOptions: ["A", "B"]
-            ),
-            EffectCardModel(
-                name: "Echo / Trails",
-                isEnabled: false,
-                isImplemented: FeatureFlag.feedback.isOn,
-                parameters: [
-                    EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
-                                         value: 0.8, enabled: true),
-                    EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "thresh", code: ParamCode.echoThreshold.rawValue,
-                                         value: 0.15, enabled: true)
-                ],
-                channelOptions: ["A", "B"]
-            ),
-            EffectCardModel(
-                name: "Feedback",
-                isEnabled: false,
-                isImplemented: FeatureFlag.feedback.isOn,
-                parameters: [
-                    EffectParameterModel(name: "gain", code: ParamCode.feedbackGain.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "delay", code: ParamCode.feedbackDelayFrames.rawValue,
-                                         value: 0.02, enabled: true),
-                    EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
-                                         value: 0.52, enabled: true),
-                    EffectParameterModel(name: "rotate", code: ParamCode.feedbackRotate.rawValue,
-                                         value: 0.5, enabled: true)
-                ],
-                channelOptions: ["A", "B"]
-            ),
-            EffectCardModel(
-                name: "MX-1",
-                isEnabled: false,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "effect", code: ParamCode.mx1Effect.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
-                                         value: 0.5, enabled: true)
-                ]
-            )
-        ])
+        effectsOneBody = EffectChainPanelBody(effects: PanelSet.chain(for: ["A", "B"]))
 
         // Sub Mix TWO's chain: the same effects, on its own instances, so the two
         // buses can carry different looks at once.
-        effectsTwoBody = EffectChainPanelBody(effects: [
-            EffectCardModel(
-                name: "Transform",
-                isEnabled: false,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "scale", code: ParamCode.scale.rawValue,
-                                         value: 0.231, enabled: true),
-                    EffectParameterModel(name: "rotate", code: ParamCode.rotation.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "flip H", code: ParamCode.flipHorizontal.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "flip V", code: ParamCode.flipVertical.rawValue,
-                                         value: 0.0, enabled: true)
-                ],
-                channelOptions: ["C", "D"]
-            ),
-            EffectCardModel(
-                name: "DV · DIF corruptor",
-                // OFF, like every effect except the grade. The wedge is the loudest
-                // thing in the app and it should be something you switch on, not
-                // something you discover is already on.
-                isEnabled: false,
-                isImplemented: FeatureFlag.bitstreamCorruptor.isOn,
-                parameters: [
-                    EffectParameterModel(name: "amount", code: ParamCode.corruptAmount.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "mode", code: ParamCode.corruptMode.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "rate", code: ParamCode.corruptRate.rawValue,
-                                         value: 0.25, enabled: true)
-                ],
-                // This chain had NO wedge card at all before this — channel C's
-                // corruption was wired all the way through the registry and never
-                // reachable from anywhere in the window. D reaches it too, by the
-                // selector below.
-                channelOptions: ["C", "D"]
-            ),
-            EffectCardModel(
-                name: "Composite · NTSC",
-                isEnabled: false,
-                isImplemented: FeatureFlag.compositeCodec.isOn,
-                parameters: [
-                    EffectParameterModel(name: "path", code: ParamCode.compositePath.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
-                                         value: 0.6, enabled: true),
-                    EffectParameterModel(name: "bleed", code: ParamCode.chromaBleed.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
-                                         value: 0.2, enabled: true)
-                ],
-                channelOptions: ["C", "D"]
-            ),
-            EffectCardModel(
-                name: "Colour",
-                // ON by default, unlike every other effect here. A grade at its
-                // neutral settings changes nothing and costs nothing — the node skips
-                // its render pass entirely when it is neutral — so there is no reason
-                // to make someone switch it on before they can touch a fader. Every
-                // other card in this chain alters the picture the moment it is armed,
-                // which is why they all start off.
-                isEnabled: true,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "bright", code: ParamCode.brightness.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "sat", code: ParamCode.saturation.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "shadow", code: ParamCode.shadow.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "highlt", code: ParamCode.highlight.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "black", code: ParamCode.blackLevel.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "white", code: ParamCode.whiteLevel.rawValue,
-                                         value: 1.0, enabled: true),
-                    EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
-                                         value: 0.231, enabled: true)
-                ],
-                channelOptions: ["C", "D"]
-            ),
-            EffectCardModel(
-                name: "Echo / Trails",
-                isEnabled: false,
-                isImplemented: FeatureFlag.feedback.isOn,
-                parameters: [
-                    EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
-                                         value: 0.8, enabled: true),
-                    EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
-                                         value: 0.0, enabled: true)
-                ],
-                channelOptions: ["C", "D"]
-            ),
-            EffectCardModel(
-                name: "Feedback",
-                isEnabled: false,
-                isImplemented: FeatureFlag.feedback.isOn,
-                parameters: [
-                    EffectParameterModel(name: "gain", code: ParamCode.feedbackGain.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
-                                         value: 0.52, enabled: true)
-                ],
-                channelOptions: ["C", "D"]
-            ),
-            EffectCardModel(
-                name: "MX-1",
-                isEnabled: false,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "effect", code: ParamCode.mx1Effect.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
-                                         value: 0.5, enabled: true)
-                ]
-            )
-        ])
+        effectsTwoBody = EffectChainPanelBody(effects: PanelSet.chain(for: ["C", "D"]))
 
         effectsOne = PanelView(title: "A/B FX", bus: .one, body: effectsOneBody)
         effectsTwo = PanelView(title: "C/D FX", bus: .two, body: effectsTwoBody)
@@ -471,4 +219,168 @@ final class PanelSet {
             LibraryItem(name: "amiga titler", badge: "EMU", isAvailable: false)
         ]
     }
+
+    /// One channel-effects chain, for a pair of channels.
+    ///
+    /// Built by a function rather than written out twice. The two chains were
+    /// near-identical literals differing only in their channel letters, which is
+    /// exactly the duplication that drifts - a card added to one and not the other is
+    /// invisible until someone looks at both panels side by side.
+    ///
+    /// WHY THE BITSTREAM CARD IS OMITTED AND NOT GREYED. The house rule is that
+    /// unfinished work renders DISABLED rather than absent, so the shape of the chain
+    /// is visible from the first run. This is the opposite case: that effect is
+    /// FINISHED, and it is out because it cannot currently be judged - there is no DV
+    /// hardware here to see it on an analog chain, and an effect whose whole point is
+    /// what it does to a real signal cannot be tuned by looking at a preview.
+    ///
+    /// A greyed card would advertise something that is not coming back in its current
+    /// form. Nothing is deleted: the node, its shader, its parameters and its tests
+    /// are all intact behind `FeatureFlag.bitstreamCorruptor`, and setting
+    /// `VIDEOBOY_FLAGS=bitstreamCorruptor` brings the card back for one launch.
+    static func chain(for channels: [String]) -> [EffectCardModel] {
+        var cards: [EffectCardModel] = [
+            EffectCardModel(
+                name: "Transform",
+                isEnabled: false,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "scale", code: ParamCode.scale.rawValue,
+                                         value: 0.231, enabled: true),
+                    EffectParameterModel(name: "rotate", code: ParamCode.rotation.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "flip H", code: ParamCode.flipHorizontal.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "flip V", code: ParamCode.flipVertical.rawValue,
+                                         value: 0.0, enabled: true)
+                ],
+                channelOptions: channels
+            ),
+            EffectCardModel(
+                name: "Composite · NTSC",
+                isEnabled: false,
+                isImplemented: FeatureFlag.compositeCodec.isOn,
+                parameters: [
+                    EffectParameterModel(name: "path", code: ParamCode.compositePath.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
+                                         value: 0.6, enabled: true),
+                    EffectParameterModel(name: "bleed", code: ParamCode.chromaBleed.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "luma bw", code: ParamCode.lumaBandwidth.rawValue,
+                                         value: 0.7, enabled: true),
+                    EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
+                                         value: 0.2, enabled: true),
+                    EffectParameterModel(name: "head sw", code: ParamCode.headSwitchingNoise.rawValue,
+                                         value: 0.3, enabled: true),
+                    EffectParameterModel(name: "chroma", code: ParamCode.chromaSubsampling.rawValue,
+                                         value: 1.0, enabled: true),
+                    EffectParameterModel(name: "gen", code: ParamCode.compositeGeneration.rawValue,
+                                         value: 0.0, enabled: true)
+                ],
+                channelOptions: channels
+            ),
+            EffectCardModel(
+                name: "Colour",
+                // ON by default, unlike every other effect here. A grade at its
+                // neutral settings changes nothing and costs nothing — the node skips
+                // its render pass entirely when it is neutral — so there is no reason
+                // to make someone switch it on before they can touch a fader. Every
+                // other card in this chain alters the picture the moment it is armed,
+                // which is why they all start off.
+                isEnabled: true,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "bright", code: ParamCode.brightness.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "sat", code: ParamCode.saturation.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "shadow", code: ParamCode.shadow.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "highlt", code: ParamCode.highlight.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "black", code: ParamCode.blackLevel.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "white", code: ParamCode.whiteLevel.rawValue,
+                                         value: 1.0, enabled: true),
+                    EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
+                                         value: 0.231, enabled: true)
+                ],
+                channelOptions: channels
+            ),
+            EffectCardModel(
+                name: "Echo / Trails",
+                isEnabled: false,
+                isImplemented: FeatureFlag.feedback.isOn,
+                parameters: [
+                    EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
+                                         value: 0.8, enabled: true),
+                    EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "thresh", code: ParamCode.echoThreshold.rawValue,
+                                         value: 0.15, enabled: true)
+                ],
+                channelOptions: channels
+            ),
+            EffectCardModel(
+                name: "Feedback",
+                isEnabled: false,
+                isImplemented: FeatureFlag.feedback.isOn,
+                parameters: [
+                    EffectParameterModel(name: "gain", code: ParamCode.feedbackGain.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "delay", code: ParamCode.feedbackDelayFrames.rawValue,
+                                         value: 0.02, enabled: true),
+                    EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
+                                         value: 0.52, enabled: true),
+                    EffectParameterModel(name: "rotate", code: ParamCode.feedbackRotate.rawValue,
+                                         value: 0.5, enabled: true)
+                ],
+                channelOptions: channels
+            ),
+            EffectCardModel(
+                name: "MX-1",
+                isEnabled: false,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "effect", code: ParamCode.mx1Effect.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
+                                         value: 0.5, enabled: true)
+                ]
+            )
+        ]
+
+        if FeatureFlag.bitstreamCorruptor.isOn {
+            // Second in the chain, before the composite stage: it damages the
+            // bitstream, and everything after it works on what comes out.
+            cards.insert(
+            EffectCardModel(
+                name: "DV · DIF corruptor",
+                // OFF, like every effect except the grade. The wedge is the loudest
+                // thing in the app and it should be something you switch on, not
+                // something you discover is already on.
+                isEnabled: false,
+                isImplemented: FeatureFlag.bitstreamCorruptor.isOn,
+                parameters: [
+                    EffectParameterModel(name: "amount", code: ParamCode.corruptAmount.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "mode", code: ParamCode.corruptMode.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "rate", code: ParamCode.corruptRate.rawValue,
+                                         value: 0.25, enabled: true)
+                ],
+                // SPEC 2's chFX runs once per CHANNEL — A and B each carry their own
+                // wedge. This one card reaches whichever of the two is selected here,
+                // rather than being hardwired to A the way it was before this could
+                // be switched at all.
+                channelOptions: channels
+            ),
+                at: min(1, cards.count))
+        }
+        return cards
+    }
+
 }

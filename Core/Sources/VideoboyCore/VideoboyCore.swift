@@ -31,8 +31,28 @@ public enum Videoboy {
 public enum FeatureFlag: String, CaseIterable, Sendable {
     /// DV demux + decode through the vendored libav shim.
     case dvDecode
-    /// The pre-decode DIF bitstream corruptor (the wedge).
+    /// The pre-decode DIF bitstream corruptor.
+    ///
+    /// OFF, and deliberately so. It is the thing this app was built around, and it is
+    /// switched off because it cannot currently be JUDGED: there is no DV hardware here
+    /// to see its output on an analog chain, and an effect whose whole point is what it
+    /// does to a real signal is one you cannot tune by looking at a preview.
+    ///
+    /// It is off rather than deleted. Every node, shader, parameter and test is intact;
+    /// this flag is the only thing standing between the app and all of it. Whatever it
+    /// becomes next will start from the working version rather than from a rewrite.
     case bitstreamCorruptor
+    /// Re-encoding a mixed bus so data effects can run on it.
+    ///
+    /// The other half of the same decision: a bus has no bitstream until it is
+    /// re-encoded, and the controls for that only mean anything if the corruptor they
+    /// feed is running.
+    case busDataStage
+    /// The NTSC and DV toggles on the output bar.
+    ///
+    /// Signal character applied to what LEAVES the app. Same reason as the corruptor:
+    /// it is judged on a monitor at the end of an analog chain, not in a preview.
+    case outputSignalEmulation
     /// Musical transport + subdivision scheduler driving parameter changes.
     case musicalClock
     /// Core MIDI input and shift-to-detect learn.
@@ -62,8 +82,12 @@ public struct FeatureFlags: Sendable {
 
     /// Flags earned by the phases completed so far. Everything else stays off.
     private static let defaultsForPhase: Set<FeatureFlag> = [
+        // dvDecode stays ON: reading a .dv file is how the samples play at all, and it
+        // has nothing to do with corrupting one.
         .dvDecode,
-        .bitstreamCorruptor,
+        // bitstreamCorruptor, busDataStage and outputSignalEmulation are OFF — see
+        // their declarations. `VIDEOBOY_FLAGS=bitstreamCorruptor,busDataStage,
+        // outputSignalEmulation` brings all three back for one launch.
         .musicalClock,
         .midiControl,
         .displayOutput,

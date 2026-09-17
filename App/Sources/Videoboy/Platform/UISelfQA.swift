@@ -159,15 +159,29 @@ enum UISelfQA {
                 detail: "\(beforeCount) faders marked"
             ))
 
-            // An LFO on the programme crossfader and an audio tap on a corruptor:
-            // one outside the effect chains and one inside, because they are marked
-            // by different paths.
+            // An LFO on the programme crossfader and an audio tap on a parameter INSIDE
+            // an effect chain: one outside the chains and one in, because the two are
+            // marked by different paths and only testing one proves half of it.
+            //
+            // The inside one used to be the corruptor's amount. That card is behind a
+            // switched-off flag now, so its fader is not built and the check was
+            // counting a driver on a control that does not exist. The grade is the
+            // right replacement: it is the one effect live at launch, so its faders are
+            // always there to be marked.
             engine.lfos.assign(LFOBank.Assignment(
                 lfo: LFO(shape: .sine, rate: .subdivision(.whole), depth: 1.0),
                 slot: GraphTopology.primary, code: .crossfadeOneTwo, latencyInFrames: 0))
-            engine.audioReactivity.assign(ReactivityAssignment(
-                tap: .rms, shape: .direct,
-                slot: GraphTopology.sourceA, code: .corruptAmount))
+            // The slot is READ OFF THE FADER rather than written here. The chain
+            // resolves a code to a slot through the card's channel selector, so the
+            // name is not something this check should be guessing at — and when it did
+            // guess, it guessed a slot no fader addressed and counted one driver
+            // instead of two.
+            let chainFader = faders(in: shell.grid.panels.effectsOneBody)
+                .first { $0.mappingSlot != nil && $0.mappingCode != nil }
+            if let chainFader, let slot = chainFader.mappingSlot, let code = chainFader.mappingCode {
+                engine.audioReactivity.assign(ReactivityAssignment(
+                    tap: .rms, shape: .direct, slot: slot, code: code))
+            }
             controller.refreshDrivenParameters()
 
             var afterCount = 0
@@ -210,7 +224,12 @@ enum UISelfQA {
             ))
 
             engine.lfos.remove(slot: GraphTopology.primary, code: .crossfadeOneTwo)
-            engine.audioReactivity.remove(slot: GraphTopology.sourceA, code: .corruptAmount)
+            // The same address the assignment used, read off the same fader — a
+            // removal that clears a DIFFERENT parameter leaves the first one driven and
+            // reports it as a failure to clear, which is what happened here.
+            if let chainFader, let slot = chainFader.mappingSlot, let code = chainFader.mappingCode {
+                engine.audioReactivity.remove(slot: slot, code: code)
+            }
             controller.refreshDrivenParameters()
             var clearedCount = 0
             countDrivenFaders(in: shell, into: &clearedCount)
@@ -850,6 +869,25 @@ enum UISelfQA {
             shell.layoutSubtreeIfNeeded()
 
             let corruptorName = "DV · DIF corruptor"
+
+            // The card is behind a flag now, and with the flag OFF the correct state
+            // is that it is ABSENT — so that is what gets asserted, rather than the
+            // check being skipped. A skipped check proves nothing; this one proves the
+            // card really went, and would catch it coming back by accident.
+            guard FeatureFlag.bitstreamCorruptor.isOn else {
+                let stillThere =
+                    segmentedControl(named: corruptorName, in: shell.grid.panels.effectsOneBody) != nil
+                    || segmentedControl(named: corruptorName, in: shell.grid.panels.effectsTwoBody) != nil
+                check.record(AssertionResult(
+                    name: "the bitstream card is absent while its flag is off",
+                    passed: !stillThere,
+                    detail: stillThere
+                        ? "a card is still being built for a switched-off subsystem"
+                        : "omitted from both chains, as the flag says"
+                ))
+                return check.finish()
+            }
+
             guard let selectorOne = segmentedControl(named: corruptorName, in: shell.grid.panels.effectsOneBody),
                   let selectorTwo = segmentedControl(named: corruptorName, in: shell.grid.panels.effectsTwoBody) else {
                 check.record(AssertionResult(
@@ -1908,6 +1946,17 @@ enum UISelfQA {
     private static func countDrivenFaders(in view: NSView, into count: inout Int) {
         if let fader = view as? VBFader, fader.isDriven { count += 1 }
         for subview in view.subviews { countDrivenFaders(in: subview, into: &count) }
+    }
+
+    /// Every fader beneath a view, driven or not.
+    ///
+    /// Used where a check needs to ask a control what it ADDRESSES rather than assume
+    /// it — the slot a chain fader writes to is resolved through its card's channel
+    /// selector, so it is not something a test should be spelling out.
+    private static func faders(in view: NSView) -> [VBFader] {
+        var found: [VBFader] = []
+        if let fader = view as? VBFader { found.append(fader) }
+        return found + view.subviews.flatMap { faders(in: $0) }
     }
 
     private static func drivenFaders(in view: NSView) -> [VBFader] {

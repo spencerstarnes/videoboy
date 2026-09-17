@@ -98,12 +98,23 @@ final class SettingsBarPanelBody: NSView {
         dvToggle.onSecondaryClick = { [weak self] anchor in
             self?.onEmulationDetailRequested?(.dv, anchor)
         }
-        let emulate = Controls.row([
-            option(ntscToggle, #selector(outputNTSCChanged),
-                   "NTSC signal character. Right-click for its settings."),
-            option(dvToggle, #selector(outputDVChanged),
-                   "DV colour space. Right-click for its settings.")
-        ], spacing: Theme.BarSpacing.withinGroup)
+        // NTSC and DV signal emulation on the OUTPUT.
+        //
+        // Off, and omitted rather than greyed. Both are judged on a monitor at the end
+        // of an analog chain, not in a preview — with no such chain to look at they
+        // cannot be tuned, and a pair of toggles nobody can evaluate is a pair of
+        // toggles that quietly stays wrong. Nothing is deleted; see
+        // `FeatureFlag.outputSignalEmulation`.
+        var emulationOptions: [NSView] = []
+        if FeatureFlag.outputSignalEmulation.isOn {
+            emulationOptions = [
+                option(ntscToggle, #selector(outputNTSCChanged),
+                       "NTSC signal character. Right-click for its settings."),
+                option(dvToggle, #selector(outputDVChanged),
+                       "DV colour space. Right-click for its settings.")
+            ]
+        }
+        let emulate = Controls.row(emulationOptions, spacing: Theme.BarSpacing.withinGroup)
 
         // STREAM — a readout, not a control. The route is chosen from the send glyph
         // under a preview, and a second way to start a stream would be a second thing
