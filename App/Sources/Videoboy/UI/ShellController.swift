@@ -1177,6 +1177,35 @@ final class ShellController {
         Log.info(.graph, "\(name) added to bus \(bus == .one ? "ONE" : "TWO")")
     }
 
+    /// Moves the beat lights, every frame, but only repaints when the beat changes.
+    ///
+    /// These used to live in the once-a-second status block, whose comment said "once
+    /// a second is plenty for a human reading them". True of a dropped-frame counter;
+    /// completely wrong for the one readout in that block that is RHYTHMIC. At 120bpm
+    /// a beat lands every half second, so sampling it once a second aliases — the
+    /// indicator skips beats and settles on the wrong one, and at tempos that do not
+    /// divide evenly into a second it drifts.
+    ///
+    /// Checked every frame so it lands on the right beat, repainted only when the
+    /// number actually changes so it is not four layer writes per frame for nothing.
+    private func updateBeatLights(from engine: Engine) {
+        guard engine.transport.isRunning else {
+            if lastDisplayedBeat != nil {
+                lastDisplayedBeat = nil
+                shell.toolbar.setBeat(-1)   // all four dim: nothing is counting
+            }
+            return
+        }
+        let beat = engine.transport.position(atHostTime: CACurrentMediaTime()).beat
+        guard beat != lastDisplayedBeat else { return }
+        lastDisplayedBeat = beat
+        shell.toolbar.setBeat(beat)
+    }
+
+    /// The beat the lights are currently showing, so they are only repainted on a
+    /// change. Nil when the transport is stopped.
+    private var lastDisplayedBeat: Int?
+
     /// Refreshes the scopes, well below frame rate.
     ///
     /// A scope reads a signal's shape, which does not change meaningfully between
@@ -1677,6 +1706,7 @@ final class ShellController {
 
         updateFadesAndCuts(from: engine)
         updateScopes(from: engine)
+        updateBeatLights(from: engine)
 
         // The status and transport readouts are cheap, but not free; once a second is
         // plenty for a human reading them, and it keeps text redraw off the hot path.
@@ -1688,10 +1718,6 @@ final class ShellController {
             )
             shell.statusBar.setMIDIDevice(engine.midi.connectedSourceNames.first)
             shell.grid.panels.settingsBarBody.setStreamStatus(router.streamSummary)
-            if engine.transport.isRunning {
-                let position = engine.transport.position(atHostTime: CACurrentMediaTime())
-                shell.toolbar.setBeat(position.beat)
-            }
 
             // The sync readout says what the clock is actually doing, including how
             // confident audio detection is — a number the performer needs when
