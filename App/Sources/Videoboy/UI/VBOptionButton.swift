@@ -123,6 +123,32 @@ final class VBOptionButton: NSControl {
     /// Called when the key is shift-clicked while detect is available.
     var onDetectRequested: ((String, ParamCode) -> Void)?
 
+    // MARK: Automation
+    //
+    // A key can be automated as well as learned. There is nothing to sweep BETWEEN on
+    // a button, so automation here means flipping on the beat at a chosen rate — the
+    // same ladder the shuttle and the fader sweeps walk, so one control idea covers
+    // faders and buttons rather than two.
+
+    /// How often this key flips, or nil when it is not automated.
+    var flipRate: PlaybackTiming? {
+        didSet {
+            guard flipRate != oldValue else { return }
+            needsDisplay = true
+            onFlipRateChanged?()
+        }
+    }
+
+    /// Called when the automation rate changes, so the panel can show its controls
+    /// and the controller can start or stop flipping it.
+    var onFlipRateChanged: (() -> Void)?
+
+    /// Whether this key is currently flipping on the beat.
+    var isAutomated: Bool {
+        guard let flipRate else { return false }
+        return SweepRate.beatsPerCycle(flipRate) != nil
+    }
+
     /// Lit while Shift is held and this key can be learned.
     var isDetectHighlighted = false {
         didSet {
@@ -132,6 +158,12 @@ final class VBOptionButton: NSControl {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // Command-option arms automation, the same gesture that marks a sweep on a
+        // fader. A button has no range to mark, so one press is the whole gesture.
+        if event.modifierFlags.contains(.option), event.modifierFlags.contains(.command) {
+            flipRate = isAutomated ? nil : .stepped(subdivision: .whole, frames: 1)
+            return
+        }
         if event.modifierFlags.contains(.shift),
            let slot = mappingSlot, let code = mappingCode {
             onDetectRequested?(slot, code)
@@ -190,6 +222,18 @@ final class VBOptionButton: NSControl {
             Theme.Color.panelBorder.setStroke()
             path.lineWidth = Theme.Metrics.hairline
             path.stroke()
+        }
+
+        // An automated key carries the same purple an animating fader does, so
+        // "this is moving on its own" looks the same wherever it appears.
+        if isAutomated {
+            Theme.Color.sweepMark.setStroke()
+            let outline = NSBezierPath(
+                roundedRect: bounds.insetBy(dx: 1, dy: 1),
+                xRadius: Theme.OptionButton.cornerRadius,
+                yRadius: Theme.OptionButton.cornerRadius)
+            outline.lineWidth = 1.5
+            outline.stroke()
         }
 
         let attributes: [NSAttributedString.Key: Any] = [

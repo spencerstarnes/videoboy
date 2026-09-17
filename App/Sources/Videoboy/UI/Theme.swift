@@ -347,6 +347,18 @@ enum Theme {
         /// enough to group the windows by eye, not enough to tint the picture.
         static let busTintStrength: CGFloat = 0.055
 
+        /// The BACKGROUND a panel belonging to a bus actually ends up painted.
+        ///
+        /// One place, so the Program fader's two halves can be the same colour as the
+        /// two panels they represent rather than a full-strength bus colour that
+        /// merely gestures at them. PanelView reads this too, so the fader and the
+        /// panel cannot drift apart.
+        static func panelFill(forBus bus: NSColor?) -> NSColor {
+            guard let bus else { return panelFillOpaque }
+            return panelFillOpaque.blended(withFraction: busTintStrength, of: bus)
+                ?? panelFillOpaque
+        }
+
         /// Sub Mix TWO identity, cyan (`--two`).
         static let busTwo = NSColor(srgbRed: 0x54 / 255.0, green: 0xc2 / 255.0, blue: 0xcf / 255.0, alpha: 1)
 

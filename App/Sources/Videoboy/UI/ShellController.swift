@@ -131,8 +131,10 @@ final class ShellController {
     @objc private func sourceAutoPlayToggled(_ sender: NSButton) {
         guard let raw = sender.identifier?.rawValue,
               let letter = raw.split(separator: "|").last.map(String.init) else { return }
-        autoPlayByChannel[letter] = sender.state == .on
-        Log.info(.app, "source \(letter) auto-play \(sender.state == .on ? "on" : "off")")
+        let isOn = sender.state == .on
+        autoPlayByChannel[letter] = isOn
+        shell.grid.panels.sourceBodies[letter]?.preview.setAutoPlayAppearance(on: isOn)
+        Log.info(.app, "source \(letter) auto-play \(isOn ? "on" : "off")")
     }
 
     /// Takes whatever is in a channel back out.
@@ -637,8 +639,7 @@ final class ShellController {
             body.preview.autoPlayCheckbox?.action = #selector(sourceAutoPlayToggled(_:))
             body.preview.autoPlayCheckbox?.identifier =
                 NSUserInterfaceItemIdentifier("autoplay|\(letter)")
-            body.preview.autoPlayCheckbox?.state =
-                preferences.preferences.playOnLoad ? .on : .off
+            body.preview.setAutoPlayAppearance(on: preferences.preferences.playOnLoad)
             autoPlayByChannel[letter] = preferences.preferences.playOnLoad
 
             body.onFillChanged = { [weak self] fill in
@@ -891,6 +892,7 @@ final class ShellController {
         for bus in buses {
             bus.body.setMappingSlot(bus.slot)
             bus.body.onSweepChanged = { [weak self] in self?.refreshArmedSweeps() }
+            bus.body.onButtonAutomationChanged = { [weak self] in self?.refreshAutomatedButtons() }
 
             // Blend lives on the fader panel now, and writes to the same slot the
             // composite above it reads — the control moved, the wiring did not.
@@ -1429,6 +1431,45 @@ final class ShellController {
     /// Drives the sweeps once, for checks that step the graph by hand rather than
     /// through the display link.
     func driveSweepsForChecks() { driveSweeps(from: engine) }
+
+    /// Flips every automated button on its beat.
+    ///
+    /// A button has no range to travel, so automating one means flipping it — and
+    /// flipping on a BOUNDARY rather than on a phase test, for the same reason the
+    /// shuttle steps that way: at slow rates a phase test fires for several frames
+    /// running, and at fast ones it can miss a boundary entirely between two frames.
+    private func flipAutomatedButtons(from engine: Engine) {
+        guard engine.transport.isRunning else { return }
+        let beats = engine.transport.beats(atHostTime: CACurrentMediaTime())
+
+        for (key, lastInterval) in automatedButtons {
+            guard let button = key.button, let rate = button.flipRate,
+                  let beatsPerFlip = SweepRate.beatsPerCycle(rate), beatsPerFlip > 0
+            else { continue }
+            let interval = (beats / beatsPerFlip).rounded(.down)
+            guard interval != lastInterval else { continue }
+            automatedButtons[key] = interval
+            button.isOn.toggle()
+            _ = button.target?.perform(button.action, with: button)
+        }
+    }
+
+    /// Automated buttons, with the flip interval each was last on.
+    private var automatedButtons: [ObjectKey: Double] = [:]
+
+    /// Rebuilds the automated-button list when one is armed or disarmed.
+    private func refreshAutomatedButtons() {
+        var found: [ObjectKey: Double] = [:]
+        for panel in [shell.grid.panels.faderABBody,
+                      shell.grid.panels.faderCDBody,
+                      shell.grid.panels.faderOneTwoBody] {
+            for key in VBOptionButton.all(in: panel) where key.isAutomated {
+                found[ObjectKey(key)] = automatedButtons[ObjectKey(key)] ?? -1
+            }
+        }
+        automatedButtons = found
+        Log.info(.param, "\(found.count) button(s) flipping on the beat")
+    }
 
     /// Drives every armed fader sweep, once a frame.
     ///
@@ -2026,6 +2067,7 @@ final class ShellController {
         updateBeatLights(from: engine)
         driveSweeps(from: engine)
         fireActionTriggers(from: engine)
+        flipAutomatedButtons(from: engine)
 
         // The status and transport readouts are cheap, but not free; once a second is
         // plenty for a human reading them, and it keeps text redraw off the hot path.
@@ -2054,4 +2096,21 @@ final class ShellController {
             }
         }
     }
+}
+
+/// A weak, hashable handle to a view, for keying per-control state.
+///
+/// Keyed by identity rather than by name because two panels can hold buttons with the
+/// same title, and a dictionary keyed on "CUT" would have them share one entry.
+struct ObjectKey: Hashable {
+    weak var button: VBOptionButton?
+    private let identifier: ObjectIdentifier
+
+    init(_ button: VBOptionButton) {
+        self.button = button
+        self.identifier = ObjectIdentifier(button)
+    }
+
+    static func == (lhs: ObjectKey, rhs: ObjectKey) -> Bool { lhs.identifier == rhs.identifier }
+    func hash(into hasher: inout Hasher) { hasher.combine(identifier) }
 }

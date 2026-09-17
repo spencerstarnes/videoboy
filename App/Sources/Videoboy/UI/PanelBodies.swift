@@ -217,7 +217,8 @@ final class SourcePanelBody: NSView {
 
     init(channel: String) {
         self.channel = channel
-        self.preview = MetalPreviewView(caption: channel, recordLabel: channel)
+        self.preview = MetalPreviewView(
+            caption: channel, recordLabel: channel, showsAutoPlay: true)
         super.init(frame: .zero)
 
         preview.translatesAutoresizingMaskIntoConstraints = false
@@ -672,6 +673,9 @@ final class FaderPanelBody: NSView {
     /// stop driving it.
     var onSweepChanged: (() -> Void)?
 
+    /// Called when a button on this panel is armed or disarmed for beat-flipping.
+    var onButtonAutomationChanged: (() -> Void)?
+
     private weak var cutButton: VBOptionButton?
     private weak var fadeButton: VBOptionButton?
     private weak var sweepRateKey: VBStepButton?
@@ -810,6 +814,7 @@ final class FaderPanelBody: NSView {
         beatToggle.toolTip = "Hold the next cut or fade until the beat. "
             + "Which beat is set by DIV in the transport readout."
         beatToggle.isTall = true
+        beatToggle.onFlipRateChanged = { [weak self] in self?.onButtonAutomationChanged?() }
         self.beatCutButton = beatToggle
         buttons.append(beatToggle)
 

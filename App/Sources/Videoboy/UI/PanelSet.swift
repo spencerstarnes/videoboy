@@ -114,7 +114,12 @@ final class PanelSet {
             // The ends match the keys above them. Saying "ONE" under a key marked "1"
             // is two names for one bus in the space of a centimetre.
             leftLabel: "1", rightLabel: "2",
-            leftColor: Theme.Color.busOne, rightColor: Theme.Color.busTwo,
+            // The PROGRAM fader's halves take the panel BACKGROUND colours of the two
+            // sides they select between, not the full-strength bus colours. This
+            // fader chooses between two windows; matching what those windows are
+            // painted says so more directly than a saturated stripe.
+            leftColor: Theme.Color.panelFill(forBus: Theme.Color.busOne),
+            rightColor: Theme.Color.panelFill(forBus: Theme.Color.busTwo),
             includesSwap: true,
             // Numbered, the way a switcher numbers its buses — and the way the record
             // indicators on the two sub-mix previews already read.

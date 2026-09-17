@@ -1266,6 +1266,78 @@ enum UISelfQA {
             ))
         }
 
+        // A MOVING FADER MUST NOT LEAVE A GHOST. Reported as "a little ghost bar"
+        // trailing an animating fader. Rendered here at one position and then another,
+        // asking whether anything from the first is still on screen — which is the
+        // difference between a drawing-order bug and a redraw bug, and they have
+        // different fixes.
+        do {
+            let fader = VBFader(frame: NSRect(x: 0, y: 0, width: 240, height: 20))
+            fader.minimum = 0
+            fader.maximum = 1
+            fader.mappingSlot = "mix.one"
+            fader.mappingCode = .crossfadeAB
+
+            /// Draws the fader into a fresh bitmap and returns the pixels.
+            func snapshot(at value: Double) -> NSBitmapImageRep? {
+                fader.value = value
+                guard let rep = fader.bitmapImageRepForCachingDisplay(in: fader.bounds) else {
+                    return nil
+                }
+                fader.cacheDisplay(in: fader.bounds, to: rep)
+                return rep
+            }
+
+            /// How bright the cap area is at a given fraction across the track.
+            func brightness(_ rep: NSBitmapImageRep, atFraction fraction: CGFloat) -> Int {
+                let x = Int(CGFloat(rep.pixelsWide) * fraction)
+                var total = 0
+                for y in 0..<rep.pixelsHigh {
+                    for dx in -2...2 {
+                        let px = min(max(x + dx, 0), rep.pixelsWide - 1)
+                        // Converted to a known colour space first: colorAt can hand
+                        // back a tagged colour whose components throw when read.
+                        if let colour = rep.colorAt(x: px, y: y)?
+                            .usingColorSpace(.deviceRGB) {
+                            total += Int((colour.redComponent + colour.greenComponent
+                                + colour.blueComponent) / 3 * 255)
+                        }
+                    }
+                }
+                return total
+            }
+
+            // The same again with a SWEEP ARMED, which is the state actually reported.
+            // A fader drawing a purple span and a moving cap has more on it than one
+            // simply being dragged, and the span is drawn every frame underneath.
+            fader.markSweepForChecks(first: 0.2, second: 0.8)
+            if let sweptLeft = snapshot(at: 0.25), let sweptRight = snapshot(at: 0.75) {
+                let capThere = brightness(sweptLeft, atFraction: 0.25)
+                let capGone = brightness(sweptRight, atFraction: 0.25)
+                check.record(AssertionResult(
+                    name: "an ANIMATING fader leaves no ghost where the cap was",
+                    passed: capGone < capThere * 3 / 4,
+                    detail: "swept position reads \(capGone) after moving, \(capThere) with the cap there"
+                ))
+            }
+            fader.clearSweep()
+
+            if let atLeft = snapshot(at: 0.15), let atRight = snapshot(at: 0.85) {
+                // The cap is the brightest thing on the track. After moving right,
+                // the left position must be back to track brightness — if the cap is
+                // still lit there, that is the ghost.
+                let leftWhenThere = brightness(atLeft, atFraction: 0.15)
+                let leftAfterMoving = brightness(atRight, atFraction: 0.15)
+
+                check.record(AssertionResult(
+                    name: "a fader leaves no ghost of the cap at its previous position",
+                    passed: leftAfterMoving < leftWhenThere * 3 / 4,
+                    detail: "left position reads \(leftAfterMoving) after moving away, "
+                        + "\(leftWhenThere) while the cap was there"
+                ))
+            }
+        }
+
         // A SWEEP ON A CROSSFADER IS ACTUALLY DRIVEN. The crossfaders took the
         // gesture and drew the bar, so a sweep LOOKED armed — but only the FX chains
         // were scanned by the driver, so nothing moved them. A control that says it

@@ -83,18 +83,13 @@ final class PanelView: NSView {
         // Opaque, so the canvas behind cannot show through. The canvas pulses on the
         // beat; a translucent panel passes that straight through and the pulse
         // appears inside the window instead of only around it.
+        // Through Theme, so the Program fader's halves are literally the same colour
+        // as the panels they stand for rather than an approximation of them.
         let fill: NSColor
         switch bus {
-        case .one:
-            fill = Theme.Color.panelFillOpaque.blended(
-                withFraction: Theme.Color.busTintStrength, of: Theme.Color.busOne)
-                ?? Theme.Color.panelFillOpaque
-        case .two:
-            fill = Theme.Color.panelFillOpaque.blended(
-                withFraction: Theme.Color.busTintStrength, of: Theme.Color.busTwo)
-                ?? Theme.Color.panelFillOpaque
-        case .none:
-            fill = Theme.Color.panelFillOpaque
+        case .one: fill = Theme.Color.panelFill(forBus: Theme.Color.busOne)
+        case .two: fill = Theme.Color.panelFill(forBus: Theme.Color.busTwo)
+        case .none: fill = Theme.Color.panelFill(forBus: nil)
         }
         layer?.backgroundColor = fill.cgColor
         layer?.borderColor = Theme.Color.panelBorder.cgColor

@@ -174,6 +174,15 @@ final class VBFader: NSControl {
         return found + view.subviews.flatMap { all(in: $0) }
     }
 
+    /// Sets both marks directly, for checks that need an armed fader without
+    /// synthesising two modified clicks.
+    func markSweepForChecks(first: Double, second: Double) {
+        sweepFirst = first
+        sweepSecond = second
+        needsDisplay = true
+        onSweepChanged?()
+    }
+
     /// Clears both marks. Exposed to the responder chain so the row's ✕ can call it.
     @objc func clearSweep() {
         guard sweepFirst != nil || sweepSecond != nil else { return }
