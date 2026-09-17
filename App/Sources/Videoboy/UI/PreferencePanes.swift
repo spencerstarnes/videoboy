@@ -329,4 +329,182 @@ extension PreferencesWindowController {
         view.heightAnchor.constraint(equalToConstant: height).isActive = true
         return view
     }
+    // MARK: - EMU
+
+    /// Emulated machines, and the files they need.
+    ///
+    /// ── WHY THIS PANE IS MOSTLY A LIST OF WHAT IS MISSING ───────────────────────
+    ///
+    /// Because that is the honest state of emulation on a fresh machine, and because
+    /// every one of the missing things has to be supplied by the person rather than
+    /// fetched. A libretro core is GPL and runs out of process; a Kickstart ROM is
+    /// copyrighted; the software is on a disc they own. This app downloads none of it
+    /// and bundles none of it, so the useful thing a settings pane can do is say
+    /// exactly what is absent and where to put it.
+    func makeEmuPane() -> NSView {
+        var rows: [NSView] = [header(.emu), spacer(14)]
+
+        // The emulator itself.
+        let installed = FSUAEInstallation.isInstalled()
+        rows.append(field("Emulator", Controls.label(
+            installed ? "FS-UAE — installed" : "FS-UAE — not installed",
+            color: installed ? Theme.Color.textSecondary : Theme.Color.tallyOnAir)))
+        if !installed {
+            rows.append(Controls.note(FSUAEInstallation.installationHint, width: Self.noteWidth))
+        }
+
+        // Firmware. AROS is why this works at all without a Kickstart.
+        let kickstarts = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/FS-UAE/Kickstarts")
+        let roms = ((try? FileManager.default.contentsOfDirectory(atPath: kickstarts.path)) ?? [])
+            .filter { $0.lowercased().hasSuffix(".rom") }
+        rows.append(field("Kickstart", Controls.label(
+            roms.isEmpty ? "None — running on AROS" : roms.joined(separator: ", "),
+            color: Theme.Color.textSecondary)))
+        rows.append(Controls.note(
+            roms.isEmpty
+                ? "FS-UAE has a built-in AROS ROM, which is why a machine boots with no "
+                    + "Kickstart at all. AROS is a reimplementation, and some 1990s "
+                    + "software notices — Scala MM300's graphics device will not load "
+                    + "under it. A real Kickstart 3.x fixes that. Put one in "
+                    + "Documents/FS-UAE/Kickstarts."
+                : "A real Kickstart is in use.",
+            width: Self.noteWidth))
+
+        rows.append(spacer(10))
+
+        // Cores, for the platforms that use them.
+        let library = CoreLibrary(
+            coresDirectory: EmulatorController.workspace.appendingPathComponent("cores"),
+            systemDirectory: EmulatorController.workspace.appendingPathComponent("system"))
+        let statuses = library.status()
+        rows.append(field("Cores", Controls.column(
+            statuses.map { status in
+                Controls.label(
+                    status.summary,
+                    color: status.isRunnable ? Theme.Color.textSecondary : Theme.Color.textTertiary)
+            }, spacing: 2)))
+
+        rows.append(spacer(10))
+
+        // The box for adding things.
+        let addRow = Controls.row([
+            Controls.button("Add core…", target: self, action: #selector(addCorePressed)),
+            Controls.button("Add ROM…", target: self, action: #selector(addROMPressed)),
+            Controls.button("Add disc…", target: self, action: #selector(addDiscPressed)),
+            Controls.spacer()
+        ], spacing: 6)
+        rows.append(field("Add", addRow))
+        rows.append(Controls.note(
+            "Files are COPIED into Videoboy's own Application Support folder, never "
+                + "moved and never uploaded. Discs are referenced where they are. "
+                + "Deleting that folder undoes all of it.",
+            width: Self.noteWidth))
+
+        rows.append(spacer(10))
+        rows.append(field("Workspace", Controls.button(
+            "Reveal in Finder", target: self, action: #selector(revealWorkspacePressed))))
+
+        return Controls.column(rows, spacing: 8)
+    }
+
+    @objc func addCorePressed() {
+        // A libretro core. Named, not fetched — and it runs OUT OF PROCESS, because it
+        // is GPL and this app is distributed.
+        chooseFile(
+            title: "Choose a libretro core",
+            extensions: ["dylib", "so"],
+            into: "cores")
+    }
+
+    @objc func addROMPressed() {
+        chooseFile(
+            title: "Choose a system ROM",
+            extensions: ["rom", "bin", "img"],
+            into: "system")
+    }
+
+    @objc func addDiscPressed() {
+        // Discs are REFERENCED, not copied: they are large, they are the person's
+        // media, and a second copy of a 650MB image helps nobody.
+        let panel = NSOpenPanel()
+        panel.title = "Choose a disc image"
+        panel.allowedContentTypes = []
+        panel.allowsOtherFileTypes = true
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        store.preferences.emulatorDiscPath = url.path
+        Log.info(.titler, "emulator disc set to \(url.lastPathComponent)")
+    }
+
+    @objc func revealWorkspacePressed() {
+        let workspace = EmulatorController.workspace
+        try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([workspace])
+    }
+
+    /// Copies a chosen file into the workspace, and says so.
+    private func chooseFile(title: String, extensions: [String], into folder: String) {
+        let panel = NSOpenPanel()
+        panel.title = title
+        panel.canChooseDirectories = false
+        panel.allowsOtherFileTypes = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let directory = EmulatorController.workspace.appendingPathComponent(folder)
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true)
+            let destination = directory.appendingPathComponent(url.lastPathComponent)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: url, to: destination)
+            Log.info(.titler, "added \(url.lastPathComponent) to \(folder)/")
+        } catch {
+            Log.error(.titler, "could not add \(url.lastPathComponent): "
+                + error.localizedDescription)
+        }
+    }
+
+    // MARK: - Macros & AI
+
+    /// Sequences of commands, and letting a model drive them.
+    ///
+    /// NOT BUILT, and shown as such rather than omitted. It is here now because the
+    /// shape it will take is already decided by what exists: the translation layer
+    /// turns a 0...1 value into a real command, so a macro is a NAMED LIST OF THOSE,
+    /// and a model driving it produces the same values a fader would. Neither needs a
+    /// second way into the machine, which is the thing worth getting right early.
+    func makeMacrosPane() -> NSView {
+        var rows: [NSView] = [header(.macros), spacer(14)]
+
+        rows.append(field("Macros", Controls.label(
+            "Not built yet", color: Theme.Color.textTertiary)))
+        rows.append(Controls.note(
+            "A macro will be a named list of commands — the same commands the EMU "
+                + "faders already send. Recording one means capturing what you do; "
+                + "playing one back means sending it again, on the beat if you want.",
+            width: Self.noteWidth))
+
+        rows.append(spacer(10))
+        rows.append(field("AI control", Controls.label(
+            "Not built yet", color: Theme.Color.textTertiary)))
+        rows.append(Controls.note(
+            "The groundwork is done rather than pending: every EMU control takes a "
+                + "value from 0 to 1 and declares in words what it does to the "
+                + "software. That is already the interface a model would drive, so "
+                + "this needs no new path into the machine — which is the part that "
+                + "would have been hard to change later.",
+            width: Self.noteWidth))
+
+        rows.append(spacer(10))
+        rows.append(Controls.note(
+            "Nothing here sends anything anywhere. When it is built, any model use "
+                + "will be opt-in and will say what it is sending.",
+            width: Self.noteWidth))
+
+        return Controls.column(rows, spacing: 8)
+    }
+
 }

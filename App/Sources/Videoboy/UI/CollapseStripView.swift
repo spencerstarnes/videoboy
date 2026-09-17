@@ -82,6 +82,9 @@ final class CollapseStripView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard isHovering || isCollapsed else { return }
+        // Same hazard as VBBlendButton: this draws a chevron with move/line, and a
+        // zero-sized view makes those points infinite.
+        guard bounds.width > 4, bounds.height > 4 else { return }
 
         // A faint wash under the pointer, so the target's EXTENT is visible and not
         // only its middle. Without it the chevron reads as a tiny button rather than

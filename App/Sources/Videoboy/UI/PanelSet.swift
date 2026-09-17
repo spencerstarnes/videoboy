@@ -56,6 +56,11 @@ final class PanelSet {
     let settingsBarBody: SettingsBarPanelBody
     let effectsOneBody: EffectChainPanelBody
     let effectsTwoBody: EffectChainPanelBody
+    /// The emulated machine — one for the app, driven from the EMU tab.
+    let emulator: EmulatorController
+    /// The EMU tab's view, so the shell can reach it when the machine changes.
+    let emuBrowser: EmuBrowserView
+
     let libraryOneBody: LibraryPanelBody
     let libraryTwoBody: LibraryPanelBody
     let assetBrowserBody: LibraryPanelBody
@@ -406,8 +411,15 @@ final class PanelSet {
             items: sampleItems, columns: 3, showsTabs: false, playlistChannels: ["A", "B"])
         libraryTwoBody = LibraryPanelBody(
             items: sampleItems, columns: 3, showsTabs: false, playlistChannels: ["C", "D"])
+        // The emulated machine, and the EMU tab that drives it. Owned here because the
+        // asset browser is built here and the tab has to exist when it is.
+        emulator = EmulatorController()
+        let emuBrowser = EmuBrowserView(controller: emulator)
+        self.emuBrowser = emuBrowser
+
         assetBrowserBody = LibraryPanelBody(
-            items: sampleItems + PanelSet.futureSourceKinds(), columns: 6, showsTabs: true)
+            items: sampleItems + PanelSet.futureSourceKinds(), columns: 6, showsTabs: true,
+            emuView: emuBrowser)
         // Bus-coloured like every other A/B and C/D panel. These two were the only
         // pair in the window carrying a bus in their NAME while showing none of the
         // colour that says which bus it is — so the one place you go to put a clip

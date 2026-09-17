@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T23:15:19Z
+when:     2026-09-17T23:43:20Z
 core:     0.3.0
 
 notes:
@@ -12,31 +12,33 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
   adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 10.99 ms, p95 13.13 ms, worst 13.88 ms, budget 33.37 ms
+  frame time with everything on: mean 11.63 ms, p95 13.36 ms, worst 13.97 ms, budget 33.37 ms
 
-assertions (88/88 passed):
+assertions (90/90 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 815.6
+  PASS  wide is not blank — luminance variance 805.8
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 796.5
+  PASS  compact is not blank — luminance variance 769.1
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 1008.2
-  PASS  collapsed-left is not blank — luminance variance 734.7
-  PASS  collapsed-both-edges is not blank — luminance variance 633.1
-  PASS  collapsed-sources-only is not blank — luminance variance 836.4
-  PASS  collapsed-effects-only is not blank — luminance variance 612.0
+  PASS  narrow is not blank — luminance variance 956.9
+  PASS  collapsed-left is not blank — luminance variance 704.5
+  PASS  collapsed-both-edges is not blank — luminance variance 597.9
+  PASS  collapsed-sources-only is not blank — luminance variance 827.7
+  PASS  collapsed-effects-only is not blank — luminance variance 585.6
   PASS  holding Shift lights the mappable faders — 70 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
   PASS  a driven fader's bar follows the value driving it — 8 distinct bar positions over eight LFO steps
   PASS  removing the driver clears the mark — 0 faders still marked
-  PASS  preferences save has content — luminance variance 157.6
-  PASS  preferences defaults has content — luminance variance 314.1
-  PASS  preferences outputs has content — luminance variance 247.1
-  PASS  preferences inputs has content — luminance variance 157.5
-  PASS  preferences hotKeys has content — luminance variance 163.1
-  PASS  preferences midiMapping has content — luminance variance 137.0
+  PASS  preferences save has content — luminance variance 166.3
+  PASS  preferences defaults has content — luminance variance 322.5
+  PASS  preferences outputs has content — luminance variance 255.4
+  PASS  preferences inputs has content — luminance variance 175.3
+  PASS  preferences hotKeys has content — luminance variance 171.8
+  PASS  preferences midiMapping has content — luminance variance 145.8
+  PASS  preferences emu has content — luminance variance 335.8
+  PASS  preferences macros has content — luminance variance 262.7
   PASS  double-click fills a pair then comes back round — channels offered: A, B, A
   PASS  switching pair starts at that pair's first channel — offered C after switching to C/D
   PASS  library thumbnails decode real frames — 12 of 30 thumbnails have a picture
@@ -81,8 +83,8 @@ assertions (88/88 passed):
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
   PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 13.88 ms against a 33.37 ms budget (mean 10.99, p95 13.13)
-  PASS  frame time is even, not just fast on average — worst is 1.3x the mean
+  PASS  no frame misses the budget with every effect running — worst frame 13.97 ms against a 33.37 ms budget (mean 11.63, p95 13.36)
+  PASS  frame time is even, not just fast on average — worst is 1.2x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there
   PASS  a crossfader accepts sweep marks — 0.19...0.81

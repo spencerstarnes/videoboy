@@ -39,6 +39,7 @@ final class ShellController {
         wireToolbar()
         wireSettingsBar()
         wireRecordIndicators()
+        wireEmulator()
         wireLibraries()
         refreshPlaylists()
         wireRouting()
@@ -609,6 +610,12 @@ final class ShellController {
             body.onGeneratorSelected = { [weak self] kind in
                 self?.setGenerator(kind, channel: letter)
             }
+            body.onEmulatorSelected = { [weak self] in
+                self?.assignEmulator(toChannel: letter)
+            }
+            body.onCameraSelected = { [weak self] in
+                self?.assignCamera(toChannel: letter)
+            }
             body.onSeekToStart = { [weak self] in
                 self?.engine.sources[letter]?.seek(toNormalised: 0)
             }
@@ -686,6 +693,64 @@ final class ShellController {
             code: .positionX,
             latencyInFrames: engine.generators[letter]?.latencyInFrames ?? 0
         ))
+    }
+
+    /// Connects the EMU tab to the graph.
+    ///
+    /// Called once, at startup: dragging the machine onto a source assigns it, and the
+    /// machine coming up points whichever channels are already on it at the new host.
+    private func wireEmulator() {
+        let panels = shell.grid.panels
+        panels.emuBrowser.onAssignedToChannel = { [weak self] letter in
+            self?.assignEmulator(toChannel: letter)
+        }
+        panels.emulator.onMachineReady = { [weak self] host in
+            // The node keeps whichever host it was given, so a machine started AFTER a
+            // channel was pointed at it still reaches that channel. Without this,
+            // assigning first and starting second gives a permanently empty source.
+            self?.engine.emulator?.host = host
+        }
+    }
+
+    /// Points a channel at the emulated machine.
+    ///
+    /// Starts it if it is not already running, because choosing "Amiga" from a source
+    /// menu and getting an empty rectangle is indistinguishable from the feature being
+    /// broken. If it cannot start, the EMU tab says why — so the menu choice still
+    /// leads somewhere that explains itself.
+    private func assignEmulator(toChannel letter: String) {
+        let emulator = shell.grid.panels.emulator
+
+        if !emulator.isRunning {
+            guard emulator.isSetUp else {
+                Log.warn(.titler, "channel \(letter) asked for the Amiga, but no machine "
+                    + "has been set up — see the EMU tab in the asset browser")
+                shell.grid.panels.emuBrowser.refresh()
+                return
+            }
+            if emulator.start() { emulator.synchronise() }
+        }
+
+        engine.emulator?.host = emulator.host
+        engine.setChannelSource(.emulator, channel: letter)
+        shell.grid.panels.emuBrowser.refresh()
+    }
+
+    /// Points a channel at the camera.
+    ///
+    /// The picker in Settings records WHICH camera; this is what asks for its picture.
+    /// A live capture session is not built yet, so this reports plainly rather than
+    /// switching the channel to a node that produces nothing — which would look
+    /// exactly like a broken camera.
+    private func assignCamera(toChannel letter: String) {
+        let device = engine.captureDeviceName
+        guard let device, !device.isEmpty else {
+            Log.warn(.app, "channel \(letter) asked for the camera, but none is chosen — "
+                + "pick one in Settings > Inputs")
+            return
+        }
+        Log.warn(.app, "channel \(letter) asked for \(device); a live capture session is "
+            + "not built yet, so the channel is unchanged")
     }
 
     private func togglePlayback(channel letter: String) {
@@ -957,6 +1022,55 @@ final class ShellController {
             self?.pendingCuts.removeValue(forKey: GraphTopology.primary)
             self?.engine.registry.setValue(position, slot: GraphTopology.primary, code: .crossfadeOneTwo)
         }
+    }
+
+    /// Lights each preview by HOW MUCH OF IT IS ON AIR.
+    ///
+    /// ── WHY THIS IS MULTIPLIED DOWN THE CHAIN ───────────────────────────────────
+    ///
+    /// The obvious version lights A when the A/B fader is left. It is also wrong: if
+    /// the programme fader is all the way over on C/D, then A is not on air at all, and
+    /// a lit tally over a picture nobody can see is worse than no tally — it is a
+    /// confident wrong answer to the one question this is for.
+    ///
+    /// So a source's level is its own fader's share MULTIPLIED by its sub-mix's share
+    /// of the programme. Both faders have to favour you before you glow.
+    ///
+    /// ── AND WHY IT IS READ FROM THE REGISTRY, NOT FROM THE FADER ────────────────
+    ///
+    /// Because the fader is not the only thing that moves it. A cut, a timed fade, a
+    /// MIDI CC, an LFO and a beat-synced sweep all write to the registry, and a tally
+    /// driven from the view would sit still through every one of them. The registry is
+    /// where the truth is, and three lookups a frame is nothing.
+    private func updateTallies(from engine: Engine) {
+        let panels = shell.grid.panels
+
+        func value(_ slot: String, _ code: ParamCode, default fallback: Double) -> Double {
+            engine.registry.value(slot: slot, code: code) ?? fallback
+        }
+
+        // 0 is the left-hand source of each pair, 1 the right-hand one.
+        let ab = value(GraphTopology.subMixOne, .crossfadeAB, default: 0.5)
+        let cd = value(GraphTopology.subMixTwo, .crossfadeCD, default: 0.5)
+        let program = value(GraphTopology.primary, .crossfadeOneTwo, default: 0.5)
+
+        let oneShare = 1 - program
+        let twoShare = program
+
+        // The sub-mixes: their share of the programme.
+        panels.subMixOneBody.preview.onAirLevel = oneShare
+        panels.subMixTwoBody.preview.onAirLevel = twoShare
+
+        // The sources: their share of their own bus, times their bus's share of the
+        // programme.
+        panels.sourceBodies["A"]?.preview.onAirLevel = (1 - ab) * oneShare
+        panels.sourceBodies["B"]?.preview.onAirLevel = ab * oneShare
+        panels.sourceBodies["C"]?.preview.onAirLevel = (1 - cd) * twoShare
+        panels.sourceBodies["D"]?.preview.onAirLevel = cd * twoShare
+
+        // PROGRAM is the output. It is always fully on air, by definition — there is
+        // nothing downstream of it to fade it away.
+        panels.programBody.preview.onAirLevel = 1
     }
 
     /// Which slot each param code in the Sub Mix 1 chain belongs to.
@@ -2127,6 +2241,7 @@ final class ShellController {
         }
 
         updateFadesAndCuts(from: engine)
+        updateTallies(from: engine)
         updateScopes(from: engine)
         updateBeatLights(from: engine)
         driveSweeps(from: engine)

@@ -377,10 +377,17 @@ enum Theme {
         /// with anything already spoken for: amber and cyan are the two buses, yellow
         /// is detect-arming, red is on-air, and the accent is a driven parameter.
         /// Purple was the colour left that reads at a glance.
-        static let sweepMark = NSColor(srgbRed: 0xa9 / 255.0, green: 0x6c / 255.0, blue: 0xf0 / 255.0, alpha: 0.85)
+        /// NEON rather than lavender. The first purple was desaturated enough to read
+        /// as grey-violet against a dark panel — a colour that says "disabled" before
+        /// it says "driving itself". Pushing the blue to full and dropping the green
+        /// takes it to the magenta end, where it glows instead of sitting.
+        static let sweepMark = NSColor(srgbRed: 0xc0 / 255.0, green: 0x3c / 255.0, blue: 0xff / 255.0, alpha: 0.9)
 
         /// The same purple for the arming outline, which pulses rather than sits.
-        static let sweepArming = NSColor(srgbRed: 0xa9 / 255.0, green: 0x6c / 255.0, blue: 0xf0 / 255.0, alpha: 1)
+        ///
+        /// Brighter still, because an outline is a thin line and a thin line loses more
+        /// apparent saturation than a filled bar does.
+        static let sweepArming = NSColor(srgbRed: 0xd0 / 255.0, green: 0x5a / 255.0, blue: 0xff / 255.0, alpha: 1)
 
         /// What a FOCUS control turns when it is the one receiving your next action.
         ///

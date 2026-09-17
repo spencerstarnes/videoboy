@@ -20,6 +20,12 @@ import VideoboyCore
 enum ChannelSourceKind {
     case file
     case generator
+    /// The emulated machine — ONE node, shared.
+    ///
+    /// Shared rather than one per channel because there is one Amiga. Pointing two
+    /// channels at it gives both the same picture, which is what a real machine with
+    /// one video output does, and what makes a cut between them meaningful.
+    case emulator
 }
 
 /// Where the musical clock's tempo comes from (SPEC 4b).
@@ -55,6 +61,9 @@ final class Engine {
 
     /// The node that puts a scope into the programme picture, when SEND is lit.
     private(set) var scopeOverlay: ScopeOverlayNode?
+
+    /// The emulated machine, as a source any channel can be pointed at.
+    private(set) var emulator: EmulatedTitlerNode?
 
     /// Bus effects, one chain per sub-mix (SPEC 2's `bus FX`). The composite codec is
     /// the analog character; echo and feedback sit after it.
@@ -314,6 +323,17 @@ final class Engine {
             from: Engine.busCodecProgramSlot, to: Engine.scopeOverlaySlot, inputIndex: 0)
         self.scopeOverlay = scopeOverlay
 
+        // The emulated machine, created up front for the same reason the generators
+        // are: so it exists, is addressable and can be assigned to a channel without
+        // the graph being rebuilt. It renders nothing until a machine is running,
+        // which is the state it is in on any machine with no emulator installed.
+        let emulator = EmulatedTitlerNode(
+            identifier: Engine.emulatorSlot,
+            host: UnavailableEmulatorHost(reason: FSUAEInstallation.installationHint),
+            context: metal)
+        graph.add(emulator)
+        self.emulator = emulator
+
         // A generator per channel, created up front so its parameters are registered
         // and mappable whether or not it is currently the channel's source.
         for letter in ["A", "B", "C", "D"] {
@@ -395,6 +415,10 @@ final class Engine {
 
     /// The scope overlay, last of all — see `scopeOverlaySlot`.
     static let scopeOverlaySlot = "out.scopeoverlay"
+
+    /// The emulated machine, as a source. One for the whole app — see
+    /// `ChannelSourceKind.emulator`.
+    static let emulatorSlot = "source.emu"
 
     /// The last node in the graph — what output and the programme preview show.
     ///
@@ -691,22 +715,38 @@ final class Engine {
     /// generator renders from a different node entirely, and a preview wired to the
     /// file node shows an empty rectangle while the generator plays into the bus.
     func sourceSlot(forChannel letter: String) -> String {
-        channelSourceKinds[letter] == .generator
-            ? Engine.generatorSlot(forChannel: letter)
-            : Engine.slot(forChannel: letter)
+        Engine.upstreamSlot(for: channelSourceKinds[letter] ?? .file, channel: letter)
+    }
+
+    /// Which node feeds a channel, for a given kind of source.
+    ///
+    /// One function rather than the same conditional in two places: the preview asked
+    /// one way and the graph connected the other, and the two agreeing is the whole
+    /// reason a channel's picture and its preview show the same thing.
+    static func upstreamSlot(for kind: ChannelSourceKind, channel letter: String) -> String {
+        switch kind {
+        case .file: Engine.slot(forChannel: letter)
+        case .generator: Engine.generatorSlot(forChannel: letter)
+        case .emulator: Engine.emulatorSlot
+        }
     }
 
     func setChannelSource(_ kind: ChannelSourceKind, channel letter: String) {
         let subMix = GraphTopology.subMix(forChannel: Engine.slot(forChannel: letter))
         // A and C are the lower layer of their bus; B and D the upper.
         let inputIndex = (letter == "A" || letter == "C") ? 0 : 1
-        let newUpstream = kind == .file
-            ? Engine.slot(forChannel: letter)
-            : Engine.generatorSlot(forChannel: letter)
+        let newUpstream = Engine.upstreamSlot(for: kind, channel: letter)
 
         graph.connect(from: newUpstream, to: subMix, inputIndex: inputIndex)
         channelSourceKinds[letter] = kind
-        Log.info(.graph, "channel \(letter) now sourced from \(kind == .file ? "a file" : "a generator")")
+
+        let description: String
+        switch kind {
+        case .file: description = "a file"
+        case .generator: description = "a generator"
+        case .emulator: description = "the emulator"
+        }
+        Log.info(.graph, "channel \(letter) now sourced from \(description)")
     }
 
     /// Switches the clock source, starting or stopping audio analysis as needed.

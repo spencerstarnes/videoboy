@@ -570,7 +570,11 @@ final class PreviewPanelBody: NSView {
     /// - Parameter showsBlendControls: true for the composites that carry a blend
     ///   mode — the two sub-mixes and the program.
     init(caption: String, showsBlendControls: Bool = false, recordLabel: String? = nil) {
-        self.preview = MetalPreviewView(caption: caption, recordLabel: recordLabel)
+        // No send glyph on the picture: these are the big previews, the ones actually
+        // being watched, and the bar below has room for it. See the row built further
+        // down.
+        self.preview = MetalPreviewView(
+            caption: caption, recordLabel: recordLabel, showsRoutingOverlay: false)
         super.init(frame: .zero)
         preview.translatesAutoresizingMaskIntoConstraints = false
         addSubview(preview)
@@ -586,11 +590,31 @@ final class PreviewPanelBody: NSView {
             // The bus interchange codec. A mixed bus is a texture with no bitstream,
             // so data effects on it are only possible if it is re-encoded first —
             // this popup is that choice, and it decides which data effects appear.
+            //
+            // IT IS NOT ON THE BAR ANY MORE. It sat at the left of this row as a
+            // full-width popup beside seven scope keys, which is a settings control
+            // taking the most prominent slot on a row of performance controls — and it
+            // made the spacing of everything beside it strange. It moved to the
+            // preview's CONTEXT MENU, which is where this app already puts the detail
+            // behind a control. Removed outright it would have made bus data effects
+            // unreachable, which is a different thing from moving them.
             let interchange = Controls.popUp(
                 InterchangeCodec.allCases.map(\.displayName),
                 target: self, action: #selector(interchangeChanged(_:))
             )
             interchangePopUp = interchange
+
+            // The send glyph, off the picture and onto the bar.
+            let routing = Controls.glyphButton(
+                "􀝪", tooltip: "Send this to a display",
+                target: self, action: #selector(routingPressed(_:)))
+            if let image = NSImage(
+                systemSymbolName: "airplayvideo", accessibilityDescription: "Send to a display") {
+                image.isTemplate = true
+                routing.image = image
+                routing.title = ""
+            }
+            routing.contentTintColor = Theme.Color.textTertiary
 
             // ── The scope keys ──────────────────────────────────────────────────
             //
@@ -641,12 +665,10 @@ final class PreviewPanelBody: NSView {
                     + "air as part of the image.")
             scopeRow.append(send)
 
-            let row = Controls.row([
-                Controls.label("Data", font: Theme.Font.tinyLabel,
-                               color: Theme.Color.textTertiary, holdsWidth: true),
-                interchange,
-                Controls.spacer()
-            ] + scopeRow, spacing: 3)
+            // The send glyph, then everything else pushed right. One spacer, so the
+            // scope keys sit as one block against the trailing edge instead of being
+            // spread by a popup that is no longer there.
+            let row = Controls.row([routing, Controls.spacer()] + scopeRow, spacing: 3)
             row.translatesAutoresizingMaskIntoConstraints = false
             addSubview(row)
 
@@ -709,6 +731,42 @@ final class PreviewPanelBody: NSView {
         button.action = #selector(scopeKeyPressed(_:))
         scopeKeys[key] = button
         return button
+    }
+
+    /// The bar's send glyph. Forwards to the preview's own routing callback, so the
+    /// shell wires ONE thing whether the glyph is on the picture or on the bar.
+    @objc private func routingPressed(_ sender: NSButton) {
+        preview.onRoutingRequested?(sender)
+    }
+
+    /// The interchange codec, behind a right-click on the picture.
+    ///
+    /// This app's rule for detail behind a control is the context menu, and this is
+    /// that: a setting you touch when setting a bus up and then leave alone, which has
+    /// no business occupying the most prominent slot on a row of performance keys.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard interchangePopUp != nil else { return super.menu(for: event) }
+        let menu = NSMenu()
+        let heading = NSMenuItem(title: "Bus data codec", action: nil, keyEquivalent: "")
+        heading.isEnabled = false
+        menu.addItem(heading)
+        for (index, codec) in InterchangeCodec.allCases.enumerated() {
+            let item = NSMenuItem(
+                title: codec.displayName,
+                action: #selector(interchangeChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.state = index == (interchangePopUp?.indexOfSelectedItem ?? 0) ? .on : .off
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func interchangeChosen(_ sender: NSMenuItem) {
+        guard let popUp = interchangePopUp,
+              sender.tag >= 0, sender.tag < popUp.numberOfItems else { return }
+        popUp.selectItem(at: sender.tag)
+        interchangeChanged(popUp)
     }
 
     @objc private func scopeKeyPressed(_ sender: VBOptionButton) {
@@ -796,7 +854,7 @@ final class FaderPanelBody: NSView {
     private var leftKey: VBBusButton?
     private var rightKey: VBBusButton?
     private var beatCutButton: VBOptionButton?
-    private var rateControl: NSSegmentedControl?
+    private var rateControl: VBSlideToggle?
 
     /// Called when CUT is pressed: take the other source, now.
     var onCutRequested: (() -> Void)?
@@ -842,20 +900,12 @@ final class FaderPanelBody: NSView {
     /// Called when this bus's blend mode changes.
     var onBlendModeChanged: ((BlendMode) -> Void)?
 
-    private var blendPopUp: NSPopUpButton?
+    /// The blend icon, whose menu pops out beside it.
+    private var blendButton: VBBlendButton?
 
     /// Points the popup at a mode without firing its action.
     func setBlendMode(_ mode: BlendMode) {
-        // `rawValue` is the shader's mode ID and has nothing to do with where the item
-        // sits in a grouped menu. Selecting by title is the only thing that stays true
-        // when the menu is reordered.
-        blendPopUp?.selectItem(withTitle: mode.displayName)
-    }
-
-    @objc private func blendModeChanged(_ sender: NSPopUpButton) {
-        guard let title = sender.titleOfSelectedItem,
-              let mode = BlendMode.allCases.first(where: { $0.displayName == title }) else { return }
-        onBlendModeChanged?(mode)
+        blendButton?.mode = mode
     }
     private var leftName = ""
     private var rightName = ""
@@ -960,30 +1010,27 @@ final class FaderPanelBody: NSView {
         // the system font — it cannot be tinted, it does not match the flat monochrome
         // language of every other key in this row, and it renders differently across
         // OS versions. These are real icons and take the control's own colour.
-        let rateControl = Controls.segmented(
-            ["", "", ""], selected: 1, target: self, action: #selector(rateChanged(_:)))
         let rateSymbols = [
             ("tortoise.fill", "Slow fade"),
             ("minus", "Medium fade"),
             ("hare.fill", "Fast fade")
         ]
-        for (index, entry) in rateSymbols.enumerated() {
-            if let image = NSImage(
-                systemSymbolName: entry.0, accessibilityDescription: entry.1) {
-                image.isTemplate = true
-                rateControl.setImage(image, forSegment: index)
-                rateControl.setLabel("", forSegment: index)
-            }
+        let rateImages: [NSImage] = rateSymbols.compactMap {
+            guard let image = NSImage(systemSymbolName: $0.0, accessibilityDescription: $0.1)
+            else { return nil }
+            image.isTemplate = true
+            return image
         }
-        for (index, entry) in rateSymbols.enumerated() {
-            rateControl.setToolTip(entry.1, forSegment: index)
-        }
-        // The same height as CUT, FADE and BEAT. It belongs to that group — it sets
-        // how long FADE takes — and a control half the height of the key it modifies
-        // reads as a lesser thing than it is. `.regular` rather than `.small` so the
-        // bezel fills the height instead of floating inside a stretched one.
-        rateControl.controlSize = .regular
-        rateControl.translatesAutoresizingMaskIntoConstraints = false
+        // A slide toggle rather than a segmented control. A rate HAS A POSITION — slow,
+        // middle, fast — and a knob that travels to it says that; three cells that take
+        // turns lighting up say "three buttons that happen to be touching". It is also
+        // the only way to get this the same height as CUT, FADE and BEAT: AppKit's
+        // rounded segmented bezel is fixed-height and centres itself in whatever frame
+        // a constraint gives it, which is why the first two attempts stayed short.
+        let rateControl = VBSlideToggle(
+            images: rateImages, tooltips: rateSymbols.map(\.1), selected: 1)
+        rateControl.target = self
+        rateControl.action = #selector(rateChanged(_:))
         rateControl.heightAnchor.constraint(
             equalToConstant: Theme.BusButton.height).isActive = true
         self.rateControl = rateControl
@@ -994,11 +1041,19 @@ final class FaderPanelBody: NSView {
         // BLEND, moved here from the preview above. How the two layers combine and
         // how much of each are two halves of one question; having them two panels
         // apart meant answering it in two places.
-        let blend = Controls.groupedPopUp(
-            BlendMode.menuGroups.map { $0.map(\.displayName) },
-            target: self, action: #selector(blendModeChanged(_:)))
-        blend.toolTip = "How this bus's two layers combine. The fader below sets how much of each."
-        self.blendPopUp = blend
+        // A square A/B icon that pops its menu out, not a popup as wide as "Color
+        // Dodge". The word does not need to be on screen at all times, and the popup's
+        // width was what shoved the transport cluster off centre and still truncated
+        // to "No…".
+        let blend = VBBlendButton()
+        // The bus's own letters, not a hard-coded A and B: this same panel is the A/B
+        // fader, the C/D fader and the programme fader.
+        blend.setLabels(lower: leftLabel, upper: rightLabel)
+        blend.onModeChosen = { [weak self] mode in
+            Log.info(.graph, "blend mode set to \(mode.displayName)")
+            self?.onBlendModeChanged?(mode)
+        }
+        self.blendButton = blend
 
         // The crossfader's own sweep controls, exactly as an FX row has them — this
         // panel had the gesture and the yellow bar but no way to set the rate or to
@@ -1148,7 +1203,7 @@ final class FaderPanelBody: NSView {
         onBeatCutToggled?(sender.state == .on)
     }
 
-    @objc private func rateChanged(_ sender: NSSegmentedControl) {
+    @objc private func rateChanged(_ sender: VBSlideToggle) {
         Log.info(.app, "fade rate: \(currentRate.displayName)")
     }
 
@@ -1156,7 +1211,7 @@ final class FaderPanelBody: NSView {
     /// MIDI-fired FADE uses the same rate a clicked one would, rather than the
     /// controller keeping a second copy that can drift.
     var currentRate: FadeRate {
-        FadeRate.from(index: rateControl?.selectedSegment ?? 1)
+        FadeRate.from(index: rateControl?.selectedIndex ?? 1)
     }
 
     @objc private func leftKeyPressed() { cut(to: 0) }

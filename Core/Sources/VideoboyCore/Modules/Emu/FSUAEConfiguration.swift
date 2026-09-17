@@ -76,6 +76,28 @@ public struct FSUAEConfiguration: Equatable, Sendable {
     /// The window title, which is how the capture finds it.
     public var windowTitle: String = "Videoboy Amiga"
 
+    /// Restore the saved state instead of booting from cold.
+    ///
+    /// ── WHY A SAVE STATE IS THE WHOLE ANSWER HERE ───────────────────────────────
+    ///
+    /// Driving a boot by timed keystrokes is fragile in a way that gets worse the
+    /// longer the boot is: a disc that loads a second slower puts every later step in
+    /// the wrong place, and Scala is the slowest of these to come up because it is a
+    /// whole authoring environment rather than a titler.
+    ///
+    /// A save state sidesteps all of it. Boot ONCE by hand, get the machine exactly
+    /// where you want it — software loaded, script open, sitting on the page you will
+    /// title from — and save. Every start after that lands there in about a second,
+    /// identically, with no sequencing to go wrong.
+    public var loadsSavedState: Bool = false
+
+    /// Where states are kept.
+    ///
+    /// Inside the app's own workspace rather than FS-UAE's shared folder, so a state is
+    /// part of THIS machine's setup and goes away with it. A state saved against one
+    /// configuration and restored into a different one is a crash.
+    public var saveStatesDirectory: URL?
+
     public init(
         program: TitlerProgram, firmware: Firmware, sharedDrawer: URL,
         cdImage: URL? = nil, systemDrive: URL? = nil, floppies: [URL] = []
@@ -211,8 +233,24 @@ public struct FSUAEConfiguration: Equatable, Sendable {
             "window_resizable = 0",
             "window_border = 0",
             "title = \(windowTitle)",
-            ""
+            "",
+            "# ── Save states ──",
+            "# F5 saves, F6 restores — INSIDE the emulator's window, pressed by hand.",
+            "# Synthesising those keys from outside would need Accessibility permission",
+            "# to send events to another application, which is a large thing to ask for",
+            "# a convenience. Two keys the person presses themselves need nothing.",
+            "keyboard_key_f5 = action_save_state_1",
+            "keyboard_key_f6 = action_load_state_1"
         ]
+
+        if let saveStatesDirectory {
+            lines.append("save_states_dir = \(saveStatesDirectory.path)")
+        }
+        if loadsSavedState {
+            // Straight to the saved state rather than through a cold boot.
+            lines.append("load_state = 1")
+        }
+        lines.append("")
         return lines.joined(separator: "\n")
     }
 
@@ -246,6 +284,46 @@ public struct FSUAEConfiguration: Equatable, Sendable {
         try text.write(to: configURL, atomically: true, encoding: .utf8)
         Log.info(.titler, "wrote FS-UAE config to \(configURL.path)")
         return configURL
+    }
+}
+
+/// The saved state for a machine, if there is one.
+///
+/// A tiny type rather than a path passed around: "is there a state" is asked by the
+/// panel, by the launcher and by the config, and three places computing the same
+/// filename is three places to get it wrong.
+public struct AmigaSaveState: Sendable {
+
+    public let directory: URL
+
+    public init(directory: URL) {
+        self.directory = directory
+    }
+
+    /// FS-UAE writes `.uss` files, one per slot.
+    public var files: [URL] {
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        return contents.filter { $0.pathExtension.lowercased() == "uss" }
+    }
+
+    public var exists: Bool { !files.isEmpty }
+
+    /// When the newest state was saved, for the panel's readout.
+    public var savedAt: Date? {
+        files.compactMap {
+            (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+        }.max()
+    }
+
+    /// One line for the panel.
+    public var summary: String {
+        guard let savedAt else { return "No saved state yet." }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return "Saved \(formatter.string(from: savedAt))"
     }
 }
 

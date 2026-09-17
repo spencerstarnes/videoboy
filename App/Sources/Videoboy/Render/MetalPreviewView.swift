@@ -49,6 +49,13 @@ final class MetalPreviewView: NSView {
     /// glyph and a short list, and everyone already knows how to use it.
     private(set) var routingButton: NSButton?
 
+    /// Whether the send glyph is drawn on the picture.
+    ///
+    /// False for the composites, whose panel puts it on the bar beneath instead. Set
+    /// before the view builds itself, which is why it is an init parameter rather than
+    /// a property to flip afterwards.
+    private let showsRoutingOverlay: Bool
+
     /// Called when the send glyph is clicked, with the glyph to hang a popover from.
     var onRoutingRequested: ((NSView) -> Void)?
 
@@ -56,6 +63,10 @@ final class MetalPreviewView: NSView {
     private let emptyLabel = NSTextField(labelWithString: "no source")
     private var metalLayer: CAMetalLayer?
     private let overlayLayer = CAShapeLayer()
+
+    /// The tally glow: a red neon line inside the picture's edge, whose brightness is
+    /// HOW MUCH OF THIS SOURCE IS ON AIR.
+    private let tallyLayer = CAShapeLayer()
 
     /// The scope image drawn over the picture, when scopes are on for this preview.
     private let scopeLayer = CALayer()
@@ -69,8 +80,12 @@ final class MetalPreviewView: NSView {
     /// the sub-mixes and programme, which have nothing to load a clip into.
     private let showsAutoPlay: Bool
 
-    init(caption: String, recordLabel: String? = nil, showsAutoPlay: Bool = false) {
+    init(
+        caption: String, recordLabel: String? = nil, showsAutoPlay: Bool = false,
+        showsRoutingOverlay: Bool = true
+    ) {
         self.showsAutoPlay = showsAutoPlay
+        self.showsRoutingOverlay = showsRoutingOverlay
         self.caption = caption
         super.init(frame: .zero)
 
@@ -106,6 +121,18 @@ final class MetalPreviewView: NSView {
         overlayLayer.strokeColor = Theme.Color.textSecondary.cgColor
         layer?.addSublayer(overlayLayer)
 
+        // The tally glow. Inside the picture's edge rather than around the panel,
+        // because it is the PICTURE that is on air — and a broadcast tally is a lamp on
+        // the thing itself, not a note about it.
+        tallyLayer.fillColor = nil
+        tallyLayer.strokeColor = Theme.Color.tallyOnAir.cgColor
+        tallyLayer.lineWidth = 2
+        tallyLayer.shadowColor = Theme.Color.tallyOnAir.cgColor
+        tallyLayer.shadowOffset = .zero
+        tallyLayer.shadowRadius = 5
+        tallyLayer.opacity = 0
+        layer?.addSublayer(tallyLayer)
+
         emptyLabel.font = Theme.Font.tinyLabel
         emptyLabel.textColor = Theme.Color.textTertiary
         emptyLabel.alignment = .center
@@ -125,9 +152,14 @@ final class MetalPreviewView: NSView {
             captionLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3)
         ])
 
-        // The send glyph sits opposite the caption, out of the picture's way but
-        // always in the same place on every preview — which is what makes it
-        // findable without hunting.
+        // The send glyph, ON THE PICTURE — for the four source previews, which have no
+        // bar of their own to put it on.
+        //
+        // The composites do have one, and there it belongs on the bar instead: those
+        // are the big pictures, they are what you actually watch, and a control sitting
+        // in the corner of the thing you are watching is a control in the way. See
+        // `showsRoutingOverlay`.
+        if showsRoutingOverlay {
         let routing = NSButton(
             image: NSImage(
                 systemSymbolName: "airplayvideo",
@@ -146,6 +178,7 @@ final class MetalPreviewView: NSView {
             routing.widthAnchor.constraint(equalToConstant: 18),
             routing.heightAnchor.constraint(equalToConstant: 14)
         ])
+        }
 
         if let recordLabel {
             let indicator = MiniRecordIndicator(label: recordLabel)
@@ -249,6 +282,8 @@ final class MetalPreviewView: NSView {
             width: frame.width * rect.width,
             height: frame.height * rect.height)
         overlayLayer.frame = frame
+        tallyLayer.frame = frame
+        updateTally()
         updateOverlays()
     }
 
@@ -312,6 +347,60 @@ final class MetalPreviewView: NSView {
     /// Was a bool for "corner or not". Placement now has three answers and the third —
     /// the lower-third band — is not expressible as a variation of the other two.
     var scopePlacement: ScopePlacement = .full { didSet { needsLayout = true } }
+
+    /// How much of this source is currently reaching the programme output, 0...1.
+    ///
+    /// ── WHY A LEVEL AND NOT A LAMP ──────────────────────────────────────────────
+    ///
+    /// A broadcast tally is on or off because a hard-cut mixer has no in-between. This
+    /// one does: the crossfader spends most of its life between the two, and during a
+    /// fade BOTH sources are genuinely on air. A lamp would have to pick a moment to
+    /// come on, and whichever moment it picked would be a lie for the rest of the
+    /// travel.
+    ///
+    /// So the glow tracks the fader. Hard left is A fully lit and B dark; halfway is
+    /// both at half; hard right is the reverse. That is a true statement about the
+    /// picture at every position rather than at two of them.
+    ///
+    /// It is also MULTIPLIED DOWN THE CHAIN: a source on a sub-mix that is itself faded
+    /// out is not on air, however far up its own fader is, and showing it lit would be
+    /// exactly the wrong answer to "what is on screen".
+    var onAirLevel: Double = 0 {
+        didSet {
+            guard abs(onAirLevel - oldValue) > 0.002 else { return }
+            updateTally()
+        }
+    }
+
+    private func updateTally() {
+        let level = min(max(onAirLevel, 0), 1)
+
+        // The layer already sits on the picture, so its own bounds ARE the picture —
+        // no second computation of where the image is, which is the kind of duplicate
+        // that drifts the moment a fill mode changes.
+        let frame = CGRect(origin: .zero, size: tallyLayer.bounds.size)
+        guard frame.width > 2, frame.height > 2 else {
+            tallyLayer.opacity = 0
+            return
+        }
+        let path = CGPath(
+            roundedRect: frame.insetBy(dx: 1, dy: 1),
+            cornerWidth: 2, cornerHeight: 2, transform: nil)
+
+        CATransaction.begin()
+        // No implicit animation: this is driven from the fader, which already moves
+        // smoothly. A quarter-second layer animation on top would make the glow LAG
+        // the picture it is describing.
+        CATransaction.setDisableActions(true)
+        tallyLayer.path = path
+        // Eased so the lit end reads as fully lit well before the fader reaches the
+        // stop — a linear ramp looks dim across most of its travel, because perceived
+        // brightness is not linear in opacity.
+        let eased = pow(level, 0.6)
+        tallyLayer.opacity = Float(eased)
+        tallyLayer.shadowOpacity = Float(eased * 0.9)
+        CATransaction.commit()
+    }
 
     func setScopeImage(_ image: ImageBuffer?, dimsPicture: Bool) {
         guard let image, let cgImage = image.makeCGImage() else {

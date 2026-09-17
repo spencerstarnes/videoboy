@@ -107,6 +107,13 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// wherever it is plugged in. Nil means no camera has been chosen.
     public var captureDeviceName: String?
 
+    /// The disc image the emulated machine is built from, by path.
+    ///
+    /// By PATH and never copied: a disc image is the person's own media and is often
+    /// hundreds of megabytes, so a second copy inside Application Support helps nobody.
+    /// Nil means "look in the usual places" — see EmulatorController.
+    public var emulatorDiscPath: String?
+
     // MARK: Reminders
 
     /// Which prompts have been answered with "don't remind me again".
@@ -154,6 +161,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         playOnLoad = decode(.playOnLoad, true)
         previewFill = decode(.previewFill, PreviewFill.fit)
         captureDeviceName = try? container.decodeIfPresent(String.self, forKey: .captureDeviceName)
+        emulatorDiscPath = try? container.decodeIfPresent(String.self, forKey: .emulatorDiscPath)
         suppressedReminders = decode(.suppressedReminders, Set<ReminderKind>())
         // Element by element, so one destination of a kind this build no longer has
         // does not take the whole list down with it. Capture cards were offered as

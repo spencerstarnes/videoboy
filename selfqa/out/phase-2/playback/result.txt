@@ -1,6 +1,6 @@
 check:    phase-2/playback
 verdict:  PASS
-when:     2026-09-17T23:15:20Z
+when:     2026-09-17T23:43:21Z
 core:     0.3.0
 
 notes:
@@ -9,7 +9,7 @@ notes:
   all frames rendered through the engine's own nodes and Metal pipelines
 
 assertions (35/35 passed):
-  PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (54 nodes)
+  PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (55 nodes)
   PASS  dimensions — expected 720x480, got 720x480
   PASS  signal present — luminance variance 4188.7, threshold 25.0
   PASS  fader at B shows source B — worst bar 0 off by 2.1 (tolerance 45.0)

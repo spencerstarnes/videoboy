@@ -597,6 +597,8 @@ enum AssetTab: String, CaseIterable {
     case graphics
     case clips
     case images
+    /// Emulated machines — see EmuBrowserView.
+    case emu
 
     var displayName: String {
         switch self {
@@ -605,6 +607,7 @@ enum AssetTab: String, CaseIterable {
         case .graphics: "Graphics"
         case .clips: "Clips"
         case .images: "Images"
+        case .emu: "EMU"
         }
     }
 
@@ -617,6 +620,7 @@ enum AssetTab: String, CaseIterable {
         case .graphics: "SVG and vector sources are not built yet (SPEC §17)."
         case .clips: "Clip bins are not built yet."
         case .images: "Still-image sources are not built yet."
+        case .emu: "No emulated machines are set up."
         }
     }
 }
@@ -644,6 +648,13 @@ final class LibraryPanelBody: NSView {
 
     /// Called when files are dropped onto this library, so the app can add them.
     var onFilesDropped: (([URL]) -> Void)?
+
+    /// The EMU tab's contents, supplied at construction.
+    ///
+    /// Passed IN rather than set afterwards: every tab is built during init, so a view
+    /// assigned later would arrive after the tab that needs it had already been made
+    /// empty.
+    private let emuView: NSView?
 
     /// Highlighted while a drop is hovering over the grid.
     private var isDropTarget = false {
@@ -697,9 +708,13 @@ final class LibraryPanelBody: NSView {
     ///   - items: what the Sources tab shows.
     ///   - columns: 3 for the sub-mix libraries, 6 for the central browser.
     ///   - showsTabs: true for the asset browser, which is tabbed by asset kind.
-    init(items: [LibraryItem], columns: Int, showsTabs: Bool, playlistChannels: [String] = []) {
+    init(
+        items: [LibraryItem], columns: Int, showsTabs: Bool,
+        playlistChannels: [String] = [], emuView: NSView? = nil
+    ) {
         self.playlistChannels = playlistChannels
         self.columns = columns
+        self.emuView = emuView
         super.init(frame: .zero)
         wantsLayer = true
 
@@ -834,7 +849,15 @@ final class LibraryPanelBody: NSView {
         // makes switching instant, which is what a tab strip implies.
         let tabs: [AssetTab] = showsTabs ? AssetTab.allCases : [.sources]
         for tab in tabs {
-            let grid = makeGrid(for: contents(of: tab, sources: items))
+            // EMU is the one tab that is not a grid of thumbnails. A machine has state
+            // and controls; a thumbnail has neither, so this tab gets its own view
+            // rather than an item that opens something.
+            let grid: NSView
+            if tab == .emu, let emuView {
+                grid = emuView
+            } else {
+                grid = makeGrid(for: contents(of: tab, sources: items))
+            }
             grid.translatesAutoresizingMaskIntoConstraints = false
             grid.isHidden = tab != currentTab
             document.addSubview(grid)
@@ -924,6 +947,11 @@ final class LibraryPanelBody: NSView {
             }
         case .graphics, .clips, .images:
             // Empty on purpose; the tab says why rather than showing a blank box.
+            return []
+        case .emu:
+            // Not a grid of items at all — EmuBrowserView replaces the grid for this
+            // tab, because a machine with its own controls beneath it is not a
+            // thumbnail.
             return []
         }
     }

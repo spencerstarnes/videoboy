@@ -32,6 +32,8 @@ final class PreferencesWindowController: NSWindowController {
         case inputs
         case hotKeys
         case midiMapping
+        case emu
+        case macros
 
         var title: String {
             switch self {
@@ -41,6 +43,8 @@ final class PreferencesWindowController: NSWindowController {
             case .inputs: "Inputs"
             case .hotKeys: "Hot Keys"
             case .midiMapping: "MIDI Mapping"
+            case .emu: "EMU"
+            case .macros: "Macros & AI"
             }
         }
 
@@ -52,6 +56,8 @@ final class PreferencesWindowController: NSWindowController {
             case .inputs: "cable.connector"
             case .hotKeys: "keyboard"
             case .midiMapping: "pianokeys"
+            case .emu: "gamecontroller"
+            case .macros: "wand.and.stars"
             }
         }
 
@@ -64,6 +70,8 @@ final class PreferencesWindowController: NSWindowController {
             case .inputs: "What is plugged in right now."
             case .hotKeys: "Keys for the things you reach for mid-set."
             case .midiMapping: "Every control currently bound to a controller."
+            case .emu: "Emulated machines, and the cores, ROMs and discs they need."
+            case .macros: "Sequences of commands, and letting a model drive them."
             }
         }
     }
@@ -240,6 +248,8 @@ final class PreferencesWindowController: NSWindowController {
         case .inputs: makeInputsPane()
         case .hotKeys: makeHotKeysPane()
         case .midiMapping: makeMIDIMappingPane()
+        case .emu: makeEmuPane()
+        case .macros: makeMacrosPane()
         }
     }
 }
