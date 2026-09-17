@@ -281,7 +281,14 @@ enum ShaderSource {
         float c = cos(angle);
         float s = sin(angle);
         float2 rotated = float2(centred.x * c - centred.y * s, centred.x * s + centred.y * c);
-        float2 sampleUV = rotated / max(p.zoom, 0.01) + 0.5;
+        // MULTIPLY, not divide. Sampling farther from the centre than the pixel
+        // being written means each pass pulls the picture INWARD, which is the
+        // tunnel this is named for. Dividing magnifies the history instead and
+        // pushes the image off the edges — the opposite of what the comment above,
+        // the parameter's documentation and the test all say this does. It went
+        // unnoticed because the history buffer was never cleared, so the centre of
+        // the frame was full of uninitialised memory that read as "light arriving".
+        float2 sampleUV = rotated * max(p.zoom, 0.01) + 0.5;
 
         float3 now = current.sample(linearSampler, in.uv).rgb;
 
@@ -713,7 +720,37 @@ public final class MetalContext {
             return nil
         }
         texture.label = label
+
+        // CLEARED BEFORE IT IS HANDED OVER. A fresh Metal texture contains whatever
+        // was in that memory, and any effect that keeps FRAME HISTORY — the echo's
+        // two buffers, the feedback ring — reads its own target before it has ever
+        // written to it. With a high decay that garbage does not fade out; it sits
+        // under the picture as a coloured wash for as long as the effect is on,
+        // which is what "echo trails doesn't work" turned out to be: the trail was
+        // there all along, behind a purple screen.
+        //
+        // Clearing every render target rather than only the history ones, because
+        // the alternative is a rule each future caller has to remember, and the cost
+        // is one pass at allocation — on resize, not per frame.
+        clearToBlack(texture)
         return texture
+    }
+
+    /// Fills a texture with opaque black.
+    private func clearToBlack(_ texture: MTLTexture) {
+        let descriptor = MTLRenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = texture
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+        descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        guard let buffer = commandQueue.makeCommandBuffer(),
+              let encoder = buffer.makeRenderCommandEncoder(descriptor: descriptor) else {
+            Log.warn(.render, "could not clear '\(texture.label ?? "target")'; it may show garbage")
+            return
+        }
+        encoder.endEncoding()
+        buffer.commit()
+        buffer.waitUntilCompleted()
     }
 
     /// Blends a processed texture back over the original by a wet/dry amount.

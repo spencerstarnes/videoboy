@@ -334,6 +334,13 @@ enum Theme {
 
         /// On air. Red means this everywhere in broadcast, and it is not used for
         /// anything else in this window.
+        /// The bus tint a channel belongs to. A, B are bus one; C, D are bus two —
+        /// the same amber and cyan this window uses everywhere else to say which
+        /// half of the desk you are looking at.
+        static func busTint(forChannel channel: String) -> NSColor {
+            ["C", "D"].contains(channel.uppercased()) ? busTwo : busOne
+        }
+
         static let tallyOnAir = NSColor(srgbRed: 0.85, green: 0.13, blue: 0.13, alpha: 1)
         /// An unlit key: dark, but clearly a key rather than a hole.
         static let busButtonUnlit = NSColor(white: 0.22, alpha: 1)
@@ -448,4 +455,10 @@ enum Theme {
         /// the height of that strip plus a little air.
         static let bottomClearance: CGFloat = 20
     }
+
+    /// Marks the FOCUSED item on any "which one receives what I do next" control —
+    /// the library's load focus, an FX card's channel selector. One glyph, used in
+    /// both places, so the two read as the same kind of switch rather than as two
+    /// unrelated toggles that happen to list channels.
+    static let focusCaret = "\u{25B8}"
 }

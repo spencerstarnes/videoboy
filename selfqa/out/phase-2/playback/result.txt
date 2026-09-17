@@ -1,6 +1,6 @@
 check:    phase-2/playback
 verdict:  PASS
-when:     2026-09-17T08:40:42Z
+when:     2026-09-17T08:53:54Z
 core:     0.3.0
 
 notes:
@@ -33,8 +33,8 @@ assertions (35/35 passed):
   PASS  MX-1 freeze holds the picture while the clip runs on — 0.000 of pixels changed over 19 frames of playback
   PASS  a feedback send is recorded against its bus — data.one
   PASS  a bus fed back into its own loop keeps rendering — 20 of 20 frames rendered
-  PASS  the feedback send changes the picture — 0.855 of sampled pixels differ, needed >= 0.02
-  PASS  signal present — luminance variance 4204.7, threshold 25.0
+  PASS  the feedback send changes the picture — 0.258 of sampled pixels differ, needed >= 0.02
+  PASS  signal present — luminance variance 4207.1, threshold 25.0
   PASS  MPEG footage offers the MPEG data effects — family is MPEG
   PASS  every MPEG data effect changes what reaches the screen — Frame Drop 0.971, Motion Vector Corrupt 0.564, Reference Hold 0.239
   PASS  Frame Drop leaves a picture, not a dead decoder — luminance variance 2419.6

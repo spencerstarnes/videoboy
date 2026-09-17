@@ -68,6 +68,22 @@ final class ChannelDestination {
     }
     private var index = 0
 
+    /// Every channel, in the order the focus control lists them.
+    static let allChannels = ["A", "B", "C", "D"]
+
+    /// Points the focus straight at one channel.
+    ///
+    /// The control offers all four rather than two pairs: picking the pair and then
+    /// letting it alternate meant the channel you actually wanted was sometimes one
+    /// load away, which is a strange thing to have to wait for. Choosing the pair is
+    /// still implied — it follows from the channel.
+    func focus(channel: String) {
+        guard let pairForChannel = Pair.allCases.first(where: { $0.channels.contains(channel) }),
+              let position = pairForChannel.channels.firstIndex(of: channel) else { return }
+        pair = pairForChannel   // resets index to 0 via didSet
+        index = position
+    }
+
     /// The channel the next double-click loads, then advances past.
     func takeNextChannel() -> String {
         let channels = pair.channels
@@ -96,7 +112,53 @@ final class LibraryItemView: NSView {
     /// Called on double-click, with the clip and whatever in/out range is marked.
     var onOpen: ((LibraryItem, ClosedRange<Double>?) -> Void)?
 
+    /// Called from the context menu: (clip, channel, playNext). `playNext` puts it at
+    /// the FRONT of that channel's queue rather than the end.
+    var onQueue: ((LibraryItem, String, Bool) -> Void)?
+
+    /// Which channels this cell offers to queue onto — ["A", "B"] in the A/B library,
+    /// ["C", "D"] in C/D. Empty means no queue menu at all, which is right for the
+    /// asset browser: it belongs to no bus, so there is no obvious channel to mean.
+    var queueChannels: [String] = []
+
     private let thumbnail = HoverScrubView()
+
+    /// A right-click menu offering this clip to either channel of the bus.
+    ///
+    /// Built fresh each time rather than kept on the view, because the channel list
+    /// can change with the library's bus and a stale menu would queue onto the wrong
+    /// source — which is the sort of mistake you only notice once it is on air.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard !queueChannels.isEmpty, item.url != nil else { return nil }
+
+        let menu = NSMenu()
+        for channel in queueChannels {
+            let add = NSMenuItem(
+                title: "Add to \(channel)", action: #selector(queueLast(_:)), keyEquivalent: "")
+            add.target = self
+            add.representedObject = channel
+            menu.addItem(add)
+        }
+        menu.addItem(.separator())
+        for channel in queueChannels {
+            let next = NSMenuItem(
+                title: "Play Next on \(channel)", action: #selector(queueNext(_:)), keyEquivalent: "")
+            next.target = self
+            next.representedObject = channel
+            menu.addItem(next)
+        }
+        return menu
+    }
+
+    @objc private func queueLast(_ sender: NSMenuItem) {
+        guard let channel = sender.representedObject as? String else { return }
+        onQueue?(item, channel, false)
+    }
+
+    @objc private func queueNext(_ sender: NSMenuItem) {
+        guard let channel = sender.representedObject as? String else { return }
+        onQueue?(item, channel, true)
+    }
 
     init(item: LibraryItem) {
         self.item = item
@@ -529,11 +591,31 @@ final class LibraryPanelBody: NSView {
     /// The A/B / C/D toggle, so its title can show which channel is next.
     private var destinationControl: NSSegmentedControl?
 
+    /// Which channels this library keeps playlists for. Empty in the asset browser.
+    private let playlistChannels: [String]
+
+    /// The Library / A / B tab strip, when this library has playlists.
+    private var playlistTabs: NSSegmentedControl?
+
+    /// Which view is showing: nil means the clip grid, a letter means that channel's
+    /// queue.
+    private var shownPlaylist: String?
+
+    /// The queue views, one per channel, built once and swapped in.
+    private var playlistViews: [String: PlaylistView] = [:]
+
+    /// Called when a clip is queued from the context menu: (item, channel, playNext).
+    var onItemQueued: ((LibraryItem, String, Bool) -> Void)?
+
+    /// Called when a queued item is removed from a channel's playlist.
+    var onQueuedItemRemoved: ((String, PlaylistItem.ID) -> Void)?
+
     /// - Parameters:
     ///   - items: what the Sources tab shows.
     ///   - columns: 3 for the sub-mix libraries, 6 for the central browser.
     ///   - showsTabs: true for the asset browser, which is tabbed by asset kind.
-    init(items: [LibraryItem], columns: Int, showsTabs: Bool) {
+    init(items: [LibraryItem], columns: Int, showsTabs: Bool, playlistChannels: [String] = []) {
+        self.playlistChannels = playlistChannels
         self.columns = columns
         super.init(frame: .zero)
         wantsLayer = true
@@ -562,17 +644,27 @@ final class LibraryPanelBody: NSView {
             tabControl = tabs
             topRow.append(tabs)
             topRow.append(Controls.spacer())
+        } else if !playlistChannels.isEmpty {
+            // The playlist tabs take the slot the disabled "Page 1" popup was
+            // occupying — a placeholder for paging that does not exist, sitting in
+            // the one row where width is scarce.
+            let titles = ["Library"] + playlistChannels
+            let tabs = Controls.segmented(
+                titles, selected: 0, target: self, action: #selector(playlistTabChanged(_:)))
+            tabs.toolTip = "The clip grid, or a source's up-next queue"
+            tabs.setContentCompressionResistancePriority(.required, for: .horizontal)
+            playlistTabs = tabs
+            bottomRow.append(tabs)
         } else {
             bottomRow.append(Controls.popUp(["Page 1"], enabled: false))
         }
 
         // Where a double-clicked clip goes. Present on every library: the sub-mix
         // libraries default to their own side, and the browser starts on A/B.
-        let pairs = ChannelDestination.Pair.allCases
         let destinationToggle = Controls.segmented(
-            pairs.map(\.displayName), selected: 0,
+            ChannelDestination.allChannels, selected: 0,
             target: self, action: #selector(destinationChanged(_:)))
-        destinationToggle.toolTip = "Where a double-clicked clip is loaded"
+        destinationToggle.toolTip = "Focus — where the next clip you open lands"
         destinationToggle.setContentCompressionResistancePriority(.required, for: .horizontal)
         destinationControl = destinationToggle
         bottomRow.append(destinationToggle)
@@ -651,6 +743,25 @@ final class LibraryPanelBody: NSView {
             ])
         }
 
+        // One queue view per channel, built alongside the grids and hidden until its
+        // tab is picked. Same reasoning as the grids: the sets are small, and a tab
+        // strip implies switching is instant.
+        for channel in playlistChannels {
+            let queue = PlaylistView(channel: channel)
+            queue.translatesAutoresizingMaskIntoConstraints = false
+            queue.isHidden = true
+            queue.onRemove = { [weak self] id in
+                self?.onQueuedItemRemoved?(channel, id)
+            }
+            document.addSubview(queue)
+            playlistViews[channel] = queue
+            NSLayoutConstraint.activate([
+                queue.topAnchor.constraint(equalTo: document.topAnchor),
+                queue.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+                queue.trailingAnchor.constraint(equalTo: document.trailingAnchor)
+            ])
+        }
+
         // The document's height follows whichever grid is showing.
         if let first = gridsByTab[currentTab] {
             documentHeight = document.heightAnchor.constraint(
@@ -675,6 +786,12 @@ final class LibraryPanelBody: NSView {
         ])
 
         _ = tabControl
+
+        // The focus caret is applied HERE, at construction, not only when something
+        // outside calls setDestinationPair. A control whose label is wrong until a
+        // controller happens to wire it is a control that is wrong in every context
+        // that does not — including, as it turned out, the layout render.
+        updateDestinationTitles()
     }
 
     private var documentHeight: NSLayoutConstraint?
@@ -705,6 +822,10 @@ final class LibraryPanelBody: NSView {
         var row: [NSView] = []
         for item in items {
             let view = LibraryItemView(item: item)
+            view.queueChannels = playlistChannels
+            view.onQueue = { [weak self] item, channel, playNext in
+                self?.onItemQueued?(item, channel, playNext)
+            }
             view.onOpen = { [weak self] item, range in
                 guard let self else { return }
                 let channel = self.destination.takeNextChannel()
@@ -722,6 +843,40 @@ final class LibraryPanelBody: NSView {
                 Controls.row(row + [Controls.spacer()], spacing: Theme.Metrics.thumbnailGap))
         }
         return itemsStack
+    }
+
+    // MARK: - Playlists
+
+    @objc private func playlistTabChanged(_ sender: NSSegmentedControl) {
+        // Segment 0 is the clip grid; the rest are channels, in order.
+        let index = sender.selectedSegment
+        shownPlaylist = index <= 0 ? nil : playlistChannels[min(index - 1, playlistChannels.count - 1)]
+        applyPlaylistVisibility()
+    }
+
+    /// Shows either the clip grid or one channel's queue — never both, and never
+    /// neither.
+    private func applyPlaylistVisibility() {
+        let showingQueue = shownPlaylist != nil
+        gridsByTab[currentTab]?.isHidden = showingQueue
+        if showingQueue { emptyLabelsByTab[currentTab]?.isHidden = true }
+        for (channel, view) in playlistViews {
+            view.isHidden = channel != shownPlaylist
+        }
+        if !showingQueue {
+            emptyLabelsByTab[currentTab]?.isHidden = !sourceItems.isEmpty
+        }
+    }
+
+    /// Hands a channel's queue its current contents.
+    func setPlaylist(_ playlist: Playlist, forChannel channel: String) {
+        playlistViews[channel]?.setItems(playlist.items)
+        // The tab says how many are waiting, so the count is legible without
+        // switching to it mid-set.
+        guard let tabs = playlistTabs,
+              let index = playlistChannels.firstIndex(of: channel) else { return }
+        tabs.setLabel(
+            playlist.isEmpty ? channel : "\(channel) \(playlist.count)", forSegment: index + 1)
     }
 
     // MARK: - Drop target
@@ -798,25 +953,39 @@ final class LibraryPanelBody: NSView {
     }
 
     @objc private func destinationChanged(_ sender: NSSegmentedControl) {
-        let pairs = ChannelDestination.Pair.allCases
-        guard pairs.indices.contains(sender.selectedSegment) else { return }
-        destination.pair = pairs[sender.selectedSegment]
+        let channels = ChannelDestination.allChannels
+        guard channels.indices.contains(sender.selectedSegment) else { return }
+        destination.focus(channel: channels[sender.selectedSegment])
         updateDestinationTitles()
     }
 
     /// Marks which channel the next double-click will fill.
     ///
-    /// The segment shows "A/B ▸ B" rather than just "A/B": the auto-advance is the
-    /// whole point of the control, and a toggle that silently alternates would be a
-    /// surprise every second clip.
+    /// FOCUS, and it says so. This read "A/B·B", which names two things with a dot
+    /// between them and leaves you to guess the relationship — it looked like a
+    /// label for the pair rather than a control deciding where your next action
+    /// lands. The focused channel now carries a caret, `▸B`, and the unfocused pair
+    /// just names itself. The same caret marks the focused channel on an FX card's
+    /// selector, because it is the same idea in both places: this is the one that
+    /// receives what you do next.
+    ///
+    /// The channel and not merely the pair, because the focus auto-advances — a
+    /// control that silently alternated would surprise you every second clip.
     private func updateDestinationTitles() {
         guard let control = destinationControl else { return }
-        for (index, pair) in ChannelDestination.Pair.allCases.enumerated() {
-            let isCurrent = pair == destination.pair
+        let focused = destination.nextChannel
+        for (index, channel) in ChannelDestination.allChannels.enumerated() {
             control.setLabel(
-                isCurrent ? "\(pair.displayName)·\(destination.nextChannel)" : pair.displayName,
-                forSegment: index)
+                channel == focused ? Theme.focusCaret + channel : channel, forSegment: index)
+            if channel == focused { control.selectedSegment = index }
         }
+        // Colour AS WELL AS the caret. The bus tint is already how this window says
+        // A/B from C/D everywhere else, so the focus picks it up rather than
+        // inventing a second code — and colour survives being glanced at, which a
+        // small caret on its own does not.
+        control.selectedSegmentBezelColor = Theme.Color.busTint(forChannel: focused)
+        control.toolTip = "Focus — the next clip you open lands on \(focused), "
+            + "then the focus moves to the other channel of that pair"
     }
 
     /// Sets which pair this library fills, for the sub-mix libraries that own a side.

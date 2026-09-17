@@ -40,6 +40,7 @@ final class ShellController {
         wireSettingsBar()
         wireRecordIndicators()
         wireLibraries()
+        refreshPlaylists()
         wireRouting()
         setPreviewFill(preferences.preferences.previewFill)
         // The key has to show the SAVED mode from the first frame, or it would read
@@ -82,6 +83,42 @@ final class ShellController {
             engine.setPlaying(true, channel: channel)
         }
         Log.info(.dv, "loaded \(url.lastPathComponent) into channel \(channel)")
+    }
+
+    /// One up-next queue per source (A, B, C, D).
+    ///
+    /// Only consulted when a source is in ONE SHOT — see `Playlist`. Loop and
+    /// ping-pong have their own answer for what happens at the end of a clip.
+    private var playlists = PlaylistSet()
+
+    /// Pushes the queues back into whichever library shows them.
+    private func refreshPlaylists() {
+        let panels = shell.grid.panels
+        for channel in ["A", "B"] {
+            panels.libraryOneBody.setPlaylist(playlists[channel], forChannel: channel)
+        }
+        for channel in ["C", "D"] {
+            panels.libraryTwoBody.setPlaylist(playlists[channel], forChannel: channel)
+        }
+    }
+
+    /// A one-shot clip finished. Pull the next thing off that channel's queue, if
+    /// there is one; otherwise leave the source stopped on its last frame exactly as
+    /// it behaved before playlists existed.
+    ///
+    /// Hops to the main queue first: this arrives from the playback advance, and it
+    /// is about to open a file and touch the panel.
+    private func playlistAdvance(channel: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard let next = self.playlists[channel].takeNext() else { return }
+            Log.info(.dv, "\(channel) taking \(next.displayName) from its playlist")
+            self.loadClip(next.url, into: channel)
+            // Up next means up NEXT — it plays, rather than landing paused and
+            // waiting for someone to notice the clip changed.
+            self.engine.setPlaying(true, channel: channel)
+            self.refreshPlaylists()
+        }
     }
 
     /// Takes whatever is in a channel back out.
@@ -206,6 +243,22 @@ final class ShellController {
         for library in [panels.libraryOneBody, panels.libraryTwoBody, panels.assetBrowserBody] {
             library.onFilesDropped = { [weak self] urls in
                 self?.addToLibrary(urls, library: library)
+            }
+            library.onItemQueued = { [weak self] item, channel, playNext in
+                guard let self, let url = item.url else { return }
+                if playNext {
+                    self.playlists[channel].insertNext(url: url)
+                } else {
+                    self.playlists[channel].append(url: url)
+                }
+                Log.info(.app, "queued \(url.lastPathComponent) on \(channel)"
+                    + (playNext ? " (next)" : ""))
+                self.refreshPlaylists()
+            }
+            library.onQueuedItemRemoved = { [weak self] channel, id in
+                guard let self else { return }
+                self.playlists[channel].remove(id: id)
+                self.refreshPlaylists()
             }
             library.onItemOpened = { [weak self] item, channel, range in
                 guard let url = item.url else {
@@ -492,6 +545,10 @@ final class ShellController {
             guard let body = shell.grid.panels.sourceBodies[letter] else { continue }
             body.onLoadRequested = { [weak self] in self?.presentOpenPanel(forChannel: letter) }
             body.onEjectRequested = { [weak self] in self?.ejectClip(fromChannel: letter) }
+            // Only fires in ONE SHOT — the node decides that, not this closure.
+            engine.sources[letter]?.onReachedEnd = { [weak self] in
+                self?.playlistAdvance(channel: letter)
+            }
             body.onPlayToggled = { [weak self] in self?.togglePlayback(channel: letter) }
             body.onGeneratorSelected = { [weak self] kind in
                 self?.setGenerator(kind, channel: letter)

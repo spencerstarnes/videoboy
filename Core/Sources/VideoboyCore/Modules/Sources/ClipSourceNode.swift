@@ -336,6 +336,17 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         return true
     }
 
+    /// Called when a ONE SHOT clip runs out, so something upstream can decide what
+    /// happens next — in practice, pull the next item off this channel's playlist.
+    ///
+    /// The node deliberately does not own that decision. It has no idea what a
+    /// playlist is, and giving it one would mean the graph reaching back out into
+    /// the library to fetch files mid-render.
+    ///
+    /// Fired from the playback advance, so a handler that loads a file should get
+    /// itself onto the main queue before touching any UI.
+    public var onReachedEnd: (() -> Void)?
+
     /// Takes the media out of this source — the exact inverse of `load`.
     ///
     /// Every field `load` sets is put back, including the cached texture: without
@@ -425,14 +436,21 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             }
 
         case .oneShot:
-            // Stop on the out point and stay there.
+            // Stop on the out point and stay there — unless something is listening,
+            // in which case it may put the next clip in (see `onReachedEnd`). Only
+            // ONE SHOT asks: loop and ping-pong already have an answer for what
+            // happens at the end, and a playlist that overrode them would quietly
+            // take the shuttle key's meaning away.
             if playheadFrame >= lastFrame {
                 playheadFrame = lastFrame
                 isPlaying = false
                 Log.info(.dv, "\(identifier) reached the end of its clip (one shot)")
+                onReachedEnd?()
             } else if playheadFrame < first {
+                // Running backwards into the in point is equally "finished".
                 playheadFrame = first
                 isPlaying = false
+                onReachedEnd?()
             }
         }
     }

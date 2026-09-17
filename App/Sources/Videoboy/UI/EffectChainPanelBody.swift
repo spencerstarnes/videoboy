@@ -301,14 +301,20 @@ final class EffectChainPanelBody: NSView {
         var channelSelector: NSSegmentedControl?
         if effect.channelOptions.count > 1 {
             let selected = cardChannelSelection[effect.name] ?? 0
+            // The focused channel carries the same caret the library's load focus
+            // uses, so the two read as one kind of switch: the one that receives
+            // what you do next.
+            let focusTitles = effect.channelOptions.enumerated().map { index, name in
+                index == selected ? Theme.focusCaret + name : name
+            }
             let selector = Controls.segmented(
-                effect.channelOptions,
+                focusTitles,
                 selected: min(selected, effect.channelOptions.count - 1),
                 enabled: effect.isImplemented,
                 target: self, action: #selector(cardChannelChanged(_:))
             )
             selector.identifier = NSUserInterfaceItemIdentifier(effect.name)
-            selector.toolTip = "Which channel this effect edits"
+            selector.toolTip = "Focus — which channel this effect's controls edit"
             channelSelector = selector
         }
 
@@ -480,10 +486,22 @@ final class EffectChainPanelBody: NSView {
         onEffectToggled?(name, sender.state == .on)
     }
 
+    /// Moves the focus caret to the selected segment.
+    private func restyleFocus(_ control: NSSegmentedControl, options: [String]) {
+        for (index, name) in options.enumerated() {
+            control.setLabel(
+                index == control.selectedSegment ? Theme.focusCaret + name : name,
+                forSegment: index)
+        }
+    }
+
     @objc private func cardChannelChanged(_ sender: NSSegmentedControl) {
         guard let name = sender.identifier?.rawValue else { return }
         let index = sender.selectedSegment
         cardChannelSelection[name] = index
+        if let options = effects.first(where: { $0.name == name })?.channelOptions {
+            restyleFocus(sender, options: options)
+        }
         onCardChannelChanged?(name, index)
     }
 

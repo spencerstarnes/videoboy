@@ -299,8 +299,10 @@ final class PanelSet {
         // The sub-mix libraries start from what is actually in samples/; the central
         // browser shows the full inventory of source kinds, with unbuilt ones greyed.
         let sampleItems = PanelSet.sampleLibraryItems()
-        libraryOneBody = LibraryPanelBody(items: sampleItems, columns: 3, showsTabs: false)
-        libraryTwoBody = LibraryPanelBody(items: sampleItems, columns: 3, showsTabs: false)
+        libraryOneBody = LibraryPanelBody(
+            items: sampleItems, columns: 3, showsTabs: false, playlistChannels: ["A", "B"])
+        libraryTwoBody = LibraryPanelBody(
+            items: sampleItems, columns: 3, showsTabs: false, playlistChannels: ["C", "D"])
         assetBrowserBody = LibraryPanelBody(
             items: sampleItems + PanelSet.futureSourceKinds(), columns: 6, showsTabs: true)
         // Bus-coloured like every other A/B and C/D panel. These two were the only

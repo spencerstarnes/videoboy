@@ -38,7 +38,7 @@ final class SettingsBarPanelBody: NSView {
     /// Cycles Fit ▸ Fill ▸ Stretch ▸ Centre. A cycling key, not a popup, for the same
     /// reason the step and loop keys are: it names its current state in the width of
     /// one control, and the set is short enough to walk by clicking.
-    private let fillKey = VBOptionButton(title: PreviewFill.fit.displayName.uppercased())
+    private let fillKey = VBOptionButton(title: "FILL · " + PreviewFill.fit.displayName.uppercased())
     private let ntscToggle = VBOptionButton(title: "NTSC")
     private let dvToggle = VBOptionButton(title: "DV")
 
@@ -58,7 +58,10 @@ final class SettingsBarPanelBody: NSView {
     /// Which fill mode the key is showing.
     private var previewFill: PreviewFill = .fit {
         didSet {
-            fillKey.setTitle(previewFill.displayName.uppercased())
+            // Names ITSELF as well as its state. Labelled with the bare mode it read
+            // "FIT", which in a row of Safe / Overscan / BFI / Test Pat looks like a
+            // fifth on-off toggle rather than the one control here that cycles.
+            fillKey.setTitle("FILL · " + previewFill.displayName.uppercased())
             fillKey.toolTip = "How a picture that is not 4:3 fills its window — \(previewFill.displayName)"
         }
     }

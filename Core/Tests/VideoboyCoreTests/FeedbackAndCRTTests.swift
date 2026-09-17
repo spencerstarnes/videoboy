@@ -271,10 +271,18 @@ final class FeedbackAndCRTTests: XCTestCase {
         node.delayFrames = 1
         node.threshold = 0.02
 
-        let result = try runOverFrames(node, input: image, frames: 10)
+        // Twenty frames, not ten. At zoom 1.15 each pass carries the border inward by
+        // about 13%, so after ten it has only reached radius 0.12 — the very edge of
+        // the region sampled below, and nowhere near "the centre". The assertion was
+        // always right; the loop was never given enough frames to satisfy it, and it
+        // passed anyway because the history buffer was full of uninitialised memory
+        // that read as light already being there. 0.5 / 1.15^20 lands well inside.
+        let result = try runOverFrames(node, input: image, frames: 20)
 
         // Without feedback the middle of the frame is black. With an inward-zooming
         // loop the border is copied repeatedly toward the centre, so it must not be.
+        let evidence = SelfQACheck(name: "phase-4/feedback-tunnel")
+        try? evidence.writeImage(result, named: "tunnel.png")
         let centre = FrameAssertions.meanColor(result, region: (x: 48, y: 48, width: 32, height: 32))
         let brightness = 0.299 * centre.r + 0.587 * centre.g + 0.114 * centre.b
         XCTAssertGreaterThan(brightness, 5.0, "an inward-zooming loop must carry light into the centre")
