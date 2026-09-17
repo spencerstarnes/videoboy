@@ -40,6 +40,11 @@ public struct TitlerProgram: Equatable, Codable, Sendable, Identifiable {
     public let requires: [String]
     /// The boot recipe — see `TitlerBootStep`.
     public let boot: [TitlerBootStep]
+    /// The name of the software's script port, when it has one.
+    ///
+    /// Scala's is "SCALA". A program with a port is driven by commands; one without
+    /// falls back to keystrokes, which is why this is optional rather than assumed.
+    public let scriptPort: String?
 
     /// Which machine the core should be configured as.
     ///
@@ -114,13 +119,61 @@ public struct TitlerProgram: Equatable, Codable, Sendable, Identifiable {
 
     public init(
         name: String, platform: Platform, requires: [String], boot: [TitlerBootStep],
-        machine: Machine = .amiga500
+        machine: Machine = .amiga500, scriptPort: String? = nil
     ) {
         self.name = name
         self.platform = platform
         self.machine = machine
+        self.scriptPort = scriptPort
         self.requires = requires
         self.boot = boot
+    }
+}
+
+/// A command sent to software that has a script port, rather than a faked keystroke.
+///
+/// ── WHY THIS EXISTS, and why it changed the design ──────────────────────────────
+///
+/// Scala MM300 has an AREXX PORT. The CU Amiga disc ships `Scala/ARexx` with an
+/// example that "communicates with other applications and brings the results back to
+/// Scala using Scala Lingo", plus an `ARexx.lha` in the install set.
+///
+/// That matters more than it sounds. Driving vintage software by synthesising
+/// keystrokes means knowing where every cursor is and hoping nothing shifted; a
+/// script port means SAYING WHAT YOU WANT. Setting a line of text becomes one command
+/// instead of "move here, clear that, type this", and it can be checked — a command
+/// either succeeded or it did not.
+///
+/// It is also what makes the rest of the request tractable: a control that can be
+/// driven by a command can be driven by a fader, by MIDI, or by the beat clock,
+/// because all of those already produce values and none of them can type.
+public enum TitlerCommand: Equatable, Codable, Sendable {
+    /// Replace the text of a named field.
+    case setText(field: String, value: String)
+    /// Change a colour, as an Amiga palette index.
+    case setColour(field: String, paletteIndex: Int)
+    /// Move to a named page or scene.
+    case goToPage(String)
+    /// Run a raw ARexx line, for anything not covered above.
+    ///
+    /// Present deliberately: a wrapper that cannot express what the underlying system
+    /// can is a wrapper people work around rather than with.
+    case raw(String)
+
+    /// The ARexx line this becomes.
+    public var arexx: String {
+        switch self {
+        case .setText(let field, let value):
+            // Quoted, because a title containing a space is the normal case rather
+            // than the exception.
+            return "SETTEXT \(field) \"\(value.replacingOccurrences(of: "\"", with: "'"))\""
+        case .setColour(let field, let index):
+            return "SETCOLOUR \(field) \(index)"
+        case .goToPage(let page):
+            return "GOTOPAGE \"\(page)\""
+        case .raw(let line):
+            return line
+        }
     }
 }
 
@@ -146,6 +199,9 @@ public enum TitlerBootStep: Equatable, Codable, Sendable {
     /// Restore a save state, which is by far the most reliable way to land in the
     /// right place — see the note on `TitlerProgram.boot` below.
     case loadState(named: String)
+    /// Send a command to the program's script port. Preferred over `.type` and
+    /// `.key` wherever the software has one.
+    case command(TitlerCommand)
 
     /// A short description, for the progress readout while a program boots.
     public var description: String {
@@ -156,6 +212,7 @@ public enum TitlerBootStep: Equatable, Codable, Sendable {
         case .type(let text): "typing \"\(text)\""
         case .click(let x, let y): "clicking \(Int(x * 100))%, \(Int(y * 100))%"
         case .loadState(let name): "restoring \(name)"
+        case .command(let command): "sending \(command.arexx)"
         }
     }
 }
@@ -212,7 +269,10 @@ public enum TitlerLibrary {
                 .waitForStableScreen(timeout: 120),
                 .loadState(named: "scala-mm300-text-page")
             ],
-            machine: .amiga1200Vampire
+            machine: .amiga1200Vampire,
+            // Confirmed on the CU Amiga disc: Scala/ARexx ships a working example and
+            // the install set carries ARexx.lha. This is what the text box talks to.
+            scriptPort: "SCALA"
         )
     ]
 }
@@ -234,6 +294,8 @@ public protocol EmulatorHost: AnyObject {
     func latestFrame() -> ImageBuffer?
     /// Sends one boot step or one piece of user input.
     func send(_ step: TitlerBootStep)
+    /// Whether this host can reach a script port at all.
+    var supportsCommands: Bool { get }
     /// Stops and releases the process.
     func shutdown()
 }
@@ -259,6 +321,7 @@ public final class UnavailableEmulatorHost: EmulatorHost {
     public func latestFrame() -> ImageBuffer? { nil }
     public func send(_ step: TitlerBootStep) {}
     public func shutdown() {}
+    public var supportsCommands: Bool { false }
 }
 
 /// An emulator that produces a test picture and records what it was told.
@@ -299,6 +362,13 @@ public final class MockEmulatorHost: EmulatorHost {
 
     public func send(_ step: TitlerBootStep) {
         received.append(step)
+    }
+
+    public var supportsCommands: Bool { true }
+
+    /// Every command sent to the script port, in order.
+    public var commands: [TitlerCommand] {
+        received.compactMap { if case .command(let c) = $0 { return c } else { return nil } }
     }
 
     public func shutdown() {

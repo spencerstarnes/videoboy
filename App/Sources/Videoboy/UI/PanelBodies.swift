@@ -120,6 +120,12 @@ final class SourcePanelBody: NSView {
     /// A nil kind means "go back to the file".
     var onGeneratorSelected: ((GeneratorKind?) -> Void)?
 
+    /// Called when the Camera row is chosen in the source menu.
+    var onCameraSelected: (() -> Void)?
+
+    /// Called when the Amiga (EMU) row is chosen in the source menu.
+    var onEmulatorSelected: (() -> Void)?
+
     /// Shows which file this channel is playing, beside the channel letter.
     ///
     /// The channel letter alone is what a preview shows when empty; once something is
@@ -301,7 +307,11 @@ final class SourcePanelBody: NSView {
         // A generator is an alternative source for the channel, not a separate panel:
         // SPEC 6A says generators are selectable anywhere A/B/C/D.
         let generatorPopUp = Controls.popUp(
-            ["File"] + GeneratorKind.allCases.map(\.displayName),
+            // Every KIND of source a channel can take, in one list. The camera and the
+            // emulator were reachable from neither this menu nor anywhere else on the
+            // panel, which made them feel absent rather than unbuilt — "I don't see my
+            // webcam" was exactly that.
+            SourceKindMenu.titles,
             target: self, action: #selector(generatorChanged(_:))
         )
         self.generatorPopUp = generatorPopUp
@@ -474,13 +484,42 @@ final class SourcePanelBody: NSView {
     }
 
     @objc private func generatorChanged(_ sender: NSPopUpButton) {
-        // Item 0 is "File"; the rest are the generator kinds in order.
-        let index = sender.indexOfSelectedItem
-        guard index > 0, index - 1 < GeneratorKind.allCases.count else {
+        switch SourceKindMenu.kind(at: sender.indexOfSelectedItem) {
+        case .file:
             onGeneratorSelected?(nil)
-            return
+        case .generator(let kind):
+            onGeneratorSelected?(kind)
+        case .camera:
+            onCameraSelected?()
+        case .emulator:
+            onEmulatorSelected?()
         }
-        onGeneratorSelected?(GeneratorKind.allCases[index - 1])
+    }
+}
+
+/// What a channel's source menu offers, and what each row means.
+///
+/// One place, because the menu and the handler reading it by index is exactly the
+/// pairing that drifts — add a row to one and the other quietly selects the wrong
+/// thing, with no compiler error and no obvious symptom.
+enum SourceKindMenu {
+
+    enum Kind {
+        case file
+        case generator(GeneratorKind)
+        case camera
+        case emulator
+    }
+
+    static var titles: [String] {
+        ["File"] + GeneratorKind.allCases.map(\.displayName) + ["Camera", "Amiga (EMU)"]
+    }
+
+    static func kind(at index: Int) -> Kind {
+        let generators = GeneratorKind.allCases
+        if index == 0 { return .file }
+        if index <= generators.count { return .generator(generators[index - 1]) }
+        return index == generators.count + 1 ? .camera : .emulator
     }
 }
 

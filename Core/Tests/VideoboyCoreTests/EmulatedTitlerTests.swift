@@ -77,6 +77,56 @@ final class EmulatedTitlerTests: XCTestCase {
         }
     }
 
+    // MARK: - Driving it by COMMAND rather than by faked keystrokes
+
+    func testScalaIsDrivenThroughItsScriptPort() {
+        guard let scala = TitlerLibrary.programs.first(where: { $0.name == "Scala MM300" }) else {
+            return XCTFail("Scala MM300 is not in the library")
+        }
+        XCTAssertEqual(
+            scala.scriptPort, "SCALA",
+            "Scala has an ARexx port — driving it by synthesised keystrokes when it "
+                + "will take commands is choosing the fragile option")
+    }
+
+    func testSettingTextBecomesOneCommandNotAKeystrokeSequence() {
+        let command = TitlerCommand.setText(field: "Line1", value: "LIVE FROM THE BASEMENT")
+        XCTAssertEqual(command.arexx, "SETTEXT Line1 \"LIVE FROM THE BASEMENT\"")
+    }
+
+    func testAQuoteInTheTextDoesNotBreakTheCommand() {
+        // A title containing a quote is a normal thing to want and a normal way to
+        // end up sending a malformed ARexx line.
+        let command = TitlerCommand.setText(field: "Line1", value: "SAY \"HELLO\"")
+        XCTAssertFalse(
+            command.arexx.dropFirst(8).contains("\"HELLO\""),
+            "an embedded quote must not close the argument early")
+    }
+
+    func testRawCommandsArePassedThroughUntouched() {
+        // A wrapper that cannot express what the underlying system can is one people
+        // work around rather than with.
+        XCTAssertEqual(TitlerCommand.raw("SHOWPAGE 3").arexx, "SHOWPAGE 3")
+    }
+
+    func testCommandsReachTheProgram() {
+        let host = MockEmulatorHost()
+        XCTAssertTrue(host.supportsCommands)
+        _ = host.boot(TitlerLibrary.programs.first { $0.name == "Scala MM300" }!)
+
+        host.send(.command(.setText(field: "Line1", value: "ON AIR")))
+        host.send(.command(.goToPage("Titles")))
+
+        XCTAssertEqual(host.commands, [
+            .setText(field: "Line1", value: "ON AIR"),
+            .goToPage("Titles")
+        ])
+    }
+
+    func testAHostWithNoScriptPortSaysSo() {
+        XCTAssertFalse(UnavailableEmulatorHost(reason: "none").supportsCommands)
+    }
+
     // MARK: - Machines
 
     func testScalaAsksForAnAcceleratedA1200RatherThanAStockMachine() {
@@ -280,5 +330,102 @@ final class EmulatorCoreTests: XCTestCase {
                 "\(core.displayName) must tell someone how to obtain it — this app "
                     + "never downloads a core, so the instructions are the feature")
         }
+    }
+}
+
+// MARK: - The translation layer
+
+/// The rule this suite exists to enforce: every control on the panel must become a
+/// command the software actually understands. A slider that moves and changes nothing
+/// is worse than no slider, because it teaches you to distrust the whole panel.
+final class TitlerControlTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        Log.echoesToStandardError = false
+    }
+
+    private var scala: TitlerProgram {
+        TitlerLibrary.programs.first { $0.name == "Scala MM300" }!
+    }
+
+    func testScalaHasAPanelBecauseItHasAScriptPort() {
+        XCTAssertFalse(TitlerControlSet.controls(for: scala).isEmpty)
+    }
+
+    func testAProgramWithNoScriptPortOffersNoControls() {
+        // Rather than offering knobs that cannot reach anything.
+        let unscripted = TitlerProgram(
+            name: "Something", platform: .amiga, requires: [], boot: [])
+        XCTAssertTrue(TitlerControlSet.controls(for: unscripted).isEmpty)
+    }
+
+    func testEveryControlProducesACommandAtEveryPosition() {
+        for control in TitlerControlSet.controls(for: scala) {
+            for step in 0...20 {
+                let command = control.command(for: Double(step) / 20.0)
+                XCTAssertFalse(
+                    command.arexx.isEmpty,
+                    "\(control.name) produced nothing at \(step)/20")
+            }
+        }
+    }
+
+    func testTheEndsOfAFaderReachTheEndsOfTheRange() {
+        let page = TitlerControlSet.scalaMM300.first { $0.name == "page" }!
+        XCTAssertEqual(page.command(for: 0).arexx, "SET PAGE 1")
+        XCTAssertEqual(page.command(for: 1).arexx, "SET PAGE 32")
+    }
+
+    func testAChoiceControlWalksItsWholeSet() {
+        let wipe = TitlerControlSet.scalaMM300.first { $0.name == "wipe" }!
+        var seen: Set<String> = []
+        for step in 0...200 { seen.insert(wipe.command(for: Double(step) / 200.0).arexx) }
+        guard case .choice(_, let options) = wipe.kind else { return XCTFail("not a choice") }
+        XCTAssertEqual(
+            seen.count, options.count,
+            "every wipe must be reachable from some fader position, or it may as well not exist")
+    }
+
+    func testColoursStayInsideTheAmigaPalette() {
+        let colour = TitlerControlSet.scalaMM300.first { $0.name == "text col" }!
+        for step in 0...50 {
+            guard case .setColour(_, let index) = colour.command(for: Double(step) / 50.0) else {
+                return XCTFail("expected a colour command")
+            }
+            XCTAssertTrue(
+                (0..<32).contains(index),
+                "an Amiga has 32 palette entries; \(index) is not one of them")
+        }
+    }
+
+    func testANonFiniteValueDoesNotProduceNonsense() {
+        // These are driven by faders, LFOs and MIDI, any of which can hand over a NaN.
+        for control in TitlerControlSet.controls(for: scala) {
+            XCTAssertFalse(control.command(for: .nan).arexx.isEmpty)
+            XCTAssertFalse(control.command(for: .infinity).arexx.isEmpty)
+        }
+    }
+
+    func testEveryControlExplainsItselfInTermsOfTheSoftware() {
+        for control in TitlerControlSet.controls(for: scala) {
+            XCTAssertFalse(control.explanation.isEmpty)
+            XCTAssertGreaterThan(
+                control.explanation.count, 30,
+                "\(control.name) needs an explanation of what it does TO SCALA, not a "
+                    + "restatement of the widget's name")
+        }
+    }
+
+    func testAControlDrivenByAFaderReachesTheProgram() {
+        // The whole path, end to end: a 0...1 value becomes a command and arrives.
+        let host = MockEmulatorHost()
+        let node = EmulatedTitlerNode(identifier: "emu", host: host, context: nil)
+        _ = node.boot(scala)
+
+        let wipe = TitlerControlSet.scalaMM300.first { $0.name == "wipe" }!
+        host.send(.command(wipe.command(for: 0.0)))
+
+        XCTAssertEqual(host.commands.last, .setText(field: "WIPE", value: "CUT"))
     }
 }

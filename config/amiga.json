@@ -1,0 +1,8 @@
+{
+  "_comment": "Written by scripts/setup-amiga.sh. Paths point OUTSIDE the repo on purpose: user-supplied media is referenced, never copied in.",
+  "media": "/Users/spencerstarnes/Downloads/CU Amiga Magazine's Super CD-ROM 19 (1998)(EMAP Images)(GB)[!][issue 1998-02].iso",
+  "titler_on_media": "Scala",
+  "kickstart": null,
+  "core": null,
+  "machine": "amiga1200Vampire"
+}
