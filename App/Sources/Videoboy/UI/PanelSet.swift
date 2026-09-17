@@ -135,7 +135,10 @@ final class PanelSet {
         effectsOneBody = EffectChainPanelBody(effects: [
             EffectCardModel(
                 name: "DV · DIF corruptor",
-                isEnabled: true,
+                // OFF, like every effect except the grade. The wedge is the loudest
+                // thing in the app and it should be something you switch on, not
+                // something you discover is already on.
+                isEnabled: false,
                 isImplemented: FeatureFlag.bitstreamCorruptor.isOn,
                 parameters: [
                     EffectParameterModel(name: "amount", code: ParamCode.corruptAmount.rawValue,
@@ -249,7 +252,10 @@ final class PanelSet {
         effectsTwoBody = EffectChainPanelBody(effects: [
             EffectCardModel(
                 name: "DV · DIF corruptor",
-                isEnabled: true,
+                // OFF, like every effect except the grade. The wedge is the loudest
+                // thing in the app and it should be something you switch on, not
+                // something you discover is already on.
+                isEnabled: false,
                 isImplemented: FeatureFlag.bitstreamCorruptor.isOn,
                 parameters: [
                     EffectParameterModel(name: "amount", code: ParamCode.corruptAmount.rawValue,

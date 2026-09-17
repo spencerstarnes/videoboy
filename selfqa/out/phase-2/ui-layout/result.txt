@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
-verdict:  PASS
-when:     2026-09-17T18:56:45Z
+verdict:  FAIL
+when:     2026-09-17T18:59:24Z
 core:     0.3.0
 
 notes:
@@ -12,16 +12,16 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
 
-assertions (76/76 passed):
+assertions (75/76 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 796.8
+  PASS  wide is not blank — luminance variance 796.4
   PASS  dimensions — expected 1000x760, got 1000x760
   PASS  compact is not blank — luminance variance 796.1
   PASS  dimensions — expected 760x640, got 760x640
   PASS  narrow is not blank — luminance variance 1046.7
-  PASS  collapsed-left is not blank — luminance variance 711.2
+  PASS  collapsed-left is not blank — luminance variance 711.0
   PASS  collapsed-both-edges is not blank — luminance variance 614.2
-  PASS  collapsed-sources-only is not blank — luminance variance 819.0
+  PASS  collapsed-sources-only is not blank — luminance variance 821.7
   PASS  collapsed-effects-only is not blank — luminance variance 595.2
   PASS  holding Shift lights the mappable faders — 62 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
@@ -71,7 +71,7 @@ assertions (76/76 passed):
   PASS  the selector routes a drag to the channel it points at, not always A — source.a=0.90, source.b=0.30
   PASS  switching back to A shows A's value, not B's or a stale default — displayed 0.90
   PASS  each channel's bypass is independent, and the card shows it — B's switch reads off after B was bypassed
-  PASS  channel D's wedge — unreachable before this — now damages PROGRAM — 0.483 of sampled pixels differ, needed >= 0.02
+  FAIL  channel D's wedge — unreachable before this — now damages PROGRAM — 0.000 of sampled pixels differ, needed >= 0.02
   PASS  the corruptor card's ✕ actually takes the card out of the chain — card present after ✕: false
   PASS  removing a per-channel card bypasses BOTH of its channels — C wet/dry 0.0, D wet/dry 0.0
   PASS  hovering a clip gives it a scrub position to mark against — 0.50
@@ -89,3 +89,35 @@ assertions (76/76 passed):
   PASS  plain shift still arms detect rather than marking a sweep — detect armed, no mark set
   PASS  every enabled effect switch actually reaches the engine — 12 switches moved a wet/dry in the graph
   PASS  every enabled effect fader actually reaches the engine — 49 faders moved a value in the registry
+
+recent log:
+  1789671563.937 INFO [param] slot 'fx.one.feedback' now exposes 6 params (0 values carried, 0 dropped)
+  1789671563.937 INFO [param] slot 'fx.one.mx1' now exposes 3 params (0 values carried, 0 dropped)
+  1789671563.937 INFO [param] slot 'data.two' now exposes 6 params (0 values carried, 0 dropped)
+  1789671563.937 INFO [param] slot 'fx.two.echo' now exposes 4 params (0 values carried, 0 dropped)
+  1789671563.937 INFO [param] slot 'source.testpattern' now exposes 1 params (0 values carried, 0 dropped)
+  1789671563.937 INFO [graph] graph built: 27 nodes, max latency 2 frames
+  1789671563.937 INFO [clock] subscription 1: 1/4, latency 1 frames (33.4ms)
+  1789671563.937 INFO [clock] subscription 2: 1/4, latency 1 frames (33.4ms)
+  1789671563.937 INFO [clock] subscription 3: 1/4, latency 1 frames (33.4ms)
+  1789671563.937 INFO [clock] subscription 4: 1/4, latency 1 frames (33.4ms)
+  1789671563.937 INFO [clock] subscription 5: 1/4, latency 0 frames (0.0ms)
+  1789671563.937 INFO [clock] subscription 6: 1/4, latency 0 frames (0.0ms)
+  1789671563.937 INFO [clock] subscription 7: 1/4, latency 0 frames (0.0ms)
+  1789671563.938 INFO [app] record indicators on 1, 2, A, B, C, D, P
+  1789671563.938 INFO [render] picture fill is now Fill
+  1789671563.938 INFO [param] 0 parameters have a driver
+  1789671564.236 INFO [app] DV · DIF corruptor on ONE enabled
+  1789671564.236 INFO [app] Composite · NTSC on ONE enabled
+  1789671564.236 INFO [app] Colour on ONE bypassed
+  1789671564.236 INFO [app] Echo / Trails on ONE enabled
+  1789671564.236 INFO [app] Feedback on ONE enabled
+  1789671564.236 INFO [app] MX-1 on ONE enabled
+  1789671564.237 INFO [app] DV · DIF corruptor on TWO enabled
+  1789671564.237 INFO [app] Composite · NTSC on TWO enabled
+  1789671564.237 INFO [app] Colour on TWO bypassed
+  1789671564.237 INFO [app] Echo / Trails on TWO enabled
+  1789671564.237 INFO [app] Feedback on TWO enabled
+  1789671564.237 INFO [app] MX-1 on TWO enabled
+  1789671564.237 INFO [selfqa] phase-2/ui-layout: PASS  every enabled effect switch actually reaches the engine — 12 switches moved a wet/dry in the graph
+  1789671564.240 INFO [selfqa] phase-2/ui-layout: PASS  every enabled effect fader actually reaches the engine — 49 faders moved a value in the registry

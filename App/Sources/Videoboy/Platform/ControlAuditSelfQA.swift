@@ -194,9 +194,23 @@ enum ControlAuditSelfQA {
         }
         // And every bus effect must boot bypassed, since every one of their switches
         // draws itself off.
+        // Compared against what the engine DECLARES is live at launch, not against a
+        // blanket assumption that everything boots bypassed. That assumption was true
+        // until the grade earned an exception, and a check that cannot express an
+        // intended exception gets edited away the first time one appears.
+        //
+        // It still catches the bug it was written for: a slot that boots live without
+        // being declared, or one declared live that boots bypassed. Both are the
+        // switch and the engine disagreeing, which is the actual contract.
         for slot in Engine.busEffectSlots {
             let wetDry = engine.registry.value(slot: slot, code: .wetDry) ?? 0
-            if wetDry > 0.001 { disagreements.append("\(slot) boots at wet/dry \(wetDry)") }
+            let shouldBeLive = Engine.liveAtLaunchSlots.contains(slot)
+            if shouldBeLive && wetDry <= 0.001 {
+                disagreements.append("\(slot) is declared live at launch but boots bypassed")
+            }
+            if !shouldBeLive && wetDry > 0.001 {
+                disagreements.append("\(slot) boots at wet/dry \(wetDry) without being declared live")
+            }
         }
         check.record(AssertionResult(
             name: "every switch agrees with the engine at launch",

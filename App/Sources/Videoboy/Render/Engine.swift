@@ -282,6 +282,14 @@ final class Engine {
         for slot in Engine.busEffectSlots where !Engine.liveAtLaunchSlots.contains(slot) {
             registry.setValue(0, slot: slot, code: .wetDry)
         }
+
+        // The per-channel corruptors too. Their cards read OFF, and a switch that
+        // says off while the node is live is the same boot-state lie the bus effects
+        // had — it just hides better here, because the corrupt amount also starts at
+        // zero so there is nothing to see until someone moves a fader.
+        for letter in ["A", "B", "C", "D"] {
+            registry.setValue(0, slot: Engine.slot(forChannel: letter), code: .wetDry)
+        }
         Log.info(.graph, "graph built: \(graph.nodeCount) nodes, max latency \(graph.maximumLatencyInFrames) frames")
     }
 
