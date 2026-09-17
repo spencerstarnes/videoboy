@@ -41,6 +41,7 @@ final class ShellController {
         wireRecordIndicators()
         wireLibraries()
         wireRouting()
+        setPreviewFill(preferences.preferences.previewFill)
         wireDetect()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
@@ -81,6 +82,16 @@ final class ShellController {
     }
 
     /// Wires the libraries: double-click loads into the pair's next channel.
+    /// Applies a picture fill to every preview in the window.
+    func setPreviewFill(_ fill: PreviewFill) {
+        let panels = shell.grid.panels
+        for body in panels.sourceBodies.values { body.preview.fillMode = fill }
+        panels.subMixOneBody.preview.fillMode = fill
+        panels.subMixTwoBody.preview.fillMode = fill
+        panels.programBody.preview.fillMode = fill
+        Log.info(.render, "picture fill is now \(fill.displayName)")
+    }
+
     /// True when nothing is being sent anywhere.
     var hasNoOutputs: Bool { router.hasNoOutputs && outputWindow == nil }
 

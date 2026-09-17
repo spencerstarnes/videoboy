@@ -22,6 +22,11 @@ import VideoboyCore
 /// Audits the interface's controls.
 enum ControlAuditSelfQA {
 
+    /// Every view beneath a root, flattened.
+    private static func allSubviews(of root: NSView) -> [NSView] {
+        root.subviews + root.subviews.flatMap { allSubviews(of: $0) }
+    }
+
     /// Labels whose text does not fit the width they were given.
     ///
     /// Measured rather than looked for: an NSTextField shows an ellipsis at draw
@@ -237,6 +242,29 @@ enum ControlAuditSelfQA {
             name: "no label in the output bar is cut off",
             passed: truncated.isEmpty,
             detail: truncated.isEmpty ? "every label fits" : truncated.joined(separator: ", ")
+        ))
+
+        // The modulation badges, which name a thing and so must never be the thing
+        // that gets cut. They were pinned at one character's width and clipped "LFO"
+        // to "L…" the moment they stopped being single letters.
+        var clippedBadges: [String] = []
+        for panel in [shell.grid.panels.effectsOneBody, shell.grid.panels.effectsTwoBody] {
+            for case let button as NSButton in allSubviews(of: panel)
+            where ModulationSource.fromBadge(button.title) != nil {
+                let needed = (button.title as NSString)
+                    .size(withAttributes: [.font: button.font ?? Theme.Font.tinyLabel]).width
+                if button.frame.width > 0 && needed > button.frame.width {
+                    clippedBadges.append(
+                        "\(button.title) needs \(Int(needed))pt, has \(Int(button.frame.width))pt")
+                }
+            }
+        }
+        check.record(AssertionResult(
+            name: "no modulation badge is cut off",
+            passed: clippedBadges.isEmpty,
+            detail: clippedBadges.isEmpty
+                ? "MIDI, AUD and LFO all fit in both chains"
+                : clippedBadges.joined(separator: ", ")
         ))
 
         // The failing condition is a control that is enabled and wired to nothing.

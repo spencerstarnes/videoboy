@@ -77,6 +77,10 @@ final class PreferencesWindowController: NSWindowController {
     var reminderCountLabel: NSTextField?
     var destinationList: DestinationListView?
 
+    /// Called when the picture fill changes, so open previews follow immediately
+    /// rather than at the next relaunch.
+    var onPreviewFillChanged: ((PreviewFill) -> Void)?
+
     private var selected: Pane = .save
     private var tabButtons: [Pane: NSButton] = [:]
     private let detail = FlippedView()

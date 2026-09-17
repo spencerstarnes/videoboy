@@ -751,6 +751,46 @@ enum UISelfQA {
             ))
         }
 
+        // The preview panels must come out 4:3, measured on the panels themselves
+        // rather than on the picture inside them.
+        for layoutCase in layoutCases {
+            let shell = ShellView()
+            shell.frame = NSRect(origin: .zero, size: layoutCase.size)
+            shell.layoutSubtreeIfNeeded()
+
+            let previews = [
+                ("A/B Sub Mix", shell.grid.panels.subMixOne),
+                ("Program", shell.grid.panels.program),
+                ("C/D Sub Mix", shell.grid.panels.subMixTwo)
+            ]
+            var offenders: [String] = []
+            for (name, panel) in previews {
+                let size = panel.frame.size
+                guard size.height > 1 else { continue }
+                let ratio = size.width / size.height
+                // Within a couple of percent: the grid works in whole points and a
+                // gutter cannot always be split evenly.
+                if abs(ratio - Theme.Metrics.previewAspectRatio) > 0.06 {
+                    offenders.append(String(format: "%@ %@ %.2f", layoutCase.name, name, ratio))
+                }
+            }
+            check.record(AssertionResult(
+                name: "preview panels are 4:3 at \(layoutCase.name)",
+                passed: offenders.isEmpty,
+                detail: offenders.isEmpty
+                    ? String(format: "all three within 4:3 (%.3f)", Theme.Metrics.previewAspectRatio)
+                    : offenders.joined(separator: ", ")
+            ))
+
+            // And the rows below must still be reachable.
+            let bar = shell.grid.panels.settingsBar.frame
+            check.record(AssertionResult(
+                name: "the output bar survives 4:3 previews at \(layoutCase.name)",
+                passed: bar.height >= Theme.Metrics.settingsBarHeight - 1 && bar.minY >= 0,
+                detail: String(format: "bar is %.0fpt tall at y=%.0f", bar.height, bar.minY)
+            ))
+        }
+
         return check.finish()
     }
 

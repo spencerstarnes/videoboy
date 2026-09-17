@@ -378,8 +378,20 @@ final class PanelGridView: NSView {
                 weights: columnWeights(for: breakpoint, band: .effects),
                 total: contentWidth, gutter: gutter, origin: padding)
         ]
-        let rowEdges = edges(
-            weights: Theme.Grid.rowWeights,
+        // The preview row band is sized from the COLUMN WIDTH so those panels come
+        // out 4:3, and the rows below share whatever is left. Deriving it the other
+        // way — fixed row weights and a letterboxed picture inside — left a band of
+        // dead panel above and below every preview.
+        //
+        // If the window is too short to give the previews their full height, they
+        // take what there is rather than pushing the rest of the grid off the bottom:
+        // a squashed preview is recoverable, a settings bar you cannot reach is not.
+        let previewColumnWidth = bandEdges[.sources].map { edges -> CGFloat in
+            let centre = edges[2]
+            return max(centre.end - centre.start, 0)
+        } ?? 0
+        let rowEdges = previewAwareRowEdges(
+            previewColumnWidth: previewColumnWidth,
             total: contentHeight, gutter: gutter, origin: padding
         )
 
@@ -501,6 +513,45 @@ final class PanelGridView: NSView {
             }
         }
         return weights
+    }
+
+    /// Row edges with the preview band sized to make those panels 4:3.
+    ///
+    /// Rows 0 and 1 are the preview band — each preview spans both — so together they
+    /// must be three quarters of the preview column's width. The remaining rows keep
+    /// their weights relative to each other and divide what is left.
+    private func previewAwareRowEdges(
+        previewColumnWidth: CGFloat, total: CGFloat, gutter: CGFloat, origin: CGFloat
+    ) -> [(start: CGFloat, end: CGFloat)] {
+        let weights = Theme.Grid.rowWeights
+        let gutterTotal = gutter * CGFloat(max(weights.filter { $0 > 0 }.count - 1, 0))
+        let available = max(total - gutterTotal, 0)
+
+        // What the previews want, and what the rest of the grid must keep.
+        let wanted = previewColumnWidth / Theme.Metrics.previewAspectRatio
+        let lowerWeights = Array(weights.dropFirst(2))
+        let lowerMinimum = Theme.Grid.minimumLowerRowsHeight
+        let previewBand = min(max(wanted, 0), max(available - lowerMinimum, 0))
+
+        // The band is split between rows 0 and 1 in their existing proportion, so a
+        // source panel above another keeps the relationship it had.
+        let upperSum = weights[0] + weights[1]
+        let row0 = upperSum > 0 ? previewBand * weights[0] / upperSum : previewBand / 2
+        let row1 = previewBand - row0
+
+        let lowerAvailable = max(available - previewBand, 0)
+        let lowerSum = lowerWeights.reduce(0, +)
+        let heights = [row0, row1] + lowerWeights.map { weight -> CGFloat in
+            lowerSum > 0 ? lowerAvailable * weight / lowerSum : 0
+        }
+
+        var result: [(start: CGFloat, end: CGFloat)] = []
+        var cursor = origin
+        for (index, height) in heights.enumerated() {
+            result.append((start: cursor, end: cursor + height))
+            if weights[index] > 0 { cursor += height + gutter }
+        }
+        return result
     }
 
     /// Converts weights into start/end pixel edges, accounting for gutters.

@@ -316,3 +316,67 @@ final class ScopeTests: XCTestCase {
         XCTAssertEqual(check.finish(), .pass, "see selfqa/out/phase-5/scopes/result.txt")
     }
 }
+
+// MARK: - Preview fill modes
+
+extension ScopeTests {
+
+    /// A 16:9 picture in a 4:3 frame is the case every mode exists to answer, so it
+    /// is the one worth pinning down. 320×180 into 400×300.
+    private var wideSource: CGSize { CGSize(width: 320, height: 180) }
+    private var narrowFrame: CGSize { CGSize(width: 400, height: 300) }
+
+    func testFitShowsTheWholePictureWithBars() {
+        let rect = PreviewFill.fit.rect(sourceSize: wideSource, in: narrowFrame)
+        XCTAssertEqual(rect.width, 400, accuracy: 0.01, "fit uses the full width")
+        XCTAssertEqual(rect.height, 225, accuracy: 0.01, "and leaves bars top and bottom")
+        XCTAssertGreaterThanOrEqual(rect.minX, -0.01)
+        XCTAssertGreaterThanOrEqual(rect.minY, -0.01, "nothing is cropped")
+    }
+
+    func testFillCoversTheFrameAndCropsTheOverflow() {
+        let rect = PreviewFill.fill.rect(sourceSize: wideSource, in: narrowFrame)
+        XCTAssertEqual(rect.height, 300, accuracy: 0.01, "fill uses the full height")
+        XCTAssertEqual(rect.width, 533.33, accuracy: 0.1)
+        XCTAssertLessThan(rect.minX, 0, "the overflow hangs outside the frame, to be clipped")
+    }
+
+    func testStretchFillsExactlyAndDistorts() {
+        let rect = PreviewFill.stretch.rect(sourceSize: wideSource, in: narrowFrame)
+        XCTAssertEqual(rect.width, 400, accuracy: 0.01)
+        XCTAssertEqual(rect.height, 300, accuracy: 0.01)
+        XCTAssertEqual(rect.origin.x, 0, accuracy: 0.01)
+    }
+
+    func testCentreDoesNotScaleAtAll() {
+        let rect = PreviewFill.centre.rect(sourceSize: wideSource, in: narrowFrame)
+        XCTAssertEqual(rect.size.width, wideSource.width, accuracy: 0.01)
+        XCTAssertEqual(rect.size.height, wideSource.height, accuracy: 0.01)
+    }
+
+    /// A source that already matches the frame must come out identical under every
+    /// mode except centre — otherwise the modes are doing something to 4:3 material
+    /// in a 4:3 window, which is the common case.
+    func testMatchingAspectIsUntouched() {
+        let frame = CGSize(width: 400, height: 300)
+        for mode in [PreviewFill.fit, .fill, .stretch] {
+            let rect = mode.rect(sourceSize: CGSize(width: 800, height: 600), in: frame)
+            XCTAssertEqual(rect.width, 400, accuracy: 0.01, "\(mode.rawValue) width")
+            XCTAssertEqual(rect.height, 300, accuracy: 0.01, "\(mode.rawValue) height")
+        }
+    }
+
+    func testEveryModeExplainsItself() {
+        for mode in PreviewFill.allCases {
+            XCTAssertFalse(mode.displayName.isEmpty)
+            XCTAssertFalse(mode.explanation.isEmpty)
+        }
+    }
+
+    func testDegenerateSizesDoNotDivideByZero() {
+        for mode in PreviewFill.allCases {
+            let rect = mode.rect(sourceSize: .zero, in: narrowFrame)
+            XCTAssertEqual(rect.size, narrowFrame, "a zero source falls back to the frame")
+        }
+    }
+}

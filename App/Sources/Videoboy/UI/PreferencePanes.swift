@@ -108,6 +108,18 @@ extension PreferencesWindowController {
             on: store.preferences.playOnLoad,
             target: self, action: #selector(playOnLoadChanged(_:)))
 
+        // How a picture sits in a window that is not its shape. Four choices, named
+        // the way AVFoundation and CSS both name them, so nobody has to guess which
+        // one crops and which one letterboxes.
+        let fills = PreviewFill.allCases
+        let fill = Controls.segmented(
+            fills.map(\.displayName),
+            selected: fills.firstIndex(of: store.preferences.previewFill) ?? 0,
+            target: self, action: #selector(previewFillChanged(_:)))
+        for (index, mode) in fills.enumerated() {
+            fill.setToolTip(mode.explanation, forSegment: index)
+        }
+
         let restore = Controls.button(
             "Restore All Reminders", target: self, action: #selector(restoreReminders))
         reminderCountLabel = Controls.label(
@@ -122,6 +134,7 @@ extension PreferencesWindowController {
             field("Loop mode", loop),
             field("Blend mode", blend),
             field("Play on load", playOnLoad),
+            field("Picture fill", fill),
             spacer(12),
             field("Reminders", Controls.row([restore, reminderCountLabel!], spacing: 10))
         ], spacing: 8)
@@ -159,6 +172,13 @@ extension PreferencesWindowController {
         let blends = BlendMode.allCases
         guard blends.indices.contains(sender.indexOfSelectedItem) else { return }
         store.preferences.defaultBlendMode = blends[sender.indexOfSelectedItem]
+    }
+
+    @objc func previewFillChanged(_ sender: NSSegmentedControl) {
+        let fills = PreviewFill.allCases
+        guard fills.indices.contains(sender.selectedSegment) else { return }
+        store.preferences.previewFill = fills[sender.selectedSegment]
+        onPreviewFillChanged?(fills[sender.selectedSegment])
     }
 
     @objc func playOnLoadChanged(_ sender: NSSwitch) {

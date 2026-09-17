@@ -208,6 +208,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             preferencesController = PreferencesWindowController(
                 store: preferences, engine: engine)
         }
+        preferencesController?.onPreviewFillChanged = { [weak self] fill in
+            self?.mainWindowController?.shellController?.setPreviewFill(fill)
+        }
         preferencesController?.showWindow(nil)
         preferencesController?.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

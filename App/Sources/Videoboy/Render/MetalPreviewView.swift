@@ -178,22 +178,31 @@ final class MetalPreviewView: NSView {
         fatalError("MetalPreviewView is created in code, never from a nib")
     }
 
-    /// Keeps the Metal layer letterboxed to 4:3 inside whatever box the grid gives us.
+    /// How the picture is placed when its shape and the view's disagree.
+    var fillMode: PreviewFill = .fit {
+        didSet {
+            guard fillMode != oldValue else { return }
+            needsLayout = true
+        }
+    }
+
+    /// Places the Metal layer inside whatever box the grid gives us.
     override func layout() {
         super.layout()
         guard let metalLayer else { return }
 
-        let aspect = Theme.Metrics.previewAspectRatio
-        var size = bounds.size
-        if size.width / max(size.height, 1) > aspect {
-            size.width = size.height * aspect
-        } else {
-            size.height = size.width / aspect
-        }
+        // Where the picture sits inside this view, per the chosen fill mode. The
+        // source is SD 4:3; the view is whatever the grid gave us, which is now also
+        // 4:3 for the previews, so Fit and Fill agree and there is nothing to see —
+        // the modes earn their keep on material that is not 4:3 and on the output
+        // window, where the display decides the shape.
+        let sourceSize = CGSize(
+            width: CGFloat(StandardDefinition.width),
+            height: CGFloat(StandardDefinition.height))
+        let placed = fillMode.rect(sourceSize: sourceSize, in: bounds.size)
         let frame = NSRect(
-            x: (bounds.width - size.width) / 2,
-            y: (bounds.height - size.height) / 2,
-            width: size.width, height: size.height
+            x: placed.origin.x, y: placed.origin.y,
+            width: placed.width, height: placed.height
         )
         // Setting drawableSize from the layer's own bounds keeps one drawable pixel
         // per screen pixel; see contentsScale above.

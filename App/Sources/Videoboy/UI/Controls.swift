@@ -201,16 +201,24 @@ enum Controls {
     /// buttons with no bezel rather than styled labels, which keeps the hit target
     /// and the keyboard behaviour that AppKit already gets right.
     static func mappingBadgeButton(
-        _ letter: String, isActive: Bool, target: AnyObject?, action: Selector?
+        _ title: String, isActive: Bool, target: AnyObject?, action: Selector?
     ) -> NSButton {
-        let button = NSButton(title: letter, target: target, action: action)
+        let button = NSButton(title: title, target: target, action: action)
         button.isBordered = false
         button.bezelStyle = .inline
         button.font = Theme.Font.tinyLabel
         button.contentTintColor = isActive ? Theme.Color.accent : Theme.Color.textTertiary
         button.setButtonType(.momentaryChange)
-        // Room for one character plus a little slack, so the row stays tight.
-        button.widthAnchor.constraint(equalToConstant: 14).isActive = true
+
+        // Sized to the TEXT. This was pinned at 14pt — room for one character —
+        // which was right while the badges read "M", "S", "C" and silently clipped
+        // them to "L…" the moment they became words. A badge whose whole job is to
+        // name a thing must not be the thing that gets cut.
+        button.translatesAutoresizingMaskIntoConstraints = false
+        let width = (title as NSString)
+            .size(withAttributes: [.font: Theme.Font.tinyLabel]).width
+        button.widthAnchor.constraint(equalToConstant: ceil(width) + 6).isActive = true
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
         return button
     }
 }

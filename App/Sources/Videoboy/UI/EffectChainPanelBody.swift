@@ -295,7 +295,18 @@ final class EffectChainPanelBody: NSView {
             note.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             headerViews.append(note)
         }
+        headerViews.append(enableSwitch)
+        headerViews.append(removeButton)
+        let header = Controls.row(headerViews, spacing: 4)
+
+        // The badges get their own line. Spelled-out names do not fit beside a grip,
+        // a name, a switch and a close button in a column this narrow — the first
+        // attempt truncated LFO to "L…", which is exactly the failure that made the
+        // single letters ambiguous in the first place. A line of their own costs one
+        // row and keeps the words whole.
+        var modulationRow: NSView?
         if effect.isImplemented {
+            var badges: [NSView] = []
             for source in ModulationSource.allCases {
                 let button = Controls.mappingBadgeButton(
                     source.badge,
@@ -304,15 +315,15 @@ final class EffectChainPanelBody: NSView {
                 )
                 button.identifier = NSUserInterfaceItemIdentifier("\(effect.name)|\(source.badge)")
                 button.toolTip = source.explanation
-                headerViews.append(button)
+                badges.append(button)
             }
+            badges.append(Controls.spacer())
+            modulationRow = Controls.row(badges, spacing: 3)
         }
-        headerViews.append(enableSwitch)
-        headerViews.append(removeButton)
-        let header = Controls.row(headerViews, spacing: 4)
 
         // ---- Parameters: two lines each ----
         var rows: [NSView] = [header]
+        if let modulationRow { rows.append(modulationRow) }
         for parameter in effect.parameters {
             rows.append(contentsOf: makeParameterRows(parameter))
         }

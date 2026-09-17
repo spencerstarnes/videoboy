@@ -92,6 +92,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var defaultBlendMode: BlendMode = .normal
     /// Whether a source starts playing as soon as it is loaded.
     public var playOnLoad: Bool = false
+    /// How a picture is placed when its shape and its window's disagree.
+    public var previewFill: PreviewFill = .fit
 
     // MARK: Reminders
 
@@ -138,6 +140,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         defaultLoopMode = decode(.defaultLoopMode, LoopMode.loop)
         defaultBlendMode = decode(.defaultBlendMode, BlendMode.normal)
         playOnLoad = decode(.playOnLoad, false)
+        previewFill = decode(.previewFill, PreviewFill.fit)
         suppressedReminders = decode(.suppressedReminders, Set<ReminderKind>())
         // Element by element, so one destination of a kind this build no longer has
         // does not take the whole list down with it. Capture cards were offered as

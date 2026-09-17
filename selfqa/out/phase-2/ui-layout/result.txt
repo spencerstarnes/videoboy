@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T02:33:54Z
+when:     2026-09-17T02:42:59Z
 core:     0.3.0
 
 notes:
@@ -12,24 +12,24 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
 
-assertions (47/47 passed):
+assertions (53/53 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 920.7
+  PASS  wide is not blank — luminance variance 863.9
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 832.0
+  PASS  compact is not blank — luminance variance 743.4
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 1067.8
-  PASS  collapsed-left is not blank — luminance variance 774.2
-  PASS  collapsed-both-edges is not blank — luminance variance 606.0
-  PASS  collapsed-sources-only is not blank — luminance variance 888.4
-  PASS  collapsed-effects-only is not blank — luminance variance 737.9
+  PASS  narrow is not blank — luminance variance 1036.8
+  PASS  collapsed-left is not blank — luminance variance 720.1
+  PASS  collapsed-both-edges is not blank — luminance variance 567.4
+  PASS  collapsed-sources-only is not blank — luminance variance 785.4
+  PASS  collapsed-effects-only is not blank — luminance variance 636.4
   PASS  holding Shift lights the mappable faders — 43 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
   PASS  removing the driver clears the mark — 0 faders still marked
   PASS  preferences save has content — luminance variance 157.6
-  PASS  preferences defaults has content — luminance variance 281.2
+  PASS  preferences defaults has content — luminance variance 312.9
   PASS  preferences outputs has content — luminance variance 247.1
   PASS  preferences inputs has content — luminance variance 154.8
   PASS  preferences hotKeys has content — luminance variance 163.1
@@ -46,7 +46,7 @@ assertions (47/47 passed):
   PASS  an empty channel leaves its quadrant black rather than moving the others — bottom-right is (0, 0, 0)
   PASS  a press on a library item reaches the view that starts the drag — 30 items, all reachable
   PASS  dropping a clip on a source loads it — entered copy, accepted true, channel B holds motion.dv
-  PASS  a drop on the library grid adds the clip — landed on LibraryDropView, entered copy, accepted true, 4 items before, 5 after
+  PASS  a drop on the library grid adds the clip — landed on LibraryPanelBody, entered copy, accepted true, 4 items before, 5 after
   PASS  a press then a drag on a thumbnail starts a drag — pressed HoverScrubView, dragged bars.dv
   PASS  a drop target can read what the library writes — read motion.dv
   PASS  source A accepts dropped files — public.file-url
@@ -60,3 +60,9 @@ assertions (47/47 passed):
   PASS  clicking the step key walks toward faster and returns to STEP — 1/1 → 1/2 → 1/4 → 1/8 → 1/16 → STEP
   PASS  control-clicking walks toward slower and returns to STEP — 2/1 → 4/1 → 8/1 → STEP
   PASS  the other direction retraces the ladder rather than jumping — 1/1 → 1/2 → 1/4 → 1/2
+  PASS  preview panels are 4:3 at wide — all three within 4:3 (1.333)
+  PASS  the output bar survives 4:3 previews at wide — bar is 74pt tall at y=759
+  PASS  preview panels are 4:3 at compact — all three within 4:3 (1.333)
+  PASS  the output bar survives 4:3 previews at compact — bar is 59pt tall at y=622
+  PASS  preview panels are 4:3 at narrow — all three within 4:3 (1.333)
+  PASS  the output bar survives 4:3 previews at narrow — bar is 49pt tall at y=512

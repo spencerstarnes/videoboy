@@ -216,7 +216,13 @@ enum Theme {
         /// The outer columns are a little wider than the mockup's 0.9: they carry the
         /// FX chains, whose parameter names and codes were truncating. Joining the
         /// A/B and C/D panels reclaimed the gutters that pay for it.
-        static let columnWeights: [CGFloat] = [1.05, 2.0, 2.05, 2.0, 1.05]
+        /// The three inner columns are EQUAL. The centre used to be a hair wider
+        /// (2.05 against 2.0), which was invisible until the preview panels became
+        /// 4:3: their height is derived from one column's width, so a column that is
+        /// 2.5% narrower produces a panel that is 2.5% off the ratio. Equal columns
+        /// make all three previews the same shape, which is the point of fixing them
+        /// to 4:3 at all.
+        static let columnWeights: [CGFloat] = [1.05, 2.0, 2.0, 2.0, 1.05]
         /// Row weights, top to bottom.
         /// The preview rows are taller than the mockup's: the source panels now carry
         /// a shuttle, a step-timing picker and a source selector under their preview,
@@ -226,7 +232,18 @@ enum Theme {
         // had been given nearly twice the height it can use, and the slack went to
         // empty space inside the panel — which is most of what made it look chunky.
         // The height it gives back goes to the previews and the libraries.
-        static let rowWeights: [CGFloat] = [1.32, 1.32, 0.6, 1.45, 0.31]
+        /// Rows 0 and 1 are the preview band, whose height is DERIVED from the
+        /// column width so the preview panels come out 4:3. Their weights here only
+        /// decide how that band is split between them. Rows 2-4 share what is left,
+        /// in the proportions given.
+        static let rowWeights: [CGFloat] = [1.0, 1.0, 0.6, 1.45, 0.31]
+
+        /// The least the rows below the previews may be squeezed to.
+        ///
+        /// A short window would otherwise let 4:3 previews push the faders, the
+        /// libraries and the output bar off the bottom. A squashed preview is
+        /// recoverable; controls you cannot reach are not.
+        static let minimumLowerRowsHeight: CGFloat = 250
 
         /// Column weight of a folded-away column — just enough for its rail.
         static let railWeight: CGFloat = 0.14
