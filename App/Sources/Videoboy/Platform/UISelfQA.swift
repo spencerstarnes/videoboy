@@ -1140,6 +1140,58 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // LIBRARY BINS AND SEARCH. Search used to log "not built yet" and do nothing,
+        // in a field that looks exactly like one that works.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            let library = shell.grid.panels.libraryOneBody
+            let before = LibraryItemView.all(in: library).count
+
+            if let field = searchField(in: library), before > 0 {
+                // A string that cannot match anything must empty the grid — the
+                // failure being guarded is a search that silently shows everything.
+                field.stringValue = "zzzznomatch"
+                _ = field.target?.perform(field.action, with: field)
+                shell.layoutSubtreeIfNeeded()
+                let filtered = LibraryItemView.all(in: library).count
+
+                check.record(AssertionResult(
+                    name: "library search actually filters",
+                    passed: filtered < before,
+                    detail: "\(before) items, \(filtered) after searching for something absent"
+                ))
+
+                field.stringValue = ""
+                _ = field.target?.perform(field.action, with: field)
+                shell.layoutSubtreeIfNeeded()
+                check.record(AssertionResult(
+                    name: "clearing the search brings everything back",
+                    passed: LibraryItemView.all(in: library).count == before,
+                    detail: "\(LibraryItemView.all(in: library).count) of \(before) restored"
+                ))
+            }
+
+            // A bin groups without losing anything.
+            if let first = LibraryItemView.all(in: library).first?.item.name {
+                library.moveItem(named: first, toBin: "Set One")
+                shell.layoutSubtreeIfNeeded()
+                check.record(AssertionResult(
+                    name: "an item moved into a bin is still in the library",
+                    passed: library.binNames.contains("Set One")
+                        && LibraryItemView.all(in: library).count == before,
+                    detail: "bins: \(library.binNames.joined(separator: ", ")), "
+                        + "\(LibraryItemView.all(in: library).count) items still shown"
+                ))
+            }
+
+            withExtendedLifetime(controller) {}
+        }
+
         // DOUBLE-CLICKING A SOURCE PICTURE PLAYS OR PAUSES IT. The transport keys
         // live on a hover overlay, so the picture being dead to a click made the most
         // obvious gesture in the window do nothing at all.
@@ -1474,6 +1526,15 @@ enum UISelfQA {
         }
         for subview in view.subviews { found.append(contentsOf: enableSwitches(in: subview)) }
         return found
+    }
+
+    /// The first search field beneath a view.
+    private static func searchField(in view: NSView) -> NSSearchField? {
+        if let field = view as? NSSearchField { return field }
+        for subview in view.subviews {
+            if let found = searchField(in: subview) { return found }
+        }
+        return nil
     }
 
     /// The remove (✕) button on a card, which shares the card's identifier with the

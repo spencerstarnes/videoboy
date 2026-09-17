@@ -392,9 +392,16 @@ final class ShellController {
                isDirectory.boolValue {
                 let contents = (try? FileManager.default.contentsOfDirectory(
                     at: url, includingPropertiesForKeys: nil)) ?? []
+                // The folder BECOMES a bin, named after itself. Dropping a folder
+                // of clips already meant "these belong together"; before this the
+                // grouping was thrown away at the door and everything landed in one
+                // flat pile.
+                let binName = url.lastPathComponent
                 for child in contents where Self.playableExtensions.contains(
                     child.pathExtension.lowercased()) {
-                    accepted.append(Self.libraryItem(for: child))
+                    var item = Self.libraryItem(for: child)
+                    item.bin = binName
+                    accepted.append(item)
                 }
                 continue
             }

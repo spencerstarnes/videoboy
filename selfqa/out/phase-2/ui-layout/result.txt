@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T19:22:22Z
+when:     2026-09-17T19:26:30Z
 core:     0.3.0
 
 notes:
@@ -12,16 +12,16 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
 
-assertions (76/76 passed):
+assertions (79/79 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 817.8
+  PASS  wide is not blank — luminance variance 819.7
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 792.6
+  PASS  compact is not blank — luminance variance 792.7
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 1044.9
+  PASS  narrow is not blank — luminance variance 1038.4
   PASS  collapsed-left is not blank — luminance variance 723.1
-  PASS  collapsed-both-edges is not blank — luminance variance 613.3
-  PASS  collapsed-sources-only is not blank — luminance variance 847.9
+  PASS  collapsed-both-edges is not blank — luminance variance 613.4
+  PASS  collapsed-sources-only is not blank — luminance variance 848.0
   PASS  collapsed-effects-only is not blank — luminance variance 594.3
   PASS  holding Shift lights the mappable faders — 70 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
@@ -78,6 +78,9 @@ assertions (76/76 passed):
   PASS  I and O mark a range the loader can use — 0.25...0.75
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
+  PASS  library search actually filters — 4 items, 0 after searching for something absent
+  PASS  clearing the search brings everything back — 4 of 4 restored
+  PASS  an item moved into a bin is still in the library — bins: Set One, 4 items still shown
   PASS  a single click on a source picture does NOT toggle playback — single clicks left the transport alone
   PASS  double-clicking a source picture plays or pauses it — 1 toggle(s) from one double click
   PASS  a click on a colour fader actually lands on that fader — hit test returns the fader

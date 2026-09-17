@@ -34,11 +34,19 @@ struct LibraryItem {
     /// kinds that are advertised but not built.
     let url: URL?
 
-    init(name: String, badge: String, isAvailable: Bool, url: URL? = nil) {
+    /// Which bin this item sits in. Nil means the ungrouped set at the top.
+    ///
+    /// A plain string rather than a bin object: bins here are a way of arranging a
+    /// grid, not a thing with an identity of its own, and a name is the whole of what
+    /// distinguishes one from another.
+    var bin: String?
+
+    init(name: String, badge: String, isAvailable: Bool, url: URL? = nil, bin: String? = nil) {
         self.name = name
         self.badge = badge
         self.isAvailable = isAvailable
         self.url = url
+        self.bin = bin
     }
 }
 
@@ -140,6 +148,30 @@ final class LibraryItemView: NSView {
         guard !queueChannels.isEmpty, item.url != nil else { return nil }
 
         let menu = NSMenu()
+
+        // Bins first — the menu is mostly about where this clip LIVES, and the queue
+        // entries below are about where it is going next.
+        if let owner = binOwner {
+            let bins = owner.binNames
+            if !bins.isEmpty || item.bin != nil {
+                for bin in bins {
+                    let move = NSMenuItem(
+                        title: "Move to \(bin)", action: #selector(moveToBin(_:)), keyEquivalent: "")
+                    move.target = self
+                    move.representedObject = bin
+                    move.state = item.bin == bin ? .on : .off
+                    menu.addItem(move)
+                }
+                if item.bin != nil {
+                    let out = NSMenuItem(
+                        title: "Remove from bin", action: #selector(moveToBin(_:)), keyEquivalent: "")
+                    out.target = self
+                    menu.addItem(out)
+                }
+                menu.addItem(.separator())
+            }
+        }
+
         for channel in queueChannels {
             let add = NSMenuItem(
                 title: "Add to \(channel)", action: #selector(queueLast(_:)), keyEquivalent: "")
@@ -156,6 +188,13 @@ final class LibraryItemView: NSView {
             menu.addItem(next)
         }
         return menu
+    }
+
+    /// The library this cell belongs to, so its menu can list that library's bins.
+    weak var binOwner: LibraryPanelBody?
+
+    @objc private func moveToBin(_ sender: NSMenuItem) {
+        binOwner?.moveItem(named: item.name, toBin: sender.representedObject as? String)
     }
 
     @objc private func queueLast(_ sender: NSMenuItem) {
@@ -619,6 +658,9 @@ final class LibraryPanelBody: NSView {
     /// The A/B / C/D toggle, so its title can show which channel is next.
     private var destinationControl: NSSegmentedControl?
 
+    /// What is currently typed in the search field.
+    private var searchText = ""
+
     /// Which channels this library keeps playlists for. Empty in the asset browser.
     private let playlistChannels: [String]
 
@@ -720,6 +762,13 @@ final class LibraryPanelBody: NSView {
         // The behaviour already existed as a preference and had no control anywhere
         // in the window, which meant the only way to discover it was to go looking in
         // Preferences for something you did not know was there.
+        // A bin button, top right. Bins can also be made by right-clicking the grid
+        // or by dropping a folder, but a visible control is what tells you the
+        // feature exists at all.
+        let newBinButton = Controls.glyphButton(
+            "＋", tooltip: "New bin", target: self, action: #selector(newBinPressed))
+        topRow.append(newBinButton)
+
         let autoPlayKey = VBOptionButton(title: "AUTO")
         autoPlayKey.isOn = true
         autoPlayKey.target = self
@@ -746,6 +795,13 @@ final class LibraryPanelBody: NSView {
             let importButton = Controls.button("Import…", enabled: false)
             importButton.setContentCompressionResistancePriority(.required, for: .horizontal)
             bottomRow.append(importButton)
+        }
+
+        // With no tab strip there is no top row to hang the bin button on, so it goes
+        // at the end of the bottom one instead of vanishing.
+        if topRow.count == 1, let onlyButton = topRow.first {
+            topRow.removeAll()
+            bottomRow.append(onlyButton)
         }
 
         let headerRow: NSView
@@ -879,10 +935,33 @@ final class LibraryPanelBody: NSView {
         itemsStack.alignment = .leading
         itemsStack.spacing = Theme.Metrics.thumbnailGap
 
+        // Grouped into bins, ungrouped items first. A bin is a heading and the items
+        // under it — not a separate view you navigate into — so everything stays
+        // visible and searchable at once, which is what a grid is for.
+        let ungrouped = items.filter { $0.bin == nil }
+        let binNames = Array(Set(items.compactMap(\.bin)).union(
+            searchText.isEmpty ? emptyBins : [])).sorted()
+
+        if !ungrouped.isEmpty || binNames.isEmpty {
+            addRows(of: ungrouped, to: itemsStack)
+        }
+        for name in binNames {
+            let heading = Controls.label(
+                name.uppercased(), font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
+            heading.toolTip = "Bin · right-click an item to move it"
+            itemsStack.addArrangedSubview(heading)
+            addRows(of: items.filter { $0.bin == name }, to: itemsStack)
+        }
+        return itemsStack
+    }
+
+    /// Lays a set of items out in rows of `columns`.
+    private func addRows(of items: [LibraryItem], to itemsStack: NSStackView) {
         var row: [NSView] = []
         for item in items {
             let view = LibraryItemView(item: item)
             view.queueChannels = playlistChannels
+            view.binOwner = self
             view.onQueue = { [weak self] item, channel, playNext in
                 self?.onItemQueued?(item, channel, playNext)
             }
@@ -902,7 +981,6 @@ final class LibraryPanelBody: NSView {
             itemsStack.addArrangedSubview(
                 Controls.row(row + [Controls.spacer()], spacing: Theme.Metrics.thumbnailGap))
         }
-        return itemsStack
     }
 
     // MARK: - Playlists
@@ -975,7 +1053,7 @@ final class LibraryPanelBody: NSView {
         let old = gridsByTab[.sources]
         old?.removeFromSuperview()
 
-        let grid = makeGrid(for: sourceItems)
+        let grid = makeGrid(for: matching(sourceItems))
         grid.translatesAutoresizingMaskIntoConstraints = false
         grid.isHidden = currentTab != .sources
         document.addSubview(grid)
@@ -1010,6 +1088,43 @@ final class LibraryPanelBody: NSView {
         sourceItems.append(contentsOf: additions)
         rebuildSourcesGrid()
         Log.info(.app, "added \(additions.count) item(s) to a library")
+    }
+
+    /// Asks for a bin name and makes one. An empty name is a cancel.
+    @objc private func newBinPressed() {
+        let alert = NSAlert()
+        alert.messageText = "New bin"
+        alert.informativeText = "Bins group clips in this library. "
+            + "Drag a folder in and one is made for you."
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        field.placeholderString = "Bin name"
+        alert.accessoryView = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        emptyBins.insert(name)
+        rebuildSourcesGrid()
+        Log.info(.app, "created bin '\(name)'")
+    }
+
+    /// Bins with nothing in them yet. Items carry their own bin name, so a bin with
+    /// contents needs no record of its own — but one you have just made and not
+    /// filled would otherwise vanish the moment it was created.
+    private var emptyBins: Set<String> = []
+
+    /// Moves an item into a bin, or out of one when `bin` is nil.
+    func moveItem(named name: String, toBin bin: String?) {
+        guard let index = sourceItems.firstIndex(where: { $0.name == name }) else { return }
+        sourceItems[index].bin = bin
+        rebuildSourcesGrid()
+        Log.info(.app, "moved \(name) to \(bin ?? "no bin")")
+    }
+
+    /// Every bin this library knows about, filled or not.
+    var binNames: [String] {
+        Array(Set(sourceItems.compactMap(\.bin)).union(emptyBins)).sorted()
     }
 
     @objc private func autoPlayToggled() {
@@ -1093,9 +1208,23 @@ final class LibraryPanelBody: NSView {
     }
 
     @objc private func searchChanged(_ sender: NSSearchField) {
-        // Filtering is not built; saying so beats silently ignoring what was typed.
-        guard !sender.stringValue.isEmpty else { return }
-        Log.info(.app, "library search is not built yet (typed: \(sender.stringValue))")
+        // Was a log line saying filtering "is not built yet", which is a reasonable
+        // thing to do once and a poor thing to leave in a search field that looks
+        // exactly like one that works.
+        searchText = sender.stringValue.trimmingCharacters(in: .whitespaces)
+        rebuildSourcesGrid()
+    }
+
+    /// Items matching the current search, across every bin. Matching on the file NAME
+    /// and on the badge, so "dv" finds both the format and anything called dv.
+    private func matching(_ items: [LibraryItem]) -> [LibraryItem] {
+        guard !searchText.isEmpty else { return items }
+        let needle = searchText.lowercased()
+        return items.filter {
+            $0.name.lowercased().contains(needle)
+                || $0.badge.lowercased().contains(needle)
+                || ($0.bin?.lowercased().contains(needle) ?? false)
+        }
     }
 
     @available(*, unavailable)
