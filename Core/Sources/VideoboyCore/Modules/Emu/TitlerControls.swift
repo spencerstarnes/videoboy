@@ -1,120 +1,514 @@
 //
-//  TitlerControls.swift — the modern panel that drives vintage software.
+//  TitlerControls.swift — the translation layer.
 //
-//  Purpose : The translation layer. A slider, a text box or a MIDI note on this side;
-//            a real command to the software's script port on the other. This is the
-//            part that makes a 1990s titler playable from a 2026 control surface.
-//  Inputs  : values 0...1 (so anything that already produces one — a fader, a MIDI
-//            CC, an LFO, the beat clock — can drive them).
-//  Outputs : `TitlerCommand`s.
-//  Connects: EmulatedTitlerNode (which sends them), the EMU panel.
-//  Extend  : a new control is a case here plus a line in `command(for:)`. If the
-//            software cannot actually do it, it does not belong here — a slider that
-//            moves and changes nothing is worse than no slider.
+//  Purpose : A fader on this side; a real command to the software's script port on the
+//            other. This is the part that makes a 1990s titler playable from a 2026
+//            control surface — and the part that has to be honest, because a fader
+//            that moves and changes nothing is worse than no fader.
+//  Inputs  : values 0...1, so ANYTHING that already produces one can drive it — a
+//            fader, a MIDI CC, an LFO, a fader sweep on the beat. None of those can
+//            type; all of them can move a number.
+//  Outputs : `TitlerCommand`s in the program's own dialect.
+//  Connects: ScalaLingo (the dialect), AmigaCommandBridge (which carries the lines
+//            in), the EMU panel, EmulatedTitlerNode.
+//  Extend  : A SECOND PROGRAM IS A SECOND PANEL TYPE next to `ScalaTitlerPanel`,
+//            built on its own dialect file. This file's generic half — `TitlerControl`
+//            and `TitlerFunction` — is shared; the half that knows what `speed 1`
+//            means is not.
 //
-//  EVERY CONTROL HERE MAPS TO SOMETHING THE SOFTWARE REALLY DOES. That is the rule
-//  this file exists to enforce. It is easy to invent a panel of plausible-looking
-//  knobs; the test is whether each one becomes a command the program understands, and
-//  the ones below are built from Scala's own ARexx vocabulary rather than from what
-//  would look good in a screenshot.
+//  ── WHY THE PANEL HOLDS STATE ───────────────────────────────────────────────────
+//
+//  The obvious design is a pure function: one fader in, one command out. It does not
+//  survive contact with the real vocabulary. Scala's line is
+//
+//      WIPE curtain south SPEED 10
+//
+//  — one command carrying THREE of our faders. Move the speed fader and the whole line
+//  has to be reissued, which means knowing which wipe and which direction are
+//  currently chosen. The same is true of `FONT Franklin.font 44` (two faders) and
+//  `TEXT 20 40 "..."` (two faders and a text box).
+//
+//  So the panel holds the native values and each fader rewrites its part of them. That
+//  is not incidental complexity — it is the shape of the software being driven, and a
+//  stateless design would simply have emitted broken lines.
 //
 
 import Foundation
+
+/// What a control actually reaches inside the running software.
+///
+/// Named for the SOFTWARE'S function rather than for the widget. `fontSize` is not
+/// "the size slider", it is Scala's only means of scaling type — and naming it that
+/// way is what keeps a control from being invented.
+public enum TitlerFunction: String, Equatable, Codable, Sendable, CaseIterable {
+    /// Which page wipe is used: `WIPE <name> …`
+    case wipe
+    /// The wipe's direction: `WIPE … south …`
+    case wipeDirection
+    /// How long the wipe takes: `WIPE … SPEED <n>`
+    case wipeSpeed
+    /// How text arrives on an already-shown page: `TEXTWIPE <name> …`
+    case textWipe
+    /// The typeface: `FONT <face>.font …`
+    case fontFace
+    /// The type size — SCALA'S ONLY TEXT SCALE: `FONT … <size>`
+    case fontSize
+    /// Text colour, through the screen palette: `PALETTE …`
+    case textColour
+    /// Background colour, likewise.
+    case backgroundColour
+    /// How big a placed graphic is drawn — SCALA'S GRAPHIC SCALE:
+    /// `BRUSH … size <w> <h>`
+    case brushScale
+    /// Where the text sits across the screen: `TEXT <x> … `
+    case textX
+    /// And down it: `TEXT … <y> …`
+    case textY
+    /// Alignment: `ATTRIBUTES center`
+    case alignment
+    /// Amiga colour cycling: `CYCLE on|off`
+    case colourCycle
+    /// How long a page holds: `PAUSE <seconds>`
+    case hold
+    /// Jump to a named page: `GOTO "<event>"`
+    case page
+}
 
 /// One control on the titler panel.
 public struct TitlerControl: Equatable, Sendable, Identifiable {
     public var id: String { name }
 
+    /// The label on the fader. Short, because it sits under a small picture.
     public let name: String
     /// What it does, for the tooltip — in terms of the SOFTWARE, not the widget.
     public let explanation: String
-    /// How a 0...1 value becomes a command.
-    public let kind: Kind
+    /// The function inside the software that it reaches.
+    public let function: TitlerFunction
+    /// Whether this one is a switch rather than a fader.
+    public var isToggle: Bool { function == .colourCycle }
 
-    public enum Kind: Equatable, Sendable {
-        /// Picks one of a set of named options — a page, a font, a wipe.
-        case choice(field: String, options: [String])
-        /// A number in a range the software understands.
-        case number(field: String, lowest: Int, highest: Int)
-        /// An Amiga palette index, 0...31.
-        case colour(field: String)
-    }
-
-    public init(name: String, explanation: String, kind: Kind) {
+    public init(name: String, explanation: String, function: TitlerFunction) {
         self.name = name
         self.explanation = explanation
-        self.kind = kind
+        self.function = function
+    }
+}
+
+/// The native values a Scala panel is currently holding.
+///
+/// Native, not normalised: this is the state of the emulated program as far as we know
+/// it, so it is kept in Scala's own units. Converting at the edge rather than storing
+/// 0...1 means the readout under a fader can say "Franklin 44pt" instead of "0.31".
+public struct ScalaPanelState: Equatable, Sendable {
+
+    /// Index into `ScalaLingo.wipes`.
+    public var wipeIndex: Int = 1          // "fade"
+    /// Index into `ScalaLingo.directions`, or nil for a wipe with no direction.
+    public var directionIndex: Int? = nil
+    public var wipeSpeed: Int = 5          // the disc's most common speed
+    public var textWipeIndex: Int = 6      // "dump" — text appears at once
+    /// Index into `ScalaLingo.fonts`.
+    public var fontIndex: Int = 4          // "Franklin", the ARexx example's face
+    public var fontSize: Int = 44
+    public var textColour: ScalaColour = .white
+    public var backgroundColour: ScalaColour = .black
+    /// A placed graphic's width as a fraction of the screen, 0.1...2.
+    public var brushScale: Double = 1
+    public var textX: Int = 20
+    public var textY: Int = 40
+    /// Index into `ScalaLingo.alignments`.
+    public var alignmentIndex: Int = 0
+    public var isCycling: Bool = false
+    /// Seconds a page holds. Negative means "until clicked".
+    public var hold: Double = -1
+    /// Index into whatever page names the loaded script defines.
+    public var pageIndex: Int = 0
+
+    /// The line of text being titled.
+    ///
+    /// Held here rather than passed in because every control that moves the text has to
+    /// reissue the whole `TEXT x y "..."` line, and a line missing its string draws
+    /// nothing.
+    public var text: String = "VIDEOBOY"
+
+    /// The graphic the scale control scales, when one has been chosen.
+    public var brushFile: String? = nil
+
+    public init() {}
+}
+
+/// The screen the emulated Amiga is set to.
+///
+/// NTSC by default, because this app's output chain is 480i NTSC throughout and a PAL
+/// screen would be letterboxed or cropped on the way out. The disc's own scripts are
+/// authored for PAL 640×512, so page layouts from it sit slightly low on an NTSC
+/// screen — a real trade, taken deliberately in favour of the output path.
+public struct ScalaScreen: Equatable, Sendable {
+    public let width: Int
+    public let height: Int
+    public let isInterlaced: Bool
+
+    public static let ntsc = ScalaScreen(width: 640, height: 400, isInterlaced: true)
+    public static let pal = ScalaScreen(width: 640, height: 512, isInterlaced: true)
+
+    public init(width: Int, height: Int, isInterlaced: Bool) {
+        self.width = width
+        self.height = height
+        self.isInterlaced = isInterlaced
+    }
+}
+
+/// Scala MM300's panel: 0...1 in, real Lingo out.
+///
+/// The bellwether. Every later program gets one of these — same outside, different
+/// dialect inside.
+public final class ScalaTitlerPanel {
+
+    public private(set) var state = ScalaPanelState()
+    public var screen: ScalaScreen = .ntsc
+
+    /// The page names the loaded script defines, in order.
+    ///
+    /// Empty until a script has been read, and the page control reports itself
+    /// unavailable rather than guessing — Scala's pages are named `EVENT`s, so there is
+    /// no "page 3" to jump to until something says what page 3 is called.
+    public var pageNames: [String] = []
+
+    public init() {}
+
+    /// The controls this panel offers.
+    ///
+    /// Built from what Scala CAN DO, in the order a person reaches for them: pick the
+    /// transition, set its timing, choose the type, colour it, place it.
+    public static let controls: [TitlerControl] = [
+        TitlerControl(
+            name: "WIPE",
+            explanation: "Which of Scala's 51 transitions takes the page. The list is "
+                + "read off the disc's own scripts, so everything here is one Scala "
+                + "really has — including the odd ones like NUCLEAR and ANTS.",
+            function: .wipe),
+        TitlerControl(
+            name: "DIR",
+            explanation: "The direction the wipe travels. Scala ignores a direction a "
+                + "wipe cannot use, so this is safe to sweep across any of them.",
+            function: .wipeDirection),
+        TitlerControl(
+            name: "SPEED",
+            explanation: "How long the wipe takes. Scala counts backwards — 1 is "
+                + "instant and 16 is slow — so this fader is inverted to read the way "
+                + "a speed control should.",
+            function: .wipeSpeed),
+        TitlerControl(
+            name: "TXT WIPE",
+            explanation: "How the text arrives on a page that is already up. A "
+                + "separate transition from the page wipe, which is what lets a line "
+                + "change without the whole screen moving.",
+            function: .textWipe),
+        TitlerControl(
+            name: "FONT",
+            explanation: "The typeface, from the seventeen Scala's own scripts title "
+                + "with. All of them are installed on the disc.",
+            function: .fontFace),
+        TitlerControl(
+            name: "SCALE",
+            explanation: "Type size, 12 to 114 point. THIS IS SCALA'S TEXT SCALE — it "
+                + "has no separate scale command, because a bitmap-font machine resizes "
+                + "type by re-selecting the font.",
+            function: .fontSize),
+        TitlerControl(
+            name: "TEXT COL",
+            explanation: "Text colour, swept around the hue circle and quantised to the "
+                + "Amiga's 4 bits per gun on the way out.",
+            function: .textColour),
+        TitlerControl(
+            name: "BACK COL",
+            explanation: "Background colour, likewise. Black is the genlock key, so "
+                + "leaving it at the bottom of the fader is what makes the titler "
+                + "overlay rather than cover.",
+            function: .backgroundColour),
+        TitlerControl(
+            name: "GFX SCALE",
+            explanation: "How large a placed graphic is drawn. Scala scales a brush by "
+                + "being told the rectangle to draw it into, so this is a real scale "
+                + "control. Needs a graphic chosen first.",
+            function: .brushScale),
+        TitlerControl(
+            name: "X",
+            explanation: "Where the text sits across the screen. Scala has no named "
+                + "text fields — it has a screen and coordinates on it.",
+            function: .textX),
+        TitlerControl(
+            name: "Y",
+            explanation: "And where it sits down the screen.",
+            function: .textY),
+        TitlerControl(
+            name: "ALIGN",
+            explanation: "Left, centre or right, through Scala's text attributes.",
+            function: .alignment),
+        TitlerControl(
+            name: "HOLD",
+            explanation: "How long a page stays up before the script moves on. At the "
+                + "bottom it holds until clicked.",
+            function: .hold),
+        TitlerControl(
+            name: "PAGE",
+            explanation: "Jump to a named page. Scala's pages are named EVENTs, so this "
+                + "stays unavailable until a script has been read and its page names "
+                + "are known.",
+            function: .page),
+        TitlerControl(
+            name: "CYCLE",
+            explanation: "Amiga colour cycling — the palette rotates in hardware. The "
+                + "most period-correct effect the machine has, and it costs one word.",
+            function: .colourCycle)
+    ]
+
+    /// Whether a control can do anything right now, and why not when it cannot.
+    ///
+    /// A control with nothing behind it is shown DISABLED rather than hidden, per the
+    /// house rule, and it says what would make it work.
+    public func unavailableReason(for function: TitlerFunction) -> String? {
+        switch function {
+        case .page:
+            return pageNames.isEmpty
+                ? "No script loaded — Scala's pages are named, so there is nothing to jump to yet"
+                : nil
+        case .brushScale:
+            return state.brushFile == nil
+                ? "No graphic chosen — pick one from the disc's Symbols or Backgrounds drawer"
+                : nil
+        default:
+            return nil
+        }
     }
 
-    /// The command this control produces for a 0...1 value.
+    /// Moves a control and returns the script lines that produces.
     ///
-    /// Takes 0...1 rather than a native value so that ANYTHING already producing one
-    /// can drive it — a fader, a MIDI CC, an LFO, a fader sweep on the beat. That is
-    /// the whole reason the panel is worth having rather than typing ARexx by hand.
-    public func command(for value: Double) -> TitlerCommand {
-        let clamped = NormalisedSweep.clamp(value)
-        switch kind {
-        case .choice(let field, let options):
-            let index = NormalisedSweep.index(clamped, count: options.count)
-            return .setText(field: field, value: options[index])
-        case .number(let field, let lowest, let highest):
-            let span = Double(highest - lowest)
-            let scaled = lowest + Int((clamped * span).rounded())
-            return .raw("SET \(field) \(scaled)")
-        case .colour(let field):
-            return .setColour(field: field, paletteIndex: NormalisedSweep.index(clamped, count: 32))
+    /// Returns an ARRAY because one fader genuinely can be several lines: changing the
+    /// font size reissues `FONT` and then the `TEXT` that uses it, and ends with `SHOW`
+    /// so the change appears instead of sitting on an off-screen page.
+    @discardableResult
+    public func set(_ function: TitlerFunction, to value: Double) -> [TitlerCommand] {
+        guard unavailableReason(for: function) == nil else {
+            Log.warn(.titler, "\(function.rawValue) is unavailable: "
+                + (unavailableReason(for: function) ?? ""))
+            return []
         }
+        let clamped = NormalisedSweep.clamp(value)
+
+        switch function {
+        case .wipe:
+            state.wipeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.wipes.count)
+            return [currentWipe()]
+
+        case .wipeDirection:
+            // The bottom of the fader means NO direction, which is a real setting —
+            // most wipes take none, and forcing one on them is how you get a `fade`
+            // that Scala quietly refuses.
+            let count = ScalaLingo.directions.count + 1
+            let index = NormalisedSweep.index(clamped, count: count)
+            state.directionIndex = index == 0 ? nil : index - 1
+            return [currentWipe()]
+
+        case .wipeSpeed:
+            // Inverted: Scala's 1 is the fast one. A fader labelled SPEED that gets
+            // slower as it goes up is the kind of small wrongness that makes a panel
+            // untrustworthy.
+            state.wipeSpeed = invertedSpeed(clamped)
+            return [currentWipe()]
+
+        case .textWipe:
+            state.textWipeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.wipes.count)
+            return [
+                ScalaLingo.textWipe(
+                    ScalaLingo.wipes[state.textWipeIndex], speed: state.wipeSpeed)
+            ]
+
+        case .fontFace:
+            state.fontIndex = NormalisedSweep.index(clamped, count: ScalaLingo.fonts.count)
+            return [currentFont(), currentText(), ScalaLingo.show()]
+
+        case .fontSize:
+            state.fontSize = scaled(clamped, into: ScalaLingo.fontSizeRange)
+            return [currentFont(), currentText(), ScalaLingo.show()]
+
+        case .textColour:
+            state.textColour = .hue(clamped)
+            return [currentPalette(), ScalaLingo.colour(fill: 1), ScalaLingo.show()]
+
+        case .backgroundColour:
+            state.backgroundColour = .hue(clamped)
+            return [currentPalette(), ScalaLingo.show()]
+
+        case .brushScale:
+            state.brushScale = 0.1 + clamped * 1.9
+            guard let file = state.brushFile else { return [] }
+            let width = Int(Double(screen.width) * state.brushScale)
+            let height = Int(Double(screen.height) * state.brushScale)
+            return [
+                ScalaLingo.brush(
+                    x: (screen.width - width) / 2, y: (screen.height - height) / 2,
+                    file: file, width: max(width, 1), height: max(height, 1)),
+                ScalaLingo.show()
+            ]
+
+        case .textX:
+            state.textX = scaled(clamped, into: 0...(screen.width - 1))
+            return [currentText(), ScalaLingo.show()]
+
+        case .textY:
+            state.textY = scaled(clamped, into: 0...(screen.height - 1))
+            return [currentText(), ScalaLingo.show()]
+
+        case .alignment:
+            state.alignmentIndex =
+                NormalisedSweep.index(clamped, count: ScalaLingo.alignments.count)
+            return [
+                ScalaLingo.attributes(
+                    ["antialias", "remap", ScalaLingo.alignments[state.alignmentIndex]]),
+                currentText(), ScalaLingo.show()
+            ]
+
+        case .colourCycle:
+            state.isCycling = clamped >= 0.5
+            return [ScalaLingo.cycle(state.isCycling)]
+
+        case .hold:
+            // The very bottom is "until clicked", which is Scala's -1 and the setting a
+            // live operator wants most of the time.
+            state.hold = clamped < 0.02 ? -1 : clamped * 30
+            return [ScalaLingo.pause(seconds: state.hold)]
+
+        case .page:
+            state.pageIndex = NormalisedSweep.index(clamped, count: pageNames.count)
+            return [ScalaLingo.goTo(event: pageNames[state.pageIndex])]
+        }
+    }
+
+    /// Sets the line of text and returns the lines that puts it on screen.
+    public func setText(_ text: String) -> [TitlerCommand] {
+        state.text = text
+        return [currentText(), ScalaLingo.show()]
+    }
+
+    /// Chooses the graphic the scale control scales.
+    public func setBrush(file: String?) {
+        state.brushFile = file
+    }
+
+    /// What a control currently reads, in Scala's own units, for the readout under it.
+    ///
+    /// In native units on purpose: "Franklin 44pt" tells an operator something, "0.31"
+    /// does not.
+    public func readout(for function: TitlerFunction) -> String {
+        switch function {
+        case .wipe: return ScalaLingo.wipes[state.wipeIndex].uppercased()
+        case .wipeDirection:
+            return state.directionIndex.map { ScalaLingo.directions[$0].uppercased() } ?? "—"
+        case .wipeSpeed: return "\(state.wipeSpeed)"
+        case .textWipe: return ScalaLingo.wipes[state.textWipeIndex].uppercased()
+        case .fontFace: return ScalaLingo.fonts[state.fontIndex]
+        case .fontSize: return "\(state.fontSize)pt"
+        case .textColour: return "#" + state.textColour.amigaHex
+        case .backgroundColour: return "#" + state.backgroundColour.amigaHex
+        case .brushScale: return "\(Int(state.brushScale * 100))%"
+        case .textX: return "\(state.textX)"
+        case .textY: return "\(state.textY)"
+        case .alignment: return ScalaLingo.alignments[state.alignmentIndex].uppercased()
+        case .colourCycle: return state.isCycling ? "ON" : "OFF"
+        case .hold: return state.hold < 0 ? "CLICK" : String(format: "%.1fs", state.hold)
+        case .page:
+            guard state.pageIndex < pageNames.count else { return "—" }
+            return pageNames[state.pageIndex]
+        }
+    }
+
+    /// The whole panel as script, for setting a machine to a known state.
+    ///
+    /// Used when a program has just booted: the emulated Amiga has no idea what the
+    /// faders are showing, so everything is sent once and the two agree from then on.
+    public func fullState() -> [TitlerCommand] {
+        var commands: [TitlerCommand] = [
+            ScalaLingo.screen(
+                width: screen.width, height: screen.height,
+                interlaced: screen.isInterlaced),
+            currentPalette(),
+            ScalaLingo.colour(fill: 1),
+            currentFont(),
+            ScalaLingo.attributes(
+                ["antialias", "remap", ScalaLingo.alignments[state.alignmentIndex]]),
+            currentWipe(),
+            ScalaLingo.textWipe(ScalaLingo.wipes[state.textWipeIndex], speed: state.wipeSpeed),
+            currentText()
+        ]
+        if state.isCycling { commands.append(ScalaLingo.cycle(true)) }
+        commands.append(ScalaLingo.show())
+        return commands
+    }
+
+    // MARK: - The lines the state currently implies
+
+    private func currentWipe() -> TitlerCommand {
+        ScalaLingo.wipe(
+            ScalaLingo.wipes[state.wipeIndex],
+            direction: state.directionIndex.map { ScalaLingo.directions[$0] },
+            speed: state.wipeSpeed)
+    }
+
+    private func currentFont() -> TitlerCommand {
+        ScalaLingo.font(ScalaLingo.fonts[state.fontIndex], size: state.fontSize)
+    }
+
+    private func currentText() -> TitlerCommand {
+        ScalaLingo.text(x: state.textX, y: state.textY, state.text)
+    }
+
+    private func currentPalette() -> TitlerCommand {
+        // Entry 0 is the background — on the Amiga it is also the genlock key, which is
+        // why the background colour control reaches this one specifically.
+        ScalaLingo.palette([state.backgroundColour, state.textColour])
+    }
+
+    // MARK: - Small conversions
+
+    private func scaled(_ value: Double, into range: ClosedRange<Int>) -> Int {
+        let span = Double(range.upperBound - range.lowerBound)
+        return range.lowerBound + Int((value * span).rounded())
+    }
+
+    private func invertedSpeed(_ value: Double) -> Int {
+        let range = ScalaLingo.speedRange
+        let span = Double(range.upperBound - range.lowerBound)
+        return range.upperBound - Int((value * span).rounded())
     }
 }
 
 /// The controls offered for a given program.
 public enum TitlerControlSet {
 
-    /// Scala MM300's panel.
-    ///
-    /// Drawn from what Scala actually exposes: it is a page-based presentation system
-    /// with wipes between pages, timed transitions and a palette — so the panel is
-    /// pages, wipes, timing and colour, and not a set of invented graphics knobs.
-    public static let scalaMM300: [TitlerControl] = [
-        TitlerControl(
-            name: "page",
-            explanation: "Which Scala page is on screen. Scala is page-based, so this "
-                + "is the closest thing it has to a 'go to this title' control.",
-            kind: .number(field: "PAGE", lowest: 1, highest: 32)
-        ),
-        TitlerControl(
-            name: "wipe",
-            explanation: "The transition Scala uses when moving between pages.",
-            kind: .choice(field: "WIPE", options: [
-                "CUT", "FADE", "WIPELEFT", "WIPERIGHT", "WIPEUP", "WIPEDOWN",
-                "IRIS", "VENETIAN", "SCROLL", "CURTAIN"
-            ])
-        ),
-        TitlerControl(
-            name: "speed",
-            explanation: "How long a wipe takes, in Scala's own units. Mapped to a "
-                + "fader so a transition can be taken on the beat.",
-            kind: .number(field: "WIPESPEED", lowest: 1, highest: 20)
-        ),
-        TitlerControl(
-            name: "text col",
-            explanation: "Text colour, as an index into the Amiga palette — which is "
-                + "how a machine with 32 colours thinks about colour.",
-            kind: .colour(field: "TEXTCOLOUR")
-        ),
-        TitlerControl(
-            name: "back col",
-            explanation: "Background colour, likewise a palette index.",
-            kind: .colour(field: "BACKCOLOUR")
-        )
-    ]
-
     /// The controls for a program, or none when it has no script port to drive.
+    ///
+    /// Only Scala has a panel so far, and that is the honest state: the others need
+    /// their own dialect read off their own media before anything can claim to drive
+    /// them. Returning an empty set makes the EMU tab show them greyed with a reason
+    /// rather than offering knobs that go nowhere.
     public static func controls(for program: TitlerProgram) -> [TitlerControl] {
         guard program.scriptPort != nil else { return [] }
         switch program.name {
-        case "Scala MM300": return scalaMM300
+        case "Scala MM300": return ScalaTitlerPanel.controls
         default: return []
         }
+    }
+
+    /// Why a program has no panel yet.
+    public static func noPanelReason(for program: TitlerProgram) -> String? {
+        guard !controls(for: program).isEmpty else {
+            return program.scriptPort == nil
+                ? "\(program.name) has no script port — it would have to be driven by "
+                    + "keystrokes, which is not built"
+                : "\(program.name) has a script port, but its command vocabulary has "
+                    + "not been read off its media yet"
+        }
+        return nil
     }
 }

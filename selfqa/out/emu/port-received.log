@@ -1,0 +1,4 @@
+FONT Franklin.font 94
+TEXT 20 40 "VIDEOBOY"
+SHOW
+WIPE xword SPEED 5

@@ -130,50 +130,100 @@ public struct TitlerProgram: Equatable, Codable, Sendable, Identifiable {
     }
 }
 
-/// A command sent to software that has a script port, rather than a faked keystroke.
+/// One line of script sent to software that has a script port.
 ///
 /// ── WHY THIS EXISTS, and why it changed the design ──────────────────────────────
 ///
-/// Scala MM300 has an AREXX PORT. The CU Amiga disc ships `Scala/ARexx` with an
+/// Scala MM300 has an ARexx port. The CU Amiga disc ships `Scala/ARexx` with a worked
 /// example that "communicates with other applications and brings the results back to
 /// Scala using Scala Lingo", plus an `ARexx.lha` in the install set.
 ///
 /// That matters more than it sounds. Driving vintage software by synthesising
-/// keystrokes means knowing where every cursor is and hoping nothing shifted; a
-/// script port means SAYING WHAT YOU WANT. Setting a line of text becomes one command
-/// instead of "move here, clear that, type this", and it can be checked — a command
-/// either succeeded or it did not.
+/// keystrokes means knowing where every cursor is and hoping nothing shifted; a script
+/// port means SAYING WHAT YOU WANT. Setting a line of text becomes one command instead
+/// of "move here, clear that, type this", and it can be checked — a command either
+/// arrived or it did not.
 ///
-/// It is also what makes the rest of the request tractable: a control that can be
-/// driven by a command can be driven by a fader, by MIDI, or by the beat clock,
-/// because all of those already produce values and none of them can type.
-public enum TitlerCommand: Equatable, Codable, Sendable {
-    /// Replace the text of a named field.
-    case setText(field: String, value: String)
-    /// Change a colour, as an Amiga palette index.
-    case setColour(field: String, paletteIndex: Int)
-    /// Move to a named page or scene.
-    case goToPage(String)
-    /// Run a raw ARexx line, for anything not covered above.
+/// It is also what makes the rest tractable: a control that can be driven by a command
+/// can be driven by a fader, by MIDI, or by the beat clock, because all of those
+/// already produce values and none of them can type.
+///
+/// ── WHY VERB-PLUS-ARGUMENTS AND NOT A CASE PER COMMAND ──────────────────────────
+///
+/// The first version of this was an enum with a case per intent — `setText`,
+/// `setColour`, `goToPage`. Reading the disc killed that: Scala has no named fields to
+/// set, it has a screen with coordinates, and every other program will bring its own
+/// verbs too. An enum would have needed a case per verb per program.
+///
+/// A verb and its arguments is the shape EVERY one of these languages actually has —
+/// Scala Lingo, ARexx, and the keystroke macros underneath them — so the wire type is
+/// that shape, and each program's DIALECT (see `ScalaLingo`) builds the lines. The app
+/// stays generic; the vocabulary is per program, which is exactly where the
+/// differences live.
+public struct TitlerCommand: Equatable, Codable, Sendable {
+
+    /// The command word: `TEXT`, `WIPE`, `FONT`.
+    public let verb: String
+    /// Its arguments, in order.
+    public let arguments: [Argument]
+    /// What this does, in plain words — for the log, the tooltip and the panel.
+    ///
+    /// Carried rather than derived because only the dialect knows that `speed 1` means
+    /// FAST. A generic renderer would have to guess, and would guess wrong.
+    public let explanation: String
+
+    /// One argument, typed by HOW IT MUST BE WRITTEN rather than by what it means.
+    ///
+    /// The distinction that matters to a script parser is quoting: a bare word is a
+    /// keyword, a quoted string is data. Getting that wrong is how `TEXT 20 40 Hello
+    /// World` becomes two arguments and a syntax error.
+    public enum Argument: Equatable, Codable, Sendable {
+        /// A bare keyword: `SPEED`, `south`, `lace`, `Franklin.font`.
+        case word(String)
+        /// A number. Written without a decimal point when it is whole, because Scala's
+        /// own scripts write `speed 5` and not `speed 5.0`.
+        case number(Double)
+        /// A string, which gets quoted and escaped.
+        case text(String)
+
+        var rendered: String {
+            switch self {
+            case .word(let word):
+                return word
+            case .number(let value):
+                return value == value.rounded() && abs(value) < 1e9
+                    ? String(Int(value))
+                    : String(format: "%.3f", value)
+            case .text(let string):
+                // Scala Lingo has no escape for a double quote inside a quoted string,
+                // so one is turned into a single quote rather than being allowed to
+                // end the argument early and corrupt every line after it.
+                return "\"" + string.replacingOccurrences(of: "\"", with: "'") + "\""
+            }
+        }
+    }
+
+    public init(verb: String, arguments: [Argument], explanation: String) {
+        self.verb = verb
+        self.arguments = arguments
+        self.explanation = explanation
+    }
+
+    /// The script line this becomes.
+    public var line: String {
+        ([verb] + arguments.map(\.rendered)).joined(separator: " ")
+    }
+
+    /// A raw line, for anything the typed constructors do not cover.
     ///
     /// Present deliberately: a wrapper that cannot express what the underlying system
     /// can is a wrapper people work around rather than with.
-    case raw(String)
-
-    /// The ARexx line this becomes.
-    public var arexx: String {
-        switch self {
-        case .setText(let field, let value):
-            // Quoted, because a title containing a space is the normal case rather
-            // than the exception.
-            return "SETTEXT \(field) \"\(value.replacingOccurrences(of: "\"", with: "'"))\""
-        case .setColour(let field, let index):
-            return "SETCOLOUR \(field) \(index)"
-        case .goToPage(let page):
-            return "GOTOPAGE \"\(page)\""
-        case .raw(let line):
-            return line
-        }
+    public static func raw(_ line: String, explanation: String = "raw script line") -> TitlerCommand {
+        let parts = line.split(separator: " ", maxSplits: 1)
+        return TitlerCommand(
+            verb: String(parts.first ?? ""),
+            arguments: parts.count > 1 ? [.word(String(parts[1]))] : [],
+            explanation: explanation)
     }
 }
 
@@ -212,7 +262,7 @@ public enum TitlerBootStep: Equatable, Codable, Sendable {
         case .type(let text): "typing \"\(text)\""
         case .click(let x, let y): "clicking \(Int(x * 100))%, \(Int(y * 100))%"
         case .loadState(let name): "restoring \(name)"
-        case .command(let command): "sending \(command.arexx)"
+        case .command(let command): "sending \(command.line)"
         }
     }
 }
@@ -272,7 +322,7 @@ public enum TitlerLibrary {
             machine: .amiga1200Vampire,
             // Confirmed on the CU Amiga disc: Scala/ARexx ships a working example and
             // the install set carries ARexx.lha. This is what the text box talks to.
-            scriptPort: "SCALA"
+            scriptPort: ScalaLingo.portName
         )
     ]
 }

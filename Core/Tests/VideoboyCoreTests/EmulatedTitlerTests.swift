@@ -83,30 +83,40 @@ final class EmulatedTitlerTests: XCTestCase {
         guard let scala = TitlerLibrary.programs.first(where: { $0.name == "Scala MM300" }) else {
             return XCTFail("Scala MM300 is not in the library")
         }
-        XCTAssertEqual(
-            scala.scriptPort, "SCALA",
-            "Scala has an ARexx port — driving it by synthesised keystrokes when it "
-                + "will take commands is choosing the fragile option")
+        // The port name was GUESSED as "SCALA" and is actually `rexx_ScalaMM`, per
+        // Scala/ARexx/Dir.scala on the disc. A wrong port name is invisible: the
+        // commands leave, nothing receives them, and every fader moves and changes
+        // nothing. This pins it to what the disc says.
+        XCTAssertEqual(scala.scriptPort, "rexx_ScalaMM")
+        XCTAssertEqual(scala.scriptPort, ScalaLingo.portName)
     }
 
     func testSettingTextBecomesOneCommandNotAKeystrokeSequence() {
-        let command = TitlerCommand.setText(field: "Line1", value: "LIVE FROM THE BASEMENT")
-        XCTAssertEqual(command.arexx, "SETTEXT Line1 \"LIVE FROM THE BASEMENT\"")
+        let command = ScalaLingo.text(x: 20, y: 40, "LIVE FROM THE BASEMENT")
+        XCTAssertEqual(command.line, "TEXT 20 40 \"LIVE FROM THE BASEMENT\"")
     }
 
     func testAQuoteInTheTextDoesNotBreakTheCommand() {
         // A title containing a quote is a normal thing to want and a normal way to
-        // end up sending a malformed ARexx line.
-        let command = TitlerCommand.setText(field: "Line1", value: "SAY \"HELLO\"")
-        XCTAssertFalse(
-            command.arexx.dropFirst(8).contains("\"HELLO\""),
-            "an embedded quote must not close the argument early")
+        // end up sending a malformed script line — one that would swallow every
+        // argument after it.
+        let command = ScalaLingo.text(x: 0, y: 0, "SAY \"HELLO\"")
+        XCTAssertEqual(command.line.filter { $0 == "\"" }.count, 2,
+                       "exactly the two quotes that delimit the argument")
+        XCTAssertTrue(command.line.contains("'HELLO'"))
+    }
+
+    func testNumbersAreWrittenTheWayScalaWritesThem() {
+        // The disc writes `speed 5`, never `speed 5.0`. A trailing `.0` is the kind of
+        // thing a 1995 parser rejects without saying why.
+        XCTAssertEqual(ScalaLingo.wipe("fade", speed: 5).line, "WIPE fade SPEED 5")
+        XCTAssertEqual(ScalaLingo.pause(seconds: -1).line, "PAUSE -1")
     }
 
     func testRawCommandsArePassedThroughUntouched() {
         // A wrapper that cannot express what the underlying system can is one people
         // work around rather than with.
-        XCTAssertEqual(TitlerCommand.raw("SHOWPAGE 3").arexx, "SHOWPAGE 3")
+        XCTAssertEqual(TitlerCommand.raw("SHOWPAGE 3").line, "SHOWPAGE 3")
     }
 
     func testCommandsReachTheProgram() {
@@ -114,12 +124,12 @@ final class EmulatedTitlerTests: XCTestCase {
         XCTAssertTrue(host.supportsCommands)
         _ = host.boot(TitlerLibrary.programs.first { $0.name == "Scala MM300" }!)
 
-        host.send(.command(.setText(field: "Line1", value: "ON AIR")))
-        host.send(.command(.goToPage("Titles")))
+        host.send(.command(ScalaLingo.text(x: 20, y: 40, "ON AIR")))
+        host.send(.command(ScalaLingo.goTo(event: "Titles")))
 
-        XCTAssertEqual(host.commands, [
-            .setText(field: "Line1", value: "ON AIR"),
-            .goToPage("Titles")
+        XCTAssertEqual(host.commands.map(\.line), [
+            "TEXT 20 40 \"ON AIR\"",
+            "GOTO \"Titles\""
         ])
     }
 
@@ -361,50 +371,146 @@ final class TitlerControlTests: XCTestCase {
     }
 
     func testEveryControlProducesACommandAtEveryPosition() {
+        let panel = ScalaTitlerPanel()
         for control in TitlerControlSet.controls(for: scala) {
+            // The two that genuinely have nothing behind them yet say so rather than
+            // inventing a command, and are checked separately below.
+            guard panel.unavailableReason(for: control.function) == nil else { continue }
             for step in 0...20 {
-                let command = control.command(for: Double(step) / 20.0)
+                let commands = panel.set(control.function, to: Double(step) / 20.0)
                 XCTAssertFalse(
-                    command.arexx.isEmpty,
-                    "\(control.name) produced nothing at \(step)/20")
+                    commands.isEmpty, "\(control.name) produced nothing at \(step)/20")
+                for command in commands {
+                    XCTAssertFalse(command.line.isEmpty)
+                }
             }
         }
     }
 
     func testTheEndsOfAFaderReachTheEndsOfTheRange() {
-        let page = TitlerControlSet.scalaMM300.first { $0.name == "page" }!
-        XCTAssertEqual(page.command(for: 0).arexx, "SET PAGE 1")
-        XCTAssertEqual(page.command(for: 1).arexx, "SET PAGE 32")
+        let panel = ScalaTitlerPanel()
+        // Scala's only text scale is the font size, and the whole 12...114pt span the
+        // disc uses has to be reachable — the two ends are a caption and a
+        // full-screen word.
+        _ = panel.set(.fontSize, to: 0)
+        XCTAssertEqual(panel.state.fontSize, ScalaLingo.fontSizeRange.lowerBound)
+        _ = panel.set(.fontSize, to: 1)
+        XCTAssertEqual(panel.state.fontSize, ScalaLingo.fontSizeRange.upperBound)
+    }
+
+    func testTheSpeedFaderIsInvertedBecauseScalaCountsBackwards() {
+        // Scala's speed 1 is the FAST one. A fader labelled SPEED that slows down as
+        // it goes up is the kind of small wrongness that makes a whole panel
+        // untrustworthy.
+        let panel = ScalaTitlerPanel()
+        _ = panel.set(.wipeSpeed, to: 1)
+        let atTop = panel.state.wipeSpeed
+        _ = panel.set(.wipeSpeed, to: 0)
+        XCTAssertLessThan(atTop, panel.state.wipeSpeed, "up the fader must mean faster")
+        XCTAssertEqual(atTop, ScalaLingo.speedRange.lowerBound)
     }
 
     func testAChoiceControlWalksItsWholeSet() {
-        let wipe = TitlerControlSet.scalaMM300.first { $0.name == "wipe" }!
+        let panel = ScalaTitlerPanel()
         var seen: Set<String> = []
-        for step in 0...200 { seen.insert(wipe.command(for: Double(step) / 200.0).arexx) }
-        guard case .choice(_, let options) = wipe.kind else { return XCTFail("not a choice") }
+        for step in 0...500 {
+            _ = panel.set(.wipe, to: Double(step) / 500.0)
+            seen.insert(ScalaLingo.wipes[panel.state.wipeIndex])
+        }
         XCTAssertEqual(
-            seen.count, options.count,
-            "every wipe must be reachable from some fader position, or it may as well not exist")
+            seen.count, ScalaLingo.wipes.count,
+            "every one of Scala's \(ScalaLingo.wipes.count) wipes must be reachable "
+                + "from some fader position, or it may as well not exist")
+    }
+
+    func testEveryWipeNameCameOffTheDisc() {
+        // The guard against the panel drifting back towards plausible-sounding
+        // inventions. These are the names Scala's own scripts use.
+        for invented in ["WIPELEFT", "WIPERIGHT", "IRIS", "VENETIAN", "SCROLL"] {
+            XCTAssertFalse(
+                ScalaLingo.wipes.contains(invented.lowercased()),
+                "\(invented) was guessed in the first draft and is not a Scala wipe")
+        }
+        for real in ["nuclear", "ants", "xword", "rollodex", "curtain", "dump"] {
+            XCTAssertTrue(ScalaLingo.wipes.contains(real))
+        }
     }
 
     func testColoursStayInsideTheAmigaPalette() {
-        let colour = TitlerControlSet.scalaMM300.first { $0.name == "text col" }!
-        for step in 0...50 {
-            guard case .setColour(_, let index) = colour.command(for: Double(step) / 50.0) else {
-                return XCTFail("expected a colour command")
+        // Four bits per gun, so one hex digit each and never more.
+        for step in 0...200 {
+            let colour = ScalaColour.hue(Double(step) / 200.0)
+            XCTAssertEqual(colour.amigaHex.count, 3, "an Amiga colour is three hex digits")
+            for character in colour.amigaHex {
+                XCTAssertTrue(character.isHexDigit)
             }
-            XCTAssertTrue(
-                (0..<32).contains(index),
-                "an Amiga has 32 palette entries; \(index) is not one of them")
         }
+    }
+
+    func testTheHueSweepActuallyChangesColour() {
+        // A colour fader that returns the same colour everywhere would pass the range
+        // check above and be useless.
+        var seen: Set<String> = []
+        for step in 0...200 { seen.insert(ScalaColour.hue(Double(step) / 200.0).amigaHex) }
+        XCTAssertGreaterThan(seen.count, 12, "the hue circle should cover real ground")
     }
 
     func testANonFiniteValueDoesNotProduceNonsense() {
         // These are driven by faders, LFOs and MIDI, any of which can hand over a NaN.
+        let panel = ScalaTitlerPanel()
         for control in TitlerControlSet.controls(for: scala) {
-            XCTAssertFalse(control.command(for: .nan).arexx.isEmpty)
-            XCTAssertFalse(control.command(for: .infinity).arexx.isEmpty)
+            guard panel.unavailableReason(for: control.function) == nil else { continue }
+            for value in [Double.nan, .infinity, -.infinity] {
+                let commands = panel.set(control.function, to: value)
+                XCTAssertFalse(commands.isEmpty, "\(control.name) gave up on \(value)")
+                for command in commands {
+                    XCTAssertFalse(command.line.contains("nan"))
+                    XCTAssertFalse(command.line.contains("inf"))
+                }
+            }
         }
+    }
+
+    func testAControlWithNothingBehindItSaysWhy() {
+        // The house rule: unfinished renders disabled with a reason, never omitted and
+        // never faked.
+        let panel = ScalaTitlerPanel()
+        XCTAssertNotNil(panel.unavailableReason(for: .page))
+        XCTAssertTrue(panel.set(.page, to: 0.5).isEmpty)
+
+        panel.pageNames = ["Opening", "Titles", "Credits"]
+        XCTAssertNil(panel.unavailableReason(for: .page))
+        XCTAssertEqual(panel.set(.page, to: 1).first?.line, "GOTO \"Credits\"")
+    }
+
+    func testAFaderThatNeedsOtherFadersReissuesTheWholeLine() {
+        // `WIPE curtain south SPEED 10` is ONE line carrying three faders. Moving the
+        // speed has to restate the wipe and the direction, or the line is wrong.
+        let panel = ScalaTitlerPanel()
+        _ = panel.set(.wipe, to: 0)
+        _ = panel.set(.wipeDirection, to: 1)
+        let line = panel.set(.wipeSpeed, to: 0.5).first?.line ?? ""
+        XCTAssertTrue(line.hasPrefix("WIPE cut "), "the chosen wipe survived: \(line)")
+        XCTAssertTrue(line.contains("backwards"), "and so did the direction: \(line)")
+        XCTAssertTrue(line.contains("SPEED"))
+    }
+
+    func testTheReadoutIsInScalasUnitsNotTheFadersUnits() {
+        // "Franklin 44pt" tells an operator something. "0.31" does not.
+        let panel = ScalaTitlerPanel()
+        _ = panel.set(.fontSize, to: 1)
+        XCTAssertEqual(panel.readout(for: .fontSize), "114pt")
+        _ = panel.set(.wipe, to: 0)
+        XCTAssertEqual(panel.readout(for: .wipe), "CUT")
+    }
+
+    func testBootingSendsTheWholePanelSoTheTwoSidesAgree() {
+        // A freshly booted machine has no idea what the faders are showing.
+        let lines = ScalaTitlerPanel().fullState().map(\.line)
+        XCTAssertTrue(lines.contains { $0.hasPrefix("BLANK") }, "the screen mode")
+        XCTAssertTrue(lines.contains { $0.hasPrefix("FONT") })
+        XCTAssertTrue(lines.contains { $0.hasPrefix("PALETTE") })
+        XCTAssertEqual(lines.last, "SHOW", "and it has to end by revealing the page")
     }
 
     func testEveryControlExplainsItselfInTermsOfTheSoftware() {
@@ -418,14 +524,19 @@ final class TitlerControlTests: XCTestCase {
     }
 
     func testAControlDrivenByAFaderReachesTheProgram() {
-        // The whole path, end to end: a 0...1 value becomes a command and arrives.
+        // The whole path in miniature: a 0...1 value becomes real Scala Lingo and
+        // arrives at the program. The same path was then proved against a real
+        // emulated Amiga — see selfqa/out/emu/port-received.log, which is what an
+        // ARexx port inside the machine actually received.
         let host = MockEmulatorHost()
         let node = EmulatedTitlerNode(identifier: "emu", host: host, context: nil)
         _ = node.boot(scala)
 
-        let wipe = TitlerControlSet.scalaMM300.first { $0.name == "wipe" }!
-        host.send(.command(wipe.command(for: 0.0)))
+        let panel = ScalaTitlerPanel()
+        for command in panel.set(.wipe, to: 0) {
+            host.send(.command(command))
+        }
 
-        XCTAssertEqual(host.commands.last, .setText(field: "WIPE", value: "CUT"))
+        XCTAssertEqual(host.commands.last?.line, "WIPE cut SPEED 5")
     }
 }

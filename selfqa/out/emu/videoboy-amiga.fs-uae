@@ -1,0 +1,14 @@
+[fs-uae]
+amiga_model = A1200
+chip_memory = 2048
+fast_memory = 8
+ntsc_mode = 0
+hard_drive_0 = /Users/spencerstarnes/Library/Application Support/Videoboy/amiga/System
+hard_drive_0_label = CUCD19
+hard_drive_1 = /Users/spencerstarnes/Library/Application Support/Videoboy/amiga/VB
+hard_drive_1_label = VB
+fullscreen = 0
+window_width = 720
+window_height = 540
+window_resizable = 0
+title = Videoboy Amiga

@@ -21,7 +21,11 @@ let package = Package(
     name: "VideoboyCore",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "VideoboyCore", targets: ["VideoboyCore"])
+        .library(name: "VideoboyCore", targets: ["VideoboyCore"]),
+        // The Amiga setup CLI. An executable rather than a shell script because the
+        // Amiga-side ARexx listener is GENERATED from VideoboyCore — two copies of it,
+        // one in Swift and one in bash, would drift and the failure would be silent.
+        .executable(name: "videoboy-amiga", targets: ["videoboy-amiga"])
     ],
     targets: [
         // The C shim exposing the vendored LGPL FFmpeg. Its header and library
@@ -35,6 +39,12 @@ let package = Package(
             name: "VideoboyCore",
             dependencies: ["CFFmpeg"],
             path: "Sources/VideoboyCore",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .executableTarget(
+            name: "videoboy-amiga",
+            dependencies: ["VideoboyCore"],
+            path: "Sources/videoboy-amiga",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
