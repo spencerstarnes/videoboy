@@ -1,6 +1,6 @@
 check:    phase-0/empty-check-self-test
 verdict:  FAIL
-when:     2026-09-17T09:21:11Z
+when:     2026-09-17T18:06:02Z
 core:     0.3.0
 
 notes:
@@ -9,33 +9,33 @@ notes:
 assertions (0/0 passed):
 
 recent log:
-  1789636870.795 ERROR [app] preferences at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-DDB7AF2F-4624-40D3-81EC-6493B109FF90/preferences.json could not be read (dataCorrupted(Swift.DecodingError.Context(codingPath: [], debugDescription: "The given data was not valid JSON.", underlyingError: Optional(Error Domain=NSCocoaErrorDomain Code=3840 "Unexpected character 't' around line 1, column 4." UserInfo={NSJSONSerializationErrorIndex=3, NSDebugDescription=Unexpected character 't' around line 1, column 4.})))); using defaults
-  1789636870.798 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-F2E95028-6083-4A43-B9A5-924531582F6E/preferences.json; using defaults
-  1789636870.799 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-EF65FD04-E3A0-4FEB-BA46-D6FB5A2611FE/preferences.json; using defaults
-  1789636870.799 INFO [app] reminder 'setSaveLocation' suppressed
-  1789636870.800 INFO [app] reminder 'noOutputsSelected' suppressed
-  1789636870.800 INFO [app] reminder 'saveOnQuit' suppressed
-  1789636870.800 INFO [app] reminder 'midiWithNoDevice' suppressed
-  1789636870.800 INFO [app] reminder 'audioMappingWithoutAudioClock' suppressed
-  1789636870.801 INFO [app] all reminders restored
-  1789636870.801 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-2076B2B4-79A9-42F2-9A0C-B57A3C80F46C/preferences.json; using defaults
-  1789636870.802 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-E9681FF9-2FBC-46E4-A2BF-6F9955F81F04/preferences.json; using defaults
-  1789636870.802 INFO [app] reminder 'saveOnQuit' suppressed
-  1789636871.103 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/00-source.png
-  1789636871.143 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/waveform.png
-  1789636871.143 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789636871.158 INFO [selfqa] phase-5/scopes: PASS  Waveform draws a trace — variance 437
-  1789636871.197 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/parade.png
-  1789636871.197 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789636871.213 INFO [selfqa] phase-5/scopes: PASS  RGB Parade draws a trace — variance 432
-  1789636871.238 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/histogram.png
-  1789636871.238 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789636871.253 INFO [selfqa] phase-5/scopes: PASS  Histogram draws a trace — variance 409
-  1789636871.334 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/vectorscope.png
-  1789636871.334 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789636871.350 INFO [selfqa] phase-5/scopes: PASS  Vectorscope draws a trace — variance 185
-  1789636871.577 INFO [selfqa] wrote 640x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/quad.png
-  1789636871.598 INFO [selfqa] phase-5/scopes: colour bars read: 12.5% crushed
-  1789636871.598 INFO [selfqa] phase-5/scopes: PASS -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/result.txt
-  1789636871.599 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
-  1789636871.600 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt
+  1789668361.940 ERROR [app] preferences at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-7A6CDD7F-E4F0-4CC1-9A28-0804C622C2EB/preferences.json could not be read (dataCorrupted(Swift.DecodingError.Context(codingPath: [], debugDescription: "The given data was not valid JSON.", underlyingError: Optional(Error Domain=NSCocoaErrorDomain Code=3840 "Unexpected character 't' around line 1, column 4." UserInfo={NSJSONSerializationErrorIndex=3, NSDebugDescription=Unexpected character 't' around line 1, column 4.})))); using defaults
+  1789668361.944 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-9321E2CA-4D85-48EB-97FF-8B01694FCBF8/preferences.json; using defaults
+  1789668361.945 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-2DFCB4FD-A04D-46F0-BF49-AA4387B2DC1B/preferences.json; using defaults
+  1789668361.945 INFO [app] reminder 'setSaveLocation' suppressed
+  1789668361.946 INFO [app] reminder 'noOutputsSelected' suppressed
+  1789668361.946 INFO [app] reminder 'saveOnQuit' suppressed
+  1789668361.946 INFO [app] reminder 'midiWithNoDevice' suppressed
+  1789668361.947 INFO [app] reminder 'audioMappingWithoutAudioClock' suppressed
+  1789668361.947 INFO [app] all reminders restored
+  1789668361.947 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-9C905278-A89E-40D5-BCF9-BFEF8753B8C5/preferences.json; using defaults
+  1789668361.949 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-5B3AF067-FA0F-4647-8BD3-E42A3EB788C7/preferences.json; using defaults
+  1789668361.949 INFO [app] reminder 'saveOnQuit' suppressed
+  1789668362.260 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/00-source.png
+  1789668362.300 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/waveform.png
+  1789668362.300 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1789668362.317 INFO [selfqa] phase-5/scopes: PASS  Waveform draws a trace — variance 437
+  1789668362.357 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/parade.png
+  1789668362.357 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1789668362.373 INFO [selfqa] phase-5/scopes: PASS  RGB Parade draws a trace — variance 432
+  1789668362.399 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/histogram.png
+  1789668362.399 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1789668362.415 INFO [selfqa] phase-5/scopes: PASS  Histogram draws a trace — variance 409
+  1789668362.497 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/vectorscope.png
+  1789668362.497 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1789668362.513 INFO [selfqa] phase-5/scopes: PASS  Vectorscope draws a trace — variance 185
+  1789668362.745 INFO [selfqa] wrote 640x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/quad.png
+  1789668362.766 INFO [selfqa] phase-5/scopes: colour bars read: 12.5% crushed
+  1789668362.767 INFO [selfqa] phase-5/scopes: PASS -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/result.txt
+  1789668362.768 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1789668362.768 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt

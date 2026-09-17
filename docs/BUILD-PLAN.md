@@ -97,6 +97,16 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)
 
+- **Colour Ctrl and Layer Mask effect cards.** Both were placeholder cards rendering
+  disabled in the FX chains, and were removed from the window so the chains show only
+  effects that do something. Kept here because both are still wanted:
+  - *Colour Ctrl* — contrast/saturation/brightness on a bus. The param codes already
+    exist (`51A`, `52A`, `53A`) and `ColourControlNode` does not.
+  - *Layer Mask* — a mask on the layer composite (SPEC 12), so a blend can be
+    confined to part of the frame.
+  Re-adding either is a node plus a card in `PanelSet`, exactly as the other effects
+  do it. Nothing else was removed with them.
+
 - **AVFoundation decode is CPU-side.** `AVFClipDecoder` copies each frame into an
   `ImageBuffer` and uploads it, where a `CVMetalTextureCache` would hand the GPU the
   pixel buffer directly. Correct but not free; worth doing if HD clips drop frames.

@@ -84,6 +84,32 @@ enum Controls {
         return button
     }
 
+    /// A bare glyph — a close ✕, a chevron — with no bezel behind it.
+    ///
+    /// `Controls.button` gives a rounded, filled, bezelled push button, which is the
+    /// visual language of a settings dialogue. On a card header, sitting next to a
+    /// flat drag grip, that reads as the heaviest thing in the row and takes width
+    /// the effect's NAME needed — the corruptor card truncated to "DV · D…" mostly to
+    /// make room for a chrome rectangle around an ✕.
+    static func glyphButton(
+        _ glyph: String, enabled: Bool = true, tooltip: String? = nil,
+        target: AnyObject? = nil, action: Selector? = nil
+    ) -> NSButton {
+        let button = NSButton(title: glyph, target: target, action: action)
+        button.isBordered = false
+        button.bezelStyle = .inline
+        button.setButtonType(.momentaryChange)
+        button.font = Theme.Font.label
+        button.contentTintColor = Theme.Color.textTertiary
+        button.isEnabled = enabled
+        button.toolTip = tooltip
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        return button
+    }
+
     /// A selector popup. Every selector in the app is one of these (SPEC 14.3).
     static func popUp(_ items: [String], enabled: Bool = true, target: AnyObject? = nil, action: Selector? = nil) -> NSPopUpButton {
         let popUp = NSPopUpButton(frame: .zero, pullsDown: false)

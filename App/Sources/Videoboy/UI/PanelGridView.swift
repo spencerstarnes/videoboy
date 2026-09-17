@@ -539,10 +539,16 @@ final class PanelGridView: NSView {
         let availableAboveBar = max(available - outputBar, 0)
 
         // What the previews want, and what the rest of the grid must keep.
+        // The 4:3 height is a FLOOR now, not a ceiling. Capping the band at exactly
+        // 4:3 of one column's width meant the source monitors could not grow however
+        // much room the window had — they were small by arithmetic rather than by
+        // layout. Whichever of the two is larger wins, and the lower rows keep their
+        // minimum either way.
         let wanted = previewColumnWidth / Theme.Metrics.previewAspectRatio
+        let share = availableAboveBar * Theme.Grid.previewBandShare
         let lowerWeights = Array(weights.dropFirst(2).dropLast())
         let lowerMinimum = Theme.Grid.minimumLowerRowsHeight
-        let previewBand = min(max(wanted, 0), max(availableAboveBar - lowerMinimum, 0))
+        let previewBand = min(max(wanted, share), max(availableAboveBar - lowerMinimum, 0))
 
         // The band is split between rows 0 and 1 in their existing proportion, so a
         // source panel above another keeps the relationship it had.

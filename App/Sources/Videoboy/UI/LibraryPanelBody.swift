@@ -594,6 +594,12 @@ final class LibraryPanelBody: NSView {
     /// Which channels this library keeps playlists for. Empty in the asset browser.
     private let playlistChannels: [String]
 
+    /// Which channels the focus control offers. A bus library offers its own pair;
+    /// the asset browser, which belongs to no bus, offers all four.
+    private var focusChannels: [String] {
+        playlistChannels.isEmpty ? ChannelDestination.allChannels : playlistChannels
+    }
+
     /// The Library / A / B tab strip, when this library has playlists.
     private var playlistTabs: NSSegmentedControl?
 
@@ -661,8 +667,13 @@ final class LibraryPanelBody: NSView {
 
         // Where a double-clicked clip goes. Present on every library: the sub-mix
         // libraries default to their own side, and the browser starts on A/B.
+        // Only this library's OWN pair. The A/B library feeds A and B; offering it C
+        // and D as well made the control four wide in the narrowest row in the
+        // window, to reach two channels that have their own library sitting on the
+        // other side of the screen. The asset browser keeps all four, because it
+        // belongs to no bus.
         let destinationToggle = Controls.segmented(
-            ChannelDestination.allChannels, selected: 0,
+            focusChannels, selected: 0,
             target: self, action: #selector(destinationChanged(_:)))
         destinationToggle.toolTip = "Focus — where the next clip you open lands"
         destinationToggle.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -953,7 +964,7 @@ final class LibraryPanelBody: NSView {
     }
 
     @objc private func destinationChanged(_ sender: NSSegmentedControl) {
-        let channels = ChannelDestination.allChannels
+        let channels = focusChannels
         guard channels.indices.contains(sender.selectedSegment) else { return }
         destination.focus(channel: channels[sender.selectedSegment])
         updateDestinationTitles()
@@ -974,7 +985,7 @@ final class LibraryPanelBody: NSView {
     private func updateDestinationTitles() {
         guard let control = destinationControl else { return }
         let focused = destination.nextChannel
-        for (index, channel) in ChannelDestination.allChannels.enumerated() {
+        for (index, channel) in focusChannels.enumerated() {
             control.setLabel(
                 channel == focused ? Theme.focusCaret + channel : channel, forSegment: index)
             if channel == focused { control.selectedSegment = index }
@@ -983,7 +994,7 @@ final class LibraryPanelBody: NSView {
         // A/B from C/D everywhere else, so the focus picks it up rather than
         // inventing a second code — and colour survives being glanced at, which a
         // small caret on its own does not.
-        control.selectedSegmentBezelColor = Theme.Color.busTint(forChannel: focused)
+        control.selectedSegmentBezelColor = Theme.Color.focusOn
         control.toolTip = "Focus — the next clip you open lands on \(focused), "
             + "then the focus moves to the other channel of that pair"
     }

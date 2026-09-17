@@ -786,19 +786,37 @@ enum UISelfQA {
                 ("Program", shell.grid.panels.program),
                 ("C/D Sub Mix", shell.grid.panels.subMixTwo)
             ]
+            // The contract CHANGED, deliberately, and this is what replaced it.
+            //
+            // These were asserted to be exactly 4:3. They no longer are, because the
+            // preview band is now allowed to grow past 4:3 so the SOURCE monitors —
+            // which get half the band each and were tiny — can be read at a glance.
+            // What matters is unchanged in substance: the picture inside is still 4:3
+            // (the fill mode letterboxes it), the panel is never SQUATTER than 4:3,
+            // which is the direction that would crop or shrink the video, and all
+            // three stay the same shape as each other, which is why the three centre
+            // columns are equal in the first place.
             var offenders: [String] = []
+            var ratios: [CGFloat] = []
             for (name, panel) in previews {
                 let size = panel.frame.size
                 guard size.height > 1 else { continue }
                 let ratio = size.width / size.height
-                // Within a couple of percent: the grid works in whole points and a
-                // gutter cannot always be split evenly.
-                if abs(ratio - Theme.Metrics.previewAspectRatio) > 0.06 {
-                    offenders.append(String(format: "%@ %@ %.2f", layoutCase.name, name, ratio))
+                ratios.append(ratio)
+                if ratio > Theme.Metrics.previewAspectRatio + 0.06 {
+                    offenders.append(String(
+                        format: "%@ %@ %.2f is wider than 4:3", layoutCase.name, name, ratio))
                 }
             }
+            if let first = ratios.first,
+               ratios.contains(where: { abs($0 - first) > 0.06 }) {
+                offenders.append(String(
+                    format: "%@ the three previews are not the same shape: %@",
+                    layoutCase.name,
+                    ratios.map { String(format: "%.2f", $0) }.joined(separator: ", ")))
+            }
             check.record(AssertionResult(
-                name: "preview panels are 4:3 at \(layoutCase.name)",
+                name: "previews are never squatter than 4:3, and all three match, at \(layoutCase.name)",
                 passed: offenders.isEmpty,
                 detail: offenders.isEmpty
                     ? String(format: "all three within 4:3 (%.3f)", Theme.Metrics.previewAspectRatio)

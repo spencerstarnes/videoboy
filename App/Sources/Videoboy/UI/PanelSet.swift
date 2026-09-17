@@ -212,12 +212,7 @@ final class PanelSet {
                     EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
                                          value: 0.5, enabled: true)
                 ]
-            ),
-            EffectCardModel(name: "Color Ctrl", isEnabled: false, isImplemented: false, parameters: [
-                EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
-                                     value: 0.62, enabled: false)
-            ]),
-            EffectCardModel(name: "Layer Mask", isEnabled: false, isImplemented: false, parameters: [])
+            )
         ])
 
         // Sub Mix TWO's chain: the same effects, on its own instances, so the two
@@ -288,8 +283,7 @@ final class PanelSet {
                     EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
                                          value: 0.5, enabled: true)
                 ]
-            ),
-            EffectCardModel(name: "Layer Mask", isEnabled: false, isImplemented: false, parameters: [])
+            )
         ])
 
         effectsOne = PanelView(title: "A/B FX", bus: .one, body: effectsOneBody)

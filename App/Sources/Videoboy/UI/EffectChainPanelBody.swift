@@ -290,8 +290,10 @@ final class EffectChainPanelBody: NSView {
         )
         enableSwitch.identifier = NSUserInterfaceItemIdentifier(effect.name)
 
-        let removeButton = Controls.button("✕", enabled: effect.isImplemented,
-                                           target: self, action: #selector(effectRemoved(_:)))
+        let removeButton = Controls.glyphButton(
+            "✕", enabled: effect.isImplemented,
+            tooltip: "Take \(effect.name) out of this chain",
+            target: self, action: #selector(effectRemoved(_:)))
         removeButton.identifier = NSUserInterfaceItemIdentifier(effect.name)
 
         // The channel selector, for chFX cards — an effect that runs once per

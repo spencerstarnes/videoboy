@@ -176,12 +176,12 @@ enum Theme {
 
     enum Fader {
         /// Thickness of the slot. Thick enough to see the fill from across a room.
-        static let trackHeight: CGFloat = 6
+        static let trackHeight: CGFloat = 4
         /// Cap width, across the direction of travel.
         static let capWidth: CGFloat = 11
         /// Cap height. Deliberately larger than `trackHeight` — the overhang is the
         /// whole point, and it is what `NSSlider` will not give.
-        static let capHeight: CGFloat = 17
+        static let capHeight: CGFloat = 13
         /// How much the cap grows while being dragged, for feedback under the finger.
         static let capDragGrowth: CGFloat = 2
         static let capCornerRadius: CGFloat = 2.5
@@ -206,10 +206,10 @@ enum Theme {
         ///
         /// A constant rather than a fixed cap height, so growing a track can never
         /// again leave its cap sunk into the slot.
-        static let capOverhang: CGFloat = 8
+        static let capOverhang: CGFloat = 6
         /// Height of the compact fader used in a shuttle strip, where the scrub track
         /// is a readout more than a control and must not dominate the row.
-        static let compactHeight: CGFloat = 11
+        static let compactHeight: CGFloat = 9
     }
 
     // MARK: - Grid proportions
@@ -252,6 +252,21 @@ enum Theme {
         /// little padding. Fixed rather than weighted: as a weight it grew with the
         /// window and spent the difference on empty space.
         static let outputBarHeight: CGFloat = 34
+
+        /// Least share of the height above the output bar that the preview band takes.
+        ///
+        /// The band used to be exactly 4:3 of one column's width and nothing more, so
+        /// it could not grow no matter how much room the window had — the source
+        /// monitors were small as a matter of arithmetic, not layout. This is a
+        /// FLOOR: the 4:3 height still wins when it is the larger of the two, which
+        /// is what happens in a wide, short window.
+        ///
+        /// The cost is visible and worth stating: above this share the three centre
+        /// panels are taller than 4:3, so their picture letterboxes inside them. The
+        /// video stays correctly proportioned — that is what the fill mode is for —
+        /// but there is black above and below it. Sources getting bigger is paid for
+        /// out of the centre panels' spare height.
+        static let previewBandShare: CGFloat = 0.48
 
         /// The least the rows below the previews may be squeezed to.
         ///
@@ -334,6 +349,13 @@ enum Theme {
 
         /// On air. Red means this everywhere in broadcast, and it is not used for
         /// anything else in this window.
+        /// What a FOCUS control turns when it is the one receiving your next action.
+        ///
+        /// Louder than the plain bus tint: focus is a state you need to read across
+        /// the room mid-set, and the tint alone was doing the same job as every other
+        /// amber thing in the window.
+        static let focusOn = NSColor(srgbRed: 0xff / 255.0, green: 0x9a / 255.0, blue: 0x1f / 255.0, alpha: 1)
+
         /// The bus tint a channel belongs to. A, B are bus one; C, D are bus two —
         /// the same amber and cyan this window uses everywhere else to say which
         /// half of the desk you are looking at.
