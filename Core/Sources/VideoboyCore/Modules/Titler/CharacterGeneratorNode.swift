@@ -371,11 +371,10 @@ public final class CharacterGeneratorNode: Node {
     }
 
     private static func solid(width: Int, height: Int, level: Double) -> ImageBuffer {
-        var image = ImageBuffer(width: width, height: height)
+        // Bulk-filled. This runs EVERY FRAME when the generator is used as a source
+        // with nothing upstream, and per-pixel setPixel spent about 1.5 ms of a
+        // 33.4 ms budget painting one colour.
         let byte = UInt8(clamping: Int(level.rounded()))
-        for y in 0..<height {
-            for x in 0..<width { image.setPixel(x: x, y: y, r: byte, g: byte, b: byte) }
-        }
-        return image
+        return ImageBuffer(width: width, height: height, r: byte, g: byte, b: byte)
     }
 }

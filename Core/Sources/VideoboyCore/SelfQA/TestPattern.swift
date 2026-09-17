@@ -67,13 +67,7 @@ public enum TestPattern {
         height: Int = StandardDefinition.height,
         r: UInt8, g: UInt8, b: UInt8
     ) -> ImageBuffer {
-        var image = ImageBuffer(width: width, height: height)
-        for y in 0..<height {
-            for x in 0..<width {
-                image.setPixel(x: x, y: y, r: r, g: g, b: b)
-            }
-        }
-        return image
+        ImageBuffer(width: width, height: height, r: r, g: g, b: b)
     }
 
     /// Alternating black/white rows. Its comb score is the maximum a real signal can
