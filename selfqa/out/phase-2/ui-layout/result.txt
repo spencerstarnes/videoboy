@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T18:19:41Z
+when:     2026-09-17T18:24:31Z
 core:     0.3.0
 
 notes:
@@ -14,14 +14,14 @@ notes:
 
 assertions (66/66 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 811.7
+  PASS  wide is not blank — luminance variance 812.2
   PASS  dimensions — expected 1000x760, got 1000x760
   PASS  compact is not blank — luminance variance 831.5
   PASS  dimensions — expected 760x640, got 760x640
   PASS  narrow is not blank — luminance variance 1057.9
   PASS  collapsed-left is not blank — luminance variance 723.0
   PASS  collapsed-both-edges is not blank — luminance variance 627.5
-  PASS  collapsed-sources-only is not blank — luminance variance 802.3
+  PASS  collapsed-sources-only is not blank — luminance variance 832.9
   PASS  collapsed-effects-only is not blank — luminance variance 607.2
   PASS  holding Shift lights the mappable faders — 46 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
@@ -78,4 +78,4 @@ assertions (66/66 passed):
   PASS  I and O mark a range the loader can use — 0.25...0.75
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
-  PASS  every enabled effect switch actually reaches the engine — 10 switches moved a wet/dry in the graph
+  PASS  every enabled effect switch actually reaches the engine — 12 switches moved a wet/dry in the graph

@@ -254,6 +254,73 @@ enum ShaderSource {
     }
 
     // ---------------------------------------------------------------------------
+    // Colour controls.
+    //
+    // The ordinary grade stage every mixer has, in the order a grade is actually
+    // applied. Order matters and is not arbitrary:
+    //
+    //   1. LEVELS   — black and white points remap the input range first, because
+    //                 everything after them should work on a normalised signal.
+    //   2. GAMMA    — midtone curve, applied while the range is still 0..1.
+    //   3. SHADOW / HIGHLIGHT — selective lift and roll-off, weighted so each end
+    //                 moves without dragging the other with it.
+    //   4. CONTRAST — pivoted about mid grey, not about zero, so raising contrast
+    //                 does not also darken the whole picture.
+    //   5. BRIGHTNESS — a straight offset, last, so it is predictable.
+    //   6. SATURATION — about luma, so a desaturated picture keeps its brightness.
+    //
+    // Everything is clamped at the end. This chain feeds an analog output where
+    // out-of-range values are not merely ugly, they are unencodable.
+    // ---------------------------------------------------------------------------
+
+    struct ColourParams {
+        float brightness;   // -1..1, added
+        float contrast;     // 0..2, 1 is unchanged
+        float saturation;   // 0..2, 1 is unchanged
+        float shadow;       // -1..1, lifts or crushes the dark end
+        float highlight;    // -1..1, lifts or rolls off the bright end
+        float blackLevel;   // 0..1, input level remapped to 0
+        float whiteLevel;   // 0..1, input level remapped to 1
+        float gamma;        // 0.1..4, 1 is unchanged
+    };
+
+    fragment float4 colour_fragment(VertexOut in [[stage_in]],
+                                    texture2d<float> source [[texture(0)]],
+                                    constant ColourParams &p [[buffer(0)]]) {
+        constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+        float3 c = source.sample(linearSampler, in.uv).rgb;
+
+        // 1. Levels. A white point at or below the black point would divide by zero
+        //    or invert the picture; the span is floored rather than left to chance.
+        float span = max(p.whiteLevel - p.blackLevel, 0.001);
+        c = clamp((c - p.blackLevel) / span, 0.0, 1.0);
+
+        // 2. Gamma.
+        c = pow(c, float3(1.0 / max(p.gamma, 0.01)));
+
+        // 3. Shadows and highlights, each weighted to its own end of the range so
+        //    lifting the shadows leaves the highlights where they were.
+        float luma = lumaOf(c);
+        float shadowWeight = 1.0 - smoothstep(0.0, 0.5, luma);
+        float highlightWeight = smoothstep(0.5, 1.0, luma);
+        c += p.shadow * shadowWeight * 0.5;
+        c += p.highlight * highlightWeight * 0.5;
+        c = clamp(c, 0.0, 1.0);
+
+        // 4. Contrast about mid grey.
+        c = (c - 0.5) * p.contrast + 0.5;
+
+        // 5. Brightness.
+        c += p.brightness;
+
+        // 6. Saturation about luma, so brightness survives desaturation.
+        float grey = lumaOf(clamp(c, 0.0, 1.0));
+        c = mix(float3(grey), c, p.saturation);
+
+        return float4(clamp(c, 0.0, 1.0), 1.0);
+    }
+
+    // ---------------------------------------------------------------------------
     // Feedback (SPEC 10).
     //
     // The classic infinite tunnel: the previous output, zoomed and rotated a little,
@@ -644,6 +711,7 @@ public final class MetalContext {
     public let generatorPipeline: MTLRenderPipelineState
     /// Echo/trails: blends a frame with the decaying history behind it.
     public let echoPipeline: MTLRenderPipelineState
+    public let colourPipeline: MTLRenderPipelineState
     /// Feedback: the previous output, transformed, mixed back in.
     public let feedbackPipeline: MTLRenderPipelineState
 
@@ -689,6 +757,7 @@ public final class MetalContext {
               let mx1 = makePipeline(vertex: "fullscreen_vertex", fragment: "mx1_fragment"),
               let generator = makePipeline(vertex: "fullscreen_vertex", fragment: "generator_fragment"),
               let echo = makePipeline(vertex: "fullscreen_vertex", fragment: "echo_fragment"),
+              let colour = makePipeline(vertex: "fullscreen_vertex", fragment: "colour_fragment"),
               let feedback = makePipeline(vertex: "fullscreen_vertex", fragment: "feedback_fragment") else {
             return nil
         }
@@ -703,6 +772,7 @@ public final class MetalContext {
         self.mx1Pipeline = mx1
         self.generatorPipeline = generator
         self.echoPipeline = echo
+        self.colourPipeline = colour
         self.feedbackPipeline = feedback
         Log.info(.render, "Metal ready on \(device.name)")
     }

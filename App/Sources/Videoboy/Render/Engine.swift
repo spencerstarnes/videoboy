@@ -56,9 +56,11 @@ final class Engine {
     /// Bus effects, one chain per sub-mix (SPEC 2's `bus FX`). The composite codec is
     /// the analog character; echo and feedback sit after it.
     private(set) var compositeCodec: CompositeCodecNode!
+    private(set) var colour: ColourControlNode!
     private(set) var echo: EchoNode!
     private(set) var feedback: FeedbackNode!
     private(set) var compositeCodecTwo: CompositeCodecNode!
+    private(set) var colourTwo: ColourControlNode!
     private(set) var echoTwo: EchoNode!
     private(set) var feedbackTwo: FeedbackNode!
 
@@ -171,14 +173,21 @@ final class Engine {
         // codec runs first on purpose — the analog character should be applied to the
         // picture, and the trails and loop then act on the already-degraded signal,
         // which is the order a real chain would have.
+        // The grade goes FIRST in the chain, before the composite codec. Matching
+        // four sources to each other is something you do to a clean picture; doing it
+        // after the NTSC path means grading artefacts as well as the image, and the
+        // corrections stop behaving the way the controls say they do.
+        colour = ColourControlNode(identifier: Engine.colourSlot, context: metal)
         compositeCodec = CompositeCodecNode(identifier: Engine.compositeSlot, context: metal)
         echo = EchoNode(identifier: Engine.echoSlot, context: metal)
         feedback = FeedbackNode(identifier: Engine.feedbackSlot, context: metal)
+        graph.add(colour)
         graph.add(compositeCodec)
         graph.add(echo)
         graph.add(feedback)
 
-        graph.connect(from: GraphTopology.subMixOne, to: Engine.compositeSlot, inputIndex: 0)
+        graph.connect(from: GraphTopology.subMixOne, to: Engine.colourSlot, inputIndex: 0)
+        graph.connect(from: Engine.colourSlot, to: Engine.compositeSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeSlot, to: Engine.echoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoSlot, to: Engine.feedbackSlot, inputIndex: 0)
 
@@ -204,14 +213,17 @@ final class Engine {
         // The same chain on TWO. Separate instances rather than a shared one: the two
         // buses must be able to carry different looks at once, which is the whole
         // point of having two of them.
+        colourTwo = ColourControlNode(identifier: Engine.colourTwoSlot, context: metal)
         compositeCodecTwo = CompositeCodecNode(identifier: Engine.compositeTwoSlot, context: metal)
         echoTwo = EchoNode(identifier: Engine.echoTwoSlot, context: metal)
         feedbackTwo = FeedbackNode(identifier: Engine.feedbackTwoSlot, context: metal)
+        graph.add(colourTwo)
         graph.add(compositeCodecTwo)
         graph.add(echoTwo)
         graph.add(feedbackTwo)
 
-        graph.connect(from: GraphTopology.subMixTwo, to: Engine.compositeTwoSlot, inputIndex: 0)
+        graph.connect(from: GraphTopology.subMixTwo, to: Engine.colourTwoSlot, inputIndex: 0)
+        graph.connect(from: Engine.colourTwoSlot, to: Engine.compositeTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeTwoSlot, to: Engine.echoTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoTwoSlot, to: Engine.feedbackTwoSlot, inputIndex: 0)
         mx1Two = MX1EffectNode(identifier: Engine.mx1TwoSlot, context: metal)
@@ -265,9 +277,11 @@ final class Engine {
     /// Slot names for the bus effects and the extra sources, so mappings and
     /// templates can address them by a stable name.
     static let compositeSlot = "fx.one.composite"
+    static let colourSlot = "fx.one.colour"
     static let echoSlot = "fx.one.echo"
     static let feedbackSlot = "fx.one.feedback"
     static let compositeTwoSlot = "fx.two.composite"
+    static let colourTwoSlot = "fx.two.colour"
     static let echoTwoSlot = "fx.two.echo"
     static let feedbackTwoSlot = "fx.two.feedback"
     static let busCodecOneSlot = "data.one"
@@ -296,8 +310,8 @@ final class Engine {
     /// and nothing on screen said so. A node left off here is invisible until someone
     /// notices the output looks wrong.
     static let busEffectSlots = [
-        compositeSlot, echoSlot, feedbackSlot, mx1OneSlot,
-        compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot,
+        colourSlot, compositeSlot, echoSlot, feedbackSlot, mx1OneSlot,
+        colourTwoSlot, compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot,
         compositeProgramSlot, busCodecProgramSlot
     ]
 
@@ -406,12 +420,14 @@ final class Engine {
         subMixTwo.applyParameters(from: registry)
         primary.applyParameters(from: registry)
         compositeCodec.applyParameters(from: registry)
+        colour.applyParameters(from: registry)
         echo.applyParameters(from: registry)
         feedback.applyParameters(from: registry)
         compositeProgram.applyParameters(from: registry)
         mx1One.applyParameters(from: registry)
         mx1Two.applyParameters(from: registry)
         compositeCodecTwo.applyParameters(from: registry)
+        colourTwo.applyParameters(from: registry)
         echoTwo.applyParameters(from: registry)
         feedbackTwo.applyParameters(from: registry)
         for generator in generators.values { generator.applyParameters(from: registry) }

@@ -931,6 +931,7 @@ final class ShellController {
 
     /// Effect card names to the slot they bypass, per bus.
     private static let effectNameToSlot: [String: (one: String, two: String)] = [
+        "Colour": (Engine.colourSlot, Engine.colourTwoSlot),
         "Composite · NTSC": (Engine.compositeSlot, Engine.compositeTwoSlot),
         "Echo / Trails": (Engine.echoSlot, Engine.echoTwoSlot),
         "Feedback": (Engine.feedbackSlot, Engine.feedbackTwoSlot),

@@ -84,6 +84,16 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case contrast = "51A"
     case saturation = "52A"
     case brightness = "53A"
+    /// Lifts or crushes the dark end without moving the highlights.
+    case shadow = "54A"
+    /// Rolls off or lifts the bright end without moving the shadows.
+    case highlight = "55A"
+    /// Input black point: what level is remapped to 0. Raising it crushes.
+    case blackLevel = "56A"
+    /// Input white point: what level is remapped to full. Lowering it clips.
+    case whiteLevel = "57A"
+    /// Midtone gamma. 1.0 is unchanged; below 1 brightens the middle.
+    case gamma = "58A"
 
     // MARK: Mixer and transport (6xA)
 
@@ -210,6 +220,11 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .contrast: "contrast"
         case .saturation: "saturation"
         case .brightness: "brightness"
+        case .shadow: "shadow"
+        case .highlight: "highlight"
+        case .blackLevel: "black level"
+        case .whiteLevel: "white level"
+        case .gamma: "gamma"
         case .crossfadeAB: "A/B crossfade"
         case .crossfadeCD: "C/D crossfade"
         case .crossfadeOneTwo: "ONE/TWO crossfade"

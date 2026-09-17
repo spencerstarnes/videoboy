@@ -175,6 +175,29 @@ final class PanelSet {
                 ]
             ),
             EffectCardModel(
+                name: "Colour",
+                isEnabled: false,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "bright", code: ParamCode.brightness.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "sat", code: ParamCode.saturation.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "shadow", code: ParamCode.shadow.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "highlt", code: ParamCode.highlight.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "black", code: ParamCode.blackLevel.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "white", code: ParamCode.whiteLevel.rawValue,
+                                         value: 1.0, enabled: true),
+                    EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
+                                         value: 0.231, enabled: true)
+                ]
+            ),
+            EffectCardModel(
                 name: "Echo / Trails",
                 isEnabled: false,
                 isImplemented: FeatureFlag.feedback.isOn,
@@ -249,6 +272,29 @@ final class PanelSet {
                                          value: 0.5, enabled: true),
                     EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
                                          value: 0.2, enabled: true)
+                ]
+            ),
+            EffectCardModel(
+                name: "Colour",
+                isEnabled: false,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "bright", code: ParamCode.brightness.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "sat", code: ParamCode.saturation.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "shadow", code: ParamCode.shadow.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "highlt", code: ParamCode.highlight.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "black", code: ParamCode.blackLevel.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "white", code: ParamCode.whiteLevel.rawValue,
+                                         value: 1.0, enabled: true),
+                    EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
+                                         value: 0.231, enabled: true)
                 ]
             ),
             EffectCardModel(
