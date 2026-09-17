@@ -82,7 +82,12 @@ Detail: SPEC §9 (composite/NTSC), §10 (capture + feedback), §11 (CRT features
 Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 - [x] Generators + transport LFO (SPEC §6A) and audio-reactivity bus (§4c, §13).
 - [ ] ISF host (parser → Metal) + FFGL (SPEC §8); CI/AU passthrough. **MX-1 effect set is done.**
-- [ ] Clean Core Text character generator + period preset (SPEC §18.1).
+- [~] Clean Core Text character generator + period preset (SPEC §18.1). Core node done
+      and pixel-tested (fill, outline, shadow, kerning/tracking/leading, alignment,
+      position/anchor, scale, title-safe clamp, roll/crawl clock-synced, period
+      preset via CompositeCodec, NTSC-legal fill warning). NOT YET wired into the
+      graph or the UI — no way to reach it from the window, no text-entry surface,
+      no font/colour pickers. That wiring is the remaining half.
 - [ ] Emulated titler library — out-of-process GPL libretro host, save-state landing, genlock key (SPEC §18.2).
 - [ ] SVG/PS1 source (§17); IP in/out (§6, §15). **NTSC scopes (§19), discrete A/B/C/D
       recording (§15), the routing/send panel (§6) and the full four-channel mix

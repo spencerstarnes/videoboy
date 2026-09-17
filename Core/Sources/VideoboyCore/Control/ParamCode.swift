@@ -22,6 +22,7 @@
 //    5xA  — colour controls
 //    6xA  — mixer and transport
 //    7xA  — composite / NTSC emulation
+//    9xD  — character generator (SPEC 18.1)
 //
 
 import Foundation
@@ -129,6 +130,54 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     /// Head-switching noise band at the bottom of the frame.
     case headSwitchingNoise = "78A"
 
+    // MARK: Character generator (9xD, SPEC 18.1)
+    //
+    // Position, scale and overall opacity/bypass are NOT re-declared here — the CG
+    // reuses .positionX, .positionY, .scale, .opacity and .wetDry exactly as every
+    // other node does, because they mean the same thing here that they mean
+    // everywhere else. Only what is genuinely new to a character generator gets a
+    // new code.
+
+    /// Point size of the type.
+    case cgFontSize = "91D"
+    /// Which weight bucket, swept 0...1 across regular/medium/semibold/bold/heavy —
+    /// the same "sweep selects from a small set" pattern as `mx1Effect`.
+    case cgFontWeight = "92D"
+    /// Paragraph alignment, swept 0...1 across left/center/right/justified.
+    case cgAlignment = "93D"
+    /// Native font pair-kerning, on above the halfway point. A font either has this
+    /// or it does not, so a continuous fader is still a threshold in practice — but
+    /// it stays a fader rather than a switch so it can be detect-mapped and
+    /// audio-reactive like everything else here.
+    case cgKerningEnabled = "94D"
+    /// Uniform letter-spacing added on top of the font's own metrics, in points.
+    /// Negative tightens, positive opens up — separate from kerning, which only
+    /// toggles the font's own built-in pair adjustments.
+    case cgTracking = "95D"
+    /// Extra space between lines, in points, added to the font's natural leading.
+    case cgLeading = "96D"
+    /// Stroke width around each glyph, in points. Zero is no outline.
+    case cgOutlineWidth = "97D"
+    /// Drop shadow horizontal offset, in points.
+    case cgShadowOffsetX = "98D"
+    /// Drop shadow vertical offset, in points.
+    case cgShadowOffsetY = "99D"
+    /// Drop shadow blur radius, in points.
+    case cgShadowBlur = "9AD"
+    /// Drop shadow opacity, 0...1, independent of the text's own opacity.
+    case cgShadowOpacity = "9BD"
+    /// Roll/crawl/reveal mode, swept 0...1 across off/roll/crawl/reveal.
+    case cgRollMode = "9CD"
+    /// How fast a roll or crawl moves, in screen-heights (or -widths, for crawl) per
+    /// bar — clock-synced per SPEC 18.1, so this is a musical rate, not seconds.
+    case cgRollRate = "9DD"
+    /// The mid-90s budget-titler style preset, routed through the CompositeCodec.
+    /// Off is the clean, native rendering the SPEC calls the "basic" mode.
+    case cgPeriodPreset = "9ED"
+    /// Constrains placement inside the title-safe rectangle rather than the full
+    /// frame, so text cannot be positioned somewhere a CRT would cut off.
+    case cgSafeZoneClamp = "9FD"
+
     // MARK: CRT target (8xA)
 
     /// Safe-zone overlay on previews.
@@ -186,6 +235,21 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .overscan: "overscan"
         case .blackFrameInsertion: "black frame insertion"
         case .gridOverlay: "grid overlay"
+        case .cgFontSize: "font size"
+        case .cgFontWeight: "font weight"
+        case .cgAlignment: "alignment"
+        case .cgKerningEnabled: "kerning"
+        case .cgTracking: "tracking"
+        case .cgLeading: "leading"
+        case .cgOutlineWidth: "outline width"
+        case .cgShadowOffsetX: "shadow x"
+        case .cgShadowOffsetY: "shadow y"
+        case .cgShadowBlur: "shadow blur"
+        case .cgShadowOpacity: "shadow opacity"
+        case .cgRollMode: "roll mode"
+        case .cgRollRate: "roll rate"
+        case .cgPeriodPreset: "period preset"
+        case .cgSafeZoneClamp: "safe-zone clamp"
         }
     }
 }

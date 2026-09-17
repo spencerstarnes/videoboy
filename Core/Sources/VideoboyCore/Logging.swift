@@ -27,6 +27,7 @@ public enum Subsystem: String, Sendable {
     case selfqa
     case template
     case param
+    case titler
 }
 
 /// Severity. Deliberately only three levels.
