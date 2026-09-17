@@ -102,7 +102,10 @@ final class PanelSet {
         faderOneTwoBody = FaderPanelBody(
             leftLabel: "ONE", rightLabel: "TWO",
             leftColor: Theme.Color.busOne, rightColor: Theme.Color.busTwo,
-            includesSwap: true
+            includesSwap: true,
+            // Numbered, the way a switcher numbers its buses — and the way the record
+            // indicators on the two sub-mix previews already read.
+            leftKeyLabel: "1", rightKeyLabel: "2"
         )
         faderAB = PanelView(title: "A → B Fader", bus: .one, body: faderABBody)
         faderCD = PanelView(title: "C → D Fader", bus: .two, body: faderCDBody)

@@ -94,6 +94,19 @@ enum Theme {
     // purpose: this is meant to be felt in peripheral vision while watching the
     // picture, not looked at.
 
+    // MARK: - Bus buttons
+    //
+    // Sized to be hit without looking. A switcher's buttons are about a centimetre
+    // across because that is what a hand needs; these are as close to that as the
+    // panel allows.
+    enum BusButton {
+        static let width: CGFloat = 40
+        static let height: CGFloat = 30
+        static let cornerRadius: CGFloat = 3
+        /// The highlight along the top edge that gives the key its height.
+        static let lipHeight: CGFloat = 4
+    }
+
     enum Pulse {
         /// Peak strength of the per-beat pulse, as a blend fraction.
         static let beatStrength: Double = 0.06
@@ -251,6 +264,12 @@ enum Theme {
         /// Highlight drawn over every mappable control while Shift is held (SPEC 7).
         static let detectHighlight = NSColor.systemYellow
 
+        /// On air. Red means this everywhere in broadcast, and it is not used for
+        /// anything else in this window.
+        static let tallyOnAir = NSColor(srgbRed: 0.85, green: 0.13, blue: 0.13, alpha: 1)
+        /// An unlit key: dark, but clearly a key rather than a hole.
+        static let busButtonUnlit = NSColor(white: 0.22, alpha: 1)
+
         /// The transport cluster's recessed readout — darker than the toolbar, so it
         /// reads as an inset instrument panel rather than another button.
         static let displayBackground = NSColor(srgbRed: 0.07, green: 0.075, blue: 0.08, alpha: 1)
@@ -308,5 +327,7 @@ enum Theme {
         static let mono = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         /// The large tempo readout in the toolbar.
         static let tempo = NSFont.monospacedDigitSystemFont(ofSize: 17, weight: .medium)
+        /// The letter on a bus button. Big, because that is the whole point of it.
+        static let busButton = NSFont.systemFont(ofSize: 17, weight: .bold)
     }
 }

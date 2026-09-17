@@ -25,7 +25,8 @@ final class MainWindowController: NSWindowController {
     let preferences: PreferenceStore
 
     /// Keeps the views and the engine connected for the window's lifetime.
-    private var shellController: ShellController?
+    /// Exposed so the app delegate can make first-run offers that touch routing.
+    private(set) var shellController: ShellController?
 
     /// Builds the window at a size that shows the full wide layout on first run.
     init(preferences: PreferenceStore) {
@@ -50,6 +51,15 @@ final class MainWindowController: NSWindowController {
         // The instrument is a dark surface regardless of the system setting: the
         // amber/cyan bus identity only reads correctly against dark chrome.
         window.appearance = NSAppearance(named: .darkAqua)
+
+        // Full screen is OFF until the layout is settled. The grid is built for a
+        // window with a title bar, and in full screen the toolbar goes under the
+        // menu bar and there is no reliable way back with the pointer — you end up
+        // trapped in a window you cannot leave. A feature you cannot get out of is
+        // worse than one you cannot get into, so both the green button and the menu
+        // item are disabled rather than left half-working.
+        window.collectionBehavior.insert(.fullScreenNone)
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
         window.center()
         window.setFrameAutosaveName("VideoboyMainWindow")
 

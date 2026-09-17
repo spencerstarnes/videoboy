@@ -151,6 +151,32 @@ final class OutputRouter {
         return options
     }
 
+    /// The display Videoboy would send PROGRAM to if asked to choose.
+    ///
+    /// Never the main display: that is where the app itself is, and a borderless
+    /// output window there would cover the controls with no way back. If the only
+    /// display is the main one there is no recommendation to make, and saying so is
+    /// better than proposing something unusable.
+    func recommendedDisplay() -> DisplayInfo? {
+        let displays = DisplayRouter.availableDisplays().filter { !$0.isMain }
+        guard !displays.isEmpty else { return nil }
+
+        // A configured display wins, then anything that can actually take SD, then
+        // whatever is left. A mirrored display cannot have its own mode set, so it is
+        // the worst of the options rather than simply another one.
+        let config = DeviceConfig.load()
+        if let name = config.outputDisplay?.name,
+           let match = displays.first(where: {
+               $0.name.localizedCaseInsensitiveContains(name)
+           }) {
+            return match
+        }
+        return displays.first { $0.modeSwitchObstacle == nil } ?? displays.first
+    }
+
+    /// True when nothing at all is being sent anywhere.
+    var hasNoOutputs: Bool { routes.isEmpty }
+
     /// Why a configured destination kind cannot be served yet.
     ///
     /// Every one of these is honest about a specific missing piece rather than a
@@ -161,7 +187,6 @@ final class OutputRouter {
         case .obs: "Set a target, such as 9000, in Settings › Outputs."
         case .window: "Sending to another app's window is not built yet."
         case .feedbackSend: "Set the target to ONE or TWO in Settings › Outputs."
-        case .captureCard: "Capture-card output needs the card's own SDK."
         case .ipStream: "IP output is not built yet."
         case .generator: "Generators are sources, not destinations."
         }

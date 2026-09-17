@@ -83,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.launchWindowController?.dismiss()
             self?.launchWindowController = nil
             self?.remindAboutSaveLocationIfNeeded()
+            self?.offerDefaultOutputIfNothingIsRouted()
         }
     }
 
@@ -112,6 +113,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             preferences.preferences.saveLocation = url
             Log.info(.app, "save location set to \(url.path)")
         }
+    }
+
+    /// Offers a sensible output when nothing is being sent anywhere.
+    ///
+    /// A video mixer with no output is not obviously broken — the previews all work,
+    /// so it looks fine until you go looking for a picture on the screen that was
+    /// supposed to have one. Saying so once, by name, with a button that does it, is
+    /// cheaper than letting someone find out during a set.
+    private func offerDefaultOutputIfNothingIsRouted() {
+        guard let controller = mainWindowController else { return }
+        guard controller.shellController?.hasNoOutputs == true else { return }
+        guard let display = controller.shellController?.recommendedDisplay() else {
+            // Only the main display is attached. There is nothing to recommend, and
+            // proposing the display the app is running on would be proposing a window
+            // that covers the controls.
+            Log.info(.output, "no external display; not offering a default output")
+            return
+        }
+
+        let response = ReminderAlert.show(
+            .noOutputsSelected,
+            store: preferences,
+            title: "Nothing is being sent out yet",
+            detail: "Videoboy suggests \(display.name) — \(display.pixelWidth)×\(display.pixelHeight).\n\n"
+                + (display.modeSwitchObstacle.map { "\($0)\n\n" } ?? "")
+                + "You can change this any time from the send glyph under any preview.",
+            buttons: ["Send Program to \(display.name)", "Not Now"]
+        )
+        guard response == .primary else { return }
+        controller.shellController?.routeProgram(to: display)
     }
 
     /// Offers to save before quitting.

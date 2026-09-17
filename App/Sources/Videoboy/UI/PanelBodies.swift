@@ -68,15 +68,24 @@ final class SourcePanelBody: NSView {
 
     /// The first file URL on the pasteboard, if there is one.
     private func droppedURL(from sender: NSDraggingInfo) -> URL? {
-        let pasteboard = sender.draggingPasteboard
+        Self.fileURL(from: sender.draggingPasteboard)
+    }
+
+    /// Reads a file URL off a pasteboard, however it was written.
+    ///
+    /// Static and shared so the self-QA can exercise it against what the library
+    /// actually writes. A drag that does nothing is almost always a reader and a
+    /// writer disagreeing about the type, and that is not visible from either side.
+    static func fileURL(from pasteboard: NSPasteboard) -> URL? {
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
            let first = urls.first {
             return first
         }
-        // The library writes the URL as a string, which is what NSPasteboardItem
-        // supports without file promises.
-        if let string = pasteboard.string(forType: .fileURL) {
-            return URL(string: string)
+        if let string = pasteboard.string(forType: .fileURL), let url = URL(string: string) {
+            return url
+        }
+        if let path = pasteboard.string(forType: .string), !path.isEmpty {
+            return URL(fileURLWithPath: path)
         }
         return nil
     }
@@ -446,13 +455,15 @@ final class FaderPanelBody: NSView {
 
     /// Called whenever the fader moves, with the new 0...1 position.
     var onFaderMoved: ((Double) -> Void)?
-    /// Called when Cut is pressed.
-    var onCut: (() -> Void)?
+    /// Called when a bus key is pressed, with the position to cut to: 0 for the
+    /// left source, 1 for the right.
+    var onCutTo: ((Double) -> Void)?
     /// Called when Fade is pressed, with the chosen rate.
     var onFade: ((FadeRate) -> Void)?
     /// Called when cut-on-beat is switched on or off.
     var onBeatCutToggled: ((Bool) -> Void)?
-    private var cutButton: NSButton?
+    private var leftKey: VBBusButton?
+    private var rightKey: VBBusButton?
     private var beatCutButton: NSButton?
     private var rateControl: NSSegmentedControl?
     private var leftName = ""
@@ -461,11 +472,17 @@ final class FaderPanelBody: NSView {
     /// - Parameters:
     ///   - leftLabel/rightLabel: the two ends, e.g. "A" and "B".
     ///   - leftColor/rightColor: bus identity colours for those ends.
-    ///   - includesSwap: true for the ONE/TWO fader, which carries the swap-cut.
+    ///   - includesSwap: true for the ONE/TWO fader, which is the programme cut and
+    ///     carries the extra modulation badge.
+    /// - Parameters:
+    ///   - leftKeyLabel/rightKeyLabel: what goes ON the bus keys. One or two
+    ///     characters: switchers number their buses precisely because a key you hit
+    ///     without looking has no room for a word.
     init(
         leftLabel: String, rightLabel: String,
         leftColor: NSColor, rightColor: NSColor,
-        includesSwap: Bool
+        includesSwap: Bool,
+        leftKeyLabel: String? = nil, rightKeyLabel: String? = nil
     ) {
         self.fader = Controls.fader(value: 0.5, fillsFromCentre: true, accent: leftColor)
         fader.leadingTint = leftColor
@@ -481,17 +498,29 @@ final class FaderPanelBody: NSView {
         fader.action = #selector(faderMoved)
 
         // Broadcast language throughout, and the cut says where it is going: a button
-        // labelled "Swap" tells you the mechanism, but "CUT TO TWO" tells you what is
-        // about to be on air, which is the thing that matters in the moment.
+        // labelled "Swap" tells you the mechanism; a key labelled with its source
+        // tells you what is about to be on air, which is the thing that matters.
         var buttons: [NSView] = []
-        let cutButton = Controls.button(
-            "CUT TO \(rightLabel.uppercased())",
-            target: self, action: #selector(cutPressed))
-        cutButton.toolTip = "Hard cut to \(rightLabel)"
-        self.cutButton = cutButton
+        // Two big keys, one per source, lit when that source is on air — the way
+        // every hardwired switcher has done it. A standard push button reading
+        // "CUT TO TWO" told you what would happen but looked like a web form control,
+        // giving no sign that this is the most consequential thing in the window.
+        // These say which source they are and light up when it is going out, which
+        // is both what the button does and what you need to know.
         self.leftName = leftLabel
         self.rightName = rightLabel
-        buttons.append(cutButton)
+        let leftKey = VBBusButton(
+            label: leftKeyLabel ?? leftLabel.uppercased(), busTint: leftColor)
+        leftKey.target = self
+        leftKey.action = #selector(leftKeyPressed)
+        let rightKey = VBBusButton(
+            label: rightKeyLabel ?? rightLabel.uppercased(), busTint: rightColor)
+        rightKey.target = self
+        rightKey.action = #selector(rightKeyPressed)
+        self.leftKey = leftKey
+        self.rightKey = rightKey
+        buttons.append(leftKey)
+        buttons.append(rightKey)
         let fadeButton = Controls.button("Fade", target: self, action: #selector(fadePressed))
         fadeButton.toolTip = "Auto-fade to the other source at the chosen rate"
         buttons.append(fadeButton)
@@ -605,21 +634,25 @@ final class FaderPanelBody: NSView {
         FadeRate.from(index: rateControl?.selectedSegment ?? 1)
     }
 
-    @objc private func cutPressed() {
-        // A hard cut snaps to whichever end is further from the current position.
-        let target: Double = fader.value < 0.5 ? 1.0 : 0.0
+    @objc private func leftKeyPressed() { cut(to: 0) }
+    @objc private func rightKeyPressed() { cut(to: 1) }
+
+    /// Takes a source to air.
+    ///
+    /// A named destination rather than "the other end": pressing the key for what is
+    /// already on air is a no-op on a real switcher, not a cut back to the other
+    /// source, and guessing from the fader's position is how you get a cut you did
+    /// not ask for.
+    private func cut(to target: Double) {
+        guard abs(fader.value - target) > 0.001 else { return }
         setPosition(target)
         onFaderMoved?(target)
-        onCut?()
+        onCutTo?(target)
     }
 
-    /// Retitles the cut button to name where the cut would land.
-    ///
-    /// Called whenever the fader moves, so the label always describes what pressing
-    /// it would do rather than what it did last time.
+    /// Lights each key by how much of the picture its source currently is.
     private func updateCutLabel() {
-        let destination = fader.value < 0.5 ? rightName : leftName
-        cutButton?.title = "CUT TO \(destination.uppercased())"
-        cutButton?.toolTip = "Hard cut to \(destination)"
+        leftKey?.onAirAmount = 1.0 - fader.value
+        rightKey?.onAirAmount = fader.value
     }
 }

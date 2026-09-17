@@ -111,3 +111,32 @@ final class PreferenceTests: XCTestCase {
         XCTAssertEqual(reopened.preferences.destinations.last?.target, "mix.one")
     }
 }
+
+extension PreferenceTests {
+    /// A destination of a kind this build no longer has must not take its neighbours
+    /// with it. Capture cards were offered as outputs once; a card is an input.
+    func testAnUnknownDestinationKindIsSkippedRatherThanLosingTheList() throws {
+        let withRetiredKind = """
+        {
+          "destinations": [
+            {"id": "a", "kind": "obs", "name": "OBS", "target": "9000"},
+            {"id": "b", "kind": "captureCard", "name": "Black Magic", "target": "card"},
+            {"id": "c", "kind": "feedbackSend", "name": "Feedback", "target": "ONE"}
+          ]
+        }
+        """
+        try withRetiredKind.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let store = PreferenceStore(fileURL: fileURL)
+        XCTAssertEqual(
+            store.preferences.destinations.count, 2,
+            "the two live destinations should survive the retired one")
+        XCTAssertEqual(store.preferences.destinations.map(\.id), ["a", "c"])
+    }
+
+    func testCaptureCardIsNoLongerOfferedAsADestination() {
+        XCTAssertFalse(
+            OutputDestination.Kind.allCases.contains { $0.rawValue == "captureCard" },
+            "a capture card is an input; offering it as an output was a mistake")
+    }
+}

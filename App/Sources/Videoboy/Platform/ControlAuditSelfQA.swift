@@ -158,6 +158,45 @@ enum ControlAuditSelfQA {
                     + unmappable.map(\.label).joined(separator: ", ")
         ))
 
+        // Every switch must AGREE WITH THE ENGINE at launch. A control that says off
+        // while the thing it controls is on is worse than a dead control: the picture
+        // is being processed and nothing on screen admits it. This is the check that
+        // would have caught NTSC emulation booting on with its switch reading off.
+        var disagreements: [String] = []
+        let bootChecks: [(name: String, switchIsOn: Bool, engineIsOn: Bool)] = [
+            ("NTSC output emulation", false, engine.isOutputNTSCEnabled),
+            ("DV output emulation", false, engine.isOutputDVEnabled)
+        ]
+        for bootCheck in bootChecks where bootCheck.switchIsOn != bootCheck.engineIsOn {
+            disagreements.append(
+                "\(bootCheck.name): switch off, engine \(bootCheck.engineIsOn ? "on" : "off")")
+        }
+        // And every bus effect must boot bypassed, since every one of their switches
+        // draws itself off.
+        for slot in Engine.busEffectSlots {
+            let wetDry = engine.registry.value(slot: slot, code: .wetDry) ?? 0
+            if wetDry > 0.001 { disagreements.append("\(slot) boots at wet/dry \(wetDry)") }
+        }
+        check.record(AssertionResult(
+            name: "every switch agrees with the engine at launch",
+            passed: disagreements.isEmpty,
+            detail: disagreements.isEmpty
+                ? "\(Engine.busEffectSlots.count) effects boot bypassed, both emulations off"
+                : disagreements.joined(separator: "; ")
+        ))
+
+        // Full screen must stay refused while the layout is unsettled: there is no
+        // reliable way back out of it with the pointer.
+        let mainWindow = MainWindowController(preferences: store)
+        check.record(AssertionResult(
+            name: "the main window refuses full screen",
+            passed: mainWindow.window?.collectionBehavior.contains(.fullScreenNone) == true,
+            detail: mainWindow.window?.collectionBehavior.contains(.fullScreenNone) == true
+                ? "fullScreenNone is set"
+                : "full screen is still reachable, and there is no way back from it"
+        ))
+        mainWindow.window?.close()
+
         // The failing condition is a control that is enabled and wired to nothing.
         // A disabled control is fine — it is honest about not being built.
         check.record(AssertionResult(

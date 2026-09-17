@@ -81,6 +81,17 @@ final class ShellController {
     }
 
     /// Wires the libraries: double-click loads into the pair's next channel.
+    /// True when nothing is being sent anywhere.
+    var hasNoOutputs: Bool { router.hasNoOutputs && outputWindow == nil }
+
+    /// The display Videoboy would choose for PROGRAM.
+    func recommendedDisplay() -> DisplayInfo? { router.recommendedDisplay() }
+
+    /// Sends PROGRAM to a display, as the first-run offer does.
+    func routeProgram(to display: DisplayInfo) {
+        router.route(.slot(Engine.outputSlot), to: .display(display.displayID))
+    }
+
     /// Hangs the destination list off a preview's send glyph.
     private func presentRouting(for source: RoutingSource, from view: NSView) {
         let popover = NSPopover()
@@ -167,6 +178,9 @@ final class ShellController {
         panels.assetBrowserBody.setDestinationPair(.ab)
 
         for library in [panels.libraryOneBody, panels.libraryTwoBody, panels.assetBrowserBody] {
+            library.onFilesDropped = { [weak self] urls in
+                self?.addToLibrary(urls, library: library)
+            }
             library.onItemOpened = { [weak self] item, channel, range in
                 guard let url = item.url else {
                     self?.presentNotice(
@@ -256,6 +270,68 @@ final class ShellController {
         if alert.runModal() == .alertFirstButtonReturn {
             NSWorkspace.shared.activateFileViewerSelecting(files)
         }
+    }
+
+    /// Adds dropped files to a library, skipping anything nothing here can open.
+    ///
+    /// Silently ignoring a file someone dropped is the worst option: it looks like
+    /// the drop failed. Anything unplayable is named, once, with what this build can
+    /// actually read.
+    private func addToLibrary(_ urls: [URL], library: LibraryPanelBody) {
+        var accepted: [LibraryItem] = []
+        var rejected: [String] = []
+
+        for url in urls {
+            // A folder is expanded one level, because dropping a folder of clips is
+            // the normal way to fill a library and refusing it would be pedantic.
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                let contents = (try? FileManager.default.contentsOfDirectory(
+                    at: url, includingPropertiesForKeys: nil)) ?? []
+                for child in contents where Self.playableExtensions.contains(
+                    child.pathExtension.lowercased()) {
+                    accepted.append(Self.libraryItem(for: child))
+                }
+                continue
+            }
+
+            if Self.playableExtensions.contains(url.pathExtension.lowercased()) {
+                accepted.append(Self.libraryItem(for: url))
+            } else {
+                rejected.append(url.lastPathComponent)
+            }
+        }
+
+        library.addItems(accepted)
+
+        if !rejected.isEmpty {
+            presentNotice(
+                rejected.count == 1
+                    ? "Could not add \(rejected[0])"
+                    : "Could not add \(rejected.count) files",
+                "Videoboy reads .dv, .mov, .mp4, .m4v, .m2v, .mpg and .ts. "
+                    + "These were left out:\n\n\(rejected.joined(separator: "\n"))"
+            )
+        }
+    }
+
+    /// What this build can open. Kept here rather than guessed at each call site.
+    private static let playableExtensions: Set<String> = [
+        "dv", "mov", "mp4", "m4v", "m2v", "mpg", "mpeg", "ts", "m2t", "m2ts"
+    ]
+
+    /// A library entry for a file, badged by what it is.
+    private static func libraryItem(for url: URL) -> LibraryItem {
+        let family = DataEffectFamily.forMediaFile(at: url)
+        let badge: String
+        switch family {
+        case .dv: badge = "DV"
+        case .mpeg: badge = "MPG"
+        case .none: badge = url.pathExtension.uppercased()
+        }
+        return LibraryItem(
+            name: url.lastPathComponent, badge: badge, isAvailable: true, url: url)
     }
 
     // MARK: - Shift-to-detect
@@ -603,11 +679,15 @@ final class ShellController {
     }
 
     /// Starts a fade, or schedules a cut, for one bus.
-    private func beginMove(on slot: String, isCut: Bool, rate: FadeRate) {
+    /// - Parameter destination: where to land, or nil to travel to the far end.
+    ///   A bus key names its own side, so it passes one; Fade does not, because
+    ///   "fade" means "to the other one".
+    private func beginMove(
+        on slot: String, isCut: Bool, rate: FadeRate, to destination: Double? = nil
+    ) {
         guard let code = Self.faderCode(for: slot),
               let current = engine.registry.value(slot: slot, code: code) else { return }
-        // Always travel to the far end from where the fader is now.
-        let target: Double = current < 0.5 ? 1.0 : 0.0
+        let target: Double = destination ?? (current < 0.5 ? 1.0 : 0.0)
         let now = CACurrentMediaTime()
 
         if isCut {
@@ -651,11 +731,11 @@ final class ShellController {
             bus.body.onBeatCutToggled = { [weak self] on in
                 self?.beatCutEnabled[bus.slot] = on
             }
-            bus.body.onCut = { [weak self] in
+            bus.body.onCutTo = { [weak self] target in
                 guard let self else { return }
                 // Cut-on-beat turns an immediate cut into a scheduled one.
                 if self.beatCutEnabled[bus.slot] == true {
-                    self.beginMove(on: bus.slot, isCut: true, rate: .fast)
+                    self.beginMove(on: bus.slot, isCut: true, rate: .fast, to: target)
                 }
             }
         }

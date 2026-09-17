@@ -54,6 +54,8 @@ public enum AutoSaveCadence: String, CaseIterable, Codable, Sendable {
 public enum ReminderKind: String, CaseIterable, Codable, Sendable {
     /// On first launch, that no save location has been chosen.
     case setSaveLocation
+    /// On launch, that nothing is being sent anywhere.
+    case noOutputsSelected
     /// On quit, that there are unsaved changes.
     case saveOnQuit
     /// When a mapping is made while no MIDI device is connected.
@@ -64,6 +66,7 @@ public enum ReminderKind: String, CaseIterable, Codable, Sendable {
     public var displayName: String {
         switch self {
         case .setSaveLocation: "Choose a save location on first launch"
+        case .noOutputsSelected: "Offer a default output when none is set"
         case .saveOnQuit: "Offer to save on quit"
         case .midiWithNoDevice: "Warn when mapping with no MIDI device"
         case .audioMappingWithoutAudioClock: "Warn when mapping audio with the clock elsewhere"
@@ -136,8 +139,23 @@ public struct Preferences: Codable, Equatable, Sendable {
         defaultBlendMode = decode(.defaultBlendMode, BlendMode.normal)
         playOnLoad = decode(.playOnLoad, false)
         suppressedReminders = decode(.suppressedReminders, Set<ReminderKind>())
-        destinations = decode(.destinations, [OutputDestination]())
+        // Element by element, so one destination of a kind this build no longer has
+        // does not take the whole list down with it. Capture cards were offered as
+        // destinations once and are not any more — a card is an input.
+        if let raw = try? container.decodeIfPresent(
+            [FailableDestination].self, forKey: .destinations) {
+            destinations = (raw ?? []).compactMap(\.value)
+        }
         hotKeys = decode(.hotKeys, [String: String]())
+    }
+}
+
+/// Decodes a destination, or nothing, without failing its neighbours.
+private struct FailableDestination: Decodable {
+    let value: OutputDestination?
+
+    init(from decoder: Decoder) throws {
+        value = try? OutputDestination(from: decoder)
     }
 }
 
@@ -152,7 +170,6 @@ public struct OutputDestination: Codable, Equatable, Identifiable, Sendable {
         case obs
         case window
         case feedbackSend
-        case captureCard
         case ipStream
         case generator
 
@@ -161,7 +178,6 @@ public struct OutputDestination: Codable, Equatable, Identifiable, Sendable {
             case .obs: "OBS"
             case .window: "Window"
             case .feedbackSend: "Feedback send"
-            case .captureCard: "Capture card"
             case .ipStream: "IP stream"
             case .generator: "Generator"
             }

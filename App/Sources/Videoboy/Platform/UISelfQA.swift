@@ -369,7 +369,7 @@ enum UISelfQA {
             store.preferences.destinations = [
                 OutputDestination(kind: .obs, name: "OBS ready", target: "127.0.0.1:9000"),
                 OutputDestination(kind: .obs, name: "OBS no target", target: ""),
-                OutputDestination(kind: .captureCard, name: "Black Magic", target: "card")
+                OutputDestination(kind: .ipStream, name: "IP out", target: "239.0.0.1:5000")
             ]
             let router = OutputRouter(store: store, metal: MetalContext.shared)
 
@@ -466,6 +466,90 @@ enum UISelfQA {
                 try? check.writeImage(image, named: "routing-popover.png")
             }
             try? FileManager.default.removeItem(at: store.fileURL)
+        }
+
+        // Drag and drop, through the real pasteboard. Dragging cannot be synthesised
+        // offscreen, but the two halves that actually break can both be exercised:
+        // what the library WRITES, and what a drop target can READ back from it.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            let sample = RepoPaths.samples.appendingPathComponent("motion.dv")
+            let pasteboard = NSPasteboard(name: .init("videoboy-selfqa-drag"))
+            pasteboard.clearContents()
+            pasteboard.writeObjects([LibraryItemView.pasteboardItem(for: sample)])
+
+            let readBack = SourcePanelBody.fileURL(from: pasteboard)
+            check.record(AssertionResult(
+                name: "a drop target can read what the library writes",
+                passed: readBack?.lastPathComponent == sample.lastPathComponent,
+                detail: readBack.map { "read \($0.lastPathComponent)" }
+                    ?? "nothing came back off the pasteboard"
+            ))
+
+            // Registration is the other half: a view that cannot read the type is
+            // never asked, and a view that never registered is never asked either.
+            for letter in ["A", "B", "C", "D"] {
+                guard let body = shell.grid.panels.sourceBodies[letter] else { continue }
+                check.record(AssertionResult(
+                    name: "source \(letter) accepts dropped files",
+                    passed: body.registeredDraggedTypes.contains(.fileURL),
+                    detail: body.registeredDraggedTypes.map(\.rawValue).joined(separator: ", ")
+                ))
+            }
+
+            // And the libraries, which is where clips are collected.
+            for (name, library) in [
+                ("Sub Mix 1", shell.grid.panels.libraryOneBody),
+                ("Sub Mix 2", shell.grid.panels.libraryTwoBody),
+                ("Asset Browser", shell.grid.panels.assetBrowserBody)
+            ] {
+                check.record(AssertionResult(
+                    name: "\(name) library accepts dropped files",
+                    passed: library.registeredDraggedTypes.contains(.fileURL),
+                    detail: library.registeredDraggedTypes.map(\.rawValue).joined(separator: ", ")
+                ))
+            }
+            withExtendedLifetime(controller) {}
+        }
+
+        // The bus keys and their tally lamps. Red means on air everywhere in
+        // broadcast, so the thing worth checking is that the lamp actually follows
+        // the fader rather than being a static colour that looks right at 0.5.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            // Each fader hard over to one end, so one key is lit and one is not.
+            engine.registry.setValue(0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+            engine.registry.setValue(1, slot: GraphTopology.subMixTwo, code: .crossfadeCD)
+            engine.registry.setValue(0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
+            shell.grid.panels.faderABBody.setPosition(0)
+            shell.grid.panels.faderCDBody.setPosition(1)
+            shell.grid.panels.faderOneTwoBody.setPosition(0)
+            shell.layoutSubtreeIfNeeded()
+            shell.displayIfNeeded()
+
+            let keys = VBBusButton.all(in: shell)
+            let lit = keys.filter { $0.onAirAmount >= 0.995 }
+            let dark = keys.filter { $0.onAirAmount <= 0.005 }
+            check.record(AssertionResult(
+                name: "one bus key is lit per fader, and its partner is not",
+                passed: keys.count == 6 && lit.count == 3 && dark.count == 3,
+                detail: "\(keys.count) keys, \(lit.count) on air, \(dark.count) dark"
+            ))
+
+            if let image = render(view: shell) {
+                try? check.writeImage(image, named: "bus-keys-on-air.png")
+            }
+            withExtendedLifetime(controller) {}
         }
 
         return check.finish()

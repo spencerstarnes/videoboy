@@ -287,9 +287,18 @@ final class Engine {
     static let testPatternSlot = "source.testpattern"
 
     /// Every bus-effect slot, both chains.
+    /// Every effect that must boot BYPASSED.
+    ///
+    /// The app should open showing what was loaded rather than a processed version of
+    /// it, and — just as important — every switch in the window has to agree with the
+    /// engine at launch. The programme composite was missing from this list, so NTSC
+    /// emulation was on while its switch read off: the picture was being processed
+    /// and nothing on screen said so. A node left off here is invisible until someone
+    /// notices the output looks wrong.
     static let busEffectSlots = [
         compositeSlot, echoSlot, feedbackSlot, mx1OneSlot,
-        compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot
+        compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot,
+        compositeProgramSlot, busCodecProgramSlot
     ]
 
     /// The generator slot name for a channel letter.

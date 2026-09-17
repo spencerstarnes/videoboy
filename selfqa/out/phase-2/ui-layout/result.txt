@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-16T22:23:51Z
+when:     2026-09-17T01:39:30Z
 core:     0.3.0
 
 notes:
@@ -12,17 +12,17 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
 
-assertions (31/31 passed):
+assertions (40/40 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 1076.1
+  PASS  wide is not blank — luminance variance 1064.8
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 943.0
+  PASS  compact is not blank — luminance variance 940.9
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 1144.7
-  PASS  collapsed-left is not blank — luminance variance 898.9
-  PASS  collapsed-both-edges is not blank — luminance variance 700.4
-  PASS  collapsed-sources-only is not blank — luminance variance 1017.8
-  PASS  collapsed-effects-only is not blank — luminance variance 853.6
+  PASS  narrow is not blank — luminance variance 1135.2
+  PASS  collapsed-left is not blank — luminance variance 885.8
+  PASS  collapsed-both-edges is not blank — luminance variance 685.9
+  PASS  collapsed-sources-only is not blank — luminance variance 1007.0
+  PASS  collapsed-effects-only is not blank — luminance variance 839.7
   PASS  holding Shift lights the mappable faders — 43 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
@@ -40,7 +40,16 @@ assertions (31/31 passed):
   PASS  ntsc emulation popover has content — 300x147
   PASS  dv emulation popover has content — 300x180
   PASS  a stream destination with a target is offered as available — OBS with a target is available
-  PASS  destinations that cannot be served are greyed, each with its own reason — Set a target, such as 9000, in Settings › Outputs. / Capture-card output needs the card's own SDK.
+  PASS  destinations that cannot be served are greyed, each with its own reason — Set a target, such as 9000, in Settings › Outputs. / IP output is not built yet.
   PASS  the display Videoboy is running on is not offered as an output — correctly withheld
   PASS  each source keeps its own quadrant in the four-up — top-left r=220, top-right g=220, bottom-left b=220
   PASS  an empty channel leaves its quadrant black rather than moving the others — bottom-right is (0, 0, 0)
+  PASS  a drop target can read what the library writes — read motion.dv
+  PASS  source A accepts dropped files — public.file-url
+  PASS  source B accepts dropped files — public.file-url
+  PASS  source C accepts dropped files — public.file-url
+  PASS  source D accepts dropped files — public.file-url
+  PASS  Sub Mix 1 library accepts dropped files — public.file-url
+  PASS  Sub Mix 2 library accepts dropped files — public.file-url
+  PASS  Asset Browser library accepts dropped files — public.file-url
+  PASS  one bus key is lit per fader, and its partner is not — 6 keys, 3 on air, 3 dark

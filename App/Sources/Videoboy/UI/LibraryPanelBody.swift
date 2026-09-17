@@ -168,21 +168,50 @@ final class LibraryItemView: NSView {
             onOpen?(item, thumbnail.markedRange)
             return
         }
-        // A single click that travels becomes a drag. Deciding here rather than in
-        // mouseDragged keeps a click that wobbles a pixel from becoming a drag.
         guard let url = item.url else { return }
-        beginDrag(url: url, from: event)
+
+        // Wait for the pointer to TRAVEL before starting a drag. Beginning one on the
+        // press itself hands the rest of the interaction to the drag session, so a
+        // plain click became a drag nobody asked for and the second click of a
+        // double-click was swallowed before it could arrive. The comment here used to
+        // claim this was what happened; it was not.
+        let start = event.locationInWindow
+        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if next.type == .leftMouseUp { return }
+
+            let travelled = hypot(
+                next.locationInWindow.x - start.x, next.locationInWindow.y - start.y)
+            if travelled >= Self.dragThreshold {
+                beginDrag(url: url, from: next)
+                return
+            }
+        }
     }
+
+    /// How far the pointer must move before a press counts as a drag. Three points is
+    /// the usual allowance for a hand that is not quite still.
+    private static let dragThreshold: CGFloat = 3
 
     /// Drags the clip's file, so it can be dropped on a source panel — or anywhere
     /// else that takes a file, which is the point of using the standard type.
     private func beginDrag(url: URL, from event: NSEvent) {
-        let pasteboardItem = NSPasteboardItem()
-        pasteboardItem.setString(url.absoluteString, forType: .fileURL)
-
-        let dragItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
+        let dragItem = NSDraggingItem(pasteboardWriter: Self.pasteboardItem(for: url))
         dragItem.setDraggingFrame(thumbnail.frame, contents: thumbnailSnapshot())
         beginDraggingSession(with: [dragItem], event: event, source: self)
+    }
+
+    /// What the library puts on the pasteboard for a clip.
+    ///
+    /// One place, so what is written and what the drop targets read cannot drift
+    /// apart — which is the only way a drag silently does nothing.
+    static func pasteboardItem(for url: URL) -> NSPasteboardItem {
+        let item = NSPasteboardItem()
+        // Both spellings: `.fileURL` is what a modern reader asks for, and the plain
+        // string is what some targets still look for. Writing one and reading the
+        // other is exactly how a drag ends up doing nothing at all.
+        item.setString(url.absoluteString, forType: .fileURL)
+        item.setString(url.path, forType: .string)
+        return item
     }
 
     /// A picture of the thumbnail, so what is dragged looks like what was grabbed.
@@ -424,6 +453,10 @@ final class LibraryPanelBody: NSView {
 
     /// Grids by tab, so switching a tab swaps content rather than rebuilding it.
     private var gridsByTab: [AssetTab: NSView] = [:]
+    /// What the Sources tab shows. Held because a drop adds to it.
+    private var sourceItems: [LibraryItem] = []
+    /// The scrolling document, so a rebuilt grid goes back in the same place.
+    private var documentView: FlippedView?
     private var emptyLabelsByTab: [AssetTab: NSTextField] = [:]
     private var currentTab: AssetTab = .sources
     private let columns: Int
@@ -433,6 +466,19 @@ final class LibraryPanelBody: NSView {
 
     /// Where double-clicked clips go, and which of the pair is next.
     let destination = ChannelDestination()
+
+    /// Called when files are dropped onto this library, so the app can add them.
+    var onFilesDropped: (([URL]) -> Void)?
+
+    /// Highlighted while a drop is hovering over the grid.
+    private var isDropTarget = false {
+        didSet {
+            guard isDropTarget != oldValue else { return }
+            layer?.borderWidth = isDropTarget ? 2 : 0
+            layer?.borderColor = Theme.Color.accent.cgColor
+            layer?.cornerRadius = Theme.Metrics.panelCornerRadius
+        }
+    }
 
     /// The A/B / C/D toggle, so its title can show which channel is next.
     private var destinationControl: NSSegmentedControl?
@@ -444,6 +490,13 @@ final class LibraryPanelBody: NSView {
     init(items: [LibraryItem], columns: Int, showsTabs: Bool) {
         self.columns = columns
         super.init(frame: .zero)
+        wantsLayer = true
+
+        // A library is where you COLLECT things, so it has to accept them being put
+        // there. Dropping a file on a library was the obvious gesture and did nothing
+        // at all, which reads as the app being broken rather than as a missing
+        // feature.
+        registerForDraggedTypes([.fileURL])
 
         // The tabbed browser carries five tabs, a destination toggle, a search field
         // and Import. That does not fit one row at this panel's width — the tabs were
@@ -512,6 +565,8 @@ final class LibraryPanelBody: NSView {
         // A flipped document view keeps the grid anchored to the top of the panel.
         let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
+        documentView = document
+        sourceItems = items
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -620,6 +675,79 @@ final class LibraryPanelBody: NSView {
                 Controls.row(row + [Controls.spacer()], spacing: Theme.Metrics.thumbnailGap))
         }
         return itemsStack
+    }
+
+    // MARK: - Drop target
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard !droppedURLs(from: sender).isEmpty else { return [] }
+        isDropTarget = true
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        isDropTarget = false
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        isDropTarget = false
+        let urls = droppedURLs(from: sender)
+        guard !urls.isEmpty else { return false }
+        onFilesDropped?(urls)
+        return true
+    }
+
+    /// Every file URL on the pasteboard. A library takes several at once, because
+    /// dropping a folderful is the normal way to fill one.
+    private func droppedURLs(from sender: NSDraggingInfo) -> [URL] {
+        let pasteboard = sender.draggingPasteboard
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
+            return urls
+        }
+        return SourcePanelBody.fileURL(from: pasteboard).map { [$0] } ?? []
+    }
+
+    /// Replaces the Sources grid in place, keeping its position and constraints.
+    private func rebuildSourcesGrid() {
+        guard let document = documentView else { return }
+        let old = gridsByTab[.sources]
+        old?.removeFromSuperview()
+
+        let grid = makeGrid(for: sourceItems)
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.isHidden = currentTab != .sources
+        document.addSubview(grid)
+        gridsByTab[.sources] = grid
+        NSLayoutConstraint.activate([
+            grid.topAnchor.constraint(equalTo: document.topAnchor),
+            grid.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            grid.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor)
+        ])
+        emptyLabelsByTab[.sources]?.isHidden = !sourceItems.isEmpty || currentTab != .sources
+
+        if currentTab == .sources {
+            documentHeight?.isActive = false
+            documentHeight = document.heightAnchor.constraint(
+                greaterThanOrEqualTo: grid.heightAnchor)
+            documentHeight?.isActive = true
+        }
+        needsLayout = true
+    }
+
+    /// Adds items to the Sources tab and rebuilds that grid.
+    func addItems(_ newItems: [LibraryItem]) {
+        guard !newItems.isEmpty else { return }
+        // Already-present files are skipped rather than duplicated: dropping the same
+        // folder twice should leave the library as it was, not doubled.
+        let existing = Set(sourceItems.compactMap { $0.url?.path })
+        let additions = newItems.filter { url in
+            guard let path = url.url?.path else { return true }
+            return !existing.contains(path)
+        }
+        guard !additions.isEmpty else { return }
+        sourceItems.append(contentsOf: additions)
+        rebuildSourcesGrid()
+        Log.info(.app, "added \(additions.count) item(s) to a library")
     }
 
     @objc private func destinationChanged(_ sender: NSSegmentedControl) {
