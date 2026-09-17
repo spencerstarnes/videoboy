@@ -103,3 +103,80 @@ defect marker). **3** force unwraps in Core, all reviewed and all structurally s
 cannot return nil for a zero-length allocation). **0** uses of `try!`.
 
 ---
+## Phase 2 — Safety net
+
+New tests, all capturing CURRENT behaviour, all run three times to confirm they are
+deterministic. No source changes in this phase, and no test seams were needed.
+
+| Module | Was | Tests added | Commit |
+|---|---|---|---|
+| `Persistence/DeviceConfig` | **0%** coverage, parses a user-supplied file | 18 | `16842dd` |
+| `Modules/Mix/BlendMode` | 39% coverage, 13 modes | 9 | `0924a41` |
+| Dead-control guard (behavioural, App) | nothing checked this | 1 | `c11ecf6` |
+
+Two behaviours pinned deliberately because they are decisions, not oversights, and a
+future reader should not "fix" them by accident:
+
+- **DeviceConfig**: one wrongly-typed field takes the whole document down to defaults
+  rather than keeping the fields that parsed.
+- **DeviceConfig**: absurd geometry (width 0, height −1) is carried through rather
+  than validated — this struct records what was REQUESTED, and SPEC 3 logs what
+  actually gets negotiated separately.
+
+No `SUSPECTED_BUG_` tests were left outstanding: the one suspected bug found in this
+phase was confirmed outright and fixed in Phase 3 rather than left marked.
+
+## Phase 3 — Repair
+
+### FIXED — non-finite parameter values could trap (`d7865ab`)
+
+**Severity: high** (crash, whole-app, though see the honest caveat below).
+
+*Root cause:* `min` and `max` do not sanitise NaN — every comparison against NaN is
+false, so both hand it straight back — and `Int(Double)` is a **fatal error** in Swift
+for NaN or infinity, not a nil and not a zero.
+
+Twelve enums are selected by sweeping a fader, and all twelve wrote the same line:
+
+```swift
+let index = Int((min(max(value, 0), 1) * Double(count - 1)).rounded())
+```
+
+`ParamRegistry.setValue` clamped the same way, so a NaN could be **stored** and then
+reach all twelve readers.
+
+*Fix, in two places on purpose:* the registry now **refuses** a non-finite write and
+logs it (coercing to 0 would hide the upstream bug while moving the operator's fader);
+and all twelve sweeps now go through one shared `NormalisedSweep` helper, so a value
+arriving by another route — a template load, a direct property set — still cannot trap.
+
+*Proof:* the reproducing test was run with the guard removed. It does not fail, it
+takes the runner down with `Fatal error: Double value cannot be converted to Int
+because it is either infinite or NaN`. Tests: `NonFiniteParameterTests`, 7 cases.
+
+**Honest caveat.** I went looking for a live path that produces NaN today and did not
+find one: `tapTempo` guards `average > 0`, `TempoEstimator` guards `secondsPerBeat > 0`
+and `spread > 0`, and `Transport.beatsPerMinute` guards `> 0` — and all of those
+guards reject NaN correctly, because `NaN > 0` is false. So this was a latent trap one
+careless divide away from being reachable, not an active crash. It is still worth
+closing: it removes the whole class, and the next person to add a modulation source
+should not have to know this.
+
+### FIXED — dead effect controls are now caught structurally (`c11ecf6`)
+
+Not a new defect; a guard against a defect class that has already shipped three times
+this week (the corruptor card's enable switch, its modulation badges, and its ✕). All
+three had a target and an action, so the existing control audit passed them; all three
+were wired to a handler that looked their name up in a static table, missed, and
+returned. The new check flips every enabled effect switch and asserts a wet/dry
+somewhere in the graph actually moved. Verified by breaking it on purpose.
+
+### Checked and found already correct
+
+- `tapTempo`, `TempoEstimator`, `Transport.beatsPerMinute` — all divisions guarded.
+- `Color Ctrl` / `Layer Mask` effect cards resolve to no slot, but are correctly
+  declared `isImplemented: false` and render disabled, per the house rule.
+- Force unwraps: 3 in Core, all structurally safe (`baseAddress!` inside
+  `withUnsafeBytes`, and a `CFAttributedStringCreateMutable` that cannot fail for a
+  zero-length allocation). 0 uses of `try!`.
+
