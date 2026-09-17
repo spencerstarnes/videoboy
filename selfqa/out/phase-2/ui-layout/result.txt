@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T19:33:15Z
+when:     2026-09-17T19:38:10Z
 core:     0.3.0
 
 notes:
@@ -18,10 +18,10 @@ assertions (81/81 passed):
   PASS  dimensions — expected 1000x760, got 1000x760
   PASS  compact is not blank — luminance variance 792.7
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 1039.7
+  PASS  narrow is not blank — luminance variance 1026.5
   PASS  collapsed-left is not blank — luminance variance 723.1
   PASS  collapsed-both-edges is not blank — luminance variance 613.4
-  PASS  collapsed-sources-only is not blank — luminance variance 847.0
+  PASS  collapsed-sources-only is not blank — luminance variance 846.2
   PASS  collapsed-effects-only is not blank — luminance variance 594.3
   PASS  holding Shift lights the mappable faders — 70 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
