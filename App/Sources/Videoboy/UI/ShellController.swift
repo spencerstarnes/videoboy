@@ -383,8 +383,8 @@ final class ShellController {
 
         // The effect chains answer per code, because a code names a different slot
         // on each bus.
-        panels.effectsOneBody.mappingSlotForCode = { Self.subMixOneSlots[$0] }
-        panels.effectsTwoBody.mappingSlotForCode = { Self.subMixTwoSlots[$0] }
+        panels.effectsOneBody.mappingSlotForCode = { [weak self] code in self?.slot(forParameter: code, bus: .one) }
+        panels.effectsTwoBody.mappingSlotForCode = { [weak self] code in self?.slot(forParameter: code, bus: .two) }
         // Adding, removing or reordering an effect builds new fader views, which
         // start unmarked. Without this the pulse would quietly disappear from a
         // parameter that is still very much being driven.
@@ -794,11 +794,9 @@ final class ShellController {
     /// enough to know where a slider's value should land. This table is that mapping,
     /// written out rather than inferred so adding an effect is a one-line change.
     private static let subMixOneSlots: [ParamCode: String] = [
-        // The wedge lives on the source, because it must run before decode.
-        .corruptAmount: GraphTopology.sourceA,
-        .corruptMode: GraphTopology.sourceA,
-        .corruptRate: GraphTopology.sourceA,
-        .corruptSeed: GraphTopology.sourceA,
+        // The wedge's codes are NOT here: they live on whichever channel the
+        // corruptor card's selector currently points at, resolved dynamically by
+        // `slot(forParameter:bus:)` below rather than fixed to one channel.
         // The composite codec and the time-domain effects are bus FX.
         .compositePath: Engine.compositeSlot,
         .compositeCrawl: Engine.compositeSlot,
@@ -822,9 +820,8 @@ final class ShellController {
 
     /// Which slot each param code in the Sub Mix 2 chain belongs to.
     private static let subMixTwoSlots: [ParamCode: String] = [
-        .corruptAmount: GraphTopology.sourceC,
-        .corruptMode: GraphTopology.sourceC,
-        .corruptRate: GraphTopology.sourceC,
+        // See the note on subMixOneSlots — the wedge's codes are resolved
+        // dynamically now, not fixed to channel C.
         .compositePath: Engine.compositeTwoSlot,
         .compositeCrawl: Engine.compositeTwoSlot,
         .chromaBleed: Engine.compositeTwoSlot,
@@ -856,7 +853,7 @@ final class ShellController {
     private func wireEffectChains() {
         shell.grid.panels.effectsOneBody.onParameterChanged = { [weak self] code, value in
             guard let self, let parameter = ParamCode(rawValue: code) else { return }
-            guard let slot = Self.subMixOneSlots[parameter] else {
+            guard let slot = self.slot(forParameter: parameter, bus: .one) else {
                 Log.warn(.param, "no slot is registered for param code \(code); ignoring the change")
                 return
             }
@@ -891,11 +888,17 @@ final class ShellController {
             // than a separate enable flag threaded through every node.
             self?.setEffectEnabled(name, isOn, bus: .one)
         }
+        shell.grid.panels.effectsOneBody.onCardChannelChanged = { [weak self] name, index in
+            self?.cardChannelChanged(name, index, bus: .one)
+        }
+        shell.grid.panels.effectsTwoBody.onCardChannelChanged = { [weak self] name, index in
+            self?.cardChannelChanged(name, index, bus: .two)
+        }
 
         // The same chain on TWO, driving its own node instances.
         shell.grid.panels.effectsTwoBody.onParameterChanged = { [weak self] code, value in
             guard let self, let parameter = ParamCode(rawValue: code) else { return }
-            guard let slot = Self.subMixTwoSlots[parameter] else {
+            guard let slot = self.slot(forParameter: parameter, bus: .two) else {
                 Log.warn(.param, "no slot is registered for param code \(code) on bus TWO; ignoring")
                 return
             }
@@ -912,6 +915,78 @@ final class ShellController {
     private var recordIndicators: [String: MiniRecordIndicator] = [:]
     /// The take in progress, if any.
     private var recording: RecordingSession?
+
+    // MARK: - Per-channel FX (chFX, SPEC 2)
+    //
+    // A and B each carry their own bitstream wedge, and so do C and D — the graph
+    // has always had four independent corruptors, one per ClipSourceNode. What was
+    // missing was a way to REACH three of the four: the UI had one corruptor card
+    // per bus and it was wired to a single fixed channel (A, and nothing at all for
+    // TWO). The card now carries a channel selector, and everything that used to
+    // resolve straight to "the" channel resolves through here instead.
+
+    /// Which channel each bus's corruptor card currently targets. 0 is this bus's
+    /// first channel letter (A or C), 1 is its second (B or D).
+    private var corruptorChannelIndex: [Bus: Int] = [:]
+
+    private func corruptorChannel(bus: Bus) -> String {
+        let letters = bus == .one ? ["A", "B"] : ["C", "D"]
+        let index = corruptorChannelIndex[bus] ?? 0
+        return letters[min(max(index, 0), letters.count - 1)]
+    }
+
+    private func corruptorSlot(bus: Bus) -> String {
+        Engine.slot(forChannel: corruptorChannel(bus: bus))
+    }
+
+    /// Resolves a param code to its slot, for the codes that move depending on which
+    /// channel a card's selector points at. Every other code keeps using the static
+    /// per-bus tables, which never move.
+    private func slot(forParameter code: ParamCode, bus: Bus) -> String? {
+        switch code {
+        case .corruptAmount, .corruptMode, .corruptRate, .corruptSeed:
+            return corruptorSlot(bus: bus)
+        default:
+            return bus == .one ? Self.subMixOneSlots[code] : Self.subMixTwoSlots[code]
+        }
+    }
+
+    /// Resolves an EFFECT's own slot (what its wet/dry, and so its enable switch and
+    /// modulation badges, actually address). The corruptor is the one card whose
+    /// slot depends on the channel selector; everything else is the static table.
+    private func slot(forEffect name: String, bus: Bus) -> String? {
+        if name == "DV · DIF corruptor" { return corruptorSlot(bus: bus) }
+        guard let slots = Self.effectNameToSlot[name] else { return nil }
+        return bus == .one ? slots.one : slots.two
+    }
+
+    /// The card's selector changed. Three things have to follow it, or the toggle
+    /// would move the underlying data without changing what the screen shows: the
+    /// Shift-detect address on every fader in the card, the enable switch (each
+    /// channel's own bypass, not a single shared one), and the fader/readout values
+    /// themselves.
+    private func cardChannelChanged(_ name: String, _ index: Int, bus: Bus) {
+        guard name == "DV · DIF corruptor" else { return }
+        corruptorChannelIndex[bus] = index
+        let slot = corruptorSlot(bus: bus)
+        let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
+
+        panel.refreshMappingAddresses()
+
+        guard let node = engine.graph.nodes[slot] else { return }
+        var displayed: [String: Double] = [:]
+        for code in [ParamCode.corruptAmount, .corruptMode, .corruptRate] {
+            guard let declared = node.parameters.first(where: { $0.code == code }),
+                  let value = engine.registry.value(slot: slot, code: code) else { continue }
+            displayed[code.rawValue] = declared.normalise(value)
+        }
+        panel.setDisplayedParameterValues(effectName: name, values: displayed)
+
+        let isEngaged = (engine.registry.value(slot: slot, code: .wetDry) ?? 1) > 0.5
+        panel.setEnabled(effectName: name, isOn: isEngaged)
+
+        Log.info(.param, "\(name) on \(bus == .one ? "ONE" : "TWO") now targets channel \(corruptorChannel(bus: bus))")
+    }
 
     /// Which graph slot each armable feed reads from.
     private func slot(forFeed label: String) -> String {
@@ -1121,6 +1196,17 @@ final class ShellController {
                     effect: name, source: source, isActive: true)
             }
         }
+        // The corruptor is not in that static table — its slot depends on which
+        // channel its card currently points at — so it is checked separately.
+        let corruptorName = "DV · DIF corruptor"
+        if slot == corruptorSlot(bus: .one) {
+            shell.grid.panels.effectsOneBody.setEffectModulationActive(
+                effect: corruptorName, source: source, isActive: true)
+        }
+        if slot == corruptorSlot(bus: .two) {
+            shell.grid.panels.effectsTwoBody.setEffectModulationActive(
+                effect: corruptorName, source: source, isActive: true)
+        }
     }
 
     /// Opens the modulation menu for a whole EFFECT.
@@ -1134,11 +1220,10 @@ final class ShellController {
     private func presentModulationMenu(
         effect name: String, source: ModulationSource, from view: NSView, bus: Bus
     ) {
-        guard let slots = Self.effectNameToSlot[name] else {
+        guard let slot = slot(forEffect: name, bus: bus) else {
             Log.warn(.param, "no slot registered for effect '\(name)'; cannot map it")
             return
         }
-        let slot = bus == .one ? slots.one : slots.two
         let parameter = ParamCode.wetDry
         let badge = source.legacyLetter
 
@@ -1205,8 +1290,7 @@ final class ShellController {
 
     /// Enables or bypasses a named effect on one of the buses.
     private func setEffectEnabled(_ name: String, _ isOn: Bool, bus: Bus) {
-        guard let slots = Self.effectNameToSlot[name] else { return }
-        let slot = bus == .one ? slots.one : slots.two
+        guard let slot = slot(forEffect: name, bus: bus) else { return }
         engine.registry.setValue(isOn ? 1 : 0, slot: slot, code: .wetDry)
         Log.info(.app, "\(name) on \(bus == .one ? "ONE" : "TWO") \(isOn ? "enabled" : "bypassed")")
     }

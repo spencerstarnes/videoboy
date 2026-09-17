@@ -35,8 +35,6 @@ struct EffectParameterModel {
     let code: String
     /// Current value, 0...1.
     let value: Double
-    /// Mapping badges currently lit: "M" MIDI, "S" audio-react, "C" clock-LFO.
-    let activeBadges: Set<String>
     /// False for parameters whose feature is not built yet.
     let enabled: Bool
 }
@@ -50,6 +48,15 @@ struct EffectCardModel {
     let parameters: [EffectParameterModel]
     /// Which modulation sources are driving anything on this effect, by badge.
     var activeModulation: Set<String> = []
+    /// Channel letters this card can target, e.g. ["A", "B"]. Empty means the card
+    /// has exactly one target and no selector is drawn.
+    ///
+    /// This exists because SPEC 2's chFX runs once per CHANNEL, not once per bus —
+    /// A and B each carry their own bitstream wedge — but the panel only has room to
+    /// show one card's worth of controls at a time. The selector is what lets one
+    /// card reach either channel rather than the card being hardwired to whichever
+    /// channel got there first.
+    var channelOptions: [String] = []
 }
 
 /// Where a parameter's movement can come from, other than a hand on the fader.
@@ -137,10 +144,13 @@ final class EffectChainPanelBody: NSView {
     /// Called when a parameter fader moves: (param code, new 0...1 value).
     var onParameterChanged: ((String, Double) -> Void)?
 
-    /// Called when a mapping badge is clicked: (param code, which badge, the badge view).
     /// A modulation badge on an effect header was clicked: (effect name, source,
     /// the badge view to hang a menu from).
     var onEffectModulationRequested: ((String, ModulationSource, NSView) -> Void)?
+
+    /// A card's channel selector changed: (effect name, index into its
+    /// `channelOptions`).
+    var onCardChannelChanged: ((String, Int) -> Void)?
 
     /// Called when an effect's enable switch is toggled: (effect name, on).
     var onEffectToggled: ((String, Bool) -> Void)?
@@ -156,6 +166,11 @@ final class EffectChainPanelBody: NSView {
 
     /// Effects taken out of the chain, kept so they can be put back.
     private var removedEffects: [EffectCardModel] = []
+
+    /// Which channel each channel-selecting card is currently pointed at, by effect
+    /// name. Kept here rather than in `EffectCardModel` so a rebuild (reordering,
+    /// enabling) does not reset a choice the performer just made.
+    private var cardChannelSelection: [String: Int] = [:]
 
     init(effects: [EffectCardModel]) {
         self.effects = effects
@@ -279,6 +294,24 @@ final class EffectChainPanelBody: NSView {
                                            target: self, action: #selector(effectRemoved(_:)))
         removeButton.identifier = NSUserInterfaceItemIdentifier(effect.name)
 
+        // The channel selector, for chFX cards — an effect that runs once per
+        // CHANNEL (SPEC 2) rather than once per bus, where the panel only has room
+        // for one card's worth of controls. Small and in the same family as the
+        // A/B · C/D toggle on the libraries, so it reads as the same kind of choice.
+        var channelSelector: NSSegmentedControl?
+        if effect.channelOptions.count > 1 {
+            let selected = cardChannelSelection[effect.name] ?? 0
+            let selector = Controls.segmented(
+                effect.channelOptions,
+                selected: min(selected, effect.channelOptions.count - 1),
+                enabled: effect.isImplemented,
+                target: self, action: #selector(cardChannelChanged(_:))
+            )
+            selector.identifier = NSUserInterfaceItemIdentifier(effect.name)
+            selector.toolTip = "Which channel this effect edits"
+            channelSelector = selector
+        }
+
         // The three modulation sources, once per EFFECT rather than once per
         // parameter. Spelled out, because "M S C" reads as Mute/Solo/... to anyone
         // who has used an audio mixer — and this app has no mute and no solo. They
@@ -288,7 +321,9 @@ final class EffectChainPanelBody: NSView {
         // Individual parameters are still individually mappable: hold Shift and click
         // any fader. That gesture arrived after these badges did and quietly made the
         // per-parameter column redundant.
-        var headerViews: [NSView] = [grip, nameLabel, Controls.spacer()]
+        var headerViews: [NSView] = [grip, nameLabel]
+        if let channelSelector { headerViews.append(channelSelector) }
+        headerViews.append(Controls.spacer())
         if !effect.isImplemented {
             let note = Controls.label("not built", font: Theme.Font.tinyLabel,
                                       color: Theme.Color.textTertiary)
@@ -443,6 +478,50 @@ final class EffectChainPanelBody: NSView {
     @objc private func effectToggled(_ sender: NSSwitch) {
         guard let name = sender.identifier?.rawValue else { return }
         onEffectToggled?(name, sender.state == .on)
+    }
+
+    @objc private func cardChannelChanged(_ sender: NSSegmentedControl) {
+        guard let name = sender.identifier?.rawValue else { return }
+        let index = sender.selectedSegment
+        cardChannelSelection[name] = index
+        onCardChannelChanged?(name, index)
+    }
+
+    /// Pushes new values into a specific card's parameter faders and readouts, for
+    /// when what the card should show changed for a reason other than a drag on the
+    /// fader itself — here, its channel selector pointing somewhere else.
+    ///
+    /// Targeted rather than a full `rebuild()`: rebuilding would also reset scroll
+    /// position and drop the in-flight drag-reorder state, for a change that is only
+    /// ever "this fader's number is now different."
+    func setDisplayedParameterValues(effectName: String, values: [String: Double]) {
+        guard let index = effects.firstIndex(where: { $0.name == effectName }),
+              cardViews.indices.contains(index + 1) else { return }
+        let card = cardViews[index + 1]
+
+        for (code, value) in values {
+            for case let fader as VBFader in allSubviews(of: card)
+            where fader.identifier?.rawValue == code {
+                fader.value = value
+            }
+            for case let label as NSTextField in allSubviews(of: card)
+            where label.identifier?.rawValue == "value|\(code)" {
+                label.stringValue = String(format: "%.2f", value)
+            }
+        }
+    }
+
+    /// Sets a card's enable switch directly, for when what it should show changed
+    /// for a reason other than someone flipping it — here, its channel selector
+    /// pointing at a channel with its own, independent bypass state.
+    func setEnabled(effectName: String, isOn: Bool) {
+        guard let index = effects.firstIndex(where: { $0.name == effectName }),
+              cardViews.indices.contains(index + 1) else { return }
+        let card = cardViews[index + 1]
+        for case let toggle as NSSwitch in allSubviews(of: card)
+        where toggle.identifier?.rawValue == effectName {
+            toggle.state = isOn ? .on : .off
+        }
     }
 
     @objc private func effectRemoved(_ sender: NSButton) {

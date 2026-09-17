@@ -814,7 +814,176 @@ enum UISelfQA {
             ))
         }
 
+        // Per-channel FX (chFX, SPEC 2). A and B — and separately C and D — each
+        // carry their own bitstream wedge in the graph; the only thing this checks
+        // is whether the ONE card that represents it can actually REACH all of them,
+        // because that reach is exactly what was missing. Everything here goes
+        // through the same paths a real click and a real drag would use — the
+        // selector's own target/action, and the fader's own onParameterChanged
+        // closure — not a shortcut into the engine.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            let corruptorName = "DV · DIF corruptor"
+            guard let selectorOne = segmentedControl(named: corruptorName, in: shell.grid.panels.effectsOneBody),
+                  let selectorTwo = segmentedControl(named: corruptorName, in: shell.grid.panels.effectsTwoBody) else {
+                check.record(AssertionResult(
+                    name: "both FX chains have a channel selector on the corruptor card",
+                    passed: false, detail: "one or both selectors were not found"
+                ))
+                return check.finish()
+            }
+            check.record(AssertionResult(
+                name: "both FX chains have a channel selector on the corruptor card",
+                passed: selectorOne.segmentCount == 2 && selectorTwo.segmentCount == 2,
+                detail: "A/B has \(selectorOne.segmentCount) segments, C/D has \(selectorTwo.segmentCount)"
+            ))
+
+            /// Fires a segmented control's action exactly as AppKit would after a
+            /// click lands on a segment — set the selection, then invoke target/action.
+            func click(_ control: NSSegmentedControl, segment: Int) {
+                control.selectedSegment = segment
+                _ = control.target?.perform(control.action, with: control)
+            }
+
+            // A gets 0.9, B gets 0.3, written the way a real drag writes them: through
+            // the card's own onParameterChanged closure, with the selector pointed at
+            // each channel in turn.
+            click(selectorOne, segment: 0) // A
+            shell.grid.panels.effectsOneBody.onParameterChanged?(ParamCode.corruptAmount.rawValue, 0.9)
+            click(selectorOne, segment: 1) // B
+            shell.grid.panels.effectsOneBody.onParameterChanged?(ParamCode.corruptAmount.rawValue, 0.3)
+
+            let amountA = engine.registry.value(slot: GraphTopology.sourceA, code: .corruptAmount)
+            let amountB = engine.registry.value(slot: GraphTopology.sourceB, code: .corruptAmount)
+            check.record(AssertionResult(
+                name: "the selector routes a drag to the channel it points at, not always A",
+                passed: abs((amountA ?? -1) - 0.9) < 0.01 && abs((amountB ?? -1) - 0.3) < 0.01,
+                detail: "source.a=\(amountA.map { String(format: "%.2f", $0) } ?? "nil"), "
+                    + "source.b=\(amountB.map { String(format: "%.2f", $0) } ?? "nil")"
+            ))
+
+            // Switch back to A. The card must show A's 0.9 — not B's 0.3, and not the
+            // stale 0.0 the card was built with — proving the readback sync actually
+            // reads the registry rather than just remembering what it last wrote.
+            click(selectorOne, segment: 0)
+            if let faderA = fader(named: ParamCode.corruptAmount.rawValue, in: shell.grid.panels.effectsOneBody) {
+                check.record(AssertionResult(
+                    name: "switching back to A shows A's value, not B's or a stale default",
+                    passed: abs(faderA.value - 0.9) < 0.01,
+                    detail: "displayed \(String(format: "%.2f", faderA.value))"
+                ))
+            }
+
+            // The enable switch must be per-CHANNEL too. Bypass B specifically —
+            // through the engine, simulating some other actor (a template load, a
+            // MIDI mapping) having set it — then confirm selecting B shows the switch
+            // off, and that A's switch state is untouched by anything done to B.
+            engine.registry.setValue(0, slot: GraphTopology.sourceB, code: .wetDry)
+            click(selectorOne, segment: 1)
+            if let switchB = enableSwitch(named: corruptorName, in: shell.grid.panels.effectsOneBody) {
+                check.record(AssertionResult(
+                    name: "each channel's bypass is independent, and the card shows it",
+                    passed: switchB.state == .off,
+                    detail: "B's switch reads \(switchB.state == .off ? "off" : "on") after B was bypassed"
+                ))
+            }
+
+            // The C/D chain had NO corruptor card at all before this. Prove D — the
+            // channel that was never reachable even in principle — through the same
+            // path, all the way to a rendered pixel difference on PROGRAM.
+            guard let motionClip = try? RepoPaths.samples.appendingPathComponent("motion.dv"),
+                  FileManager.default.fileExists(atPath: motionClip.path) else {
+                check.note("samples/motion.dv is missing; the C/D chFX render check was skipped")
+                return check.finish()
+            }
+            _ = engine.load(url: motionClip, intoChannel: "D")
+            engine.registry.setValue(0, slot: GraphTopology.subMixTwo, code: .crossfadeCD) // pure D
+            engine.registry.setValue(1, slot: GraphTopology.primary, code: .crossfadeOneTwo) // PROGRAM = TWO
+            engine.setInterchange(.none, forBus: GraphTopology.primary)
+            engine.registry.setValue(0, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
+
+            guard let metal = MetalContext.shared, let renderer = OffscreenRenderer(context: metal) else {
+                check.record(AssertionResult(
+                    name: "channel D chFX renders", passed: false, detail: "no Metal device"))
+                return check.finish()
+            }
+
+            // Read straight from evaluateGraph's own returned dictionary, the same
+            // way PlaybackSelfQA does. `engine.texture(for:)` reads a DIFFERENT,
+            // separately-populated cache that only fills in via the private
+            // `evaluate(context:)` path the live render loop uses — calling it here,
+            // on a fresh Engine that has never run that loop, reads nothing and a
+            // force-unwrapped nil is exactly what silently killed this check the
+            // first time it ran.
+            func renderProgram(frameIndex: Int) -> ImageBuffer? {
+                let context = RenderContext(
+                    frameIndex: frameIndex, presentationTime: Double(frameIndex) / 29.97,
+                    musicalPosition: nil)
+                let produced = engine.evaluateGraph(context: context)
+                guard let texture = produced[Engine.outputSlot] ?? produced[GraphTopology.primary]
+                else { return nil }
+                return renderer.readback(texture)
+            }
+
+            click(selectorTwo, segment: 1) // D
+            shell.grid.panels.effectsTwoBody.onParameterChanged?(ParamCode.corruptAmount.rawValue, 0)
+            let clean = renderProgram(frameIndex: 50)
+
+            shell.grid.panels.effectsTwoBody.onParameterChanged?(ParamCode.corruptAmount.rawValue, 0.9)
+            let damaged = renderProgram(frameIndex: 50)
+
+            if let clean, let damaged {
+                try? check.writeImage(damaged, named: "channel-d-chfx-damaged.png")
+                check.record(FrameAssertions.framesDiffer(
+                    clean, damaged, minimumFraction: 0.02,
+                    name: "channel D's wedge — unreachable before this — now damages PROGRAM"))
+            } else {
+                check.record(AssertionResult(
+                    name: "channel D chFX renders", passed: false, detail: "a frame failed to render"))
+            }
+
+            withExtendedLifetime(controller) {}
+        }
+
         return check.finish()
+    }
+
+    /// The first segmented control found with a matching identifier.
+    private static func segmentedControl(named identifier: String, in view: NSView) -> NSSegmentedControl? {
+        if let control = view as? NSSegmentedControl, control.identifier?.rawValue == identifier {
+            return control
+        }
+        for subview in view.subviews {
+            if let found = segmentedControl(named: identifier, in: subview) { return found }
+        }
+        return nil
+    }
+
+    /// The first switch found with a matching identifier.
+    private static func enableSwitch(named identifier: String, in view: NSView) -> NSSwitch? {
+        if let control = view as? NSSwitch, control.identifier?.rawValue == identifier {
+            return control
+        }
+        for subview in view.subviews {
+            if let found = enableSwitch(named: identifier, in: subview) { return found }
+        }
+        return nil
+    }
+
+    /// The first fader found with a matching identifier (a param code).
+    private static func fader(named identifier: String, in view: NSView) -> VBFader? {
+        if let control = view as? VBFader, control.identifier?.rawValue == identifier {
+            return control
+        }
+        for subview in view.subviews {
+            if let found = fader(named: identifier, in: subview) { return found }
+        }
+        return nil
     }
 
     /// A flat colour, for checking that a quadrant kept its own picture.

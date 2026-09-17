@@ -163,6 +163,52 @@ final class MIDIAndPlaybackTests: XCTestCase {
     /// transport claimed to be running — a mapped jog wheel would work and the play
     /// button would not. That is the bug the guard exists to prevent, so it is the
     /// one worth a test.
+    // MARK: - The wedge's bypass switch
+
+    /// Flipping the enable switch off must render CLEAN — not merely stop future
+    /// damage — and flipping it back on must restore exactly the amount that was
+    /// dialed in, the same promise wet/dry makes on every bus effect. Before this,
+    /// the corruptor card's switch was wired to nothing: this is the behavior it
+    /// was supposed to have from the start.
+    func testWetDryBypassesTheWedgeWithoutLosingTheDialedAmount() throws {
+        let node = try openSource()
+        let registry = ParamRegistry()
+        registry.register(slot: node.identifier, parameters: node.parameters)
+
+        registry.setValue(0.9, slot: node.identifier, code: .corruptAmount)
+        registry.setValue(1.0, slot: node.identifier, code: .wetDry)
+        node.applyParameters(from: registry)
+        guard let engaged = node.renderToImage(frameIndex: 40) else {
+            return XCTFail("no frame with the wedge engaged")
+        }
+
+        registry.setValue(0.0, slot: node.identifier, code: .wetDry)
+        node.applyParameters(from: registry)
+        guard let clean = node.renderToImage(frameIndex: 40),
+              let reference = { () -> ImageBuffer? in
+                  let bypassNode = try? self.openSource()
+                  return bypassNode?.renderToImage(frameIndex: 40)
+              }() else {
+            return XCTFail("no frame with the wedge bypassed")
+        }
+        XCTAssertEqual(
+            clean.pixels, reference.pixels,
+            "bypassed must render identically to a source with no damage dialed in at all")
+        XCTAssertNotEqual(
+            engaged.pixels, clean.pixels,
+            "and that must be a real difference from the engaged frame, or amount was doing nothing")
+
+        // Re-engage: the SAME amount must still be there, not reset to zero.
+        registry.setValue(1.0, slot: node.identifier, code: .wetDry)
+        node.applyParameters(from: registry)
+        guard let reEngaged = node.renderToImage(frameIndex: 40) else {
+            return XCTFail("no frame after re-engaging")
+        }
+        XCTAssertEqual(
+            reEngaged.pixels, engaged.pixels,
+            "the dialed amount must survive a bypass and come back exactly as it was")
+    }
+
     func testHeldScrubValueDoesNotPinThePlayhead() throws {
         let node = try openSource()
         let registry = ParamRegistry()

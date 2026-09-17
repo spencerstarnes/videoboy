@@ -160,6 +160,12 @@ public final class ClipSourceNode: Node, DataEffectProvider {
 
     public var parameters: [Parameter] {
         [
+            // Bypass for the wedge, the same code every other effect uses for the
+            // same purpose. Below 0 is dry (clean, whatever `amount` is dialed to)
+            // and 1 is fully engaged — reusing `.wetDry` here is what lets the
+            // corruptor's card carry a real ON/OFF switch and real MIDI/AUD/LFO
+            // badges instead of controls that resolve to nothing.
+            Parameter(code: .wetDry, range: 0...1, defaultValue: 1),
             Parameter(code: .corruptAmount, range: 0...1, defaultValue: 0),
             Parameter(code: .corruptMode, range: 0...1, defaultValue: 0),
             Parameter(code: .corruptRate, range: 0...1, defaultValue: 0.25),
@@ -167,6 +173,19 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             Parameter(code: .playbackSpeed, range: 0...2, defaultValue: 1),
             Parameter(code: .scrubPosition, range: 0...1, defaultValue: 0)
         ]
+    }
+
+    /// Whether the wedge is engaged at all. Below the enable switch's threshold, the
+    /// dialed-in `corruption.amount` is preserved but not applied — flipping the
+    /// switch back on returns to exactly the damage that was set before, the same
+    /// promise wet/dry makes on every bus effect.
+    public var wetDry: Double = 1.0
+
+    /// What actually reaches the decoder: `corruption` when engaged, `.inert` when
+    /// bypassed. One seam, used by both the live render path and the headless one,
+    /// so they cannot silently disagree about what "bypassed" means.
+    private var effectiveCorruption: CorruptionSettings {
+        wetDry > 0.001 ? corruption : .inert
     }
 
     /// What is decoding the loaded clip, or nil when nothing is loaded.
@@ -456,13 +475,17 @@ public final class ClipSourceNode: Node, DataEffectProvider {
 
         let frameIndex = wrappedIndex(Int(playheadFrame))
 
-        // Re-decode only when the frame or the damage has actually changed. With the
-        // transport stopped and no corruption this makes the preview free.
-        if frameIndex == textureFrameIndex && corruption == textureCorruption, texture != nil {
+        // Re-decode only when the frame or the EFFECTIVE damage has actually
+        // changed — not the dialed-in `corruption`, which can sit unchanged while the
+        // enable switch flips it in and out. Caching on the wrong one would mean the
+        // bypass switch changed nothing on screen until the next frame boundary the
+        // cache happened to miss anyway.
+        let damage = effectiveCorruption
+        if frameIndex == textureFrameIndex && damage == textureCorruption, texture != nil {
             return texture
         }
 
-        guard let image = clipDecoder.image(at: frameIndex, corruption: corruption) else {
+        guard let image = clipDecoder.image(at: frameIndex, corruption: damage) else {
             // A frame that will not decode at all keeps the previous picture on
             // screen rather than flashing black.
             Log.warn(.dv, "\(identifier) frame \(frameIndex) produced no picture; holding the last one")
@@ -472,7 +495,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         lastImage = image
         texture = metal.makeTexture(from: image, label: "\(identifier)-frame-\(frameIndex)")
         textureFrameIndex = frameIndex
-        textureCorruption = corruption
+        textureCorruption = damage
         return texture
     }
 
@@ -482,12 +505,15 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// a test can assert on pixels with no window server present.
     public func renderToImage(frameIndex requestedIndex: Int) -> ImageBuffer? {
         guard let clipDecoder else { return nil }
-        return clipDecoder.image(at: wrappedIndex(requestedIndex), corruption: corruption)
+        return clipDecoder.image(at: wrappedIndex(requestedIndex), corruption: effectiveCorruption)
     }
 
     /// Applies parameter values from the registry. Called once per frame by the app,
     /// so a MIDI move, a template load and a UI drag all arrive the same way.
     public func applyParameters(from registry: ParamRegistry) {
+        if let engaged = registry.value(slot: identifier, code: .wetDry) {
+            wetDry = engaged
+        }
         if let amount = registry.value(slot: identifier, code: .corruptAmount) {
             corruption.amount = amount
         }

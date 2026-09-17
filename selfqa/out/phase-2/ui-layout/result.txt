@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-17T02:49:39Z
+when:     2026-09-17T03:48:21Z
 core:     0.3.0
 
 notes:
@@ -12,18 +12,18 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
 
-assertions (54/54 passed):
+assertions (59/59 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 853.7
+  PASS  wide is not blank — luminance variance 855.6
   PASS  dimensions — expected 1000x760, got 1000x760
   PASS  compact is not blank — luminance variance 769.0
   PASS  dimensions — expected 760x640, got 760x640
   PASS  narrow is not blank — luminance variance 1066.2
-  PASS  collapsed-left is not blank — luminance variance 722.8
+  PASS  collapsed-left is not blank — luminance variance 726.1
   PASS  collapsed-both-edges is not blank — luminance variance 585.9
-  PASS  collapsed-sources-only is not blank — luminance variance 798.8
+  PASS  collapsed-sources-only is not blank — luminance variance 828.5
   PASS  collapsed-effects-only is not blank — luminance variance 627.2
-  PASS  holding Shift lights the mappable faders — 43 faders highlighted
+  PASS  holding Shift lights the mappable faders — 46 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
@@ -67,3 +67,8 @@ assertions (54/54 passed):
   PASS  the output bar survives 4:3 previews at compact — bar is 59pt tall at y=622
   PASS  preview panels are 4:3 at narrow — all three within 4:3 (1.333)
   PASS  the output bar survives 4:3 previews at narrow — bar is 49pt tall at y=512
+  PASS  both FX chains have a channel selector on the corruptor card — A/B has 2 segments, C/D has 2
+  PASS  the selector routes a drag to the channel it points at, not always A — source.a=0.90, source.b=0.30
+  PASS  switching back to A shows A's value, not B's or a stale default — displayed 0.90
+  PASS  each channel's bypass is independent, and the card shows it — B's switch reads off after B was bypassed
+  PASS  channel D's wedge — unreachable before this — now damages PROGRAM — 0.483 of sampled pixels differ, needed >= 0.02

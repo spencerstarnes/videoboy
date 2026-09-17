@@ -131,12 +131,17 @@ final class PanelSet {
                 isImplemented: FeatureFlag.bitstreamCorruptor.isOn,
                 parameters: [
                     EffectParameterModel(name: "amount", code: ParamCode.corruptAmount.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true),
+                                         value: 0.0, enabled: true),
                     EffectParameterModel(name: "mode", code: ParamCode.corruptMode.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true),
+                                         value: 0.0, enabled: true),
                     EffectParameterModel(name: "rate", code: ParamCode.corruptRate.rawValue,
-                                         value: 0.25, activeBadges: ["C"], enabled: true)
-                ]
+                                         value: 0.25, enabled: true)
+                ],
+                // SPEC 2's chFX runs once per CHANNEL — A and B each carry their own
+                // wedge. This one card reaches whichever of the two is selected here,
+                // rather than being hardwired to A the way it was before this could
+                // be switched at all.
+                channelOptions: ["A", "B"]
             ),
             EffectCardModel(
                 name: "Composite · NTSC",
@@ -144,21 +149,21 @@ final class PanelSet {
                 isImplemented: FeatureFlag.compositeCodec.isOn,
                 parameters: [
                     EffectParameterModel(name: "path", code: ParamCode.compositePath.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true),
+                                         value: 0.0, enabled: true),
                     EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
-                                         value: 0.6, activeBadges: [], enabled: true),
+                                         value: 0.6, enabled: true),
                     EffectParameterModel(name: "bleed", code: ParamCode.chromaBleed.rawValue,
-                                         value: 0.5, activeBadges: [], enabled: true),
+                                         value: 0.5, enabled: true),
                     EffectParameterModel(name: "luma bw", code: ParamCode.lumaBandwidth.rawValue,
-                                         value: 0.7, activeBadges: [], enabled: true),
+                                         value: 0.7, enabled: true),
                     EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
-                                         value: 0.2, activeBadges: [], enabled: true),
+                                         value: 0.2, enabled: true),
                     EffectParameterModel(name: "head sw", code: ParamCode.headSwitchingNoise.rawValue,
-                                         value: 0.3, activeBadges: [], enabled: true),
+                                         value: 0.3, enabled: true),
                     EffectParameterModel(name: "chroma", code: ParamCode.chromaSubsampling.rawValue,
-                                         value: 1.0, activeBadges: [], enabled: true),
+                                         value: 1.0, enabled: true),
                     EffectParameterModel(name: "gen", code: ParamCode.compositeGeneration.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true)
+                                         value: 0.0, enabled: true)
                 ]
             ),
             EffectCardModel(
@@ -167,11 +172,11 @@ final class PanelSet {
                 isImplemented: FeatureFlag.feedback.isOn,
                 parameters: [
                     EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
-                                         value: 0.8, activeBadges: [], enabled: true),
+                                         value: 0.8, enabled: true),
                     EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true),
+                                         value: 0.0, enabled: true),
                     EffectParameterModel(name: "thresh", code: ParamCode.echoThreshold.rawValue,
-                                         value: 0.15, activeBadges: [], enabled: true)
+                                         value: 0.15, enabled: true)
                 ]
             ),
             EffectCardModel(
@@ -180,13 +185,13 @@ final class PanelSet {
                 isImplemented: FeatureFlag.feedback.isOn,
                 parameters: [
                     EffectParameterModel(name: "gain", code: ParamCode.feedbackGain.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true),
+                                         value: 0.0, enabled: true),
                     EffectParameterModel(name: "delay", code: ParamCode.feedbackDelayFrames.rawValue,
-                                         value: 0.02, activeBadges: [], enabled: true),
+                                         value: 0.02, enabled: true),
                     EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
-                                         value: 0.52, activeBadges: [], enabled: true),
+                                         value: 0.52, enabled: true),
                     EffectParameterModel(name: "rotate", code: ParamCode.feedbackRotate.rawValue,
-                                         value: 0.5, activeBadges: [], enabled: true)
+                                         value: 0.5, enabled: true)
                 ]
             ),
             EffectCardModel(
@@ -195,14 +200,14 @@ final class PanelSet {
                 isImplemented: true,
                 parameters: [
                     EffectParameterModel(name: "effect", code: ParamCode.mx1Effect.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true),
+                                         value: 0.0, enabled: true),
                     EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
-                                         value: 0.5, activeBadges: [], enabled: true)
+                                         value: 0.5, enabled: true)
                 ]
             ),
             EffectCardModel(name: "Color Ctrl", isEnabled: false, isImplemented: false, parameters: [
                 EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
-                                     value: 0.62, activeBadges: [], enabled: false)
+                                     value: 0.62, enabled: false)
             ]),
             EffectCardModel(name: "Layer Mask", isEnabled: false, isImplemented: false, parameters: [])
         ])
@@ -211,18 +216,36 @@ final class PanelSet {
         // buses can carry different looks at once.
         effectsTwoBody = EffectChainPanelBody(effects: [
             EffectCardModel(
+                name: "DV · DIF corruptor",
+                isEnabled: true,
+                isImplemented: FeatureFlag.bitstreamCorruptor.isOn,
+                parameters: [
+                    EffectParameterModel(name: "amount", code: ParamCode.corruptAmount.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "mode", code: ParamCode.corruptMode.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "rate", code: ParamCode.corruptRate.rawValue,
+                                         value: 0.25, enabled: true)
+                ],
+                // This chain had NO wedge card at all before this — channel C's
+                // corruption was wired all the way through the registry and never
+                // reachable from anywhere in the window. D reaches it too, by the
+                // selector below.
+                channelOptions: ["C", "D"]
+            ),
+            EffectCardModel(
                 name: "Composite · NTSC",
                 isEnabled: false,
                 isImplemented: FeatureFlag.compositeCodec.isOn,
                 parameters: [
                     EffectParameterModel(name: "path", code: ParamCode.compositePath.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true),
+                                         value: 0.0, enabled: true),
                     EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
-                                         value: 0.6, activeBadges: [], enabled: true),
+                                         value: 0.6, enabled: true),
                     EffectParameterModel(name: "bleed", code: ParamCode.chromaBleed.rawValue,
-                                         value: 0.5, activeBadges: [], enabled: true),
+                                         value: 0.5, enabled: true),
                     EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
-                                         value: 0.2, activeBadges: [], enabled: true)
+                                         value: 0.2, enabled: true)
                 ]
             ),
             EffectCardModel(
@@ -231,9 +254,9 @@ final class PanelSet {
                 isImplemented: FeatureFlag.feedback.isOn,
                 parameters: [
                     EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
-                                         value: 0.8, activeBadges: [], enabled: true),
+                                         value: 0.8, enabled: true),
                     EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true)
+                                         value: 0.0, enabled: true)
                 ]
             ),
             EffectCardModel(
@@ -242,9 +265,9 @@ final class PanelSet {
                 isImplemented: FeatureFlag.feedback.isOn,
                 parameters: [
                     EffectParameterModel(name: "gain", code: ParamCode.feedbackGain.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true),
+                                         value: 0.0, enabled: true),
                     EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
-                                         value: 0.52, activeBadges: [], enabled: true)
+                                         value: 0.52, enabled: true)
                 ]
             ),
             EffectCardModel(
@@ -253,9 +276,9 @@ final class PanelSet {
                 isImplemented: true,
                 parameters: [
                     EffectParameterModel(name: "effect", code: ParamCode.mx1Effect.rawValue,
-                                         value: 0.0, activeBadges: [], enabled: true),
+                                         value: 0.0, enabled: true),
                     EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
-                                         value: 0.5, activeBadges: [], enabled: true)
+                                         value: 0.5, enabled: true)
                 ]
             ),
             EffectCardModel(name: "Layer Mask", isEnabled: false, isImplemented: false, parameters: [])
