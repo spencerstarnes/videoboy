@@ -1,6 +1,6 @@
 check:    phase-0/offscreen-test-pattern
 verdict:  PASS
-when:     2026-09-17T08:53:44Z
+when:     2026-09-17T08:57:27Z
 core:     0.3.0
 
 notes:
