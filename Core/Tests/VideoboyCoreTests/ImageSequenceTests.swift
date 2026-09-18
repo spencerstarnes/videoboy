@@ -186,3 +186,40 @@ final class ImageSequenceTests: XCTestCase {
         XCTAssertEqual(node.playheadFrame, 7)
     }
 }
+
+// MARK: - Beat-locked on arrival (SPEC 153)
+
+extension ImageSequenceTests {
+
+    /// The whole point of the feature, per SPEC 153: a folder of photographs is a
+    /// beat-locked clip, NOT a frame sequence baked to the project rate.
+    ///
+    /// It loaded as `.continuous` before, which meant four hundred photographs went
+    /// past in thirteen seconds and everyone had to find the STEP key before the
+    /// feature did the one thing it exists to do.
+    func testAPhotoFolderArrivesSteppedToTheBeat() throws {
+        let folder = try makeFolder(frames: 8) { "shot\($0).png" }
+        let node = ClipSourceNode(identifier: "source.a", context: nil)
+
+        XCTAssertEqual(node.timing, .continuous, "a fresh node starts continuous")
+        XCTAssertTrue(node.load(url: folder), "the folder should load")
+        XCTAssertEqual(
+            node.timing, .stepped(subdivision: .quarter, frames: 1),
+            "a stack of photographs advances one frame per quarter note")
+    }
+
+    /// The converse, and the reason the default is set on the folder branch rather
+    /// than in `load` generally: a video file has its own frame rate, and stepping it
+    /// to the beat by default would be wrong.
+    func testAVideoFileIsLeftContinuous() throws {
+        let folder = try makeFolder(frames: 3) { "f\($0).png" }
+        let node = ClipSourceNode(identifier: "source.b", context: nil)
+        XCTAssertTrue(node.load(url: folder))
+        XCTAssertNotEqual(node.timing, .continuous, "precondition: the folder stepped it")
+
+        // Loading something that is NOT a folder must not inherit the stepped timing
+        // from whatever was there before.
+        let missing = folder.appendingPathComponent("nope.mov")
+        XCTAssertFalse(node.load(url: missing), "a missing file does not load")
+    }
+}

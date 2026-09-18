@@ -82,6 +82,12 @@ final class ShellController {
             range == nil
                 ? url.lastPathComponent
                 : "\(url.lastPathComponent) [trimmed]")
+        // Read the timing back off the node rather than assuming it. Loading decides it
+        // now — a folder of photographs arrives stepped to the beat (SPEC §153) while a
+        // video file stays continuous — so the STEP key is told what actually happened.
+        if let timing = engine.sources[channel]?.timing {
+            shell.grid.panels.sourceBodies[channel]?.setTiming(timing)
+        }
         // The channel's own checkbox wins; the preference is only what a fresh
         // channel starts out agreeing with.
         if autoPlayByChannel[channel] ?? preferences.preferences.playOnLoad {

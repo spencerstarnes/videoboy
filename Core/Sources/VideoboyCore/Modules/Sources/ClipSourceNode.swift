@@ -324,8 +324,25 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             self.clipDecoder = decoder
             self.mediaURL = url
             self.playheadFrame = 0
+
+            // A STACK OF PHOTOGRAPHS ARRIVES BEAT-LOCKED, not running at frame rate.
+            //
+            // SPEC §153 is explicit that the point of importing a folder is that it
+            // "behaves as a beat-locked clip" — deliberately NOT baked to a frame
+            // sequence at project fps the way an NLE would. Loading one as `.continuous`
+            // met the letter of that and missed all of it: 400 photographs at 29.97 fps
+            // is thirteen seconds of flicker, and every single person who dropped a
+            // folder in would have had to find the STEP button before the feature did
+            // anything they wanted.
+            //
+            // One frame per quarter note is the honest default: it is the rung of the
+            // ladder people mean by "a slideshow on the beat", and the STEP button walks
+            // either way from it. A video file is untouched by this — it has its own
+            // frame rate and `.continuous` is the right reading of one.
+            self.timing = .stepped(subdivision: .quarter, frames: 1)
+
             Log.info(.dv, "\(identifier) loaded \(url.lastPathComponent): "
-                + "\(decoder.frameCount) photographs")
+                + "\(decoder.frameCount) photographs, one per 1/4 note")
             return true
         }
 
@@ -550,8 +567,22 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         guard let image = clipDecoder.image(at: frameIndex, corruption: damage) else {
             // A frame that will not decode at all keeps the previous picture on
             // screen rather than flashing black.
-            Log.warn(.dv, "\(identifier) frame \(frameIndex) produced no picture; holding the last one")
+            //
+            // LOGGED ON THE WAY IN, not every frame. A truncated or unsupported file
+            // fails on every frame, and this line used to fire at the frame rate: ~30
+            // lines a second, 432,000 lines over a four-hour show, each one a blocking
+            // write from the render thread. The state is worth knowing about once; the
+            // repetition told nobody anything and cost a syscall a frame.
+            if !isHoldingLastPicture {
+                isHoldingLastPicture = true
+                Log.warn(.dv, "\(identifier) frame \(frameIndex) produced no picture; "
+                    + "holding the last one (further frames will not be logged)")
+            }
             return texture
+        }
+        if isHoldingLastPicture {
+            isHoldingLastPicture = false
+            Log.info(.dv, "\(identifier) is decoding again")
         }
 
         lastImage = image
@@ -607,4 +638,8 @@ public final class ClipSourceNode: Node, DataEffectProvider {
 
     /// The last scrub value seen from the registry, to tell a move from a repeat.
     private var lastAppliedScrub: Double?
+
+    /// True while the clip is failing to decode and the previous picture is being held.
+    /// Exists so the failure is logged as a transition rather than once per frame.
+    private var isHoldingLastPicture = false
 }

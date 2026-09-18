@@ -476,6 +476,16 @@ final class SourcePanelBody: NSView {
         miniPlayBar?.markedRange = range
     }
 
+    /// Shows the timing the node is actually on.
+    ///
+    /// Needed because loading is not the only thing that decides timing any more: a
+    /// folder of photographs comes up stepped to the beat rather than continuous. The
+    /// key has to say so, or it reads STEP-off while the clip is stepping — the same
+    /// switch-disagrees-with-engine problem the bus effects had at launch.
+    func setTiming(_ timing: PlaybackTiming) {
+        stepButton?.setTiming(timing)
+    }
+
     func setScrubPosition(_ position: Double) {
         scrubFader?.value = position
         // The resting line reads the same playhead as the shuttle's track, so the
