@@ -38,6 +38,8 @@ final class EmuBrowserView: NSStackView {
     private var setUpButton: VBOptionButton?
     private var showButton: VBOptionButton?
     private var stateButton: VBOptionButton?
+    /// Shown only when Screen Recording is the thing standing in the way.
+    private var permissionButton: VBOptionButton?
     /// The list of saved states, under the controls. Rebuilt whenever one is written.
     private let statesList = NSStackView()
     /// Which state each row stands for.
@@ -109,6 +111,18 @@ final class EmuBrowserView: NSStackView {
         statusLabel.maximumNumberOfLines = 3
         addArrangedSubview(statusLabel)
         statusLabel.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+
+        // THE BUTTON THAT WAS MISSING. Being told "check Screen Recording" and finding
+        // the box already ticked, with nothing explaining why it still does not work,
+        // is the single worst moment this panel produces. This says what is actually
+        // wrong and opens the exact pane — one click, no hunting through Settings.
+        let permission = VBOptionButton(title: "SCREEN RECORDING…", onColour: Theme.Color.tallyOnAir)
+        permission.target = self
+        permission.action = #selector(permissionPressed)
+        permission.isHidden = true
+        permissionButton = permission
+        addArrangedSubview(permission)
+        permission.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
     }
 
     /// The live picture, directly under the machine's name.
@@ -489,6 +503,24 @@ final class EmuBrowserView: NSStackView {
         refresh()
     }
 
+    /// Explains the permission situation and opens the pane it is about.
+    @objc private func permissionPressed() {
+        let alert = NSAlert()
+        alert.messageText = "Screen Recording"
+        alert.informativeText = FSUAEHost.screenRecordingAdvice
+            ?? "Screen Recording is granted. Nothing to do."
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Close")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        // Straight to the pane, not to the top of Settings. Someone who has already
+        // been told the box is ticked should not then have to find the box.
+        if let url = URL(string:
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @objc private func textChanged(_ sender: NSTextField) {
         controller.setText(sender.stringValue, line: sender.tag)
     }
@@ -558,6 +590,15 @@ final class EmuBrowserView: NSStackView {
             : "How to save the machine where you want it to start. One-time, and done "
                 + "in the emulator's own window."
         linkDot.state = controller.linkState
+
+        // Only when it is the problem. A permission button that is always there is
+        // furniture; one that appears exactly when Screen Recording is in the way is a
+        // signpost.
+        let advice = FSUAEHost.screenRecordingAdvice
+        permissionButton?.isHidden = advice == nil
+        if let advice, statusLabel.stringValue.isEmpty || controller.isRunning {
+            statusLabel.stringValue = advice.components(separatedBy: "\n").first ?? advice
+        }
 
         takeButton?.isEnabled = controller.isRunning
 

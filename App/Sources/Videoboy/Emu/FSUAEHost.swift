@@ -204,6 +204,11 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
                 // on the next attempt, and refusing it ends with the panel saying so.
                 if !Self.hasScreenRecordingPermission {
                     Log.info(.titler, "requesting Screen Recording permission (off-thread)")
+                    // Remembered BEFORE the ask, not after: the answer may never come
+                    // back if the dialog is dismissed, and what matters later is that
+                    // the app has been through this once — which is what distinguishes
+                    // "it will ask you" from "the tick is stale".
+                    Self.rememberWeAsked()
                     DispatchQueue.global(qos: .userInitiated).async {
                         let granted = Self.requestScreenRecordingPermission()
                         DispatchQueue.main.async {
@@ -332,6 +337,50 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
     @discardableResult
     static func requestScreenRecordingPermission() -> Bool {
         CGRequestScreenCaptureAccess()
+    }
+
+    /// Whether macOS LISTS this app under Screen Recording, regardless of whether the
+    /// grant actually applies to this build.
+    ///
+    /// The two are different, and the difference is the whole problem. The Settings
+    /// pane matches by BUNDLE ID, so the row is there and ticked. TCC matches the
+    /// grant by CODE SIGNATURE, which changes on every ad-hoc build. So a person sees
+    /// a ticked box, the app cannot capture, and there is nothing on screen connecting
+    /// the two facts. That is the complaint, and it is a fair one.
+    ///
+    /// There is no API to read the Settings list, so this is inferred: if the app has
+    /// been asked before — the preference exists — but preflight says no, the tick is
+    /// stale rather than absent.
+    static var hasBeenAskedBefore: Bool {
+        UserDefaults.standard.bool(forKey: askedKey)
+    }
+
+    private static let askedKey = "videoboy.screenRecording.asked"
+
+    static func rememberWeAsked() {
+        UserDefaults.standard.set(true, forKey: askedKey)
+    }
+
+    /// What to tell someone about Screen Recording, right now, in words they can act on.
+    ///
+    /// Three genuinely different situations, which used to produce one message:
+    ///
+    ///   granted        nothing to say
+    ///   never asked    it will ask; say so, so the prompt is expected
+    ///   asked before,  THE TICK IS LYING. This is the one that wasted days: the box is
+    ///   still denied   ticked, the app cannot capture, and "check Screen Recording"
+    ///                  sends you to a pane that already looks correct.
+    static var screenRecordingAdvice: String? {
+        if hasScreenRecordingPermission { return nil }
+        guard hasBeenAskedBefore else {
+            return "macOS will ask for Screen Recording when the machine starts. "
+                + "That is how the emulator's picture reaches Videoboy."
+        }
+        return "Screen Recording is listed for Videoboy but is NOT being granted to "
+            + "this build.\n\nmacOS ticks the box by app name and checks the grant by "
+            + "code signature, and this build's signature is new — so the tick is real "
+            + "and stale at the same time.\n\nRemove Videoboy from the list, then add "
+            + "it again. To stop it recurring, run scripts/signing-identity.sh once."
     }
 
     /// What actually went wrong, distinguishing the permission from everything else.
