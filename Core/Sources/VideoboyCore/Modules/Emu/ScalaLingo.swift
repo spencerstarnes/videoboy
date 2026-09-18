@@ -385,6 +385,20 @@ public struct ScalaColour: Equatable, Sendable {
     /// The point of a one-knob colour: a fader has one dimension and colour has three,
     /// so the useful reduction is hue at full saturation — which is also what a
     /// 12-bit palette shows off best.
+    /// A mix of two colours, for filling palette entries nobody chose.
+    ///
+    /// The screen has eight entries and the panel names two of them. The rest used to
+    /// be left holding whatever was in them; a defined colour nobody asked for is at
+    /// least predictable, and a ramp between the two chosen ones is the least
+    /// surprising thing to put there.
+    public func blended(with other: ScalaColour, amount: Double) -> ScalaColour {
+        let t = min(max(amount, 0), 1)
+        return ScalaColour(
+            red: red + (other.red - red) * t,
+            green: green + (other.green - green) * t,
+            blue: blue + (other.blue - blue) * t)
+    }
+
     public static func hue(_ value: Double) -> ScalaColour {
         let hue = NormalisedSweep.clamp(value) * 6
         let sector = Int(hue) % 6

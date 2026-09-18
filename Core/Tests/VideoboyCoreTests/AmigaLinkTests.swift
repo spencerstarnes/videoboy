@@ -562,11 +562,6 @@ extension AmigaLinkTests {
     func testAQueueThatNeverDrainsIsReportedAsFailed() {
         let transport = RecordingTransport()
         let bridge = AmigaCommandBridge(transport: transport)
-        // Zero, so "has not moved since the last ack" is true the moment it stops
-        // moving. The real value is eight seconds; waiting that out in a test would buy
-        // nothing except a slower suite.
-        bridge.stallSeconds = 0
-
         // One command that IS acknowledged, so the link has genuinely been alive —
         // which is the precondition for the bug. Reporting `.failed` before anything
         // ever worked would be a different and much less interesting check.
@@ -575,6 +570,13 @@ extension AmigaLinkTests {
         transport.acknowledged = [1]
         bridge.flush()
         XCTAssertTrue(bridge.state.isLive, "precondition: the link was alive")
+
+        // ONLY NOW is the threshold dropped, and to a NEGATIVE value rather than zero.
+        // Zero makes the check `elapsed > 0`, false when no measurable time passes
+        // between the ack and the poll — that failed about one run in three, and only
+        // showed up because the suite was run repeatedly rather than once. Dropping it
+        // before the precondition instead reports failure too early and breaks that.
+        bridge.stallSeconds = -1
 
         // Now the machine stops reading. More goes out; nothing comes back.
         for _ in 0..<3 {

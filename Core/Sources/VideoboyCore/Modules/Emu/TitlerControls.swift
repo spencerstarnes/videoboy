@@ -196,6 +196,9 @@ public struct ScalaPanelState: Equatable, Sendable {
     public var fontIndex: Int = 4          // "Franklin", the ARexx example's face
     public var fontSize: Int = 44
     public var textColour: ScalaColour = .white
+    /// Where the text-colour control sits, 0...1, kept alongside the colour it picked.
+    /// Over a backdrop the picture owns the palette and this chooses an ENTRY instead.
+    public var textColourPosition: Double = 1.0
     public var backgroundColour: ScalaColour = .black
     /// A placed graphic's width as a fraction of the screen. ZERO means no graphic.
     ///
@@ -262,6 +265,14 @@ public struct ScalaScreen: Equatable, Sendable {
     public let width: Int
     public let height: Int
     public let isInterlaced: Bool
+
+    /// Bitplanes the screen is opened with. Three is what `BLANK … 3 …` asks for, and
+    /// the palette has to match it — a palette shorter than the screen's depth leaves
+    /// the remaining entries holding whatever was in them last.
+    public var depth: Int { 3 }
+
+    /// How many palette entries this screen actually has.
+    public var colourCount: Int { 1 << depth }
 
     public static let ntsc = ScalaScreen(width: 640, height: 400, isInterlaced: true)
     public static let pal = ScalaScreen(width: 640, height: 512, isInterlaced: true)
@@ -519,6 +530,10 @@ public final class ScalaTitlerPanel {
 
         case .textColour:
             state.textColour = .hue(clamped)
+            // Kept as well as the colour: over a backdrop the picture owns the palette,
+            // and this control then chooses an ENTRY rather than a free colour. Without
+            // the raw position there is nothing to choose with.
+            state.textColourPosition = clamped
 
         case .backgroundColour:
             state.backgroundColour = .hue(clamped)
@@ -763,13 +778,15 @@ public final class ScalaTitlerPanel {
             ScalaLingo.screen(
                 width: screen.width, height: screen.height,
                 interlaced: screen.isInterlaced),
-            currentPalette(),
-            ScalaLingo.colour(fill: 1),
+            ScalaLingo.colour(fill: textColourIndex),
             currentFont(),
             currentAttributes(),
             redraw,
             ScalaLingo.textWipe(ScalaLingo.wipes[state.textWipeIndex], speed: state.wipeSpeed)
         ]
+
+        // The palette goes in FIRST and only when we own it — see `currentPalette`.
+        if let palette = currentPalette() { commands.insert(palette, at: 1) }
 
         // Backdrop, then bar, then brush, then text — back to front, because that is
         // the order they have to be painted in for the text to end up on top.
@@ -877,10 +894,53 @@ public final class ScalaTitlerPanel {
         return ScalaLingo.attributes(words)
     }
 
-    private func currentPalette() -> TitlerCommand {
+    /// The screen palette, or nil when the backdrop owns it.
+    ///
+    /// ── WHY THE COLOURS WERE WRONG ─────────────────────────────────────────────────
+    ///
+    /// Two faults, and they compounded.
+    ///
+    /// The screen is opened with THREE BITPLANES — eight colours — and this sent a
+    /// palette of TWO. Entries 2 to 7 kept whatever happened to be in them, which is
+    /// why colours nobody had touched came out wrong.
+    ///
+    /// Worse, it sent that two-entry palette even when a PICTURE was about to be
+    /// loaded. An Amiga picture carries its OWN palette and Scala remaps the screen to
+    /// it; overwriting entries 0 and 1 afterwards replaces two of the image's real
+    /// colours with the operator's text and background hues. On a photographic backdrop
+    /// those two entries are usually significant, so the image came out visibly wrong —
+    /// exactly the report.
+    ///
+    /// So: with no backdrop we own the palette and send a FULL one. With a backdrop the
+    /// picture owns it and we send none, because that is how the software works — text
+    /// colour over a picture is a CHOICE OF ENTRY, not a free colour, and pretending
+    /// otherwise is what produced the mess.
+    private func currentPalette() -> TitlerCommand? {
+        guard !state.hasBackdrop else { return nil }
+
         // Entry 0 is the background — on the Amiga it is also the genlock key, which is
-        // why the background colour control reaches this one specifically.
-        ScalaLingo.palette([state.backgroundColour, state.textColour])
+        // why the background colour control reaches this one specifically. Entry 1 is
+        // the text. The rest are a spread between the two rather than left undefined:
+        // a defined colour nobody asked for is recoverable, an undefined one is not.
+        var colours: [ScalaColour] = [state.backgroundColour, state.textColour]
+        let wanted = screen.colourCount
+        while colours.count < wanted {
+            let t = Double(colours.count) / Double(max(wanted - 1, 1))
+            colours.append(state.backgroundColour.blended(with: state.textColour, amount: t))
+        }
+        return ScalaLingo.palette(colours)
+    }
+
+    /// Which palette entry the text is drawn in.
+    ///
+    /// Entry 1 when we own the palette. Over a backdrop the picture owns it, so the
+    /// text-colour control becomes a choice among the entries the PICTURE brought —
+    /// which is what Scala actually offers, and is better than a colour control that
+    /// silently does nothing over every backdrop.
+    private var textColourIndex: Int {
+        guard state.hasBackdrop else { return 1 }
+        let entries = max(screen.colourCount - 1, 1)
+        return 1 + min(Int(state.textColourPosition * Double(entries - 1)), entries - 1)
     }
 
     // MARK: - Title safety
