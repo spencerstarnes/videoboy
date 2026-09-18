@@ -128,6 +128,15 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
             return false
         }
 
+        // An emulator already running is NOT a reason to start a second one. Two
+        // machines on the same shared drawer both consume the command files, so half
+        // the commands go to a window nobody is watching — and both windows carry the
+        // same title, so the capture attaches to whichever it finds first.
+        if let existing = self.process, existing.isRunning {
+            Log.info(.titler, "an emulator is already running; reusing it")
+            return true
+        }
+
         shutdown()
 
         let process = Process()
@@ -160,6 +169,14 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
         self.process = process
         self.bootedProgram = program
         self.unavailableReason = nil
+
+        // ASK before capturing. Without this the first capture attempt fails silently
+        // on a machine that has never been asked, and the app reports a denial for a
+        // permission nobody was ever offered.
+        if !Self.hasScreenRecordingPermission {
+            Log.info(.titler, "requesting Screen Recording permission")
+            Self.requestScreenRecordingPermission()
+        }
         Log.info(.titler, "\(URL(fileURLWithPath: emulator.executable).lastPathComponent) "
             + "started for \(program.name) (pid \(process.processIdentifier))")
 
@@ -217,6 +234,46 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
 
     // MARK: - Capture
 
+    /// Whether this app really has Screen Recording, asked of the system.
+    ///
+    /// `CGPreflightScreenCaptureAccess` reports the ACTUAL state. Everything below
+    /// exists because the first version of this file simply assumed a capture failure
+    /// meant the permission was off, and said so in a confident sentence — which told
+    /// someone they had blocked a permission they had never been asked for, while the
+    /// real fault was something else entirely. An error message that guesses is worse
+    /// than one that admits it does not know.
+    static var hasScreenRecordingPermission: Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+
+    /// Asks for it, which is what actually raises the system prompt.
+    @discardableResult
+    static func requestScreenRecordingPermission() -> Bool {
+        CGRequestScreenCaptureAccess()
+    }
+
+    /// What actually went wrong, distinguishing the permission from everything else.
+    static func captureFailureReason(_ error: Error) -> String {
+        guard !hasScreenRecordingPermission else {
+            // The permission is GRANTED, so whatever happened is not that. Report the
+            // real error rather than sending someone to a settings pane where they will
+            // find the switch already on and conclude the app is broken.
+            return "The emulator's window could not be captured: "
+                + "\(error.localizedDescription). Screen Recording IS allowed, so this "
+                + "is something else — try STOP then START."
+        }
+
+        // Genuinely denied. Worth naming the usual cause, which is not the person:
+        // this app is ad-hoc signed, so every rebuild changes its signature, and macOS
+        // stops matching a permission that was granted to the previous build. It reads
+        // exactly like a permission you refused and never touched.
+        return "Screen Recording is not granted to Videoboy. System Settings > "
+            + "Privacy & Security > Screen Recording, and switch Videoboy on. If it is "
+            + "already on, the app was rebuilt since you granted it — macOS keys that "
+            + "permission to the exact build. Turn it off and on again, or run: "
+            + "tccutil reset ScreenCapture com.spencerstarnes.videoboy"
+    }
+
     private func startCapture(attempt: Int) {
         // Up to ten seconds of retries. An Amiga takes a few seconds to put a window
         // up, and a machine under load can take longer; failing at the first look
@@ -249,14 +306,7 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
                 try await self.beginStream(on: window)
             } catch {
                 await MainActor.run {
-                    // The overwhelmingly likely cause, and the only one the person can
-                    // do anything about — so it is named rather than reported as a
-                    // generic failure.
-                    self.unavailableReason =
-                        "Screen Recording permission is needed to capture the "
-                        + "emulator's window. System Settings > Privacy & Security > "
-                        + "Screen Recording, then switch Videoboy on. "
-                        + "(\(error.localizedDescription))"
+                    self.unavailableReason = Self.captureFailureReason(error)
                     Log.error(.titler, self.unavailableReason ?? "")
                     self.onStateChanged?()
                 }
