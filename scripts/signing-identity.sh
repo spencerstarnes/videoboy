@@ -115,6 +115,23 @@ openssl pkcs12 -export \
 # A DEDICATED keychain, not the login one. Importing into login would need the user's
 # login password at build time; a keychain we create has a password we already know,
 # so the whole thing stays non-interactive.
+#
+# AN EXISTING KEYCHAIN IS NOT ASSUMED TO BE A GOOD ONE. A run that created the keychain
+# and then failed at the import leaves an EMPTY one behind, and every later run skipped
+# creation, tried to import into it, failed the same way, and fell back to ad-hoc
+# signing for ever. That is not hypothetical — it is what happened here, and the only
+# visible symptom was macOS asking for Screen Recording on every launch.
+#
+# So: if there is a keychain but no usable identity in it, it is rubble from a failed
+# run. Delete it and start again. Nothing of value can be in it — this keychain holds
+# exactly one self-signed certificate that this script generates.
+if [ -f "$KEYCHAIN" ]; then
+    if ! security find-certificate -c "$IDENTITY" "$KEYCHAIN" >/dev/null 2>&1; then
+        note "found a keychain with no certificate in it — left by a failed run; rebuilding"
+        security delete-keychain "$KEYCHAIN_NAME" 2>/dev/null || rm -f "$KEYCHAIN"
+    fi
+fi
+
 if [ ! -f "$KEYCHAIN" ]; then
     security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME" \
         || fail "could not create $KEYCHAIN_NAME"
@@ -153,6 +170,20 @@ fi
 
 security find-identity -v -p codesigning 2>/dev/null | grep -qF "$IDENTITY" \
     || fail "the identity was created but codesign cannot see it"
+
+# PROVE IT SIGNS. An identity that exists and cannot sign is the same as no identity,
+# and finding that out during a build — where the fallback quietly takes over — is how
+# this went unnoticed for a day.
+PROOF="$(mktemp -d)/proof"
+printf '#!/bin/sh\ntrue\n' > "$PROOF"
+chmod +x "$PROOF"
+if codesign --force --sign "$IDENTITY" --timestamp=none "$PROOF" 2>/dev/null; then
+    note "verified: the identity can sign"
+else
+    rm -rf "$(dirname "$PROOF")"
+    fail "the identity exists but codesign refused to use it"
+fi
+rm -rf "$(dirname "$PROOF")"
 
 note "created '$IDENTITY' in $KEYCHAIN_NAME"
 note "macOS will ask for Screen Recording ONCE more, then the grant sticks across builds"
