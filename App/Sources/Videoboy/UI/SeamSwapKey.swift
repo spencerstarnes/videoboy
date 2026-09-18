@@ -87,22 +87,21 @@ final class SeamSwapKey: NSControl, AuditableControl {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let circle = bounds.insetBy(dx: 1, dy: 1)
-        let path = NSBezierPath(ovalIn: circle)
-
-        // Filled, not outlined. It sits on top of two moving pictures, and an outline
-        // over video is unreadable the moment either picture goes pale.
-        (isPressed ? Theme.Color.accent : Theme.Color.panelFillOpaque).setFill()
-        path.fill()
-        Theme.Color.panelBorder.setStroke()
-        path.lineWidth = 1
-        path.stroke()
-
-        let glyph = "⇅" as NSString
+        // JUST THE GLYPH. No fill, no border, no bezel.
+        //
+        // It was a filled round key sitting on the hairline, and a filled shape on a
+        // boundary interrupts every line that passes under it — the panel borders and
+        // the join itself. The arrows alone say the same thing and leave the window's
+        // ruling intact, which is the whole point of a layout built out of straight
+        // lines meeting exactly.
+        //
+        // It is still a control: the hit area is the full frame, comfortably larger
+        // than the glyph, so it stays something you can aim at in a dark room.
+        let glyph = "\u{21C5}" as NSString
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
             .foregroundColor: isPressed
-                ? Theme.Color.textPrimary
+                ? Theme.Color.focusOn
                 : Theme.Color.textSecondary
         ]
         let size = glyph.size(withAttributes: attributes)

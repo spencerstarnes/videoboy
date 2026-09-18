@@ -487,11 +487,18 @@ final class PanelGridView: NSView {
             return
         }
         key.isHidden = false
-        let seam = (upper.frame.maxY + lower.frame.minY) / 2
+
+        // CENTRED IN THE LOWER PANEL'S HEADER BAND, not on the hairline itself.
+        //
+        // On the seam it straddled the join and cut through the panel borders that
+        // meet there. The header strip immediately below is empty across its middle —
+        // the title sits at the leading edge — so the glyph lands between the two
+        // pictures, beside the lower panel's name, and crosses nothing.
         let size = SeamSwapKey.diameter
+        let headerMiddle = lower.frame.minY + Theme.Metrics.panelHeaderHeight / 2
         key.frame = NSRect(
-            x: upper.frame.midX - size / 2,
-            y: seam - size / 2,
+            x: lower.frame.midX - size / 2,
+            y: headerMiddle - size / 2,
             width: size, height: size)
     }
 
