@@ -215,8 +215,14 @@ final class EmulatorController {
                 }
             }
 
-            guard FSUAEInstallation.isInstalled() else {
-                return finish(FSUAEInstallation.installationHint)
+            // EITHER emulator, not FS-UAE specifically. `FSUAEHost.emulator()` picks
+            // the one that will actually run and prefers Amiberry, so requiring FS-UAE
+            // here meant a machine with only Amiberry installed — the preferred one,
+            // and the one every other part of this subsystem is written against —
+            // could not press SET UP at all. It failed telling the person to install an
+            // emulator the app was never going to launch.
+            guard FSUAEHost.emulator() != nil else {
+                return finish(AmiberryInstallation.installationHint)
             }
             guard let disc = self.findDisc() else {
                 return finish("No Amiga disc image found in ~/Desktop or ~/Downloads. "
