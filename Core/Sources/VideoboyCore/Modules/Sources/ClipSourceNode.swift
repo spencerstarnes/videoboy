@@ -269,6 +269,79 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         self.context = context
     }
 
+    // MARK: - Exchanging clips between channels
+
+    /// Everything that makes a node "the clip it is currently playing".
+    ///
+    /// Deliberately NOT everything the node holds. Corruption amount, wet/dry and the
+    /// other registry-driven values belong to the SLOT, not to the clip: they are
+    /// re-applied from the registry every frame, so carrying them across would either
+    /// be undone a frame later or drag a channel's whole sound over with its picture.
+    /// What travels is the clip and where it had got to.
+    public struct LoadedClip {
+        var decoder: ClipDecoding?
+        var mediaURL: URL?
+        var playheadFrame: Double
+        var timing: PlaybackTiming
+        var loopMode: LoopMode
+        var playbackRange: ClosedRange<Double>?
+        var isPlaying: Bool
+        var isPlayingBackwards: Bool
+        var playbackSpeed: Double
+        var lastImage: ImageBuffer?
+    }
+
+    /// Lifts the loaded clip out of this node, leaving it empty.
+    public func takeLoadedClip() -> LoadedClip {
+        let clip = LoadedClip(
+            decoder: clipDecoder,
+            mediaURL: mediaURL,
+            playheadFrame: playheadFrame,
+            timing: timing,
+            loopMode: loopMode,
+            playbackRange: playbackRange,
+            isPlaying: isPlaying,
+            isPlayingBackwards: isPlayingBackwards,
+            playbackSpeed: playbackSpeed,
+            lastImage: lastImage
+        )
+        clipDecoder = nil
+        mediaURL = nil
+        isPlaying = false
+        return clip
+    }
+
+    /// Puts a clip taken from another node into this one.
+    ///
+    /// The decoder moves as an OBJECT — nothing is re-opened, no file is read, no
+    /// keyframe is sought. That is the whole point: a swap during a show has to be
+    /// free, and reloading two clips mid-performance would cost two reader restarts on
+    /// the frame path, which is exactly the thing audit C2 was about.
+    public func adopt(_ clip: LoadedClip) {
+        clipDecoder = clip.decoder
+        mediaURL = clip.mediaURL
+        playheadFrame = clip.playheadFrame
+        timing = clip.timing
+        loopMode = clip.loopMode
+        playbackRange = clip.playbackRange
+        isPlaying = clip.isPlaying
+        isPlayingBackwards = clip.isPlayingBackwards
+        playbackSpeed = clip.playbackSpeed
+        lastImage = clip.lastImage
+
+        // INVALIDATE THE UPLOADED TEXTURE. `render` returns the cached texture when the
+        // frame index and the damage are unchanged, and after a swap both can match by
+        // coincidence while the picture behind them belongs to the other channel — two
+        // channels sitting on frame 0 is the ordinary case, not a corner one. Without
+        // this the swap looks like it did nothing.
+        texture = nil
+        textureFrameIndex = -1
+        textureCorruption = .inert
+        lastSteppedBoundary = nil
+        lastAppliedScrub = nil
+        isHoldingLastPicture = false
+    }
+
     /// Total frames in the loaded file, or 0.
     public var frameCount: Int { clipDecoder?.frameCount ?? 0 }
 

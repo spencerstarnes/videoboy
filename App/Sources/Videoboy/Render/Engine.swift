@@ -688,6 +688,43 @@ final class Engine {
         sources[letter]?.isPlaying = playing
     }
 
+    /// Exchanges the clips loaded in two channels, keeping each one playing.
+    ///
+    /// Asked for as a show control: the thing you reach for when the clip that should
+    /// be coming up next is in the wrong channel and the fader is already where you
+    /// want it. Swapping the CLIPS rather than moving the fader means whatever is on
+    /// air stays on air and the picture does not jump.
+    ///
+    /// The decoders move as objects, so nothing is re-opened and no seek happens — a
+    /// swap costs nothing on the frame path, which is the only way it is usable during
+    /// a performance.
+    ///
+    /// What does NOT move is everything the registry owns: corruption, wet/dry, and
+    /// every effect in the channel's chain. Those belong to the channel, not the clip.
+    /// A performer who has dialled damage into A expects A to keep sounding like A
+    /// when a different picture arrives in it — the alternative is that one button
+    /// silently rewrites half the mixer.
+    ///
+    /// - Returns: false when either letter names no source, so a caller can tell that
+    ///   from "swapped two empty channels", which is legitimate and does nothing
+    ///   visible.
+    @discardableResult
+    func swapChannels(_ first: String, _ second: String) -> Bool {
+        guard first != second,
+              let firstNode = sources[first],
+              let secondNode = sources[second] else { return false }
+
+        let firstClip = firstNode.takeLoadedClip()
+        let secondClip = secondNode.takeLoadedClip()
+        firstNode.adopt(secondClip)
+        secondNode.adopt(firstClip)
+
+        Log.info(.dv, "swapped channel \(first) and channel \(second): "
+            + "\(first) now has \(firstNode.mediaURL?.lastPathComponent ?? "nothing"), "
+            + "\(second) now has \(secondNode.mediaURL?.lastPathComponent ?? "nothing")")
+        return true
+    }
+
     /// Starts or stops the musical transport.
     func setTransportRunning(_ running: Bool) {
         let now = CACurrentMediaTime()

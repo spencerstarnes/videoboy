@@ -870,6 +870,10 @@ final class FaderPanelBody: NSView {
     /// Called when CUT is pressed: take the other source, now.
     var onCutRequested: (() -> Void)?
 
+    /// Called when the swap key is pressed: exchange the clips in the two channels
+    /// this fader sits between.
+    var onSwapSourcesRequested: (() -> Void)?
+
     /// Called when this fader gains or loses a sweep, so the controller can start or
     /// stop driving it.
     var onSweepChanged: (() -> Void)?
@@ -878,6 +882,7 @@ final class FaderPanelBody: NSView {
     var onButtonAutomationChanged: (() -> Void)?
 
     private weak var cutButton: VBOptionButton?
+    private weak var swapButton: VBOptionButton?
     private weak var fadeButton: VBOptionButton?
     private weak var sweepRateKey: VBStepButton?
     private weak var sweepCancelButton: NSButton?
@@ -930,10 +935,15 @@ final class FaderPanelBody: NSView {
     ///   - leftKeyLabel/rightKeyLabel: what goes ON the bus keys. One or two
     ///     characters: switchers number their buses precisely because a key you hit
     ///     without looking has no room for a word.
+    /// - Parameter swapsSources: true on the two SOURCE pairs (A/B, C/D), which have
+    ///   clips that can change places. False on ONE/TWO, which mixes buses — there is
+    ///   nothing there to exchange, and a key that did nothing would be exactly the
+    ///   enabled-but-unwired state `scripts/selfqa.sh audit` fails the build over.
     init(
         leftLabel: String, rightLabel: String,
         leftColor: NSColor, rightColor: NSColor,
         includesSwap: Bool,
+        swapsSources: Bool = false,
         leftKeyLabel: String? = nil, rightKeyLabel: String? = nil
     ) {
         self.fader = Controls.fader(value: 0.5, fillsFromCentre: true, accent: leftColor)
@@ -986,6 +996,30 @@ final class FaderPanelBody: NSView {
         cutButton.isTall = true
         self.cutButton = cutButton
         buttons.append(cutButton)
+
+        // SWAP THE TWO SOURCES. Asked for as a show control: the clip that should be
+        // next is in the wrong channel, the fader is already where you want it, and
+        // moving the fader instead would put the wrong picture on air on the way past.
+        //
+        // Only on the source pairs. The ONE/TWO fader mixes two BUSES, and a bus has no
+        // clip to hand over — a key here that did nothing on the programme row would be
+        // the enabled-but-unwired state the control audit exists to catch.
+        //
+        // "⇅" rather than the word: it is two arrows exchanging places, which is the
+        // gesture, and it is a plain monochrome glyph rather than an emoji, so it takes
+        // the key's own tint like every other label in this row.
+        if swapsSources {
+            let swapButton = VBOptionButton(title: "⇅")
+            swapButton.target = self
+            swapButton.action = #selector(swapPressed)
+            swapButton.toolTip = "Swap the clips in \(leftLabel.uppercased()) and "
+                + "\(rightLabel.uppercased()). Each keeps playing from where it was; "
+                + "the fader does not move, so what is on air stays on air. "
+                + "Effects and damage belong to the channel and stay put."
+            swapButton.isTall = true
+            self.swapButton = swapButton
+            buttons.append(swapButton)
+        }
 
         // Fade and Beat are instrument keys now, not bezelled push buttons. They sat
         // next to the flat bus keys looking like controls from a settings dialogue,
@@ -1207,6 +1241,11 @@ final class FaderPanelBody: NSView {
     /// Cuts straight to whichever source is not currently up.
     @objc private func cutPressed() {
         onCutRequested?()
+    }
+
+    /// Exchanges the clips in the two channels either side of this fader.
+    @objc private func swapPressed() {
+        onSwapSourcesRequested?()
     }
 
     @objc private func beatCutPressed(_ sender: NSButton) {

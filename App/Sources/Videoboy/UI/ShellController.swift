@@ -729,6 +729,24 @@ final class ShellController {
         ))
     }
 
+    /// Brings a channel's panel back into line after its clip has been exchanged.
+    ///
+    /// Everything here describes the CLIP rather than the channel — which file it is,
+    /// where its in and out points are, whether it steps to the beat — so all of it
+    /// moved to the other panel when the clips did. Left alone, the two panels would go
+    /// on captioning each other's media, which is worse than the swap not working:
+    /// you would reach for the clip the label named and get the other one.
+    private func refreshChannelAfterSwap(_ letter: String) {
+        guard let node = engine.sources[letter],
+              let body = shell.grid.panels.sourceBodies[letter] else { return }
+        let range = node.playbackRange
+        body.setMediaName(
+            node.mediaURL.map { range == nil ? $0.lastPathComponent : "\($0.lastPathComponent) [trimmed]" })
+        body.setMarkedRange(range)
+        body.setTiming(node.timing)
+        body.setScrubPosition(node.normalisedPosition)
+    }
+
     /// Closes everything that owes the outside world an ending, at quit.
     ///
     /// `MPEGTSStreamer.close()` writes the trailer and flushes the encoder, and it was
@@ -1014,10 +1032,13 @@ final class ShellController {
         // Each fader writes straight into the registry, so a MIDI move and a mouse
         // drag land in exactly the same place.
         // A hand on a fader cancels whatever it was doing on its own.
-        let buses: [(body: FaderPanelBody, slot: String)] = [
-            (panels.faderABBody, GraphTopology.subMixOne),
-            (panels.faderCDBody, GraphTopology.subMixTwo),
-            (panels.faderOneTwoBody, GraphTopology.primary)
+        // The channel pair is carried alongside the bus, because the swap key needs to
+        // know WHICH two channels it exchanges. ONE/TWO has none: it mixes buses, and
+        // a bus has no clip to hand over.
+        let buses: [(body: FaderPanelBody, slot: String, channels: (String, String)?)] = [
+            (panels.faderABBody, GraphTopology.subMixOne, ("A", "B")),
+            (panels.faderCDBody, GraphTopology.subMixTwo, ("C", "D")),
+            (panels.faderOneTwoBody, GraphTopology.primary, nil)
         ]
         for bus in buses {
             bus.body.setMappingSlot(bus.slot)
@@ -1055,6 +1076,24 @@ final class ShellController {
                     to: target)
                 bus.body.setPosition(target)
                 Log.info(.app, "cut on \(bus.slot) to \(target)")
+            }
+
+            // SWAP exchanges the two channels' clips and leaves the fader alone.
+            // That is the point of it as a show control: whatever is on air stays on
+            // air, and the clip you wanted next is now under the hand that was already
+            // on the fader. Moving the fader instead would put the wrong picture up on
+            // the way past.
+            if let channels = bus.channels {
+                bus.body.onSwapSourcesRequested = { [weak self] in
+                    guard let self else { return }
+                    guard self.engine.swapChannels(channels.0, channels.1) else { return }
+                    // Both panels have to be retold what they hold: the caption, the
+                    // marked range and the STEP key all describe the CLIP, and the clip
+                    // has just moved to the other panel.
+                    for letter in [channels.0, channels.1] {
+                        self.refreshChannelAfterSwap(letter)
+                    }
+                }
             }
 
             bus.body.onCutTo = { [weak self] target in

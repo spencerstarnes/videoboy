@@ -81,3 +81,85 @@ final class ClipSourceEjectTests: XCTestCase {
         XCTAssertNil(node.mediaURL)
     }
 }
+
+// MARK: - Exchanging clips between two channels (the ⇅ show control)
+
+extension ClipSourceEjectTests {
+
+    private func sampleURLs() throws -> (URL, URL) {
+        let a = RepoPaths.samples.appendingPathComponent("motion.mov")
+        let b = RepoPaths.samples.appendingPathComponent("bars.dv")
+        for url in [a, b] where !FileManager.default.fileExists(atPath: url.path) {
+            throw XCTSkip("\(url.lastPathComponent) is missing — run scripts/make-fixtures.sh")
+        }
+        return (a, b)
+    }
+
+    /// The clips change places, and each keeps playing from where it had got to.
+    func testSwappingTwoChannelsExchangesTheirClips() throws {
+        let (first, second) = try sampleURLs()
+        let left = ClipSourceNode(identifier: "source.a", context: nil)
+        let right = ClipSourceNode(identifier: "source.b", context: nil)
+        XCTAssertTrue(left.load(url: first))
+        XCTAssertTrue(right.load(url: second))
+
+        left.isPlaying = true
+        right.loopMode = .pingPong
+        left.seek(toNormalised: 0.5)
+        let leftPosition = left.playheadFrame
+
+        let takenFromLeft = left.takeLoadedClip()
+        let takenFromRight = right.takeLoadedClip()
+        left.adopt(takenFromRight)
+        right.adopt(takenFromLeft)
+
+        XCTAssertEqual(left.mediaURL?.lastPathComponent, second.lastPathComponent)
+        XCTAssertEqual(right.mediaURL?.lastPathComponent, first.lastPathComponent)
+        XCTAssertEqual(
+            right.playheadFrame, leftPosition,
+            "a clip keeps its playhead when it moves channel — a swap that restarts "
+                + "both clips is not usable mid-show")
+        XCTAssertTrue(right.isPlaying, "the clip that was playing goes on playing")
+        XCTAssertEqual(left.loopMode, .pingPong, "loop mode belongs to the clip")
+    }
+
+    /// The registry-driven settings belong to the CHANNEL and must stay put. A
+    /// performer who has dialled damage into A expects A to keep sounding like A when
+    /// a different picture arrives in it.
+    func testSwappingDoesNotCarryChannelSettingsAcross() throws {
+        let (first, second) = try sampleURLs()
+        let left = ClipSourceNode(identifier: "source.a", context: nil)
+        let right = ClipSourceNode(identifier: "source.b", context: nil)
+        XCTAssertTrue(left.load(url: first))
+        XCTAssertTrue(right.load(url: second))
+
+        left.corruption.amount = 0.8
+        right.corruption.amount = 0.0
+
+        let takenFromLeft = left.takeLoadedClip()
+        left.adopt(right.takeLoadedClip())
+        right.adopt(takenFromLeft)
+
+        XCTAssertEqual(left.corruption.amount, 0.8, accuracy: 1e-9,
+                       "damage is the channel's, not the clip's")
+        XCTAssertEqual(right.corruption.amount, 0.0, accuracy: 1e-9)
+    }
+
+    /// Swapping an empty channel with a loaded one is a move, not a no-op, and must
+    /// not leave the clip in both places.
+    func testSwappingWithAnEmptyChannelMovesTheClip() throws {
+        let (first, _) = try sampleURLs()
+        let loaded = ClipSourceNode(identifier: "source.a", context: nil)
+        let empty = ClipSourceNode(identifier: "source.b", context: nil)
+        XCTAssertTrue(loaded.load(url: first))
+
+        let taken = loaded.takeLoadedClip()
+        loaded.adopt(empty.takeLoadedClip())
+        empty.adopt(taken)
+
+        XCTAssertNil(loaded.mediaURL, "the clip must not still be in the channel it left")
+        XCTAssertEqual(loaded.frameCount, 0)
+        XCTAssertEqual(empty.mediaURL?.lastPathComponent, first.lastPathComponent)
+        XCTAssertGreaterThan(empty.frameCount, 0)
+    }
+}
