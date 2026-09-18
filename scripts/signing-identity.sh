@@ -36,6 +36,11 @@ SECRET_FILE="$SECRET_DIR/signing-keychain.pw"
 note() { printf '\033[1;36m[signing]\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31m[signing]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# `set -e` kills this script at the first non-zero status, and a script that dies
+# without saying where is worse than one that does not run at all — the first version
+# of this exited silently on a SIGPIPE and read exactly like it had done nothing.
+trap 'status=$?; printf "\033[1;31m[signing]\033[0m failed at line $LINENO (exit $status)\n" >&2' ERR
+
 # Already present and usable? Say so and stop.
 if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$IDENTITY"; then
     # The keychain can exist but be locked after a reboot; unlocking is cheap.
@@ -51,11 +56,18 @@ note "no stable signing identity yet — creating one (first run only)"
 mkdir -p "$SECRET_DIR"
 chmod 700 "$SECRET_DIR"
 
-if [ ! -f "$SECRET_FILE" ]; then
-    # 32 bytes of base64. Not guarding anything valuable; just not a fixed string.
-    LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 > "$SECRET_FILE"
+# `-s` not `-f`: an earlier run could leave this EXISTING BUT EMPTY, because the
+# redirect creates the file before the command that fills it runs. Testing only for
+# existence would then reuse an empty password forever.
+if [ ! -s "$SECRET_FILE" ]; then
+    # `openssl rand` rather than `tr </dev/urandom | head -c`. That pipeline is the
+    # reason the first version of this script died without a word: `head` closes the
+    # pipe after 32 bytes, `tr` takes SIGPIPE and exits non-zero, and `pipefail` turns
+    # a perfectly successful password into a fatal error.
+    openssl rand -hex 24 > "$SECRET_FILE" || fail "could not generate a keychain password"
     chmod 600 "$SECRET_FILE"
 fi
+[ -s "$SECRET_FILE" ] || fail "the keychain password file is empty: $SECRET_FILE"
 KEYCHAIN_PASSWORD="$(cat "$SECRET_FILE")"
 
 WORK="$(mktemp -d -t videoboy-signing)"
