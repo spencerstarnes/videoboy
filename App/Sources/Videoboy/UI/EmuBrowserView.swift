@@ -106,6 +106,7 @@ final class EmuBrowserView: NSStackView {
     /// changed — a fader you cannot see the result of is a fader you move twice.
     private func buildScreen() {
         screen.onOpenMachine = { [weak self] in self?.controller.showMachine() }
+        screen.onPictureAppeared = { [weak self] in self?.refresh() }
         addArrangedSubview(screen)
         // A FIXED HEIGHT, not a 4:3 box the width of the panel.
         //
@@ -250,6 +251,9 @@ final class EmuBrowserView: NSStackView {
         if controller.isRunning {
             controller.stop()
         } else if controller.start() {
+            // A cold boot is ahead: Kickstart, then the Workbench startup, then Scala
+            // itself. The panel says so instead of showing the emulator's blank window.
+            screen.resetPictureState()
             // Send the whole panel once the machine is up, so the faders and the
             // machine agree from the start rather than from whichever one is moved
             // first.
@@ -305,7 +309,9 @@ final class EmuBrowserView: NSStackView {
         // explaining itself when it does not.
         screen.host = controller.isRunning ? controller.host : nil
         screen.placeholder = controller.isSetUp
-            ? (controller.isRunning ? "Waiting for the machine's first frame" : "Press START")
+            ? (controller.isRunning
+                ? "Booting the machine — Kickstart, Workbench, then Scala (~20s)"
+                : "Press START")
             : "Press SET UP to build a machine"
         if controller.isRunning { screen.start() } else { screen.stop() }
 

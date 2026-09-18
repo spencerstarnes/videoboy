@@ -21,25 +21,6 @@ import VideoboyCore
 
 enum EmuSelfQA {
 
-    /// How much of the PICTURE is lit, ignoring the outer eighth.
-    ///
-    /// The outer band is where window chrome and letterboxing live, and both are
-    /// present whether or not the machine has drawn anything.
-    static func contentFraction(of frame: ImageBuffer) -> Double {
-        let insetX = frame.width / 8
-        let insetY = frame.height / 8
-        var lit = 0
-        var total = 0
-        for y in stride(from: insetY, to: frame.height - insetY, by: 4) {
-            for x in stride(from: insetX, to: frame.width - insetX, by: 4) {
-                let pixel = frame.pixel(x: x, y: y)
-                total += 1
-                if Int(pixel.r) + Int(pixel.g) + Int(pixel.b) > 60 { lit += 1 }
-            }
-        }
-        return total > 0 ? Double(lit) / Double(total) : 0
-    }
-
     static func run() -> SelfQAVerdict {
         let check = SelfQACheck(name: "phase-4/emu-capture")
 
@@ -83,13 +64,14 @@ enum EmuSelfQA {
         // takes a while to put anything on screen, and the first frames captured are of
         // a window that has not drawn yet. Asserting on those is how a check passes
         // while the machine is still black.
-        let deadline = Date().addingTimeInterval(60)
+        let startedAt = Date()
+        let deadline = startedAt.addingTimeInterval(60)
         var frame: ImageBuffer?
         while Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
             guard let candidate = controller.host.latestFrame() else { continue }
             frame = candidate
-            if Self.contentFraction(of: candidate) > 0.02 { break }
+            if PictureVariety.isPicture(candidate) { break }
         }
 
         guard let frame else {
@@ -103,10 +85,12 @@ enum EmuSelfQA {
             return check.finish()
         }
 
+        let waited = Date().timeIntervalSince(startedAt)
         check.record(AssertionResult(
             name: "frames arrive from the machine",
             passed: true,
-            detail: "\(controller.host.capturedFrameCount) captured"))
+            detail: String(format: "%d captured in %.0fs",
+                           controller.host.capturedFrameCount, waited)))
 
         check.record(AssertionResult(
             name: "the picture is the project's geometry",
@@ -114,15 +98,21 @@ enum EmuSelfQA {
                 && frame.height == StandardDefinition.height,
             detail: "\(frame.width)x\(frame.height)"))
 
-        // Measured over the MIDDLE of the frame only. A window capture used to include
-        // the title bar, and grey chrome made this pass at 76% while the machine itself
-        // was still solid black — a check that passes for the wrong reason is worse
-        // than one that fails.
-        let lit = Self.contentFraction(of: frame)
+        // Variety, NOT brightness. This assertion used to measure how much of the
+        // picture was above a luminance floor, which was written to catch a machine
+        // still showing black and did not catch white. Amiberry's window is blank white
+        // for the first seconds after launch: it scored 96%, passed, and the check
+        // reported a working machine — with a captured PNG of an empty rectangle —
+        // while the operator pressed START and watched nothing happen. See
+        // PictureVariety for the measure and the cases pinned around it.
+        let variety = PictureVariety.score(of: frame)
         check.record(AssertionResult(
             name: "the machine has actually drawn something",
-            passed: lit > 0.02,
-            detail: String(format: "%.1f%% of the picture area is lit", lit * 100)))
+            passed: variety > PictureVariety.readyThreshold,
+            detail: variety > PictureVariety.readyThreshold
+                ? String(format: "%.1f%% of the picture carries detail", variety * 100)
+                : String(format: "the window is still blank — %.2f%% detail after %.0fs",
+                         variety * 100, waited)))
 
         _ = try? check.writeImage(frame, named: "captured.png")
 
@@ -135,6 +125,27 @@ enum EmuSelfQA {
             name: "the machine answers the command link",
             passed: controller.machineStatus != nil,
             detail: controller.machineStatus ?? "no heartbeat in 30 seconds"))
+
+        // The frame above is whatever was on screen the moment pixels first arrived,
+        // which on a cold boot is the AmigaDOS console. Useful, but it is not what the
+        // operator is waiting for. Once the link answers, drive the titler and save the
+        // result: a PNG of Scala with text on it is the only evidence that the whole
+        // path — command out, Amiga, capture back — actually closes.
+        if controller.machineStatus != nil {
+            controller.synchronise()
+            let settled = Date().addingTimeInterval(20)
+            while Date() < settled {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+            }
+            if let titled = controller.host.latestFrame() {
+                let detail = PictureVariety.score(of: titled)
+                check.record(AssertionResult(
+                    name: "the titler is up and taking commands",
+                    passed: PictureVariety.isPicture(titled),
+                    detail: String(format: "%.1f%% detail — see titled.png", detail * 100)))
+                _ = try? check.writeImage(titled, named: "titled.png")
+            }
+        }
 
         return check.finish()
     }

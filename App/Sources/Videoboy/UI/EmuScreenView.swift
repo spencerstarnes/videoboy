@@ -106,6 +106,20 @@ final class EmuScreenView: NSView {
 
     deinit { timer?.invalidate() }
 
+    /// True once the machine has drawn a real picture. Latched: an Amiga screen that
+    /// legitimately goes momentarily flat — a wipe to black, a full-screen colour —
+    /// must not throw the panel back to "booting" mid-performance.
+    private var hasDrawn = false
+
+    /// Called back when the machine first puts a picture up, so the panel can retire
+    /// its "booting" wording without polling this view.
+    var onPictureAppeared: (() -> Void)?
+
+    func resetPictureState() {
+        hasDrawn = false
+        placeholder = "Booting the machine…"
+    }
+
     private func pullFrame() {
         guard let host, let frame = host.latestFrame() else {
             if screenLayer.contents != nil {
@@ -114,6 +128,18 @@ final class EmuScreenView: NSView {
             }
             return
         }
+
+        // An emulator window is blank — and on Amiberry, blank WHITE — for the first
+        // seconds after launch, well before the Amiga has drawn anything. Showing that
+        // is worse than showing nothing: a white rectangle reads as a broken app, which
+        // is exactly how it was reported. Hold the "booting" label until there is a
+        // picture to replace it with.
+        if !hasDrawn {
+            guard PictureVariety.isPicture(frame) else { return }
+            hasDrawn = true
+            onPictureAppeared?()
+        }
+
         guard let image = frame.makeCGImage() else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)

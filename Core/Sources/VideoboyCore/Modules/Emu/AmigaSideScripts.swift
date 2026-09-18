@@ -168,14 +168,41 @@ public enum AmigaSideScripts {
             /* Check the port ONCE per file rather than per line: it cannot appear
              * halfway through a batch, and asking is not free. */
             havePort = show('P', port)
-            if ~havePort then
-                say 'VBLink:' port 'is not open - dropping' fname
 
+            /* HOLD, do not drop. The program takes some twenty seconds to boot and
+             * open its port, and the host sends the whole panel the moment the machine
+             * starts - so the batch that opens the screen and puts up the first line of
+             * text arrives BEFORE there is anything to receive it. Dropping it left the
+             * machine sitting on the boot console for ever, with the port open, the
+             * link alive and nothing on screen, because nothing ever told it to draw.
+             *
+             * Leaving the file in place costs nothing: the poll comes round again, the
+             * files are processed oldest first, and the batch lands the moment the port
+             * appears - in the right order, because a held file blocks the ones behind
+             * it, which is exactly what SCREEN-before-TEXT needs. */
+            if ~havePort then do
+                call close('cmd')
+                call heartbeat('waiting for' port)
+                return 0
+            end
+
+            /* Record what the PROGRAM said, not just that we spoke. Without this the
+             * link reports "ok" whether Scala ran the command or refused every one of
+             * them, which is exactly the state that wasted an afternoon: port open,
+             * every command acknowledged, nothing on screen. rc is the program's
+             * answer; anything non-zero goes into the acknowledgement with the line
+             * that caused it. */
+            failures = ''
+            sent = 0
             do while ~eof('cmd')
                 ln = readln('cmd')
-                if length(strip(ln)) > 0 & havePort then do
+                if length(strip(ln)) > 0 then do
                     address value port
+                    options results
                     ln
+                    sent = sent + 1
+                    if rc ~= 0 then
+                        failures = failures || 'rc=' || rc || ' <- ' || strip(ln) || '0a'x
                 end
             end
             call close('cmd')
@@ -189,11 +216,17 @@ public enum AmigaSideScripts {
             if right(seq, 4) = '.vbc' then
                 seq = left(seq, length(seq) - 4)
 
-            /* Acknowledge even when the port was missing. The acknowledgement means
-             * "the listener is alive and has consumed this", NOT "the program liked
-             * it" - and being able to tell those two apart is the point of having it. */
+            /* The acknowledgement now carries the program's own answer: "ok" with a
+             * count when every line was accepted, "REFUSED" with the return code and
+             * the offending line when it was not. A batch that has not been delivered
+             * yet is not acknowledged at all - it is still sitting in the drawer. */
             if open('ack', ackdir || '/' || seq || '.ack', 'Write') then do
-                call writeln('ack', 'ok')
+                if failures = '' then
+                    call writeln('ack', 'ok' sent 'sent')
+                else do
+                    call writeln('ack', 'REFUSED' sent 'sent')
+                    call writech('ack', failures)
+                end
                 call close('ack')
             end
         return 0
