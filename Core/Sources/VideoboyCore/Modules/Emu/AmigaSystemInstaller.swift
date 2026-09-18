@@ -229,6 +229,96 @@ public struct AmigaSystemInstaller: Sendable {
         }
     }
 
+    /// What the titler can reach on the installed drive, for the panel's choice
+    /// controls.
+    ///
+    /// Read from the DRIVE rather than hard-coded, because these are whatever the
+    /// person's disc happens to carry — and a fader that picks between names that are
+    /// not there is the exact failure the control set exists to prevent.
+    public struct TitlerAssets: Sendable {
+        /// Background pictures, as Amiga paths the machine can open.
+        public let backdrops: [String]
+        /// Page names, from the EVENT lines of the scripts on the drive.
+        public let pageNames: [String]
+        /// Graphics that can be placed and scaled, from the Symbols drawer.
+        public let symbols: [String]
+    }
+
+    /// Every picture in a drawer, as Amiga paths.
+    ///
+    /// Amiga paths because that is what the MACHINE will be asked to open — a host path
+    /// is meaningless on the other side of the wire. Sub-drawers are walked one level,
+    /// because the disc groups its graphics that way.
+    private static func pictures(
+        in directory: URL, volumeName: String, amigaPrefix: String,
+        fileManager: FileManager
+    ) -> [String] {
+        let entries = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
+        var found: [String] = []
+        for entry in entries.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
+            guard !entry.hasSuffix(".info"), !entry.hasPrefix(".") else { continue }
+            var isDirectory: ObjCBool = false
+            let path = directory.appendingPathComponent(entry)
+            guard fileManager.fileExists(atPath: path.path, isDirectory: &isDirectory) else {
+                continue
+            }
+            if isDirectory.boolValue {
+                found += pictures(
+                    in: path, volumeName: volumeName,
+                    amigaPrefix: "\(amigaPrefix)/\(entry)", fileManager: fileManager)
+            } else {
+                found.append("\(volumeName):\(amigaPrefix)/\(entry)")
+            }
+        }
+        return found
+    }
+
+    /// Scans the installed drive for what the panel can offer.
+    public func titlerAssets(
+        volumeName: String, fileManager: FileManager = .default
+    ) -> TitlerAssets {
+        let scala = destination.appendingPathComponent("Scala")
+
+        // Backgrounds. Amiga paths, because that is what the machine will be asked to
+        // open — the host path is meaningless on the other side of the wire.
+        let backdrops = Self.pictures(
+            in: scala.appendingPathComponent("Backgrounds"), volumeName: volumeName,
+            amigaPrefix: "Scala/Backgrounds", fileManager: fileManager)
+
+        // Page names. Scala's pages are named EVENTs, so the names come out of the
+        // scripts themselves; there is nothing else that knows them.
+        var pages: [String] = []
+        let scriptsDirectory = scala.appendingPathComponent("Scripts")
+        let scripts = ((try? fileManager.contentsOfDirectory(
+            atPath: scriptsDirectory.path)) ?? [])
+            .filter { $0.lowercased().hasSuffix(".script") }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+
+        for script in scripts {
+            let url = scriptsDirectory.appendingPathComponent(script)
+            guard let text = try? String(contentsOf: url, encoding: .isoLatin1) else { continue }
+            for line in text.split(separator: "\n") {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard trimmed.uppercased().hasPrefix("EVENT ") else { continue }
+                var name = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                guard !name.isEmpty, name.allSatisfy(\.isASCII) else { continue }
+                if !pages.contains(name) { pages.append(name) }
+            }
+        }
+
+        // Symbols: the graphics the scale control scales. Without at least one, that
+        // control is permanently greyed, which is a fader that can never do anything.
+        let symbolsDirectory = scala.appendingPathComponent("Symbols")
+        let symbols = Self.pictures(
+            in: symbolsDirectory, volumeName: volumeName,
+            amigaPrefix: "Scala/Symbols", fileManager: fileManager)
+
+        Log.info(.titler, "titler assets: \(backdrops.count) backdrops, "
+            + "\(pages.count) pages, \(symbols.count) symbols")
+        return TitlerAssets(backdrops: backdrops, pageNames: pages, symbols: symbols)
+    }
+
     public enum InstallError: LocalizedError {
         case notAnAmigaVolume(String)
 

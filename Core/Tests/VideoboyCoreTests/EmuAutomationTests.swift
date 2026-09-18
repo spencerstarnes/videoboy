@@ -177,3 +177,105 @@ final class EmuAutomationTests: XCTestCase {
         node.applyParameters(from: registry)   // must not trap
     }
 }
+
+/// The four controls added from the disc's own attribute vocabulary.
+final class TitlerExtraControlTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        Log.echoesToStandardError = false
+    }
+
+    func testEdgingUsesScalasOwnWords() {
+        // Counted from Scala's scripts: shadow 197, edge 40, bevel 14, none 3. All four
+        // are words it really accepts; none of them is invented.
+        XCTAssertEqual(ScalaLingo.edgeStyles, ["none", "shadow", "edge", "bevel"])
+
+        let panel = ScalaTitlerPanel()
+        var seen: Set<String> = []
+        for step in 0...40 {
+            _ = panel.set(.decoration, to: Double(step) / 40.0)
+            seen.insert(panel.readout(for: .decoration))
+        }
+        XCTAssertEqual(seen.count, 4, "every edge style must be reachable")
+    }
+
+    func testAlignmentEdgeAndItalicsArriveAsONELine() {
+        // Scala takes them together. Sent as three lines the last one wins and the
+        // other two are silently discarded, which looks like two broken controls.
+        let panel = ScalaTitlerPanel()
+        _ = panel.set(.alignment, to: 1)      // right
+        _ = panel.set(.decoration, to: 1)     // bevel
+        let lines = panel.set(.italic, to: 1).map(\.line)
+
+        guard let attributes = lines.first(where: { $0.hasPrefix("ATTRIBUTES") }) else {
+            return XCTFail("expected an ATTRIBUTES line, got \(lines)")
+        }
+        XCTAssertTrue(attributes.contains("right"))
+        XCTAssertTrue(attributes.contains("bevel"))
+        XCTAssertTrue(attributes.contains("italics"))
+        XCTAssertEqual(
+            lines.filter { $0.hasPrefix("ATTRIBUTES") }.count, 1,
+            "one line, not three")
+    }
+
+    func testNoneMeansNoEdgeWordAtAll() {
+        // "none" is a real choice in Scala's scripts, and it is expressed by the word
+        // being ABSENT rather than by sending "none".
+        let panel = ScalaTitlerPanel()
+        let lines = panel.set(.decoration, to: 0).map(\.line)
+        let attributes = lines.first { $0.hasPrefix("ATTRIBUTES") } ?? ""
+        XCTAssertFalse(attributes.contains("none"))
+        XCTAssertFalse(attributes.contains("shadow"))
+    }
+
+    func testTheBarIsOffAtTheBottomOfItsFader() {
+        // A bar of one pixel is not what "no bar" means, and a fader whose bottom is
+        // "almost off" is one you cannot turn off.
+        let panel = ScalaTitlerPanel()
+        XCTAssertFalse(
+            panel.set(.box, to: 0).contains { $0.verb == "BOX" },
+            "the bottom of the fader must draw no bar at all")
+        XCTAssertTrue(
+            panel.set(.box, to: 0.6).contains { $0.verb == "BOX" },
+            "and anywhere else must")
+        XCTAssertEqual(panel.readout(for: .box), "60%")
+    }
+
+    func testABackdropIsUnavailableUntilTheDiscHasBeenRead() {
+        // The rule this whole control set exists to enforce: a fader that picks between
+        // names that are not there is worse than no fader.
+        let panel = ScalaTitlerPanel()
+        XCTAssertNotNil(panel.unavailableReason(for: .backdrop))
+        XCTAssertTrue(panel.set(.backdrop, to: 0.5).isEmpty)
+
+        panel.backdrops = ["CUCD19:Scala/Backgrounds/Stones005",
+                           "CUCD19:Scala/Backgrounds/Fabrics001"]
+        XCTAssertNil(panel.unavailableReason(for: .backdrop))
+        let lines = panel.set(.backdrop, to: 0).map(\.line)
+        XCTAssertEqual(lines.first, "PICTURE \"CUCD19:Scala/Backgrounds/Stones005\"")
+        XCTAssertEqual(lines.last, "SHOW", "or the background changes on the next draw")
+    }
+
+    func testEveryControlStillReachesSomethingReal() {
+        // The whole set, including the four new ones. A control that produces no
+        // command and gives no reason is the failure mode this file guards.
+        let panel = ScalaTitlerPanel()
+        panel.backdrops = ["CUCD19:Scala/Backgrounds/Stones005"]
+        panel.pageNames = ["Opening", "Titles"]
+        panel.setBrush(file: "CUCD19:Scala/Symbols/Scala/MM300Stamp")
+
+        for control in ScalaTitlerPanel.controls {
+            if let reason = panel.unavailableReason(for: control.function) {
+                XCTFail("\(control.name) is unavailable with everything loaded: \(reason)")
+                continue
+            }
+            let commands = panel.set(control.function, to: 0.7)
+            XCTAssertFalse(commands.isEmpty, "\(control.name) produced nothing")
+            for command in commands {
+                XCTAssertFalse(command.line.isEmpty)
+                XCTAssertFalse(command.explanation.isEmpty)
+            }
+        }
+    }
+}

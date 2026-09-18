@@ -94,6 +94,27 @@ func findDiscImage() -> URL? {
     return nil
 }
 
+/// A panel with its choice lists filled from the installed drive.
+///
+/// The bare panel reports BACKDROP and PAGE as unavailable, which is correct for a
+/// panel that has not been told what is on the drive — and misleading in a report whose
+/// whole job is to say what the controls can reach.
+func makePanel() -> ScalaTitlerPanel {
+    let panel = ScalaTitlerPanel()
+    let systemDrive = workspace.appendingPathComponent("System")
+    let installer = AmigaSystemInstaller(destination: systemDrive)
+    guard installer.isInstalled else { return panel }
+
+    let volume = findDiscImage()
+        .flatMap { try? DiscImage(path: $0).existingMountPoint() }?
+        .lastPathComponent ?? "Workbench"
+    let assets = installer.titlerAssets(volumeName: volume)
+    panel.backdrops = assets.backdrops
+    panel.pageNames = assets.pageNames
+    panel.setBrush(file: assets.symbols.first)
+    return panel
+}
+
 func configURL() -> URL {
     workspace.appendingPathComponent("videoboy-amiga.fs-uae")
 }
@@ -241,7 +262,7 @@ func runPanel(_ rest: [String]) {
         print("controls: " + TitlerFunction.allCases.map(\.rawValue).joined(separator: ", "))
         exit(2)
     }
-    let panel = ScalaTitlerPanel()
+    let panel = makePanel()
     let commands = panel.set(function, to: value)
     guard !commands.isEmpty else {
         print("\(function.rawValue) produced nothing: "
@@ -286,7 +307,10 @@ func runVocabulary() {
     print("type size \(ScalaLingo.fontSizeRange.lowerBound)…"
         + "\(ScalaLingo.fontSizeRange.upperBound)pt")
     print("\ncontrols, and the Scala function each one reaches:")
-    let panel = ScalaTitlerPanel()
+    let panel = makePanel()
+    print("backdrops  \(panel.backdrops.count)")
+    print("pages      \(panel.pageNames.count)")
+    print("")
     for control in ScalaTitlerPanel.controls {
         let sample = panel.set(control.function, to: 0.5).first?.line
             ?? (panel.unavailableReason(for: control.function) ?? "—")

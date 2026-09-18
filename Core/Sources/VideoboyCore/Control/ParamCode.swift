@@ -253,6 +253,14 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case emuHold = "AEA"
     /// Jump to a named page.
     case emuPage = "AFA"
+    /// Text decoration: shadow, edge, bevel.
+    case emuDecoration = "B1A"
+    /// Italics, on or off.
+    case emuItalic = "B2A"
+    /// Which background picture is behind the text.
+    case emuBackdrop = "B3A"
+    /// A filled bar behind the text, for a lower third.
+    case emuBox = "B4A"
 
     /// Human-readable name, used in the UI and in template comments.
     public var displayName: String {
@@ -320,6 +328,10 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .emuColourCycle: "emu colour cycle"
         case .emuHold: "emu hold"
         case .emuPage: "emu page"
+        case .emuDecoration: "emu decoration"
+        case .emuItalic: "emu italic"
+        case .emuBackdrop: "emu backdrop"
+        case .emuBox: "emu box"
         case .safeZone: "safe zones"
         case .overscan: "overscan"
         case .blackFrameInsertion: "black frame insertion"

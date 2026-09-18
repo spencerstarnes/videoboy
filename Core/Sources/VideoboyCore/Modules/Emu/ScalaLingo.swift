@@ -219,8 +219,38 @@ public enum ScalaLingo {
 
     /// Text attributes seen on the disc, as separate groups because alignment is
     /// exclusive and the decorations are not.
+    ///
+    /// Counted from Scala's own scripts: remap 305, shadow 197, center 148, left 51,
+    /// edge 40, antialias 31, bevel 14, jam 7, underline 3, right 3, italics 2. The
+    /// order below is that order, because what its authors reached for most is a better
+    /// guide to what matters than what reads well in a list.
     public static let alignments = ["left", "center", "right"]
     public static let decorations = ["antialias", "remap", "shadow", "underline", "edge"]
+
+    /// The mutually exclusive ways of edging type. `none` is a real choice, not an
+    /// absence: Scala's own scripts use it three times.
+    public static let edgeStyles = ["none", "shadow", "edge", "bevel"]
+
+    /// `BOX <x1> <y1> <x2> <y2>` - a filled rectangle.
+    ///
+    /// The lower-third bar. Scala draws it in the current background colour, so the
+    /// back-colour fader and this one are the same control seen from two sides.
+    public static func box(x1: Int, y1: Int, x2: Int, y2: Int) -> TitlerCommand {
+        TitlerCommand(
+            verb: "BOX",
+            arguments: [x1, y1, x2, y2].map { .number(Double($0)) },
+            explanation: "fill \(x1), \(y1) to \(x2), \(y2)")
+    }
+
+    /// `PICTURE <file>` - the background behind everything.
+    ///
+    /// Switching backgrounds is the loudest single thing this software can do, and it
+    /// is one command, which makes it the obvious one to put on the beat.
+    public static func picture(_ file: String) -> TitlerCommand {
+        TitlerCommand(
+            verb: "PICTURE", arguments: [.text(file)],
+            explanation: "background \((file as NSString).lastPathComponent)")
+    }
 
     /// `CYCLE on|off` — Amiga colour cycling.
     ///

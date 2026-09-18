@@ -37,6 +37,7 @@ final class EmuBrowserView: NSStackView {
     private var startButton: VBOptionButton?
     private var setUpButton: VBOptionButton?
     private var showButton: VBOptionButton?
+    private var stateButton: VBOptionButton?
     private let linkDot = LinkIndicatorView()
 
     /// The machine's screen, IN the browser. The emulator's own window is a separate
@@ -136,7 +137,15 @@ final class EmuBrowserView: NSStackView {
         show.action = #selector(showPressed)
         showButton = show
 
-        let row = Controls.row([setUp, start, show, Controls.spacer()], spacing: 4)
+        // The state key, which changes ROLE rather than multiplying buttons. There is
+        // one useful thing to do about save states at any moment, and which one it is
+        // depends entirely on whether a state exists yet.
+        let state = VBOptionButton(title: "SAVE STATE")
+        state.target = self
+        state.action = #selector(statePressed)
+        stateButton = state
+
+        let row = Controls.row([setUp, start, show, state, Controls.spacer()], spacing: 4)
         addArrangedSubview(row)
         row.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
     }
@@ -247,6 +256,29 @@ final class EmuBrowserView: NSStackView {
         controller.showMachine()
     }
 
+    @objc private func statePressed() {
+        guard controller.saveState.exists else {
+            // Bring the machine forward first: the instructions are about things to do
+            // in ITS window, and an alert in front of the wrong window is an alert
+            // nobody can act on.
+            controller.showMachine()
+
+            let alert = NSAlert()
+            alert.messageText = "Save the machine's state"
+            alert.informativeText = EmulatorController.saveStateInstructions
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            refresh()
+            return
+        }
+
+        // A state exists, so this key is a switch: does the next start restore it?
+        controller.restoresSavedState.toggle()
+        Log.info(.titler, "next start will "
+            + (controller.restoresSavedState ? "restore the saved state" : "boot from cold"))
+        refresh()
+    }
+
     @objc private func textChanged(_ sender: NSTextField) {
         controller.setText(sender.stringValue)
     }
@@ -275,6 +307,17 @@ final class EmuBrowserView: NSStackView {
         startButton?.setTitle(controller.isRunning ? "STOP" : "START")
         startButton?.isEnabled = controller.isSetUp
         showButton?.isEnabled = controller.isRunning
+
+        // The state key's role: make one, or choose whether to use the one there is.
+        let state = controller.saveState
+        stateButton?.setTitle(state.exists ? "LOAD STATE" : "SAVE STATE")
+        stateButton?.isOn = state.exists && controller.restoresSavedState
+        stateButton?.isEnabled = controller.isSetUp
+        stateButton?.toolTip = state.exists
+            ? "\(state.summary). Lit means the next start restores it instead of "
+                + "booting from cold — about a second rather than a minute."
+            : "How to save the machine where you want it to start. One-time, and done "
+                + "in the emulator's own window."
         linkDot.state = controller.linkState
 
         // A control with nothing behind it greys and says why, rather than moving and

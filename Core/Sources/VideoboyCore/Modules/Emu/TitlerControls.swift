@@ -72,6 +72,14 @@ public enum TitlerFunction: String, Equatable, Codable, Sendable, CaseIterable {
     case hold
     /// Jump to a named page: `GOTO "<event>"`
     case page
+    /// How type is edged: `ATTRIBUTES shadow|edge|bevel`
+    case decoration
+    /// Italics: `ATTRIBUTES italics`
+    case italic
+    /// Which background picture is behind everything: `PICTURE <file>`
+    case backdrop
+    /// A filled bar behind the text: `BOX x1 y1 x2 y2`
+    case box
 }
 
 extension TitlerFunction {
@@ -93,6 +101,10 @@ extension TitlerFunction {
         case .colourCycle: .emuColourCycle
         case .hold: .emuHold
         case .page: .emuPage
+        case .decoration: .emuDecoration
+        case .italic: .emuItalic
+        case .backdrop: .emuBackdrop
+        case .box: .emuBox
         }
     }
 
@@ -170,6 +182,14 @@ public struct ScalaPanelState: Equatable, Sendable {
     /// The graphic the scale control scales, when one has been chosen.
     public var brushFile: String? = nil
 
+    /// Index into `ScalaLingo.edgeStyles`.
+    public var edgeIndex: Int = 1          // "shadow", by far the most used on the disc
+    public var isItalic: Bool = false
+    /// Index into the backdrops the panel knows about.
+    public var backdropIndex: Int = 0
+    /// How tall the bar behind the text is, as a fraction of the screen. 0 is off.
+    public var boxHeight: Double = 0
+
     public init() {}
 }
 
@@ -209,6 +229,12 @@ public final class ScalaTitlerPanel {
     /// unavailable rather than guessing — Scala's pages are named `EVENT`s, so there is
     /// no "page 3" to jump to until something says what page 3 is called.
     public var pageNames: [String] = []
+
+    /// Background pictures this machine can reach, by Amiga path.
+    ///
+    /// Filled from the disc at setup. Empty until then, and the control says so rather
+    /// than offering a fader that picks between nothing.
+    public var backdrops: [String] = []
 
     public init() {}
 
@@ -293,6 +319,29 @@ public final class ScalaTitlerPanel {
                 + "are known.",
             function: .page),
         TitlerControl(
+            name: "EDGE",
+            explanation: "How type is edged — shadow, outline or bevel. These are "
+                + "Scala's own attribute words, and shadow is what its authors used "
+                + "nearly two hundred times in their own scripts.",
+            function: .decoration),
+        TitlerControl(
+            name: "ITALIC",
+            explanation: "Slants the type, through Scala's italics attribute.",
+            function: .italic),
+        TitlerControl(
+            name: "BACKDROP",
+            explanation: "Which background picture is behind everything. Switching "
+                + "backgrounds is the loudest single thing this software does and it "
+                + "is ONE command, which makes it the obvious thing to put on the beat. "
+                + "Needs the disc's Backgrounds drawer.",
+            function: .backdrop),
+        TitlerControl(
+            name: "BAR",
+            explanation: "A filled bar behind the text, for a lower third. Scala draws "
+                + "it in the background colour, so this and BACK COL are one control "
+                + "seen from two sides. At the bottom of the fader there is no bar.",
+            function: .box),
+        TitlerControl(
             name: "CYCLE",
             explanation: "Amiga colour cycling — the palette rotates in hardware. The "
                 + "most period-correct effect the machine has, and it costs one word.",
@@ -312,6 +361,10 @@ public final class ScalaTitlerPanel {
         case .brushScale:
             return state.brushFile == nil
                 ? "No graphic chosen — pick one from the disc's Symbols or Backgrounds drawer"
+                : nil
+        case .backdrop:
+            return backdrops.isEmpty
+                ? "No backgrounds found — they come from the disc's Scala/Backgrounds drawer"
                 : nil
         default:
             return nil
@@ -400,9 +453,7 @@ public final class ScalaTitlerPanel {
             state.alignmentIndex =
                 NormalisedSweep.index(clamped, count: ScalaLingo.alignments.count)
             return [
-                ScalaLingo.attributes(
-                    ["antialias", "remap", ScalaLingo.alignments[state.alignmentIndex]]),
-                currentText(), ScalaLingo.show()
+                currentAttributes(), currentText(), ScalaLingo.show()
             ]
 
         case .colourCycle:
@@ -418,6 +469,36 @@ public final class ScalaTitlerPanel {
         case .page:
             state.pageIndex = NormalisedSweep.index(clamped, count: pageNames.count)
             return [ScalaLingo.goTo(event: pageNames[state.pageIndex])]
+
+        case .decoration:
+            state.edgeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.edgeStyles.count)
+            return [currentAttributes(), currentText(), ScalaLingo.show()]
+
+        case .italic:
+            state.isItalic = clamped >= 0.5
+            return [currentAttributes(), currentText(), ScalaLingo.show()]
+
+        case .backdrop:
+            state.backdropIndex = NormalisedSweep.index(clamped, count: backdrops.count)
+            // The picture, then SHOW: Scala builds a page off-screen and reveals it, so
+            // without the SHOW the background changes on the NEXT thing that draws.
+            return [ScalaLingo.picture(backdrops[state.backdropIndex]), ScalaLingo.show()]
+
+        case .box:
+            state.boxHeight = clamped
+            guard clamped > 0.02 else {
+                // The bottom of the fader is "no bar", which is a real setting rather
+                // than a very short one.
+                return [currentText(), ScalaLingo.show()]
+            }
+            let height = Int(Double(screen.height) * clamped * 0.4)
+            let top = max(state.textY - height / 3, 0)
+            return [
+                ScalaLingo.box(
+                    x1: 0, y1: top,
+                    x2: screen.width - 1, y2: min(top + height, screen.height - 1)),
+                currentText(), ScalaLingo.show()
+            ]
         }
     }
 
@@ -456,6 +537,12 @@ public final class ScalaTitlerPanel {
         case .page:
             guard state.pageIndex < pageNames.count else { return "—" }
             return pageNames[state.pageIndex]
+        case .decoration: return ScalaLingo.edgeStyles[state.edgeIndex].uppercased()
+        case .italic: return state.isItalic ? "ON" : "OFF"
+        case .backdrop:
+            guard state.backdropIndex < backdrops.count else { return "—" }
+            return (backdrops[state.backdropIndex] as NSString).lastPathComponent
+        case .box: return state.boxHeight < 0.02 ? "OFF" : "\(Int(state.boxHeight * 100))%"
         }
     }
 
@@ -471,8 +558,7 @@ public final class ScalaTitlerPanel {
             currentPalette(),
             ScalaLingo.colour(fill: 1),
             currentFont(),
-            ScalaLingo.attributes(
-                ["antialias", "remap", ScalaLingo.alignments[state.alignmentIndex]]),
+            currentAttributes(),
             currentWipe(),
             ScalaLingo.textWipe(ScalaLingo.wipes[state.textWipeIndex], speed: state.wipeSpeed),
             currentText()
@@ -497,6 +583,19 @@ public final class ScalaTitlerPanel {
 
     private func currentText() -> TitlerCommand {
         ScalaLingo.text(x: state.textX, y: state.textY, state.text)
+    }
+
+    /// The ATTRIBUTES line the state implies.
+    ///
+    /// One line carrying alignment, edging and italics, because Scala takes them
+    /// together — sending three lines would leave the last one winning and the other
+    /// two silently discarded.
+    private func currentAttributes() -> TitlerCommand {
+        var words = ["antialias", "remap", ScalaLingo.alignments[state.alignmentIndex]]
+        let edge = ScalaLingo.edgeStyles[state.edgeIndex]
+        if edge != "none" { words.append(edge) }
+        if state.isItalic { words.append("italics") }
+        return ScalaLingo.attributes(words)
     }
 
     private func currentPalette() -> TitlerCommand {

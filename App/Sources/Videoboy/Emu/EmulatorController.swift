@@ -39,8 +39,42 @@ final class EmulatorController {
     private var systemDrive: URL { Self.workspace.appendingPathComponent("System") }
     private var statesDirectory: URL { Self.workspace.appendingPathComponent("states") }
 
-    /// The saved state for this machine, if one has been made.
-    var saveState: AmigaSaveState { AmigaSaveState(directory: statesDirectory) }
+    /// Where Amiberry writes its save states.
+    ///
+    /// Its own folder rather than ours: the emulator's GUI writes there and cannot be
+    /// told otherwise from a config we regenerate on every launch, so the honest thing
+    /// is to look where it actually puts them.
+    private var amiberryStatesDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/Amiberry/SaveStates")
+    }
+
+    /// The saved state for this machine, from wherever the emulator put it.
+    var saveState: AmigaSaveState {
+        let ours = AmigaSaveState(directory: statesDirectory)
+        if ours.exists { return ours }
+        return AmigaSaveState(directory: amiberryStatesDirectory)
+    }
+
+    /// What to tell someone who wants to make one.
+    ///
+    /// ── WHY THIS IS A DIALOGUE AND NOT A BUTTON THAT JUST DOES IT ───────────────
+    ///
+    /// Saving a state means telling the EMULATOR to save, and the emulator is a
+    /// separate application. Driving its menu from here would need Accessibility
+    /// permission to send events to another process — a large thing to ask so that one
+    /// button can avoid explaining itself once.
+    ///
+    /// It is also genuinely a one-time manual step, and the thing that makes it work is
+    /// the part only a person can judge: getting the machine to exactly the page you
+    /// want to start from.
+    static let saveStateInstructions = """
+        Get the machine to the point you want to start from every time: software         loaded, the script open, sitting on the page you will title from.
+
+        Then, in the emulator's own window, press F12 to open its menu, choose         Savestates, and save to a slot.
+
+        Videoboy watches for the file. Once it exists, this button becomes LOAD STATE         and every start lands there in about a second instead of booting from cold.
+        """
 
     /// Whether the next start restores the saved state instead of booting cold.
     ///
@@ -68,6 +102,21 @@ final class EmulatorController {
         self.program = program
         self.host = FSUAEHost(workspace: Self.workspace)
         host.onStateChanged = { [weak self] in self?.onStateChanged?() }
+        // A drive built in a previous session still has its assets; rescanning at
+        // launch means the choice controls work without pressing SET UP again.
+        loadTitlerAssets()
+    }
+
+    /// Fills the panel's choice lists from an already-installed drive.
+    private func loadTitlerAssets() {
+        let installer = AmigaSystemInstaller(destination: systemDrive)
+        guard installer.isInstalled else { return }
+        let volume = findDisc().flatMap { try? DiscImage(path: $0).existingMountPoint() }?
+            .lastPathComponent ?? "Workbench"
+        let assets = installer.titlerAssets(volumeName: volume)
+        panel.backdrops = assets.backdrops
+        panel.pageNames = assets.pageNames
+        panel.setBrush(file: assets.symbols.first)
     }
 
     // MARK: - What the panel shows
@@ -145,6 +194,15 @@ final class EmulatorController {
                     }
                     report(result.summary)
                 }
+
+                // What the panel can actually offer, read off the drive we just built.
+                let assets = installer.titlerAssets(volumeName: mounted.lastPathComponent)
+                DispatchQueue.main.async {
+                    self.panel.backdrops = assets.backdrops
+                    self.panel.pageNames = assets.pageNames
+                    self.panel.setBrush(file: assets.symbols.first)
+                }
+                report("\(assets.backdrops.count) backgrounds, \(assets.pageNames.count) pages")
 
                 report("writing the machine configuration")
                 try FileManager.default.createDirectory(
