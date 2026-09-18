@@ -555,6 +555,55 @@ public struct AmigaSaveState: Sendable {
 
     public var exists: Bool { !files.isEmpty }
 
+    // MARK: - Named states
+
+    /// One saved state, as the panel lists it.
+    public struct Saved: Equatable, Sendable, Identifiable {
+        public let url: URL
+        public var id: String { url.path }
+        /// What the panel shows: the file's name without its extension, which IS the
+        /// name because we chose it when the state was written.
+        public var name: String { url.deletingPathExtension().lastPathComponent }
+        public let savedAt: Date?
+    }
+
+    /// Every state, newest first.
+    ///
+    /// Newest first because the one you want is almost always the one you just made —
+    /// the list is a performance tool, not an archive.
+    public func saved() -> [Saved] {
+        files.map { url in
+            Saved(
+                url: url,
+                savedAt: (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate)
+        }
+        .sorted { ($0.savedAt ?? .distantPast) > ($1.savedAt ?? .distantPast) }
+    }
+
+    /// The name the next state for this program should take.
+    ///
+    /// `Scala MM400 - 1`, then `- 2`, and so on. Named after the program because that
+    /// is what the state IS — a machine with that software loaded and sitting where you
+    /// left it — and numbered because a performance makes several and they need telling
+    /// apart at a glance without reading timestamps.
+    ///
+    /// The next number is one past the HIGHEST existing, not the count. Deleting
+    /// "- 2" of three must not make the next save collide with "- 3".
+    public func nextName(for program: String) -> String {
+        let prefix = "\(program) - "
+        let used = saved().compactMap { state -> Int? in
+            guard state.name.hasPrefix(prefix) else { return nil }
+            return Int(state.name.dropFirst(prefix.count))
+        }
+        return "\(prefix)\((used.max() ?? 0) + 1)"
+    }
+
+    /// Where a state with this name lives.
+    public func url(named name: String) -> URL {
+        directory.appendingPathComponent(name).appendingPathExtension("uss")
+    }
+
     /// When the newest state was saved, for the panel's readout.
     public var savedAt: Date? {
         files.compactMap {

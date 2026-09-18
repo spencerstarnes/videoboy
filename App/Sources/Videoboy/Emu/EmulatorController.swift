@@ -351,6 +351,77 @@ final class EmulatorController {
         bridge?.sendImmediately(panel.fullState())
     }
 
+    // MARK: - Save states
+
+    /// Every state on disk, newest first, for the panel's list.
+    var savedStates: [AmigaSaveState.Saved] { saveState.saved() }
+
+    /// Asks the RUNNING emulator to write a state, named after the program.
+    ///
+    /// Over Amiberry's control socket, so nobody has to touch the emulator — which was
+    /// the whole complaint. We choose the path, so states land in Videoboy's own app
+    /// data beside everything else it saves rather than wherever the emulator's
+    /// preferences happen to point.
+    ///
+    /// - Returns: the state that was written, or nil with `error` populated. Reported
+    ///   rather than thrown because every caller is a button, and a button needs a
+    ///   sentence to show rather than an exception to catch.
+    @discardableResult
+    func captureState() -> (state: AmigaSaveState.Saved?, error: String?) {
+        guard isRunning else {
+            return (nil, "The machine is not running. Press START first.")
+        }
+        guard let client = AmiberryIPC.discover() else {
+            return (nil, "This emulator has no control socket, so the app cannot ask it "
+                + "to save. Amiberry 8 or newer has one.")
+        }
+
+        // The existing `saveState` property already points at the states directory;
+        // making a second one here would be two sources of truth for one folder.
+        let store = saveState
+        do {
+            try FileManager.default.createDirectory(
+                at: statesDirectory, withIntermediateDirectories: true)
+            let name = store.nextName(for: program.name)
+            let file = store.url(named: name)
+            let configuration = Self.workspace.appendingPathComponent("videoboy-amiga.uae")
+            try client.saveState(to: file, configuration: configuration)
+
+            // Confirmed on disk rather than trusted. The socket answering OK means the
+            // command was accepted; the file appearing means it was done.
+            guard FileManager.default.fileExists(atPath: file.path) else {
+                return (nil, "The emulator accepted the command but wrote no file.")
+            }
+            Log.info(.titler, "saved state '\(name)'")
+            onStateChanged?()
+            let saved = store.saved().first { $0.url == file }
+            return (saved, nil)
+        } catch {
+            Log.error(.titler, "could not save a state: \(error.localizedDescription)")
+            return (nil, error.localizedDescription)
+        }
+    }
+
+    /// Restores one, through the same socket.
+    @discardableResult
+    func loadState(_ state: AmigaSaveState.Saved) -> String? {
+        guard isRunning else { return "The machine is not running. Press START first." }
+        guard let client = AmiberryIPC.discover() else {
+            return "This emulator has no control socket."
+        }
+        do {
+            try client.loadState(state.url)
+            Log.info(.titler, "restored state '\(state.name)'")
+            // The machine is now somewhere else entirely, so the panel and the machine
+            // no longer agree about anything. Resend everything rather than leaving the
+            // faders describing a page that is gone.
+            synchronise()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     // MARK: - Driving it
 
     /// Moves one control and sends whatever that produces.

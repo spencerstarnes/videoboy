@@ -38,6 +38,10 @@ final class EmuBrowserView: NSStackView {
     private var setUpButton: VBOptionButton?
     private var showButton: VBOptionButton?
     private var stateButton: VBOptionButton?
+    /// The list of saved states, under the controls. Rebuilt whenever one is written.
+    private let statesList = NSStackView()
+    /// Which state each row stands for.
+    private var stateRows: [ObjectIdentifier: AmigaSaveState.Saved] = [:]
     private let linkDot = LinkIndicatorView()
 
     /// The machine's screen, IN the browser. The emulator's own window is a separate
@@ -225,6 +229,18 @@ final class EmuBrowserView: NSStackView {
         let takeRow = Controls.row([Controls.spacer(), take], spacing: 4)
         addArrangedSubview(takeRow)
         takeRow.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+
+        // The saved states, below the controls that make them — asked for as "a box
+        // below that holds that state save". A visible list rather than a menu: there
+        // are only ever a handful, and one you can see is one you can reach for without
+        // opening anything.
+        statesList.orientation = .vertical
+        statesList.alignment = .leading
+        statesList.spacing = 2
+        statesList.translatesAutoresizingMaskIntoConstraints = false
+        addArrangedSubview(statesList)
+        statesList.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        refreshStates()
     }
 
     /// Draws the control set, grouped, with the widget each control asks for.
@@ -411,26 +427,65 @@ final class EmuBrowserView: NSStackView {
         controller.showMachine()
     }
 
+    /// Saves the machine's state, from the app, over the emulator's control socket.
+    ///
+    /// This used to bring the emulator forward and show an alert explaining which keys
+    /// to press INSIDE it. That is the thing this panel exists to avoid — the operator
+    /// should drive the machine from here and never need to know the emulator is a
+    /// separate program with its own hotkeys.
     @objc private func statePressed() {
-        guard controller.saveState.exists else {
-            // Bring the machine forward first: the instructions are about things to do
-            // in ITS window, and an alert in front of the wrong window is an alert
-            // nobody can act on.
-            controller.showMachine()
-
+        let result = controller.captureState()
+        if let error = result.error {
             let alert = NSAlert()
-            alert.messageText = "Save the machine's state"
-            alert.informativeText = EmulatorController.saveStateInstructions
+            alert.messageText = "Could not save the state"
+            alert.informativeText = error
             alert.addButton(withTitle: "OK")
             alert.runModal()
-            refresh()
+            return
+        }
+        // The list is rebuilt rather than appended to, so what is on screen is what is
+        // on disk — a list that drifts from the folder is worse than no list.
+        refreshStates()
+        refresh()
+    }
+
+    /// Rebuilds the list of saved states.
+    ///
+    /// Named after the program with a running number, newest first, because the one you
+    /// want mid-set is almost always the one you just made.
+    private func refreshStates() {
+        statesList.arrangedSubviews.forEach {
+            statesList.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+
+        let states = controller.savedStates
+        guard !states.isEmpty else {
+            let empty = Controls.label("No saved states yet", color: Theme.Color.textTertiary)
+            statesList.addArrangedSubview(empty)
             return
         }
 
-        // A state exists, so this key is a switch: does the next start restore it?
-        controller.restoresSavedState.toggle()
-        Log.info(.titler, "next start will "
-            + (controller.restoresSavedState ? "restore the saved state" : "boot from cold"))
+        for state in states {
+            let key = VBOptionButton(title: state.name)
+            key.target = self
+            key.action = #selector(stateRowPressed(_:))
+            key.toolTip = "Put the machine back exactly here"
+            stateRows[ObjectIdentifier(key)] = state
+            statesList.addArrangedSubview(key)
+            key.widthAnchor.constraint(equalTo: statesList.widthAnchor).isActive = true
+        }
+    }
+
+    @objc private func stateRowPressed(_ sender: VBOptionButton) {
+        guard let state = stateRows[ObjectIdentifier(sender)] else { return }
+        if let error = controller.loadState(state) {
+            let alert = NSAlert()
+            alert.messageText = "Could not restore \(state.name)"
+            alert.informativeText = error
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
         refresh()
     }
 
