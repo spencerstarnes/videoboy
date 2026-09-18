@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-18T06:10:01Z
+when:     2026-09-18T18:41:59Z
 core:     0.3.0
 
 notes:
@@ -12,15 +12,15 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
   adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 11.06 ms, p95 12.01 ms, worst 12.51 ms, budget 33.37 ms
+  frame time with everything on: mean 11.11 ms, p95 11.89 ms, worst 12.23 ms, budget 33.37 ms
 
 assertions (92/92 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
   PASS  wide is not blank — luminance variance 835.3
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 798.1
+  PASS  compact is not blank — luminance variance 802.1
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 977.0
+  PASS  narrow is not blank — luminance variance 972.6
   PASS  collapsed-left is not blank — luminance variance 732.6
   PASS  collapsed-both-edges is not blank — luminance variance 630.6
   PASS  collapsed-sources-only is not blank — luminance variance 855.8
@@ -79,12 +79,12 @@ assertions (92/92 passed):
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
   PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 12.51 ms against a 33.37 ms budget (mean 11.06, p95 12.01)
+  PASS  no frame misses the budget with every effect running — worst frame 12.23 ms against a 33.37 ms budget (mean 11.11, p95 11.89)
   PASS  frame time is even, not just fast on average — worst is 1.1x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there
   PASS  a crossfader accepts sweep marks — 0.19...0.81
-  PASS  an armed crossfader is actually driven, not just marked — 12 distinct values written
+  PASS  an armed crossfader is actually driven, not just marked — 11 distinct values written
   PASS  CUT and FADE carry a mapping address — 2 learnable action keys on the A/B fader: cut, fade
   PASS  shift-clicking CUT arms it for learning rather than cutting — mix.one · 68A
   PASS  library search actually filters — 10 items, 0 after searching for something absent

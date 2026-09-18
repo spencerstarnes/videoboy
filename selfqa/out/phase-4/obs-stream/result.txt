@@ -1,6 +1,6 @@
 check:    phase-4/obs-stream
 verdict:  PASS
-when:     2026-09-18T06:10:03Z
+when:     2026-09-18T18:42:01Z
 core:     0.3.0
 
 notes:
@@ -10,4 +10,4 @@ assertions (4/4 passed):
   PASS  the OBS destination is offered as available once it has a target — a destination with no target stays greyed
   PASS  a receiver gets the programme — 602 datagrams, 768920 bytes
   PASS  what arrives is a transport stream — first byte 0x47
-  PASS  streaming keeps inside the frame budget — 5.2 ms per frame against a 33.4 ms budget
+  PASS  streaming keeps inside the frame budget — 5.3 ms per frame against a 33.4 ms budget
