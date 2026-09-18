@@ -1926,6 +1926,14 @@ enum UISelfQA {
         // to show whether it has controls on it.
         do {
             let emuTab = EmuBrowserView(controller: EmulatorController())
+            // Hosted on the panel fill it actually sits on. Rendered bare, the labels
+            // are near-white text on the bitmap's white ground and the PNG shows a
+            // column of faders with nothing written beside them — which looks exactly
+            // like a second bug and is only the render missing its background.
+            let emuHost = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 900))
+            emuHost.wantsLayer = true
+            emuHost.layer?.backgroundColor = Theme.Color.panelFillOpaque.cgColor
+            emuHost.addSubview(emuTab)
             emuTab.frame = NSRect(x: 0, y: 0, width: 300, height: 900)
             // Without this the labels and readouts are empty strings: they are filled
             // from the controller, not at construction. Rendering before it produces a
@@ -1958,7 +1966,7 @@ enum UISelfQA {
                 passed: !fields.isEmpty,
                 detail: fields.isEmpty ? "no editable field" : "\(fields.count) editable"))
 
-            if let image = render(view: emuTab) {
+            if let image = render(view: emuHost) {
                 _ = try? check.writeImage(image, named: "emu-tab.png")
             }
         }
