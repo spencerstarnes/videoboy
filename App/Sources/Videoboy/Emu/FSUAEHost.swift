@@ -146,6 +146,22 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
         process.arguments = emulator.configName.hasSuffix(".uae")
             ? ["-f", config.path]
             : [config.path]
+        // THE MOUSE, AT THE LAYER BELOW THE EMULATOR'S OWN SETTING.
+        //
+        // Amiberry 8 is built on SDL3, and SDL captures the mouse itself the moment a
+        // button goes down inside the window — before any emulator preference is
+        // consulted. `mouse_untrap=both` in the config governs Amiberry; this governs
+        // SDL underneath it, and without both the pointer is still swallowed on the
+        // first click. SDL reads its hints from the environment, which is why this is
+        // set here rather than in the config file.
+        //
+        // The parent environment is carried through rather than replaced: dropping it
+        // would take PATH and the display environment with it.
+        var environment = ProcessInfo.processInfo.environment
+        environment["SDL_MOUSE_AUTO_CAPTURE"] = "0"
+        environment["SDL_MOUSE_FOCUS_CLICKTHROUGH"] = "1"
+        process.environment = environment
+
         // FS-UAE is chatty and none of it is ours. Its own log file keeps whatever
         // matters; this keeps it out of the app's.
         process.standardOutput = FileHandle.nullDevice

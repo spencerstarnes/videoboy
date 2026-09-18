@@ -416,10 +416,55 @@ public struct AmiberryConfiguration: Sendable {
             lines.append("dongle=\(dongle)")
         }
 
+        // ── The window ──
+        //
+        // `gfx_width`/`gfx_height` size the emulated DISPLAY. They do not size the
+        // host window, which is why setting only those left Amiberry opening at its
+        // own default size — a window that covers the desktop and hides the app that
+        // launched it. `gfx_width_windowed`/`gfx_height_windowed` are the windowed
+        // geometry, and they are what keep the machine small enough to sit behind
+        // Videoboy while the capture copies it into the EMU panel.
+        //
+        // Both fullscreen switches are written, not just the Amiga one. Picasso/RTG
+        // is a SEPARATE display path with its own flag, so a program that switches to
+        // an RTG mode could still go fullscreen with `gfx_fullscreen_amiga=false`
+        // set. Scala drives its own screen, and one unset flag is all it takes for
+        // the machine to take the display.
+        //
+        // Every key here was verified against the strings in the shipped Amiberry
+        // binary rather than recalled — a misspelled key is silently ignored, which
+        // is exactly how the window size came to be unset in the first place.
         lines += [
             "gfx_width=\(windowSize.width)",
             "gfx_height=\(windowSize.height)",
+            "gfx_width_windowed=\(windowSize.width)",
+            "gfx_height_windowed=\(windowSize.height)",
             "gfx_fullscreen_amiga=false",
+            "gfx_fullscreen_picasso=false",
+            "gfx_correct_aspect=true",
+            // ── The mouse ──
+            //
+            // `magic_mouse=true` stops the emulator GRABBING the pointer. Without it
+            // Amiberry captures the mouse the moment the window is focused and the
+            // pointer cannot leave, so the machine has to be quit to get the desktop
+            // back. `magic_mousecursor=true` keeps the host cursor drawn, so the
+            // pointer stays VISIBLE over the window instead of disappearing into it.
+            // Together they are what makes the machine something you can click into
+            // and back out of, which is the handoff a performance needs.
+            // `mouse_untrap` is the one that actually releases a grab. `magic_mouse`
+            // alone does not: it governs how the pointer is tracked, not whether the
+            // pointer may LEAVE. Without `mouse_untrap` the emulator keeps the mouse
+            // once it has focus and the only way out is to quit it. `both` enables
+            // both escape routes Amiberry offers — the middle button and magic-mouse
+            // — because a performer reaching for the desktop should not have to
+            // remember which one this build was compiled with. Verified values: the
+            // binary carries `none` and `both`.
+            "mouse_untrap=both",
+            "magic_mouse=true",
+            "magic_mousecursor=true",
+            // The LED bar is burned into the captured picture, and this picture is a
+            // video source. Off.
+            "show_leds=false",
             "use_gui=no"
         ]
 
