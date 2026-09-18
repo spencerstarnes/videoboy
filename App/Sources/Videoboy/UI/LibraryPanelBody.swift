@@ -41,12 +41,50 @@ struct LibraryItem {
     /// distinguishes one from another.
     var bin: String?
 
-    init(name: String, badge: String, isAvailable: Bool, url: URL? = nil, bin: String? = nil) {
+    /// How long the clip runs, in seconds. Nil when it is not a clip, or not yet read.
+    ///
+    /// Nil rather than zero: a generator has no duration, and a zero would sort it in
+    /// among the shortest clips and read as a clip of no length.
+    var duration: Double?
+
+    /// What kind of thing this is, spelled out for the list view.
+    ///
+    /// The badge is three letters because it goes on a thumbnail; a list column has
+    /// room for the word, and "QuickTime movie" is more use than "MOV" to someone
+    /// scanning for the odd one out.
+    var kind: String {
+        switch badge.uppercased() {
+        case "DV": "DV video"
+        case "MOV": "QuickTime movie"
+        case "MPG", "M2V": "MPEG video"
+        case "GEN": "Generator"
+        case "SVG": "Vector"
+        case "SCR": "Screen capture"
+        case "IP": "Network feed"
+        case "CAP": "Capture device"
+        case "EMU": "Emulator"
+        case "IMG": "Still image"
+        default: badge
+        }
+    }
+
+    /// The duration as a list shows it: m:ss, or an em dash when there is none.
+    var durationText: String {
+        guard let duration, duration > 0 else { return "—" }
+        let total = Int(duration.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    init(
+        name: String, badge: String, isAvailable: Bool,
+        url: URL? = nil, bin: String? = nil, duration: Double? = nil
+    ) {
         self.name = name
         self.badge = badge
         self.isAvailable = isAvailable
         self.url = url
         self.bin = bin
+        self.duration = duration
     }
 }
 
@@ -633,7 +671,40 @@ final class LibraryPanelBody: NSView {
     /// Grids by tab, so switching a tab swaps content rather than rebuilding it.
     private var gridsByTab: [AssetTab: NSView] = [:]
     /// What the Sources tab shows. Held because a drop adds to it.
-    private var sourceItems: [LibraryItem] = []
+    /// The ONE library. All three panels share it, so a folder dropped on the left
+    /// appears on the right and a bin made in one exists in the other. The panels
+    /// differ in WHERE a double-click sends the clip, and in nothing else.
+    private let model: LibraryModel
+
+    /// The library's contents, read through the model.
+    private var sourceItems: [LibraryItem] {
+        get { model.items }
+        set { model.setItems(newValue) }
+    }
+
+    /// How THIS browser is drawing the shared library.
+    ///
+    /// Per panel, not per library. The two sub-mix browsers are used at the same time
+    /// to find two different clips for two different tracks, so one being a list while
+    /// the other is a grid is the normal case, not a bug.
+    private var viewStyle: LibraryViewStyle = .icon
+    private var sortField: LibrarySortField = .name
+    private var sortAscending = true
+
+    /// The view-style keys for this panel.
+    private var viewStyleToggle: VBSlideToggle?
+
+    /// The list view, built lazily — most sessions never leave the grid.
+    private var listView: LibraryListView?
+    /// The bin sidebar shown in column view.
+    private var binSidebar: NSStackView?
+    /// Shifts the grid right to make room for the sidebar.
+    private var gridLeadingInset: NSLayoutConstraint?
+    /// How wide the sidebar is. Narrow: it holds short names, and the grid is the
+    /// thing you are actually looking at.
+    private static let binSidebarWidth: CGFloat = 92
+    /// Which bin the column view is showing. Nil means everything.
+    private var focusedBin: String?
     /// The scrolling document, so a rebuilt grid goes back in the same place.
     private var documentView: LibraryDropView?
     private var emptyLabelsByTab: [AssetTab: NSTextField] = [:]
@@ -724,9 +795,10 @@ final class LibraryPanelBody: NSView {
     ///     as soon as it has one — see `columns`.
     ///   - showsTabs: true for the asset browser, which is tabbed by asset kind.
     init(
-        items: [LibraryItem], columns: Int, showsTabs: Bool,
+        model: LibraryModel, columns: Int, showsTabs: Bool,
         playlistChannels: [String] = [], emuView: NSView? = nil
     ) {
+        self.model = model
         self.playlistChannels = playlistChannels
         self.columns = columns
         self.emuView = emuView
@@ -808,8 +880,37 @@ final class LibraryPanelBody: NSView {
         self.autoPlayKey = autoPlayKey
         bottomRow.append(autoPlayKey)
 
+        // ── The view-style keys ─────────────────────────────────────────────────
+        //
+        // Icon, list, column — the three Finder gives you, for the three questions
+        // people actually ask of a library. Thumbnails for "which one looks right",
+        // a sortable list for "which is the long one", columns for "what is in that
+        // bin".
+        //
+        // The style lives in the MODEL, so all three panels change together. Two
+        // libraries showing the same clips in two different layouts would be two
+        // things to keep track of, and these panels are already distinguished by the
+        // only thing that differs — where their clips go.
+        let styleImages: [NSImage] = LibraryViewStyle.allCases.compactMap {
+            guard let image = NSImage(
+                systemSymbolName: $0.symbolName, accessibilityDescription: $0.explanation)
+            else { return nil }
+            image.isTemplate = true
+            return image
+        }
+        let styleToggle = VBSlideToggle(
+            images: styleImages,
+            tooltips: LibraryViewStyle.allCases.map(\.explanation),
+            selected: LibraryViewStyle.allCases.firstIndex(of: viewStyle) ?? 0)
+        styleToggle.target = self
+        styleToggle.action = #selector(viewStyleChanged(_:))
+        styleToggle.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        styleToggle.setContentCompressionResistancePriority(.required, for: .horizontal)
+        viewStyleToggle = styleToggle
+        bottomRow.append(styleToggle)
+
         let search = Controls.searchField(
-            placeholder: showsTabs ? "Search library…" : "Search…", enabled: showsTabs)
+            placeholder: showsTabs ? "Search library…" : "Search…", enabled: true)
         search.target = self
         search.action = #selector(searchChanged(_:))
         // The search field is the one thing in this row that can usefully give way:
@@ -851,7 +952,14 @@ final class LibraryPanelBody: NSView {
         document.translatesAutoresizingMaskIntoConstraints = false
         document.onFilesDropped = { [weak self] urls in self?.onFilesDropped?(urls) }
         documentView = document
-        sourceItems = items
+        let items = model.items
+
+        // Every panel rebuilds when the library changes, so the three views of it
+        // cannot drift apart.
+        model.observe { [weak self] in
+            self?.scheduleGridRebuild()
+            self?.listView?.reload()
+        }
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -983,7 +1091,7 @@ final class LibraryPanelBody: NSView {
         // visible and searchable at once, which is what a grid is for.
         let ungrouped = items.filter { $0.bin == nil }
         let binNames = Array(Set(items.compactMap(\.bin)).union(
-            searchText.isEmpty ? emptyBins : [])).sorted()
+            searchText.isEmpty ? Set(model.binNames) : [])).sorted()
 
         if !ungrouped.isEmpty || binNames.isEmpty {
             addRows(of: ungrouped, to: itemsStack)
@@ -1115,7 +1223,123 @@ final class LibraryPanelBody: NSView {
 
     private var rebuildScheduled = false
 
+    /// Shows whichever view the shared style calls for.
+    ///
+    /// The grid stays built either way — switching styles is something people do
+    /// several times a minute while looking for something, and rebuilding a grid of
+    /// thumbnails each time would make the toggle feel expensive.
+    private func applyViewStyle() {
+        let style = viewStyle
+
+        // COLUMN: a sidebar of bins beside the grid, and the grid shows the chosen one.
+        //
+        // Finder's column view is miller columns — a chain of them, for a tree. Bins
+        // here are ONE level deep and always will be (an item carries a bin name, not a
+        // path), so a chain of columns would be a chain of length two with the second
+        // always empty. Two panes is the same idea at the depth this library actually
+        // has.
+        let wantsColumns = style == .column
+        binSidebar?.isHidden = !wantsColumns
+        if wantsColumns, binSidebar == nil { buildBinSidebar() }
+        binSidebar?.isHidden = !wantsColumns
+        if wantsColumns { refreshBinSidebar() }
+        gridLeadingInset?.constant = wantsColumns ? Self.binSidebarWidth + 6 : 0
+
+        let wantsList = style == .list
+        if wantsList, listView == nil, let document = documentView {
+            let list = LibraryListView(model: model)
+            list.onSortChanged = { [weak self] field, ascending in
+                self?.sortField = field
+                self?.sortAscending = ascending
+            }
+            list.onOpen = { [weak self] item in
+                guard let self else { return }
+                let channel = self.destination.takeNextChannel()
+                self.onItemOpened?(item, channel, nil)
+                self.updateDestinationTitles()
+            }
+            document.addSubview(list)
+            listView = list
+            NSLayoutConstraint.activate([
+                list.topAnchor.constraint(equalTo: document.topAnchor),
+                list.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+                list.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+                // Tall enough to be worth scrolling, and the document grows with it.
+                list.heightAnchor.constraint(greaterThanOrEqualToConstant: 160)
+            ])
+        }
+        listView?.isHidden = !wantsList
+        listView?.searchText = searchText
+        if wantsList { listView?.reload() }
+
+        // The grids hide wholesale while the list is up — including the empty label,
+        // which would otherwise sit behind the table saying the library is empty.
+        for (tab, grid) in gridsByTab {
+            grid.isHidden = wantsList || tab != currentTab
+        }
+        for (tab, label) in emptyLabelsByTab where wantsList || tab != currentTab {
+            label.isHidden = true
+        }
+
+        if wantsList, let list = listView, let document = documentView {
+            documentHeight?.isActive = false
+            documentHeight = document.heightAnchor.constraint(
+                greaterThanOrEqualTo: list.heightAnchor)
+            documentHeight?.isActive = true
+        }
+        needsLayout = true
+    }
+
+    /// Builds the bin sidebar once.
+    private func buildBinSidebar() {
+        guard let document = documentView else { return }
+        let sidebar = NSStackView()
+        sidebar.orientation = .vertical
+        sidebar.alignment = .leading
+        sidebar.spacing = 1
+        sidebar.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(sidebar)
+        binSidebar = sidebar
+        NSLayoutConstraint.activate([
+            sidebar.topAnchor.constraint(equalTo: document.topAnchor),
+            sidebar.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            sidebar.widthAnchor.constraint(equalToConstant: Self.binSidebarWidth)
+        ])
+    }
+
+    /// Fills the sidebar with the bins, plus an "All" row.
+    private func refreshBinSidebar() {
+        guard let sidebar = binSidebar else { return }
+        for view in sidebar.arrangedSubviews {
+            sidebar.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+
+        // "All" first and always, because a library with no bins would otherwise show
+        // an empty sidebar and an empty grid, which looks broken rather than empty.
+        let rows: [String?] = [nil] + model.binNames.map { Optional($0) }
+        for bin in rows {
+            let key = VBOptionButton(title: bin ?? "ALL")
+            key.isOn = bin == focusedBin
+            key.toolTip = bin.map { "Show only \($0)" } ?? "Show every clip"
+            key.target = self
+            key.action = #selector(binRowPressed(_:))
+            key.identifier = NSUserInterfaceItemIdentifier(bin ?? "")
+            sidebar.addArrangedSubview(key)
+            key.widthAnchor.constraint(equalTo: sidebar.widthAnchor).isActive = true
+        }
+    }
+
+    @objc private func binRowPressed(_ sender: VBOptionButton) {
+        let name = sender.identifier?.rawValue ?? ""
+        focusedBin = name.isEmpty ? nil : name
+        refreshBinSidebar()
+        rebuildGrid(for: currentTab)
+    }
+
     private func rebuildSourcesGrid() {
+        applyViewStyle()
+        guard viewStyle != .list else { return }
         rebuildGrid(for: .sources)
         // The tab on screen too, when it is a different one — a resize changes the
         // column count for EVERY grid, and rebuilding only Sources left whichever tab
@@ -1132,15 +1356,27 @@ final class LibraryPanelBody: NSView {
 
         gridsByTab[tab]?.removeFromSuperview()
 
-        let items = tab == .sources ? matching(sourceItems) : contents(of: tab, sources: sourceItems)
+        var items = tab == .sources ? matching() : contents(of: tab, sources: sourceItems)
+        // In column view the grid shows one bin at a time — that IS the column view.
+        if viewStyle == .column, let focusedBin {
+            items = items.filter { $0.bin == focusedBin }
+        }
         let grid = makeGrid(for: items)
         grid.translatesAutoresizingMaskIntoConstraints = false
         grid.isHidden = currentTab != tab
         document.addSubview(grid)
         gridsByTab[tab] = grid
+
+        // Held, so switching to column view slides the grid right for the sidebar
+        // rather than rebuilding it at a different position.
+        let leading = grid.leadingAnchor.constraint(
+            equalTo: document.leadingAnchor,
+            constant: viewStyle == .column ? Self.binSidebarWidth + 6 : 0)
+        if currentTab == tab { gridLeadingInset = leading }
+
         NSLayoutConstraint.activate([
             grid.topAnchor.constraint(equalTo: document.topAnchor),
-            grid.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            leading,
             grid.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor)
         ])
         emptyLabelsByTab[tab]?.isHidden = !items.isEmpty || currentTab != tab
@@ -1179,8 +1415,7 @@ final class LibraryPanelBody: NSView {
     /// editing application settled on "make it, select the name, let them type" long
     /// ago, and this is that.
     @objc private func newBinPressed() {
-        let name = nextBinName()
-        emptyBins.insert(name)
+        let name = model.addBin()
         rebuildSourcesGrid()
         Log.info(.app, "created bin '\(name)'")
 
@@ -1190,30 +1425,16 @@ final class LibraryPanelBody: NSView {
         }
     }
 
-    /// An unused default name: BIN, then BIN 2, BIN 3...
-    private func nextBinName() -> String {
-        let existing = Set(binNames.map { $0.uppercased() })
-        guard existing.contains("BIN") else { return "BIN" }
-        var number = 2
-        while existing.contains("BIN \(number)") { number += 1 }
-        return "BIN \(number)"
-    }
-
     /// Renames a bin, and every clip that was in it.
     ///
     /// The items carry the bin NAME rather than an identifier, so a rename has to move
     /// them too — otherwise the old bin keeps its contents and the renamed one is
     /// empty, which looks exactly like the rename having failed.
     private func renameBin(from oldName: String, to newName: String) {
-        guard oldName != newName else { return }
         // Merging into an existing bin is allowed: dropping a folder in already merges
         // by name, so renaming one to match another should do the same rather than
         // refuse.
-        for index in sourceItems.indices where sourceItems[index].bin == oldName {
-            sourceItems[index].bin = newName
-        }
-        if emptyBins.remove(oldName) != nil { emptyBins.insert(newName) }
-        rebuildSourcesGrid()
+        model.renameBin(from: oldName, to: newName)
         Log.info(.app, "renamed bin '\(oldName)' to '\(newName)'")
     }
 
@@ -1223,19 +1444,17 @@ final class LibraryPanelBody: NSView {
     /// Bins with nothing in them yet. Items carry their own bin name, so a bin with
     /// contents needs no record of its own — but one you have just made and not
     /// filled would otherwise vanish the moment it was created.
-    private var emptyBins: Set<String> = []
+
 
     /// Moves an item into a bin, or out of one when `bin` is nil.
     func moveItem(named name: String, toBin bin: String?) {
-        guard let index = sourceItems.firstIndex(where: { $0.name == name }) else { return }
-        sourceItems[index].bin = bin
-        rebuildSourcesGrid()
+        model.moveItem(named: name, toBin: bin)
         Log.info(.app, "moved \(name) to \(bin ?? "no bin")")
     }
 
     /// Every bin this library knows about, filled or not.
     var binNames: [String] {
-        Array(Set(sourceItems.compactMap(\.bin)).union(emptyBins)).sorted()
+        model.binNames
     }
 
     @objc private func autoPlayToggled() {
@@ -1318,6 +1537,15 @@ final class LibraryPanelBody: NSView {
         Log.info(.app, "asset browser showing \(tab.displayName)")
     }
 
+    @objc private func viewStyleChanged(_ sender: VBSlideToggle) {
+        let styles = LibraryViewStyle.allCases
+        guard styles.indices.contains(sender.selectedIndex) else { return }
+        viewStyle = styles[sender.selectedIndex]
+        applyViewStyle()
+        rebuildGrid(for: currentTab)
+        Log.info(.app, "library view is now \(viewStyle.rawValue)")
+    }
+
     @objc private func searchChanged(_ sender: NSSearchField) {
         // Was a log line saying filtering "is not built yet", which is a reasonable
         // thing to do once and a poor thing to leave in a search field that looks
@@ -1329,15 +1557,15 @@ final class LibraryPanelBody: NSView {
 
     /// Items matching the current search, across every bin. Matching on the file NAME
     /// and on the badge, so "dv" finds both the format and anything called dv.
-    private func matching(_ items: [LibraryItem]) -> [LibraryItem] {
-        guard !searchText.isEmpty else { return items }
-        let needle = searchText.lowercased()
-        return items.filter {
-            $0.name.lowercased().contains(needle)
-                || $0.badge.lowercased().contains(needle)
-                || ($0.bin?.lowercased().contains(needle) ?? false)
-        }
+    /// The library's items for THIS browser: its search, its sort.
+    ///
+    /// Takes no argument any more. It used to be handed a local copy of the items,
+    /// which was the shape of the problem — a panel holding its own list is a panel
+    /// that can disagree with the others about what is in the library.
+    private func matching() -> [LibraryItem] {
+        model.items(matching: searchText, sortedBy: sortField, ascending: sortAscending)
     }
+
 
     /// The number of thumbnails that fit across the panel right now.
     private var fittingColumns: Int {

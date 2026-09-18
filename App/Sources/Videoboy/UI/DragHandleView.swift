@@ -15,14 +15,21 @@ import AppKit
 /// A grip that reports vertical drags.
 final class DragHandleView: NSView {
 
-    /// Called continuously while dragging, with the offset from where the drag began.
-    var onDrag: ((CGFloat) -> Void)?
+    /// Called continuously while dragging, with the pointer in WINDOW coordinates.
+    ///
+    /// Window coordinates, not a local offset. A local offset has to be interpreted by
+    /// whoever receives it, and this handle sits inside a card, inside a stack, inside
+    /// a FLIPPED document, inside a scroll view — four spaces, two of which disagree
+    /// about which way y runs. Reporting the window point means the receiver converts
+    /// once, into the space it actually lays out in, and there is no sign to get wrong.
+    /// Getting it wrong is what made the gap move the opposite way to the pointer.
+    var onDrag: ((NSPoint) -> Void)?
     /// Called once when a drag actually starts, before the first movement.
     ///
     /// Separate from `onDrag` because lifting the card, dimming the list and building a
     /// floating snapshot are all things that must happen ONCE — doing them on the first
     /// movement means doing them again on the second.
-    var onDragBegan: (() -> Void)?
+    var onDragBegan: ((NSPoint) -> Void)?
     /// Called when the drag finishes.
     var onDragEnded: (() -> Void)?
 
@@ -95,13 +102,12 @@ final class DragHandleView: NSView {
             switch next.type {
             case .leftMouseDragged:
                 let point = convert(next.locationInWindow, from: nil)
-                let offset = point.y - start.y
                 if !hasBegun {
-                    guard abs(offset) > threshold else { break }
+                    guard abs(point.y - start.y) > threshold else { break }
                     hasBegun = true
-                    onDragBegan?()
+                    onDragBegan?(next.locationInWindow)
                 }
-                onDrag?(offset)
+                onDrag?(next.locationInWindow)
             case .leftMouseUp:
                 dragging = false
             default:

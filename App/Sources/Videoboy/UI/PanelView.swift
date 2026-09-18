@@ -20,12 +20,15 @@ enum BusIdentity {
     case none
     case one
     case two
+    /// PROGRAM — the middle column, and the third brand colour.
+    case program
 
     var dotColor: NSColor? {
         switch self {
         case .none: nil
         case .one: Theme.Color.busOne
         case .two: Theme.Color.busTwo
+        case .program: Theme.Color.busProgram
         }
     }
 }
@@ -89,6 +92,7 @@ final class PanelView: NSView {
         switch bus {
         case .one: fill = Theme.Color.panelFill(forBus: Theme.Color.busOne)
         case .two: fill = Theme.Color.panelFill(forBus: Theme.Color.busTwo)
+        case .program: fill = Theme.Color.panelFill(forBus: Theme.Color.busProgram)
         case .none: fill = Theme.Color.panelFill(forBus: nil)
         }
         layer?.backgroundColor = fill.cgColor

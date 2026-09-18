@@ -854,6 +854,55 @@ enum UISelfQA {
             ))
         }
 
+        // Reordering, driven through the SAME path a real drag uses: the grip's own
+        // callbacks, with window-space points. It has been rewritten twice, and both
+        // times the bug was coordinate spaces rather than logic — which is exactly the
+        // class of bug a screenshot cannot show and an assertion can.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            _ = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            let chain = shell.grid.panels.effectsOneBody
+            let before = chain.effects.map(\.name)
+
+            guard before.count >= 2, let grip = firstDragHandle(in: chain) else {
+                check.record(AssertionResult(
+                    name: "the FX chain can be reordered by dragging",
+                    passed: false, detail: "no drag handle found"))
+                return check.finish()
+            }
+
+            // Grab the first card and drag it down past the second.
+            let start = grip.convert(NSPoint(x: 4, y: 4), to: nil)
+            grip.onDragBegan?(start)
+            // Down the screen is DOWN in window coordinates, which are not flipped —
+            // so a lower y. Getting this backwards is precisely what made the gap move
+            // the opposite way to the hand.
+            // Far enough to clear the card below it. These cards are tall — the
+            // composite stage has nine parameters — so a fixed 120pt nudge lands
+            // inside the first slot and proves nothing.
+            var moved = start
+            moved.y -= 400
+            grip.onDrag?(moved)
+            grip.onDragEnded?()
+            shell.layoutSubtreeIfNeeded()
+
+            let after = chain.effects.map(\.name)
+            check.record(AssertionResult(
+                name: "dragging a card down moves it later in the chain",
+                passed: after != before && after.first != before.first,
+                detail: "\(before.joined(separator: " → ")) became \(after.joined(separator: " → "))"
+            ))
+            check.record(AssertionResult(
+                name: "reordering keeps every effect",
+                passed: Set(after) == Set(before),
+                detail: "\(after.count) cards, was \(before.count)"
+            ))
+        }
+
         // Per-channel FX (chFX, SPEC 2). A and B — and separately C and D — each
         // carry their own bitstream wedge in the graph; the only thing this checks
         // is whether the ONE card that represents it can actually REACH all of them,
@@ -1953,6 +2002,15 @@ enum UISelfQA {
     /// Used where a check needs to ask a control what it ADDRESSES rather than assume
     /// it — the slot a chain fader writes to is resolved through its card's channel
     /// selector, so it is not something a test should be spelling out.
+    /// The first drag handle beneath a view, for driving a reorder.
+    private static func firstDragHandle(in view: NSView) -> DragHandleView? {
+        if let handle = view as? DragHandleView { return handle }
+        for subview in view.subviews {
+            if let found = firstDragHandle(in: subview) { return found }
+        }
+        return nil
+    }
+
     private static func faders(in view: NSView) -> [VBFader] {
         var found: [VBFader] = []
         if let fader = view as? VBFader { found.append(fader) }

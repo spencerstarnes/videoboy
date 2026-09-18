@@ -104,7 +104,7 @@ final class VBBlendButton: NSControl {
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
         isPressed = true
-        popOutMenu()
+        popOutMenu(at: convert(event.locationInWindow, from: nil))
         isPressed = false
     }
 
@@ -113,7 +113,7 @@ final class VBBlendButton: NSControl {
     /// Popped rather than shown as a popup button's own list so the button can stay
     /// square: an NSPopUpButton is as wide as its widest title whether or not you want
     /// it to be, which is the problem this control exists to solve.
-    private func popOutMenu() {
+    private func popOutMenu(at point: NSPoint) {
         let menu = NSMenu()
         for (index, group) in BlendMode.menuGroups.enumerated() {
             if index > 0 { menu.addItem(.separator()) }
@@ -127,9 +127,11 @@ final class VBBlendButton: NSControl {
                 menu.addItem(item)
             }
         }
-        // Popped from the button's leading edge and slightly below, so the menu opens
-        // beside the control rather than over the picture above it.
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 2), in: self)
+        // AT THE POINTER, not at a corner of the button. A menu that opens from a
+        // fixed point means the first item is a different distance away depending on
+        // where you happened to click, and on a control this small that is most of the
+        // travel. Opening under the cursor puts the list where the hand already is.
+        menu.popUp(positioning: nil, at: point, in: self)
     }
 
     @objc private func modePicked(_ sender: NSMenuItem) {

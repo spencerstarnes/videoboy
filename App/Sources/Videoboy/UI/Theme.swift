@@ -341,8 +341,22 @@ enum Theme {
         static let textSecondary = NSColor(white: 1.0, alpha: 0.56)
         static let textTertiary = NSColor(white: 1.0, alpha: 0.30)
 
-        /// Sub Mix ONE identity, amber (`--one`).
-        static let busOne = NSColor(srgbRed: 0xe3 / 255.0, green: 0xa5 / 255.0, blue: 0x3a / 255.0, alpha: 1)
+        /// Sub Mix ONE identity.
+        ///
+        /// ── THE THREE BRAND HUES ────────────────────────────────────────────────
+        ///
+        /// From samples/COLORS.png: magenta #CC53C4, aqua #ACE4EA, yellow #F8E85F.
+        /// Measured rather than eyeballed, and the measurement said something useful —
+        /// the app's existing cyan is 186.3° and the brand aqua is 185.8°, which is the
+        /// same hue. The palette came OUT of this window, so two of the three clusters
+        /// barely move and the third gains a colour it never had.
+        ///
+        /// Hue from the brand, SATURATION AND VALUE FROM THE APP. The bars are swatches
+        /// at full strength; a panel wearing that would be a panel you look at instead
+        /// of through. This was amber at 38°/0.74/0.89 and is the brand yellow's 53.7°
+        /// at the same 0.74/0.89 — a lemon rather than an orange, at exactly the
+        /// weight the window already carried.
+        static let busOne = NSColor(srgbRed: 0xe3 / 255.0, green: 0xd1 / 255.0, blue: 0x39 / 255.0, alpha: 1)
         /// How much of a bus's colour a panel belonging to it carries. Very low:
         /// enough to group the windows by eye, not enough to tint the picture.
         static let busTintStrength: CGFloat = 0.055
@@ -359,8 +373,21 @@ enum Theme {
                 ?? panelFillOpaque
         }
 
-        /// Sub Mix TWO identity, cyan (`--two`).
-        static let busTwo = NSColor(srgbRed: 0x54 / 255.0, green: 0xc2 / 255.0, blue: 0xcf / 255.0, alpha: 1)
+        /// Sub Mix TWO identity, the brand aqua. Unchanged — it was already this hue.
+        static let busTwo = NSColor(srgbRed: 0x54 / 255.0, green: 0xc3 / 255.0, blue: 0xcf / 255.0, alpha: 1)
+
+        /// PROGRAM's identity, the brand magenta.
+        ///
+        /// The third bar had nowhere to go, and Program was the one vertical cluster
+        /// with no colour of its own — so the two facts answer each other.
+        ///
+        /// Desaturated to 0.45 rather than the swatch's 0.59. The tint strength is the
+        /// same 5.5% for all three buses, but equal alpha is not equal WEIGHT: magenta
+        /// carries further against a neutral dark panel than a yellow or an aqua does,
+        /// and at the swatch's saturation the Program column read as purple while its
+        /// neighbours read as barely tinted. The hue is the brand's; the weight matches
+        /// the room.
+        static let busProgram = NSColor(srgbRed: 0xd1 / 255.0, green: 0x73 / 255.0, blue: 0xca / 255.0, alpha: 1)
 
         /// Active/selected state. The system accent, so it follows the user's setting.
         static let accent = NSColor.controlAccentColor

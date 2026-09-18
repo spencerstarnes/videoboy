@@ -194,7 +194,12 @@ final class EffectChainPanelBody: NSView {
         stack.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
 
         // A flipped document view keeps the chain growing downward from the top.
+        //
+        // HELD, because a drag has to happen in THIS space. The cards live in it, it
+        // scrolls, and it is the only one of the four views involved that agrees with
+        // itself about which way y runs.
         let document = FlippedView()
+        self.documentView = document
         document.translatesAutoresizingMaskIntoConstraints = false
         document.addSubview(stack)
 
@@ -239,7 +244,16 @@ final class EffectChainPanelBody: NSView {
     // MARK: - Building
 
     private func rebuild() {
-        for view in cardViews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
+        // Only what is ACTUALLY in the stack. During a drag the lifted card is out of
+        // it and a gap stands in its place, so `cardViews` no longer matches the
+        // stack's contents — and `removeArrangedSubview` on a view that is not in the
+        // stack throws, which aborted the app on every drop. Rebuilding from the
+        // stack's own arranged subviews cannot get out of step with it.
+        for view in stack.arrangedSubviews {
+            stack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        for view in cardViews where view.superview != nil { view.removeFromSuperview() }
         cardViews.removeAll()
 
         // Add / Save row at the top, above the layer stack. The Add popup lists what
@@ -279,11 +293,11 @@ final class EffectChainPanelBody: NSView {
         // ---- Header: grip, name, enable, remove ----
         let grip = DragHandleView()
         grip.translatesAutoresizingMaskIntoConstraints = false
-        grip.onDragBegan = { [weak self] in
-            self?.beginDrag(of: index)
+        grip.onDragBegan = { [weak self] point in
+            self?.beginDrag(of: index, at: point)
         }
-        grip.onDrag = { [weak self] offset in
-            self?.previewReorder(of: index, by: offset)
+        grip.onDrag = { [weak self] point in
+            self?.previewReorder(of: index, to: point)
         }
         grip.onDragEnded = { [weak self] in
             self?.commitReorder()
@@ -516,8 +530,8 @@ final class EffectChainPanelBody: NSView {
         let height: CGFloat
         /// The snapshot that follows the pointer.
         let floater: CALayer
-        /// Where the floater sat when the drag began.
-        let floaterOrigin: CGPoint
+        /// How far down the card the pointer grabbed it, so it does not jump.
+        let grabOffset: CGFloat
         /// The empty view standing in for the card at its current target.
         let gap: NSView
         /// Where it would land if dropped now.
@@ -525,6 +539,10 @@ final class EffectChainPanelBody: NSView {
     }
 
     private var drag: DragState?
+
+    /// The flipped, scrolling view the cards live in. Every drag measurement is in
+    /// its coordinate space.
+    private weak var documentView: NSView?
 
     /// Moves the dragged card past its neighbours as the pointer travels.
     ///
@@ -559,27 +577,31 @@ final class EffectChainPanelBody: NSView {
     // this file and nothing else.
 
     /// Lifts a card out of the chain and starts following the pointer.
-    private func beginDrag(of index: Int) {
-        guard drag == nil, let card = cardView(at: index) else { return }
+    private func beginDrag(of index: Int, at windowPoint: NSPoint) {
+        guard drag == nil,
+              let document = documentView,
+              let card = cardView(at: index) else { return }
 
-        let frame = card.frame
+        // EVERYTHING below is in the document's space: the card's frame, the floating
+        // layer, the pointer, and the comparisons that decide where it lands. The first
+        // version mixed three spaces — the card's frame from the stack, the layer on
+        // the panel, and an offset measured in an unflipped subview — so the card
+        // appeared in the wrong place and the gap moved the opposite way to the hand.
+        let frame = document.convert(card.bounds, from: card)
+        let pointer = document.convert(windowPoint, from: nil)
 
-        // The snapshot. A layer rather than a view: it is never interactive, it only
-        // has to move, and a layer moves without touching the view hierarchy at all.
         let floater = CALayer()
         floater.contents = snapshot(of: card)
+        floater.contentsScale = window?.backingScaleFactor ?? 2
         floater.frame = frame
         floater.cornerRadius = Theme.Metrics.buttonCornerRadius
         floater.shadowColor = NSColor.black.cgColor
-        floater.shadowOpacity = 0.45
-        floater.shadowRadius = 8
-        floater.shadowOffset = CGSize(width: 0, height: -2)
+        floater.shadowOpacity = 0.5
+        floater.shadowRadius = 10
+        floater.shadowOffset = CGSize(width: 0, height: 2)
         floater.zPosition = 100
-        layer?.addSublayer(floater)
-
-        // A slight lift, so it reads as having come off the surface rather than as a
-        // copy drawn on top of it.
-        floater.transform = CATransform3DMakeScale(1.02, 1.02, 1)
+        document.wantsLayer = true
+        document.layer?.addSublayer(floater)
 
         let gap = NSView()
         gap.translatesAutoresizingMaskIntoConstraints = false
@@ -590,35 +612,48 @@ final class EffectChainPanelBody: NSView {
         stack.insertArrangedSubview(gap, at: stackIndex(forCard: index))
         gap.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -8).isActive = true
 
+        // LAY OUT NOW. A freshly inserted view has no frame until the next pass, so
+        // without this the very first measurement compares the pointer against a gap
+        // sitting at the bottom of the document and every card at its pre-drag
+        // position — and the insertion point comes out as "no change", every time.
+        document.layoutSubtreeIfNeeded()
+
         drag = DragState(
             sourceIndex: index, card: card, height: frame.height,
-            floater: floater, floaterOrigin: frame.origin,
+            floater: floater,
+            // WHERE IN THE CARD it was grabbed, so the card does not jump so that its
+            // top-left snaps to the pointer the moment the drag starts.
+            grabOffset: pointer.y - frame.minY,
             gap: gap, targetIndex: index)
 
-        setListDimmed(true, except: nil)
+        setListDimmed(true)
     }
 
     /// Moves the floating card and the gap as the pointer travels.
-    private func previewReorder(of index: Int, by offset: CGFloat) {
+    private func previewReorder(of index: Int, to windowPoint: NSPoint) {
+        guard let document = documentView else { return }
         guard var state = drag else {
-            beginDrag(of: index)
+            beginDrag(of: index, at: windowPoint)
             return
         }
 
-        // The floater tracks the pointer exactly. No animation here — it IS the
-        // pointer, and a lag between the two is the single thing that makes a drag
-        // feel broken.
+        let pointer = document.convert(windowPoint, from: nil)
+
+        // The floater tracks the pointer exactly. No animation — it IS the pointer, and
+        // lag between the two is the single thing that makes a drag feel broken.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        state.floater.frame.origin = CGPoint(
-            x: state.floaterOrigin.x, y: state.floaterOrigin.y + offset)
+        state.floater.frame.origin.y = pointer.y - state.grabOffset
         CATransaction.commit()
 
-        // Where it would land: the slot whose centre is nearest the floater's centre,
-        // measured against the REAL frames rather than an assumed row height.
+        // Where it would land: measured against the REAL card frames, in the same
+        // space, rather than against an assumed row height.
         let centre = state.floater.frame.midY
-        let target = insertionIndex(forCentre: centre, excluding: state.gap)
-        guard target != state.targetIndex else { return }
+        let target = insertionIndex(forCentre: centre, excluding: state.gap, in: document)
+        guard target != state.targetIndex else {
+            drag = state
+            return
+        }
 
         state.targetIndex = target
         drag = state
@@ -629,7 +664,7 @@ final class EffectChainPanelBody: NSView {
             context.allowsImplicitAnimation = true
             stack.removeArrangedSubview(state.gap)
             stack.insertArrangedSubview(state.gap, at: stackIndex(forCard: target))
-            layoutSubtreeIfNeeded()
+            document.layoutSubtreeIfNeeded()
         }
     }
 
@@ -637,14 +672,16 @@ final class EffectChainPanelBody: NSView {
     private func commitReorder() {
         guard let state = drag else { return }
         drag = nil
-        setListDimmed(false, except: nil)
+        setListDimmed(false)
 
         let from = state.sourceIndex
         let to = state.targetIndex
 
         // Settle the floater into the gap before it disappears, so the card arrives
-        // rather than teleports.
-        let landing = state.gap.frame
+        // rather than teleports. In the DOCUMENT's space, like everything else in this
+        // drag — the gap's own frame is in the stack's.
+        let landing = documentView.map { $0.convert(state.gap.bounds, from: state.gap) }
+            ?? state.gap.frame
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak self] in
             state.floater.removeFromSuperlayer()
@@ -653,7 +690,6 @@ final class EffectChainPanelBody: NSView {
         let move = CABasicAnimation(keyPath: "position")
         move.duration = 0.16
         move.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        state.floater.transform = CATransform3DIdentity
         state.floater.frame = landing
         state.floater.add(move, forKey: "land")
         CATransaction.commit()
@@ -688,10 +724,16 @@ final class EffectChainPanelBody: NSView {
     }
 
     /// Which slot a card dropped at this height would take.
-    private func insertionIndex(forCentre centre: CGFloat, excluding gap: NSView) -> Int {
+    private func insertionIndex(
+        forCentre centre: CGFloat, excluding gap: NSView, in document: NSView
+    ) -> Int {
         var slot = 0
         for view in stack.arrangedSubviews.dropFirst() where view !== gap {
-            if centre < view.frame.midY { break }
+            // Converted, so a card's midpoint and the floater's are measured the same
+            // way. Comparing a stack-space frame against a document-space centre is
+            // what made the insertion point drift as you scrolled.
+            let midY = document.convert(view.bounds, from: view).midY
+            if centre < midY { break }
             slot += 1
         }
         return min(max(slot, 0), max(effects.count - 1, 0))
@@ -701,11 +743,11 @@ final class EffectChainPanelBody: NSView {
     ///
     /// The point of the dim is not decoration: it says which thing the gesture is
     /// about. With every card at full contrast, a lifted card is one more card.
-    private func setListDimmed(_ dimmed: Bool, except: NSView?) {
+    private func setListDimmed(_ dimmed: Bool) {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.15
             context.allowsImplicitAnimation = true
-            for view in stack.arrangedSubviews where view !== except {
+            for view in stack.arrangedSubviews {
                 view.alphaValue = dimmed ? 0.45 : 1
             }
         }

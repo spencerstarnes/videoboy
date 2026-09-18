@@ -56,6 +56,9 @@ final class PanelSet {
     let settingsBarBody: SettingsBarPanelBody
     let effectsOneBody: EffectChainPanelBody
     let effectsTwoBody: EffectChainPanelBody
+    /// The library, shared by all three panels that show it.
+    let library: LibraryModel
+
     /// The emulated machine — one for the app, driven from the EMU tab.
     let emulator: EmulatorController
     /// The EMU tab's view, so the shell can reach it when the machine changes.
@@ -102,7 +105,7 @@ final class PanelSet {
         // twice, and neither said which sub mix you were looking at.
         subMixOne = PanelView(title: "A/B Sub Mix", bus: .one, body: subMixOneBody)
         subMixTwo = PanelView(title: "C/D Sub Mix", bus: .two, body: subMixTwoBody)
-        program = PanelView(title: "Program", body: programBody)
+        program = PanelView(title: "Program", bus: .program, body: programBody)
 
         // MARK: Faders
         faderABBody = FaderPanelBody(
@@ -135,7 +138,7 @@ final class PanelSet {
         // time the same fact appeared in one column.
         faderAB = PanelView(title: "A/B", bus: .one, body: faderABBody)
         faderCD = PanelView(title: "C/D", bus: .two, body: faderCDBody)
-        faderOneTwo = PanelView(title: "Program", body: faderOneTwoBody)
+        faderOneTwo = PanelView(title: "Program", bus: .program, body: faderOneTwoBody)
 
         // MARK: Effect chains
         //
@@ -154,11 +157,18 @@ final class PanelSet {
         // MARK: Libraries
         // The sub-mix libraries start from what is actually in samples/; the central
         // browser shows the full inventory of source kinds, with unbuilt ones greyed.
-        let sampleItems = PanelSet.sampleLibraryItems()
+        // ONE library, shown three times. The two sub-mix panels differ only in where a
+        // double-click sends the clip — A/B on the left, C/D on the right — so their
+        // CONTENTS must be identical. They were separate copies before, which meant a
+        // folder dropped on the left never appeared on the right.
+        let library = LibraryModel()
+        library.setItems(PanelSet.sampleLibraryItems() + PanelSet.futureSourceKinds())
+        self.library = library
+
         libraryOneBody = LibraryPanelBody(
-            items: sampleItems, columns: 3, showsTabs: false, playlistChannels: ["A", "B"])
+            model: library, columns: 3, showsTabs: false, playlistChannels: ["A", "B"])
         libraryTwoBody = LibraryPanelBody(
-            items: sampleItems, columns: 3, showsTabs: false, playlistChannels: ["C", "D"])
+            model: library, columns: 3, showsTabs: false, playlistChannels: ["C", "D"])
         // The emulated machine, and the EMU tab that drives it. Owned here because the
         // asset browser is built here and the tab has to exist when it is.
         emulator = EmulatorController()
@@ -166,8 +176,7 @@ final class PanelSet {
         self.emuBrowser = emuBrowser
 
         assetBrowserBody = LibraryPanelBody(
-            items: sampleItems + PanelSet.futureSourceKinds(), columns: 6, showsTabs: true,
-            emuView: emuBrowser)
+            model: library, columns: 6, showsTabs: true, emuView: emuBrowser)
         // Bus-coloured like every other A/B and C/D panel. These two were the only
         // pair in the window carrying a bus in their NAME while showing none of the
         // colour that says which bus it is — so the one place you go to put a clip
@@ -201,9 +210,18 @@ final class PanelSet {
             let badge = (entry["kind"] as? String) == "dv"
                 ? "DV"
                 : (file as NSString).pathExtension.uppercased()
+            // Duration from the manifest's frame count, which is already there — the
+            // alternative is opening every file at launch to ask, which is a lot of
+            // I/O for a column in a list.
+            let frames = entry["frameCount"] as? Int
+            let rate = (entry["frameRate"] as? Double)
+                ?? ((entry["standard"] as? String) == "PAL" ? 25.0 : 30000.0 / 1001.0)
+            let duration = frames.map { Double($0) / rate }
+
             return LibraryItem(
                 name: file, badge: badge, isAvailable: true,
-                url: RepoPaths.samples.appendingPathComponent(file))
+                url: RepoPaths.samples.appendingPathComponent(file),
+                duration: duration)
         }
     }
 
