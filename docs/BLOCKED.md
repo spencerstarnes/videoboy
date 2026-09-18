@@ -1,141 +1,64 @@
-# BLOCKED.md
+# Blocked: Scala MM300 will not start under AROS
 
-Diagnoses worth keeping, and the one thing that still needs your eyes.
-Phases 0–2 are complete and self-verified, including the analog loopback.
+**Status:** everything around the titler works. The titler itself does not run, and the
+one remaining variable is a Kickstart ROM, which is copyrighted and has to come from
+you.
 
----
-
-## 1. DVC100 loopback capture — RESOLVED
-
-**Status: working.** The full analog loop is closed and passing. Kept here because
-the diagnosis is worth writing down.
-
-### What was wrong
-
-The DVC100 presents a **vendor-specific USB interface (class `0xff`)**, not USB Video
-Class, so macOS binds no driver and it never appears to AVFoundation:
-
-```
-DVC100: Pinnacle Systems GmbH, VID 0x2304, PID 0x021a
-        bDeviceClass = 0, Interface 0 alt 0: class 0xff/00/ff (vendor-specific)
-compare PC-LM1E Camera: bDeviceClass = 239 (UVC) — visible to AVFoundation
-```
-
-### How it is solved
-
-Your own `~/dvc100` tool reads it over libusb via the EM28xx bridge.
-`App/Sources/Videoboy/Platform/DVC100CaptureSource.swift` runs that binary **as a
-separate process** and reads the raw YUYV frames it writes.
-
-**It is never linked, and must not be.** `dvc100` is GPL v2 and Videoboy is
-distributed, so linking it would impose the GPL on the whole app. CLAUDE.md's rule for
-GPL components is out-of-process only — the same treatment the libretro cores get
-later. Do not "tidy this up" into a linked library.
-
-### Two things that had to be right
-
-1. **Only one process can hold the device.** `DVC100.app` and the CLI cannot both
-   have it. Quit the app before running the loopback check.
-2. **The signal is on S-Video, not composite.** This cost real time and is worth
-   knowing: reading the wrong connector returns a perfectly valid, perfectly *black*
-   720x480 picture, which looks exactly like a dead output stage. Measured:
-
-   ```
-   composite: luma min=16 max=16   (flat black — nothing connected)
-   svideo:    luma min=16 max=230  (a real picture)
-   ```
-
-   `config/devices.json` now carries `"input": "svideo"` for this rig.
-
-### The result
-
-```sh
-scripts/selfqa.sh loopback
-```
-
-Evidence in `selfqa/out/phase-2/loopback/` — 6/6 assertions pass:
-
-| Measurement | Result |
-| --- | --- |
-| effective fps | **30.000** vs 29.97 expected |
-| dropped frames | **0** of 120 |
-| duplicate frames | 19 of 120 (live signal) |
-| captured geometry | **720x480** |
-| content | **6 of 6** colour bars matched |
-
-The chain verified end to end: Videoboy → Metal → borderless window on the
-MACROSILICON HDMI card → HDMI-to-RCA → DVC100 S-Video → libusb → back into the
-harness.
-
-### One note on how the content is judged
-
-Captured bars come back with correct hues but reduced saturation — measured, a
-191-level blue returns at 111 and red at 124. That is NTSC's limited chroma bandwidth
-behaving normally, not a fault. So the check compares each bar's **channel signature**
-(which channels are bright relative to dark) rather than absolute levels: it still
-catches a black, garbled or mis-ordered picture, without a tolerance so loose it would
-accept anything. See `FrameAssertions.containsColorBarHues`.
+**What you need to do:** put a Kickstart 3.1 ROM in
+`~/Documents/FS-UAE/Kickstarts/`. The app looks there, uses it without being asked, and
+falls back to AROS when it is absent. Nothing else needs changing.
 
 ---
 
-## 2. SD output mode on the HDMI card — A LIMITATION, NOT A BUG
-
-The `MACROSILICON` HDMI card **does** advertise 720x480 and 720x576 in its EDID.
-Videoboy finds the mode, and tries to select it through the display-configuration
-transaction API. macOS refuses it:
+## The failure
 
 ```
-720x480 @ 60.0  ioFlags=0x1  isUsableForDesktopGUI() = false
-CGCompleteDisplayConfiguration -> CGError 1001 (illegal argument)
+Error 4: Can't open device: scalamm.gfx
 ```
 
-The mode is a valid timing but is not flagged usable for the desktop GUI, and macOS
-will not put a display into it. This is a macOS restriction, not something the app can
-override, and SPEC §3 anticipates it ("you cannot force a mode the adapter won't
-accept").
+`scalamm.gfx` is Scala's graphics engine — a 1995 Amiga device that `scalamm.sys` loads
+on startup. Under AROS it is found and refuses to initialise.
 
-**What the app does instead:** keeps the display's current mode, renders the 720x480
-program into it, and **logs the discrepancy explicitly** rather than guessing
-silently. The negotiated mode is shown in the settings bar and recorded in
-`metrics.json`.
+## What has been ruled out
 
-**Your options, in rough order of preference:**
-1. Set the card's mode by hand in System Settings ▸ Displays, if 720x480 is offered
-   there, or with a tool like SwitchResX that can select non-GUI modes.
-2. Let the downstream HDMI-to-RCA converter do the scaling — it has to handle
-   480-line output anyway. The signal is correct, just scaled on the way.
-3. Accept it: this only affects pixel-exactness of the digital leg, not whether the
-   analog chain works.
+Each of these was tested, not reasoned about. Please do not spend time on them again.
 
-**This one genuinely needs your eyes on the CRT.** No software check can tell you
-whether the picture is right on the tube.
+| Suspected | Result |
+|---|---|
+| The file is corrupt, or the copy off the ISO mangled it | No. Valid Amiga HUNK binary (`0x000003F3`), and **byte-identical** to the copy inside the disc's own `Scala.lha` installer. The CD's `Scala/` directory *is* a real install. |
+| It is not on `DEVS:` | It is. `OpenDevice` searches `DEVS:` by name and does not look in sub-drawers, so the modules are copied there at boot. An earlier `Assign DEVS: SYS:Scala/System ADD` was actively wrong — it resolved to `System/System/scalamm.gfx`. |
+| The working directory is wrong | No. The startup does `CD SYS:Scala`, so the relative `System/scalamm.gfx` inside `scalamm.sys` resolves. |
+| The copy protection dongle | Scala MM300 is dongle-protected and this error is what that protection looks like when it fails — so this was the strongest lead. FS-UAE 3.2 knows eight dongle types and Scala is not among them, so its `dongle_type` was silently ignored. **Amiberry's WinUAE 4.x core has `scala green`, it is configured, and the error is unchanged.** Necessary, not sufficient. |
+| The chipset | Tried AGA and ECS. No difference. It is 1993 software, so ECS is the better default and is what the config now uses. |
+| AROS being old | FS-UAE ships a 2015 AROS, Amiberry a 2025 one. Identical failure on both. |
+| The wrong program | `ScalaMM` (the editor) and `ScalaMMPlayer -rexx` (the runtime) both fail the same way. The Player is now the default anyway — see below. |
+| Display modes not installed | The disc's own startup executes `DEVS:Monitors` to register them. Doing the same **aborts the boot** under AROS, so that path is closed. |
 
----
+## Why a Kickstart is the answer
 
-## 3. Sample media — WORKED AROUND, BUT YOUR FOOTAGE IS STILL WANTED
+A forum thread on this exact error records MM300 failing on **real AmigaOS 3.2** and
+working on 3.1. Software that notices the difference between two versions of the real
+operating system was never likely to accept a reimplementation. AROS gets the machine to
+a shell and runs ARexx perfectly well; this one program is beyond it.
 
-`samples/` was empty. CLAUDE.md says an empty `samples/` with no `.dv` is a blocker,
-and strictly it stopped Phase 1 dead.
+## What works today, without Scala
 
-Rather than stop with nothing to show, `scripts/make-fixtures.sh` generates **genuine
-NTSC DV bitstreams** (real DIF blocks, real DCT coefficients, 120000 bytes per frame)
-that the corruptor and the libav decoder work on for real:
+Everything else, and it is all proved by checks rather than claimed:
 
-- `samples/bars.dv` — eight colour bars, generated to match `TestPattern.colorBars`
-  exactly so decode correctness can be asserted by actual colour values.
-- `samples/motion.dv` — moving content, needed to test frame-hold and playback.
-- `samples/motion.mov` — an ordinary H.264 clip.
+- A machine boots (AROS, no copyrighted ROM needed) with ~37MB of your disc as a
+  writable system drive.
+- The **command link is live**: `selfqa/out/emu/port-received.log` is what an ARexx port
+  inside the emulated Amiga received when two faders were moved in Videoboy.
+- The **picture reaches the app**: `scripts/selfqa.sh emu` starts the emulator, captures
+  its window and asserts frames arrive at 720×480 — it passes with 522 frames.
+- Nineteen controls, each mapped to a command Scala really has, each with a stable param
+  code so it can be learned to MIDI, swept on the beat or saved in a template.
 
-**These are synthetic.** They exercise every code path, but real DV off tape carries
-dropouts, head-switching noise and timebase error that no encoder reproduces. For
-judging how the wedge actually *looks*, drop your own `.dv` files into `samples/` and
-re-run `scripts/make-fixtures.sh` to reindex them. Nothing is blocked on this; it is
-about aesthetics, which is your call, not the harness's.
+The moment `scalamm.gfx` loads, all of that is already pointed at it.
 
----
+## If you want to try harder
 
-## Not blocked
-
-Everything else in Phases 0–2: the build, the tests, the bitstream wedge, the clock
-and scheduler, param codes, templates, the UI shell, playback, the mixer, MIDI
-detect/learn, and the output window. See `docs/FIRST-RUN.md`.
+- **A real Kickstart 3.1** is the direct answer.
+- **Scala MM400** is reported to be far less fussy about OS version. If you have it, the
+  translation layer needs no changes — the port name and the command vocabulary are the
+  same family.
