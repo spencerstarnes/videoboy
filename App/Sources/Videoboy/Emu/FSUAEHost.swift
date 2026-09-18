@@ -268,6 +268,29 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
         let filter = SCContentFilter(desktopIndependentWindow: window)
 
         let configuration = SCStreamConfiguration()
+
+        // CROP THE WINDOW CHROME. A window capture includes the title bar, and the
+        // emulator's picture is only the content beneath it. Left in, the bar is baked
+        // into every frame that reaches the graph — and it also made a self-QA check
+        // pass for the wrong reason, because grey chrome counts as "not blank".
+        //
+        // The inset is the standard macOS title bar. It is a magic number only in the
+        // sense that the system's title bar is: there is no API to ask another
+        // application's window where its content begins.
+        let titleBarHeight: CGFloat = 28
+        if window.frame.height > titleBarHeight * 2 {
+            configuration.sourceRect = CGRect(
+                x: 0, y: titleBarHeight,
+                width: window.frame.width,
+                height: window.frame.height - titleBarHeight)
+            // Required with sourceRect, or ScreenCaptureKit scales the cropped region
+            // back into the full destination and the crop does nothing visible.
+            configuration.destinationRect = CGRect(
+                x: 0, y: 0,
+                width: StandardDefinition.width, height: StandardDefinition.height)
+            configuration.scalesToFit = true
+        }
+
         // Captured at the PROJECT'S geometry, not the window's. Everything in this
         // graph is 720x480, and resampling once here is cheaper and cleaner than
         // carrying an odd-sized texture through the chain to be resampled later.

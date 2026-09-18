@@ -1,6 +1,6 @@
 check:    phase-2/beat-synced-corruption
 verdict:  PASS
-when:     2026-09-18T01:12:39Z
+when:     2026-09-18T01:19:28Z
 core:     0.3.0
 
 notes:

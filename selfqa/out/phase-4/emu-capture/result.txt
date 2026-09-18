@@ -1,0 +1,13 @@
+check:    phase-4/emu-capture
+verdict:  PASS
+when:     2026-09-18T01:18:58Z
+core:     0.3.0
+
+assertions (7/7 passed):
+  PASS  an emulator is installed — Amiberry
+  PASS  a machine has been set up — /Users/spencerstarnes/Library/Application Support/Videoboy/amiga
+  PASS  the emulator starts — running
+  PASS  frames arrive from the machine — 522 captured
+  PASS  the picture is the project's geometry — 720x480
+  PASS  the machine has actually drawn something — 96.3% of the picture area is lit
+  PASS  the machine answers the command link — alive · port open
