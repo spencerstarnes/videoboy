@@ -826,19 +826,24 @@ final class EffectChainPanelBody: NSView {
     private func restyleFocus(_ control: NSSegmentedControl, options: [String], state: Int) {
         let isBoth = state >= options.count
         control.selectedSegmentBezelColor = Theme.Color.focusOn
-        if isBoth {
-            // Nothing is "the" selection, so the control shows the last segment
-            // selected and every label carries the caret — the two together read as
-            // "all of these" rather than "this one".
-            control.selectedSegment = options.count - 1
-            for (index, name) in options.enumerated() {
-                control.setLabel(Theme.focusCaret + name, forSegment: index)
-            }
-        } else {
-            control.selectedSegment = state
-            for (index, name) in options.enumerated() {
-                control.setLabel(index == state ? Theme.focusCaret + name : name, forSegment: index)
-            }
+
+        // BOTH genuinely LIGHTS BOTH. `.selectAny` is what makes that possible: the
+        // default one-of-N tracking can only ever bezel a single segment, so BOTH used
+        // to show the last channel highlighted with a caret on every label — which
+        // reads as "B, and something odd is going on" rather than as "both". The
+        // selector covering its whole width is the state, and it is the one a glance
+        // has to be able to tell apart from "B".
+        //
+        // Tracking mode does not decide behaviour here; `cardChannelChanged` advances
+        // the state itself and this function then paints it. The mode only controls
+        // what the control is ALLOWED to show.
+        control.trackingMode = .selectAny
+        for index in options.indices {
+            control.setSelected(isBoth || index == state, forSegment: index)
+        }
+        for (index, name) in options.enumerated() {
+            let isLit = isBoth || index == state
+            control.setLabel(isLit ? Theme.focusCaret + name : name, forSegment: index)
         }
     }
 
@@ -847,19 +852,23 @@ final class EffectChainPanelBody: NSView {
               let options = effects.first(where: { $0.name == name })?.channelOptions
         else { return }
 
-        // Clicking the LAST segment when it is already the state advances to BOTH,
-        // and clicking anything from BOTH goes back to that channel. Three states on
-        // two segments, reached by clicking past the end.
+        // ONE GESTURE, THREE STATES, ALWAYS IN THE SAME ORDER.
+        //
+        //     A  ->  B  ->  BOTH  ->  A
+        //
+        // A click ADVANCES, wherever on the control it lands. It used to be a picker:
+        // clicking a segment selected that segment, and BOTH was reached only by
+        // clicking the last segment when it was already selected. That makes the same
+        // click mean different things depending on the state you were already in — you
+        // had to know where you were before you knew what a click would do, which is
+        // not something anyone can hold onto mid-set.
+        //
+        // Advancing means the control is aimed at rather than read: hit it once to get
+        // to B, again to cover both. The cost is that going from BOTH back to a
+        // specific channel can take two clicks instead of one. That is the right trade
+        // for a control you operate without looking.
         let previous = cardChannelSelection[name] ?? 0
-        let clicked = sender.selectedSegment
-        let next: Int
-        if previous >= options.count {
-            next = clicked                       // leaving BOTH for one channel
-        } else if clicked == previous && clicked == options.count - 1 {
-            next = options.count                 // clicked past the last: BOTH
-        } else {
-            next = clicked
-        }
+        let next = (previous + 1) % (options.count + 1)
 
         cardChannelSelection[name] = next
         restyleFocus(sender, options: options, state: next)

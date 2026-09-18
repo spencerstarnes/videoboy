@@ -418,10 +418,18 @@ enum Theme {
 
         /// What a FOCUS control turns when it is the one receiving your next action.
         ///
-        /// Louder than the plain bus tint: focus is a state you need to read across
-        /// the room mid-set, and the tint alone was doing the same job as every other
-        /// amber thing in the window.
-        static let focusOn = NSColor(srgbRed: 0xff / 255.0, green: 0x9a / 255.0, blue: 0x1f / 255.0, alpha: 1)
+        /// YELLOW, because in this window's language yellow means SELECTED and red
+        /// means LIVE. This was orange (#FF9A1F), which is neither: it sat between the
+        /// two meanings and so carried whichever one you happened to read it as.
+        /// Selected and on-air are the two states it matters most not to confuse
+        /// mid-set, so they get the two colours furthest apart in the palette.
+        ///
+        /// Louder than the plain bus tint: focus is a state you need to read across the
+        /// room, and the tint alone was doing the same job as every other yellow thing
+        /// in the window. This is the brand yellow at full strength (#F8E85F) against
+        /// `busOne`'s #E3D139, so "selected" still reads as brighter than "belongs to
+        /// bus one" rather than merging with it.
+        static let focusOn = NSColor(srgbRed: 0xf8 / 255.0, green: 0xe8 / 255.0, blue: 0x5f / 255.0, alpha: 1)
 
         /// The bus tint a channel belongs to. A, B are bus one; C, D are bus two —
         /// the same amber and cyan this window uses everywhere else to say which
