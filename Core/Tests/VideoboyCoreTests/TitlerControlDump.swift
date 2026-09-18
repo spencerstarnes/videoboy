@@ -98,3 +98,48 @@ extension TitlerControlDump {
         }
     }
 }
+
+// MARK: - The page it opens on
+
+extension TitlerControlDump {
+
+    /// "The default should be ONE line of text, full screen centred, white on black."
+    /// It opened at TEXT 20 40, left-aligned — the top-left corner, looking like a
+    /// mistake rather than a starting point.
+    func testItOpensCentredWhiteOnBlack() {
+        let panel = ScalaTitlerPanel()
+        let page = panel.page()
+
+        guard let text = page.first(where: { $0.verb == "TEXT" }) else {
+            return XCTFail("a page must carry TEXT")
+        }
+        let parts = text.line.split(separator: " ")
+        let x = Int(parts[1]) ?? -1
+        let y = Int(parts[2]) ?? -1
+        XCTAssertEqual(x, panel.screen.width / 2, "text opens centred across the screen")
+        XCTAssertEqual(y, panel.screen.height / 2, "and down it")
+
+        let attributes = page.first { $0.verb == "ATTRIBUTES" }?.line ?? ""
+        XCTAssertTrue(
+            attributes.contains("center") || attributes.contains("centre"),
+            "and is centre-aligned, not left: \(attributes)")
+
+        // White on black, which was the one thing already right.
+        let palette = page.first { $0.verb == "PALETTE" }?.line ?? ""
+        XCTAssertTrue(palette.hasPrefix("PALETTE 000"), "background is black: \(palette)")
+        XCTAssertTrue(palette.contains("fff"), "text is white: \(palette)")
+
+        // ONE line, not two.
+        XCTAssertEqual(
+            page.filter { $0.verb == "TEXT" }.count, 1,
+            "one line of text by default")
+    }
+
+    /// And the position faders open in the MIDDLE of their travel, which is what makes
+    /// them feel like adjustments rather than something starting from nothing.
+    func testThePositionFadersOpenInTheMiddle() {
+        let panel = ScalaTitlerPanel()
+        XCTAssertEqual(panel.readoutPosition(for: .textX), 0.5, accuracy: 0.02)
+        XCTAssertEqual(panel.readoutPosition(for: .textY), 0.5, accuracy: 0.02)
+    }
+}

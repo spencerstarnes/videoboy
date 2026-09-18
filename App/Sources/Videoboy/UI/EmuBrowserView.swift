@@ -387,8 +387,14 @@ final class EmuBrowserView: NSStackView {
     }
 
     private func faderWidget(for control: TitlerControl) -> NSView {
+        // OPENED WHERE THE PANEL ACTUALLY IS, not at a hardcoded half. Every fader used
+        // to start at 0.5 whatever the state held, so the text could be centred while
+        // the position faders sat mid-travel by coincidence and the wipe fader claimed a
+        // wipe nobody had chosen. The first touch then JUMPED the value to wherever the
+        // fader happened to be. A control that does not show its own value invites you
+        // to trust it and then moves something you were not touching.
         let fader = Controls.fader(
-            value: control.function == .colourCycle ? 0 : 0.5,
+            value: controller.panel.readoutPosition(for: control.function),
             compact: true,
             // SLOT AND CODE, which is what makes this fader exactly like every other
             // fader in the window: Shift-click learns it to a MIDI control, Cmd-Option
@@ -590,6 +596,16 @@ final class EmuBrowserView: NSStackView {
             : "How to save the machine where you want it to start. One-time, and done "
                 + "in the emulator's own window."
         linkDot.state = controller.linkState
+
+        // Faders follow the panel. Restoring a save state, or the machine being driven
+        // from a MIDI knob, changes what the panel holds without anything touching the
+        // fader — and a fader left behind is the same lie as one that never showed its
+        // value in the first place.
+        // `setDisplayedValue` rather than `value`: it already refuses while the fader
+        // is under a hand, so a refresh cannot fight a drag in progress.
+        for (function, fader) in faders {
+            fader.setDisplayedValue(controller.panel.readoutPosition(for: function))
+        }
 
         // Only when it is the problem. A permission button that is always there is
         // furniture; one that appears exactly when Screen Recording is in the way is a

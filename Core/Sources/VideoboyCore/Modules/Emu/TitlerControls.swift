@@ -291,7 +291,97 @@ public struct ScalaScreen: Equatable, Sendable {
 public final class ScalaTitlerPanel {
 
     public private(set) var state = ScalaPanelState()
-    public var screen: ScalaScreen = .ntsc
+    public var screen: ScalaScreen = .ntsc {
+        didSet { centreTextIfUntouched() }
+    }
+
+    public init() {
+        centreTextIfUntouched()
+    }
+
+    /// Whether the operator has moved the text themselves. Once they have, nothing here
+    /// moves it back — a default that keeps reasserting itself is worse than a bad one.
+    private var textHasBeenPlaced = false
+
+    /// THE DEFAULT PAGE IS ONE LINE, CENTRED, WHITE ON BLACK.
+    ///
+    /// It used to open at `TEXT 20 40` with left alignment — the top-left corner of a
+    /// 640×400 screen, in a corner, looking like a mistake. White on black was the only
+    /// part that was already right.
+    ///
+    /// Centred is the only sane default for a titler: it is what a lower third, a
+    /// caption and a title card all start from, and it is the position from which every
+    /// other placement is an adjustment. The position faders therefore open in the
+    /// MIDDLE of their travel rather than at one end, which is also what makes them feel
+    /// like they are adjusting something rather than starting from nothing.
+    private func centreTextIfUntouched() {
+        guard !textHasBeenPlaced else { return }
+        state.textX = screen.width / 2
+        state.textY = screen.height / 2
+        state.alignmentIndex = ScalaLingo.alignments.firstIndex {
+            $0 == "center" || $0 == "centre"
+        } ?? 0
+    }
+
+    /// Where a continuous control's fader should sit for the state the panel is in.
+    ///
+    /// WITHOUT THIS THE FADERS ARE LIES. Every one of them opened at zero regardless of
+    /// what the panel actually held, so the text could be centred while the position
+    /// faders sat at the bottom of their travel — and the first touch of one JUMPED the
+    /// text to wherever the fader happened to be. A control that does not show its own
+    /// value is worse than no control, because it invites you to trust it.
+    ///
+    /// The inverse of what `set` does, so the two cannot disagree about what a position
+    /// means.
+    public func readoutPosition(for function: TitlerFunction) -> Double {
+        switch function {
+        case .textX:
+            return unscaled(state.textX, from: titleSafeX)
+        case .textY:
+            return unscaled(state.textY, from: titleSafeY)
+        case .wipeSpeed:
+            let range = ScalaLingo.speedRange
+            let span = Double(range.upperBound - range.lowerBound)
+            guard span > 0 else { return 0 }
+            return Double(range.upperBound - state.wipeSpeed) / span
+        case .brushScale:
+            return state.brushScale <= 0 ? 0 : min((state.brushScale - 0.1) / 1.9, 1)
+        case .hold:
+            return state.hold < 0 ? 0 : min(state.hold / 30, 1)
+        case .box:
+            return state.boxHeight
+        case .wipe, .textWipe, .wipeDirection, .fontFace, .fontSize, .alignment,
+             .decoration, .backdrop, .page:
+            let count = options(for: function).count
+            guard count > 1 else { return 0 }
+            return NormalisedSweep.value(forIndex: selectedOption(for: function), count: count)
+        case .colourCycle:
+            return state.isCycling ? 1 : 0
+        case .italic:
+            return state.isItalic ? 1 : 0
+        case .textColour:
+            return state.textColourPosition
+        case .backgroundColour:
+            return 0
+        }
+    }
+
+    private func unscaled(_ value: Int, from range: ClosedRange<Int>) -> Double {
+        let span = Double(range.upperBound - range.lowerBound)
+        guard span > 0 else { return 0 }
+        return min(max(Double(value - range.lowerBound) / span, 0), 1)
+    }
+
+    /// The biggest size the chosen face actually has, which is what a title wants.
+    ///
+    /// An Amiga bitmap font exists at fixed sizes and nowhere in between, so this picks
+    /// from what the disc really carries rather than asking for a number that would drop
+    /// Scala's screen. Called when the faces are learned, because until then there is
+    /// nothing to choose from.
+    public func useLargestAvailableSize() {
+        guard let biggest = faceSizes.max() else { return }
+        state.fontSize = biggest
+    }
 
     /// The page names the loaded script defines, in order.
     ///
@@ -332,8 +422,6 @@ public final class ScalaTitlerPanel {
             state.fontSize = face.nearestSize(to: state.fontSize)
         }
     }
-
-    public init() {}
 
     /// The controls this panel offers.
     ///
@@ -545,9 +633,11 @@ public final class ScalaTitlerPanel {
 
         case .textX:
             state.textX = scaled(clamped, into: titleSafeX)
+            textHasBeenPlaced = true
 
         case .textY:
             state.textY = scaled(clamped, into: titleSafeY)
+            textHasBeenPlaced = true
 
         case .alignment:
             state.alignmentIndex =
