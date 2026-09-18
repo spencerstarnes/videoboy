@@ -40,6 +40,9 @@ final class EmuBrowserView: NSStackView {
     private var stateButton: VBOptionButton?
     /// Shown only when Screen Recording is the thing standing in the way.
     private var permissionButton: VBOptionButton?
+    /// Drag-to-place for the title. The faders remain underneath for MIDI and
+    /// automation — a knob cannot point, and a hand cannot turn two knobs at once.
+    private let placementPad = TitlerPlacementPad()
     /// The list of saved states, under the controls. Rebuilt whenever one is written.
     private let statesList = NSStackView()
     /// Which state each row stands for.
@@ -240,6 +243,17 @@ final class EmuBrowserView: NSStackView {
             + "has been touched by hand."
         takeButton = take
 
+        // THE PAD GOES WITH THE TEXT, not down among the faders. Typing the words and
+        // putting them somewhere are one gesture during a show; the controls that shape
+        // them are a different, slower job.
+        placementPad.onPlaced = { [weak self] x, y in
+            guard let self else { return }
+            self.controller.move(.textX, to: x)
+            self.controller.move(.textY, to: y)
+        }
+        addArrangedSubview(placementPad)
+        placementPad.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+
         let takeRow = Controls.row([Controls.spacer(), take], spacing: 4)
         addArrangedSubview(takeRow)
         takeRow.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
@@ -272,9 +286,31 @@ final class EmuBrowserView: NSStackView {
             return
         }
 
+        // PERFORM ABOVE, SET UP BELOW, and the setup half folded away by default.
+        //
+        // This is a performance panel: during a show the things you reach for are the
+        // words, where they sit, how big they are and what colour. Everything else —
+        // which of fifty-one wipes, its direction, its speed, the backdrop, the page,
+        // the hold — is a decision you make once while setting up and then leave alone.
+        //
+        // All thirty-odd were visible at once, in a column, with no indication that
+        // most of them were not for now. That is what made the panel read as a wall of
+        // faders rather than an instrument. Folding the setup half does not remove
+        // anything: it puts the live surface where a hand can find it and the rest one
+        // click away.
         for group in groups {
-            addArrangedSubview(sectionHeader(group.title))
-            for control in group.controls { addArrangedSubview(row(for: control)) }
+            let isLive = Self.liveSections.contains(group.title.uppercased())
+            let header = sectionHeader(group.title, collapsible: !isLive)
+            addArrangedSubview(header)
+
+            var rows: [NSView] = []
+            for control in group.controls {
+                let view = row(for: control)
+                addArrangedSubview(view)
+                rows.append(view)
+                if !isLive { view.isHidden = true }
+            }
+            if !isLive { collapsedSections[group.title] = rows }
         }
 
         for view in arrangedSubviews where view.identifier?.rawValue == Self.fullWidthRow {
@@ -284,12 +320,37 @@ final class EmuBrowserView: NSStackView {
 
     /// A quiet rule with a name on it, so the panel reads as sections rather than a
     /// list of thirty things.
-    private func sectionHeader(_ title: String) -> NSView {
+    private func sectionHeader(_ title: String, collapsible: Bool = false) -> NSView {
         let label = Controls.label(
             title, font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
-        let row = Controls.row([label, Controls.spacer()], spacing: 4)
+        var views: [NSView] = [label, Controls.spacer()]
+        if collapsible {
+            let key = VBOptionButton(title: "▸")
+            key.target = self
+            key.action = #selector(sectionToggled(_:))
+            key.toolTip = "Show the \(title.lowercased()) controls"
+            sectionKeys[ObjectIdentifier(key)] = title
+            views.append(key)
+        }
+        let row = Controls.row(views, spacing: 4)
         row.identifier = NSUserInterfaceItemIdentifier(Self.fullWidthRow)
         return row
+    }
+
+    /// Sections that stay open, because they are what a show touches.
+    private static let liveSections: Set<String> = ["TYPE", "COLOUR", "POSITION"]
+
+    /// The rows each folded section owns, so they can be shown again.
+    private var collapsedSections: [String: [NSView]] = [:]
+    private var sectionKeys: [ObjectIdentifier: String] = [:]
+
+    @objc private func sectionToggled(_ sender: VBOptionButton) {
+        guard let title = sectionKeys[ObjectIdentifier(sender)],
+              let rows = collapsedSections[title] else { return }
+        let showing = rows.first?.isHidden ?? true
+        for row in rows { row.isHidden = !showing }
+        sender.setTitle(showing ? "▾" : "▸")
+        sender.isOn = showing
     }
 
     private static let fullWidthRow = "emu.row"
@@ -606,6 +667,13 @@ final class EmuBrowserView: NSStackView {
         for (function, fader) in faders {
             fader.setDisplayedValue(controller.panel.readoutPosition(for: function))
         }
+
+        // The pad follows the same state the faders do, so pointing and turning a knob
+        // cannot disagree about where the text is.
+        placementPad.position = CGPoint(
+            x: controller.panel.readoutPosition(for: .textX),
+            y: controller.panel.readoutPosition(for: .textY))
+        placementPad.caption = controller.panel.state.text
 
         // Only when it is the problem. A permission button that is always there is
         // furniture; one that appears exactly when Screen Recording is in the way is a
