@@ -44,6 +44,8 @@ enum SelfQARunner {
             verdict = BlendSelfQA.run()
         case "emu":
             verdict = EmuSelfQA.run()
+        case "emu-probe":
+            verdict = EmuProbe.run()
         case "record":
             verdict = RecordSelfQA.run()
         case "stream":

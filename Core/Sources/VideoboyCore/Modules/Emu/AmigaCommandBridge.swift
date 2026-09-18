@@ -157,11 +157,20 @@ public final class AmigaCommandBridge: @unchecked Sendable {
         guard !commands.isEmpty else { return }
         lock.lock()
         for command in commands {
-            // A page's text can be several TEXT lines at different positions, so they
-            // are kept apart by their coordinates rather than collapsed into one.
-            let key = command.verb == "TEXT"
-                ? "TEXT:" + command.arguments.prefix(2).map(\.rendered).joined(separator: ",")
-                : command.verb
+            // Keyed by VERB, including TEXT.
+            //
+            // TEXT used to be keyed by its COORDINATES, so that a page could carry
+            // several lines at different positions. Scala does support that — probe
+            // 13-two-texts-on-one-page.png shows FIRST and SECOND on one page — but the
+            // panel sends exactly one line, and keying by position meant that dragging
+            // the Y fader kept EVERY intermediate position as a separate pending line.
+            // They all survived the flush and all landed, so the screen filled with a
+            // ladder of the same words and only the newest one answered the controls.
+            //
+            // If several lines are ever offered, key them by their INDEX in the page —
+            // never by where they happen to sit, because that is the thing an operator
+            // is dragging.
+            let key = command.coalesceKey
             if pending[key] == nil { pendingOrder.append(key) }
             pending[key] = command
         }
@@ -252,6 +261,36 @@ public final class SharedDrawerTransport: AmigaTransport, @unchecked Sendable {
             try fileManager.createDirectory(
                 at: directory, withIntermediateDirectories: true)
         }
+    }
+
+    /// Throws away commands queued for a machine that is no longer running.
+    ///
+    /// ── WHY THIS IS NOT HOUSEKEEPING ────────────────────────────────────────────
+    ///
+    /// The drawer survives the machine. Stop the emulator — or have it die — with
+    /// commands still queued, and they are STILL THERE when the next machine boots.
+    /// The listener takes them oldest first, so a fresh machine spends its first
+    /// minutes replaying a dead session while everything the operator does now waits
+    /// behind it. The panel looks erratic: a fader moved ten seconds ago lands, the one
+    /// moved just now does not, and the screen shows something nobody asked for.
+    ///
+    /// A hundred and two stale batches had accumulated here before this was found, and
+    /// every measurement taken through them was wrong.
+    ///
+    /// Acknowledgements are deliberately NOT cleared: they are evidence of what the
+    /// last session did, and nothing reads them by age.
+    @discardableResult
+    public func discardQueuedCommands() -> Int {
+        let queued = (try? fileManager.contentsOfDirectory(
+            at: commandsDirectory, includingPropertiesForKeys: nil)) ?? []
+        var removed = 0
+        for file in queued where file.pathExtension == "vbc" || file.pathExtension == "tmp" {
+            if (try? fileManager.removeItem(at: file)) != nil { removed += 1 }
+        }
+        if removed > 0 {
+            Log.info(.titler, "discarded \(removed) commands queued for a machine that is gone")
+        }
+        return removed
     }
 
     public func deliver(_ lines: [String], sequence: Int) throws {

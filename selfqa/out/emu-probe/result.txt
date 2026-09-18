@@ -1,0 +1,27 @@
+check:    emu-probe
+verdict:  PASS
+when:     2026-09-18T05:36:21Z
+core:     0.3.0
+
+notes:
+  00 font franklin 18 — 1.000 moved, 90 frames captured → 00-font-franklin-18.png
+  01 font franklin 36 — 0.724 moved, 240 frames captured → 01-font-franklin-36.png
+  02 font franklin 72 — 0.000 moved, 389 frames captured → 02-font-franklin-72.png
+  03 font franklin 44 NOT ON DISC — 0.009 moved, 540 frames captured → 03-font-franklin-44-not-on-disc.png
+  04 font newsgothic 56 — 0.724 moved, 690 frames captured → 04-font-newsgothic-56.png
+  05 font newsgothic 44 NOT ON DISC — 0.010 moved, 839 frames captured → 05-font-newsgothic-44-not-on-disc.png
+  06 text at 40,100 — 0.008 moved, 990 frames captured → 06-text-at-40100.png
+  07 text at 300,300 — 0.013 moved, 1141 frames captured → 07-text-at-300300.png
+  08 text at 40,400 — 0.013 moved, 1291 frames captured → 08-text-at-40400.png
+  09 palette white on black — 0.013 moved, 1441 frames captured → 09-palette-white-on-black.png
+  10 palette red on black — 0.007 moved, 1592 frames captured → 10-palette-red-on-black.png
+  11 palette black on yellow — 0.726 moved, 1742 frames captured → 11-palette-black-on-yellow.png
+  12 backdrop CUCD19:Scala/Backgrounds/Fabrics001 — 0.518 moved, 2043 frames captured → 12-backdrop-cucd19scalabackgroundsfabrics001.png
+  13 two texts on one page — 0.551 moved, 2194 frames captured → 13-two-texts-on-one-page.png
+  14 one text again — 0.010 moved, 2346 frames captured → 14-one-text-again.png
+  15 box behind the text — 0.084 moved, 2496 frames captured → 15-box-behind-the-text.png
+  steps that changed NOTHING: font franklin 72
+
+assertions (2/2 passed):
+  PASS  the machine answers — starting · port closed
+  PASS  the probe reached the machine — 15 steps changed the picture

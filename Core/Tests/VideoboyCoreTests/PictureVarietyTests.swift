@@ -119,3 +119,71 @@ final class EmulatorFrameGenerationTests: XCTestCase {
         XCTAssertEqual(host.frameGeneration, host.frameGeneration)
     }
 }
+
+/// Commands queued for a machine that has gone must not reach the next one.
+///
+/// A hundred and two stale batches had piled up in the shared drawer before this was
+/// noticed. The listener takes them oldest first, so every fresh machine spent its first
+/// minutes replaying a dead session — which reads as a panel that ignores you.
+final class StaleCommandQueueTests: XCTestCase {
+
+    func testStartingFreshThrowsAwayWhatTheLastMachineNeverRead() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("vb-drawer-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let transport = try SharedDrawerTransport(root: root)
+        try transport.deliver(["TEXT 40 100 \"STALE\""], sequence: 1)
+        try transport.deliver(["TEXT 40 100 \"ALSO STALE\""], sequence: 2)
+
+        let queued = try FileManager.default.contentsOfDirectory(
+            at: transport.commandsDirectory, includingPropertiesForKeys: nil)
+        XCTAssertEqual(queued.filter { $0.pathExtension == "vbc" }.count, 2)
+
+        XCTAssertEqual(transport.discardQueuedCommands(), 2)
+
+        let after = try FileManager.default.contentsOfDirectory(
+            at: transport.commandsDirectory, includingPropertiesForKeys: nil)
+        XCTAssertTrue(after.filter { $0.pathExtension == "vbc" }.isEmpty)
+    }
+
+    func testDiscardingAnEmptyDrawerIsHarmless() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("vb-drawer-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transport = try SharedDrawerTransport(root: root)
+        XCTAssertEqual(transport.discardQueuedCommands(), 0)
+    }
+}
+
+/// Dragging the text up the screen must not leave a trail of text behind it.
+///
+/// The bridge keyed TEXT by its coordinates, so every position a fader passed through
+/// survived coalescing as its own pending line. They all landed. The screen filled with
+/// a ladder of the same words, and only the newest answered the controls — which is what
+/// "it was changing between text one and two" looked like from the outside.
+final class TextCoalescingTests: XCTestCase {
+
+    private final class Recorder: AmigaTransport {
+        var delivered: [[String]] = []
+        var startingSequence: Int { 1 }
+        func deliver(_ lines: [String], sequence: Int) throws { delivered.append(lines) }
+        func acknowledgedSequences() -> [Int] { [] }
+    }
+
+    func testOnlyTheNewestTextPositionSurvivesAFlush() {
+        let recorder = Recorder()
+        let bridge = AmigaCommandBridge(transport: recorder)
+
+        // A fader being dragged down the screen.
+        for y in stride(from: 100, through: 400, by: 50) {
+            bridge.send([ScalaLingo.text(x: 40, y: y, "VIDEOBOY")])
+        }
+        bridge.flush()
+
+        let lines = recorder.delivered.flatMap { $0 }
+        let texts = lines.filter { $0.hasPrefix("TEXT ") }
+        XCTAssertEqual(texts.count, 1, "one line of text, not a trail of them: \(texts)")
+        XCTAssertTrue(texts[0].contains(" 400 "), "and it is the position last asked for")
+    }
+}

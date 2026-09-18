@@ -111,11 +111,17 @@ public enum ScalaLingo {
     /// Positional, not named. Scala has no notion of "the title field"; it has a
     /// screen and coordinates on it, which is why the panel above exposes X and Y
     /// rather than pretending there are named slots to fill.
-    public static func text(x: Int, y: Int, _ string: String) -> TitlerCommand {
+    /// - Parameter line: which line of the page this is. Two TEXT commands with the
+    ///   same index replace each other in the send buffer; two with different indices
+    ///   both survive, which is how a page carries a headline and a subhead. It is
+    ///   deliberately NOT the position — an operator dragging the Y fader is moving one
+    ///   line, not creating a new one at every pixel on the way.
+    public static func text(x: Int, y: Int, _ string: String, line: Int = 0) -> TitlerCommand {
         TitlerCommand(
             verb: "TEXT",
             arguments: [.number(Double(x)), .number(Double(y)), .text(string)],
-            explanation: "draw \"\(string)\" at \(x), \(y)")
+            explanation: "draw \"\(string)\" at \(x), \(y)",
+            coalesceKey: "TEXT#\(line)")
     }
 
     /// `WIPE <name> [direction] SPEED <n>` — the transition between pages.

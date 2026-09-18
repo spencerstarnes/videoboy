@@ -172,6 +172,16 @@ public struct TitlerCommand: Equatable, Codable, Sendable {
     /// FAST. A generic renderer would have to guess, and would guess wrong.
     public let explanation: String
 
+    /// What makes this command REPLACE an earlier one in the send buffer.
+    ///
+    /// The verb, for almost everything: a second `FONT` supersedes the first. `TEXT` is
+    /// the exception, because a page can carry several lines and they must not collapse
+    /// into one — but the thing that tells them apart is WHICH LINE this is, not where
+    /// it currently sits. Keyed by position, dragging the Y fader kept every point it
+    /// passed through as its own pending line, all of which landed; the screen filled
+    /// with a ladder of the same words and only the newest answered the controls.
+    public let coalesceKey: String
+
     /// One argument, typed by HOW IT MUST BE WRITTEN rather than by what it means.
     ///
     /// The distinction that matters to a script parser is quoting: a bare word is a
@@ -203,10 +213,14 @@ public struct TitlerCommand: Equatable, Codable, Sendable {
         }
     }
 
-    public init(verb: String, arguments: [Argument], explanation: String) {
+    public init(
+        verb: String, arguments: [Argument], explanation: String,
+        coalesceKey: String? = nil
+    ) {
         self.verb = verb
         self.arguments = arguments
         self.explanation = explanation
+        self.coalesceKey = coalesceKey ?? verb
     }
 
     /// The script line this becomes.

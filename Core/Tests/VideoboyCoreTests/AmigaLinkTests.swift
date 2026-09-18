@@ -60,17 +60,32 @@ final class AmigaLinkTests: XCTestCase {
         XCTAssertLessThan(text, show, "SHOW reveals the page, so it goes last")
     }
 
-    func testTwoPiecesOfTextAtDifferentPlacesBothSurvive() {
+    func testTwoLinesOfTitleBothSurvive() {
         // Coalescing is per verb, which would collapse a two-line title into one line.
-        // TEXT is keyed by its coordinates instead.
+        // TEXT is keyed by WHICH LINE it is instead. Scala really does carry several —
+        // see selfqa/out/emu-probe/13-two-texts-on-one-page.png.
         let transport = RecordingTransport()
         let bridge = AmigaCommandBridge(transport: transport)
         bridge.send([
-            ScalaLingo.text(x: 20, y: 40, "TOP"),
-            ScalaLingo.text(x: 20, y: 200, "BOTTOM")
+            ScalaLingo.text(x: 20, y: 40, "TOP", line: 0),
+            ScalaLingo.text(x: 20, y: 200, "BOTTOM", line: 1)
         ])
         bridge.flush()
         XCTAssertEqual(transport.allLines.filter { $0.hasPrefix("TEXT") }.count, 2)
+    }
+
+    func testDraggingOneLineDoesNotLeaveATrailOfCopies() {
+        // The same line at twenty positions is ONE line that moved, not twenty lines.
+        // Keyed by coordinates, every position survived and all of them landed.
+        let transport = RecordingTransport()
+        let bridge = AmigaCommandBridge(transport: transport)
+        for y in stride(from: 40, through: 400, by: 20) {
+            bridge.send([ScalaLingo.text(x: 20, y: y, "VIDEOBOY", line: 0)])
+        }
+        bridge.flush()
+        let texts = transport.allLines.filter { $0.hasPrefix("TEXT") }
+        XCTAssertEqual(texts.count, 1, "a trail was left: \(texts)")
+        XCTAssertTrue(texts[0].contains(" 400 "))
     }
 
     func testABootSequenceIsNotCoalesced() {

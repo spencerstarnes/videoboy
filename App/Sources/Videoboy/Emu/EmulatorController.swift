@@ -251,6 +251,10 @@ final class EmulatorController {
 
         do {
             let transport = try SharedDrawerTransport(root: sharedDrawer)
+            // The machine starting now has never seen anything queued for the last one.
+            // Left in place, those commands replay first and everything the operator
+            // does waits behind a dead session — see `discardQueuedCommands`.
+            transport.discardQueuedCommands()
             let bridge = AmigaCommandBridge(transport: transport)
             bridge.onStateChanged = { [weak self] _ in self?.onStateChanged?() }
             bridge.start()

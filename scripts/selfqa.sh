@@ -69,6 +69,7 @@ case "$CHECK" in
   # Deliberately NOT in `all` or in verify.sh — a check that fails on a machine with no
   # emulator installed is a check that stops being read.
   emu)       run_app_check emu ;;
+  emu-probe) run_app_check emu-probe ;;
   all)
     run_offscreen
     run_midi
@@ -82,5 +83,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, displays, output, loopback, calibrate, emu, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac
