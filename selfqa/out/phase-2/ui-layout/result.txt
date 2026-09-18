@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-18T00:47:57Z
+when:     2026-09-18T01:13:57Z
 core:     0.3.0
 
 notes:
@@ -16,14 +16,14 @@ assertions (59/59 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
   PASS  wide is not blank — luminance variance 835.3
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 798.3
+  PASS  compact is not blank — luminance variance 798.8
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 978.2
+  PASS  narrow is not blank — luminance variance 972.6
   PASS  collapsed-left is not blank — luminance variance 732.6
   PASS  collapsed-both-edges is not blank — luminance variance 630.6
   PASS  collapsed-sources-only is not blank — luminance variance 855.8
   PASS  collapsed-effects-only is not blank — luminance variance 618.6
-  PASS  holding Shift lights the mappable faders — 71 faders highlighted
+  PASS  holding Shift lights the mappable faders — 86 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
@@ -32,7 +32,7 @@ assertions (59/59 passed):
   PASS  preferences save has content — luminance variance 166.3
   PASS  preferences defaults has content — luminance variance 322.5
   PASS  preferences outputs has content — luminance variance 255.4
-  PASS  preferences inputs has content — luminance variance 175.3
+  PASS  preferences inputs has content — luminance variance 166.2
   PASS  preferences hotKeys has content — luminance variance 171.8
   PASS  preferences midiMapping has content — luminance variance 145.8
   PASS  preferences emu has content — luminance variance 335.8

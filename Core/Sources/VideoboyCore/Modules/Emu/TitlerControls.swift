@@ -74,6 +74,34 @@ public enum TitlerFunction: String, Equatable, Codable, Sendable, CaseIterable {
     case page
 }
 
+extension TitlerFunction {
+    /// The stable param code for this function.
+    public var code: ParamCode {
+        switch self {
+        case .wipe: .emuWipe
+        case .wipeDirection: .emuWipeDirection
+        case .wipeSpeed: .emuWipeSpeed
+        case .textWipe: .emuTextWipe
+        case .fontFace: .emuFontFace
+        case .fontSize: .emuFontSize
+        case .textColour: .emuTextColour
+        case .backgroundColour: .emuBackgroundColour
+        case .brushScale: .emuBrushScale
+        case .textX: .emuTextX
+        case .textY: .emuTextY
+        case .alignment: .emuAlignment
+        case .colourCycle: .emuColourCycle
+        case .hold: .emuHold
+        case .page: .emuPage
+        }
+    }
+
+    /// The function a code addresses, or nil when the code is not an EMU one.
+    public static func forCode(_ code: ParamCode) -> TitlerFunction? {
+        allCases.first { $0.code == code }
+    }
+}
+
 /// One control on the titler panel.
 public struct TitlerControl: Equatable, Sendable, Identifiable {
     public var id: String { name }
@@ -86,6 +114,14 @@ public struct TitlerControl: Equatable, Sendable, Identifiable {
     public let function: TitlerFunction
     /// Whether this one is a switch rather than a fader.
     public var isToggle: Bool { function == .colourCycle }
+
+    /// The stable param code this control lives at.
+    ///
+    /// Stable because it is what a MIDI mapping and a saved template store. Every EMU
+    /// control has one, which is what makes them shift-selectable, automatable and
+    /// beat-syncable by the same machinery as every other fader in the app — none of
+    /// which had to learn anything about emulators.
+    public var code: ParamCode { function.code }
 
     public init(name: String, explanation: String, function: TitlerFunction) {
         self.name = name

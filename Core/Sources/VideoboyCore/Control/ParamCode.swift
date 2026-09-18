@@ -216,6 +216,44 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     /// Grid/crosshatch overlay, for seeding feedback.
     case gridOverlay = "84A"
 
+    // MARK: Emulated titler (Axx)
+    //
+    // STABLE CODES, because these are what a MIDI mapping and a saved template store.
+    // Every one maps to a real function inside the emulated software — see
+    // TitlerFunction, which is the list these mirror. A control that cannot name the
+    // thing it reaches does not get a code.
+
+    /// Which of the titler's transitions takes the page.
+    case emuWipe = "A1A"
+    /// The direction that transition travels.
+    case emuWipeDirection = "A2A"
+    /// How long it takes.
+    case emuWipeSpeed = "A3A"
+    /// How text arrives on a page already shown.
+    case emuTextWipe = "A4A"
+    /// The typeface.
+    case emuFontFace = "A5A"
+    /// Type size — the titler's only text scale.
+    case emuFontSize = "A6A"
+    /// Text colour, through the screen palette.
+    case emuTextColour = "A7A"
+    /// Background colour, likewise.
+    case emuBackgroundColour = "A8A"
+    /// How large a placed graphic is drawn.
+    case emuBrushScale = "A9A"
+    /// Where the text sits across the screen.
+    case emuTextX = "AAA"
+    /// And down it.
+    case emuTextY = "ABA"
+    /// Left, centre or right.
+    case emuAlignment = "ACA"
+    /// Colour cycling, on or off.
+    case emuColourCycle = "ADA"
+    /// How long a page holds.
+    case emuHold = "AEA"
+    /// Jump to a named page.
+    case emuPage = "AFA"
+
     /// Human-readable name, used in the UI and in template comments.
     public var displayName: String {
         switch self {
@@ -267,6 +305,21 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .feedbackZoom: "feedback zoom"
         case .feedbackRotate: "feedback rotate"
         case .feedbackThreshold: "feedback threshold"
+        case .emuWipe: "emu wipe"
+        case .emuWipeDirection: "emu wipe direction"
+        case .emuWipeSpeed: "emu wipe speed"
+        case .emuTextWipe: "emu text wipe"
+        case .emuFontFace: "emu font"
+        case .emuFontSize: "emu type size"
+        case .emuTextColour: "emu text colour"
+        case .emuBackgroundColour: "emu background"
+        case .emuBrushScale: "emu graphic scale"
+        case .emuTextX: "emu text x"
+        case .emuTextY: "emu text y"
+        case .emuAlignment: "emu alignment"
+        case .emuColourCycle: "emu colour cycle"
+        case .emuHold: "emu hold"
+        case .emuPage: "emu page"
         case .safeZone: "safe zones"
         case .overscan: "overscan"
         case .blackFrameInsertion: "black frame insertion"

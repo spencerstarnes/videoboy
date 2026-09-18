@@ -74,8 +74,12 @@ final class EmulatorController {
 
     /// Whether a machine has been assembled and can be started.
     var isSetUp: Bool {
-        FileManager.default.fileExists(
-            atPath: Self.workspace.appendingPathComponent("videoboy-amiga.fs-uae").path)
+        // EITHER config: the host picks the emulator, so a machine is set up when the
+        // file that emulator wants exists.
+        [ "videoboy-amiga.uae", "videoboy-amiga.fs-uae" ].contains {
+            FileManager.default.fileExists(
+                atPath: Self.workspace.appendingPathComponent($0).path)
+        }
     }
 
     var isRunning: Bool { host.isReady }
@@ -143,16 +147,9 @@ final class EmulatorController {
                 }
 
                 report("writing the machine configuration")
-                var configuration = FSUAEConfiguration(
-                    program: self.program,
-                    firmware: FSUAEInstallation.firmware(kickstartPath: self.kickstartPath()),
-                    sharedDrawer: self.sharedDrawer,
-                    systemDrive: self.systemDrive)
-                configuration.systemVolumeName = mounted.lastPathComponent
-                configuration.saveStatesDirectory = self.statesDirectory
                 try FileManager.default.createDirectory(
                     at: self.statesDirectory, withIntermediateDirectories: true)
-                try configuration.write(to: Self.workspace)
+                self.writeConfiguration(volumeName: mounted.lastPathComponent)
 
                 finish(nil)
             } catch {
@@ -186,21 +183,37 @@ final class EmulatorController {
         return true
     }
 
-    /// Rewrites the machine configuration from the current choices.
-    private func writeConfiguration() {
-        guard isSetUp else { return }
-        var configuration = FSUAEConfiguration(
-            program: program,
-            firmware: FSUAEInstallation.firmware(kickstartPath: kickstartPath()),
-            sharedDrawer: sharedDrawer,
-            systemDrive: systemDrive)
-        configuration.saveStatesDirectory = statesDirectory
-        configuration.loadsSavedState = restoresSavedState && saveState.exists
-        if let disc = findDisc(),
-           let mounted = try? DiscImage(path: disc).existingMountPoint() {
-            configuration.systemVolumeName = mounted.lastPathComponent
-        }
-        try? configuration.write(to: Self.workspace)
+    /// Rewrites BOTH machine configurations from the current choices.
+    ///
+    /// Both, every time, because which emulator is present is not this function's
+    /// business — the host picks, and it picks Amiberry when it is there. Writing one
+    /// and discovering later that the other was needed is how a setup silently points
+    /// at a stale file.
+    private func writeConfiguration(volumeName: String? = nil) {
+        let firmware = FSUAEInstallation.firmware(kickstartPath: kickstartPath())
+        let volume = volumeName
+            ?? findDisc().flatMap { try? DiscImage(path: $0).existingMountPoint() }?
+                .lastPathComponent
+            ?? "Workbench"
+
+        var fsuae = FSUAEConfiguration(
+            program: program, firmware: firmware,
+            sharedDrawer: sharedDrawer, systemDrive: systemDrive)
+        fsuae.systemVolumeName = volume
+        fsuae.saveStatesDirectory = statesDirectory
+        fsuae.loadsSavedState = restoresSavedState && saveState.exists
+        try? fsuae.write(to: Self.workspace)
+
+        let amiberry = AmiberryConfiguration(
+            program: program, firmware: firmware,
+            sharedDrawer: sharedDrawer, systemDrive: systemDrive,
+            systemVolumeName: volume,
+            // Only when one exists AND the operator wants it: a config pointing at a
+            // state file that is not there is a machine that will not start at all.
+            stateFile: (restoresSavedState && saveState.exists)
+                ? saveState.files.first
+                : nil)
+        try? amiberry.write(to: Self.workspace)
     }
 
     func stop() {
@@ -233,6 +246,15 @@ final class EmulatorController {
     /// identically.
     func move(_ function: TitlerFunction, to value: Double) {
         let commands = panel.set(function, to: value)
+        guard !commands.isEmpty else { return }
+        bridge?.send(commands)
+    }
+
+    /// Sends commands produced elsewhere — by the graph node, for automation and MIDI.
+    ///
+    /// Through the same bridge as a fader move, so a knob and a mouse are
+    /// indistinguishable by the time they reach the machine.
+    func send(_ commands: [TitlerCommand]) {
         guard !commands.isEmpty else { return }
         bridge?.send(commands)
     }

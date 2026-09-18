@@ -70,6 +70,15 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
     /// silently finds nothing, which looks exactly like the permission being denied.
     private let windowTitlePrefix: String
 
+    /// Window titles the capture will accept, by emulator.
+    ///
+    /// Amiberry titles its window "Amiberry - [<config name>]" rather than taking a
+    /// title from the config, so matching on one prefix is not enough. Both are tried;
+    /// the first that exists wins.
+    private var acceptedTitlePrefixes: [String] {
+        [windowTitlePrefix, "Amiberry"]
+    }
+
     private(set) var bootedProgram: TitlerProgram?
 
     /// Where the config and the shared drawer live.
@@ -79,21 +88,39 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
         self.workspace = workspace
         self.windowTitlePrefix = windowTitlePrefix
         super.init()
-        if !FSUAEInstallation.isInstalled() {
-            unavailableReason = FSUAEInstallation.installationHint
+        if !Self.emulatorPath() {
+            unavailableReason = AmiberryInstallation.installationHint
         }
     }
 
     // MARK: - Running
 
+    /// Which emulator to launch, and its config.
+    ///
+    /// AMIBERRY FIRST, FS-UAE as a fallback. Amiberry's core emulates the protection
+    /// dongle Scala needs, its AROS is a decade newer, and it restores a save state
+    /// from the command line. FS-UAE stays because it works and because having two
+    /// proves nothing above this line depends on which one is running.
+    static func emulator() -> (executable: String, configName: String)? {
+        if AmiberryInstallation.isInstalled() {
+            return (AmiberryInstallation.executablePath, "videoboy-amiga.uae")
+        }
+        if FSUAEInstallation.isInstalled() {
+            return (FSUAEInstallation.executablePath, "videoboy-amiga.fs-uae")
+        }
+        return nil
+    }
+
+    private static func emulatorPath() -> Bool { emulator() != nil }
+
     @discardableResult
     func boot(_ program: TitlerProgram) -> Bool {
-        guard FSUAEInstallation.isInstalled() else {
-            unavailableReason = FSUAEInstallation.installationHint
+        guard let emulator = Self.emulator() else {
+            unavailableReason = AmiberryInstallation.installationHint
             Log.warn(.titler, unavailableReason ?? "")
             return false
         }
-        let config = workspace.appendingPathComponent("videoboy-amiga.fs-uae")
+        let config = workspace.appendingPathComponent(emulator.configName)
         guard FileManager.default.fileExists(atPath: config.path) else {
             unavailableReason = "No machine has been set up yet. Press SET UP, or run "
                 + "scripts/amiga.sh setup."
@@ -104,8 +131,12 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
         shutdown()
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: FSUAEInstallation.executablePath)
-        process.arguments = [config.path]
+        process.executableURL = URL(fileURLWithPath: emulator.executable)
+        // Amiberry takes `-f`; FS-UAE takes the path alone. The only place in this file
+        // that knows the difference.
+        process.arguments = emulator.configName.hasSuffix(".uae")
+            ? ["-f", config.path]
+            : [config.path]
         // FS-UAE is chatty and none of it is ours. Its own log file keeps whatever
         // matters; this keeps it out of the app's.
         process.standardOutput = FileHandle.nullDevice
@@ -121,7 +152,7 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
         do {
             try process.run()
         } catch {
-            unavailableReason = "Could not start FS-UAE: \(error.localizedDescription)"
+            unavailableReason = "Could not start the emulator: \(error.localizedDescription)"
             Log.error(.titler, unavailableReason ?? "")
             return false
         }
@@ -129,7 +160,8 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
         self.process = process
         self.bootedProgram = program
         self.unavailableReason = nil
-        Log.info(.titler, "FS-UAE started for \(program.name) (pid \(process.processIdentifier))")
+        Log.info(.titler, "\(URL(fileURLWithPath: emulator.executable).lastPathComponent) "
+            + "started for \(program.name) (pid \(process.processIdentifier))")
 
         // The window does not exist the instant the process does. Rather than sleeping
         // a guessed interval on the main thread, the capture retries until it appears.
@@ -196,8 +228,10 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
             do {
                 let content = try await SCShareableContent.excludingDesktopWindows(
                     false, onScreenWindowsOnly: false)
-                guard let window = content.windows.first(where: {
-                    ($0.title ?? "").hasPrefix(self.windowTitlePrefix)
+                let prefixes = self.acceptedTitlePrefixes
+                guard let window = content.windows.first(where: { candidate in
+                    let title = candidate.title ?? ""
+                    return prefixes.contains { title.hasPrefix($0) }
                 }) else {
                     if attempt < maximumAttempts, self.process?.isRunning == true {
                         try? await Task.sleep(nanoseconds: 500_000_000)

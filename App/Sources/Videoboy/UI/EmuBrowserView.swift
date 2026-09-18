@@ -39,6 +39,10 @@ final class EmuBrowserView: NSStackView {
     private var showButton: VBOptionButton?
     private let linkDot = LinkIndicatorView()
 
+    /// The machine's screen, IN the browser. The emulator's own window is a separate
+    /// application's and floats; this is the one you look at.
+    private let screen = EmuScreenView()
+
     private var faders: [TitlerFunction: VBFader] = [:]
     private var readouts: [TitlerFunction: NSTextField] = [:]
     private var textField: NSTextField?
@@ -55,6 +59,7 @@ final class EmuBrowserView: NSStackView {
         translatesAutoresizingMaskIntoConstraints = false
 
         buildMachineRow()
+        buildScreen()
         buildTransportRow()
         buildTextRow()
         buildControls()
@@ -92,6 +97,20 @@ final class EmuBrowserView: NSStackView {
         statusLabel.maximumNumberOfLines = 3
         addArrangedSubview(statusLabel)
         statusLabel.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+    }
+
+    /// The live picture, directly under the machine's name.
+    ///
+    /// Above the controls rather than below them, because it is the thing being
+    /// changed — a fader you cannot see the result of is a fader you move twice.
+    private func buildScreen() {
+        screen.onOpenMachine = { [weak self] in self?.controller.showMachine() }
+        addArrangedSubview(screen)
+        NSLayoutConstraint.activate([
+            screen.widthAnchor.constraint(equalTo: widthAnchor),
+            // 4:3, like every other picture in this window.
+            screen.heightAnchor.constraint(equalTo: screen.widthAnchor, multiplier: 3.0 / 4.0)
+        ])
     }
 
     private func buildTransportRow() {
@@ -173,7 +192,13 @@ final class EmuBrowserView: NSStackView {
             let fader = Controls.fader(
                 value: control.function == .colourCycle ? 0 : 0.5,
                 compact: true,
+                // SLOT AND CODE, which is what makes this fader exactly like every
+                // other fader in the window: Shift-click learns it to a MIDI control,
+                // Cmd-Option marks a sweep between two points, an LFO or the beat clock
+                // can drive it, and a template saves it. None of that machinery knows
+                // or needs to know that the thing at the other end is an emulator.
                 mappingSlot: Engine.emulatorSlot,
+                mappingCode: control.code,
                 target: self, action: #selector(faderMoved(_:)))
             // The tooltip explains what it does TO THE SOFTWARE, which is the whole
             // point of the control set — a slider labelled SCALE that cannot say what
@@ -237,6 +262,15 @@ final class EmuBrowserView: NSStackView {
     /// Brings everything into line with the controller.
     func refresh() {
         statusLabel.stringValue = controller.summary
+
+        // The screen follows the machine: pulling frames while it runs, stopped and
+        // explaining itself when it does not.
+        screen.host = controller.isRunning ? controller.host : nil
+        screen.placeholder = controller.isSetUp
+            ? (controller.isRunning ? "Waiting for the machine's first frame" : "Press START")
+            : "Press SET UP to build a machine"
+        if controller.isRunning { screen.start() } else { screen.stop() }
+
         startButton?.isOn = controller.isRunning
         startButton?.setTitle(controller.isRunning ? "STOP" : "START")
         startButton?.isEnabled = controller.isSetUp

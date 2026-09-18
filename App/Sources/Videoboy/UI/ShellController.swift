@@ -732,6 +732,16 @@ final class ShellController {
         panels.emuBrowser.onAssignedToChannel = { [weak self] letter in
             self?.assignEmulator(toChannel: letter)
         }
+        // The node drives the SAME panel the EMU tab's faders drive, and its commands
+        // go down the SAME bridge. That is what makes a MIDI knob, an LFO and a
+        // beat-synced sweep reach the machine: they write to the registry, the node
+        // reads it once a frame, and the translation layer turns the number into a
+        // command exactly as a mouse would.
+        engine.emulator?.panel = panels.emulator.panel
+        engine.emulator?.onCommands = { [weak self] commands in
+            self?.shell.grid.panels.emulator.send(commands)
+        }
+
         panels.emulator.onMachineReady = { [weak self] host in
             // The node keeps whichever host it was given, so a machine started AFTER a
             // channel was pointed at it still reaches that channel. Without this,
