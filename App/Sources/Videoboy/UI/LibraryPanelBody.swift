@@ -1363,7 +1363,10 @@ final class LibraryPanelBody: NSView {
         }
         let grid = makeGrid(for: items)
         grid.translatesAutoresizingMaskIntoConstraints = false
-        grid.isHidden = currentTab != tab
+        // The VIEW STYLE has a say as well as the tab. `applyViewStyle` hides the grids
+        // when the list is up, and this runs AFTER it — so without the style here, a
+        // rebuild put the thumbnails straight back on top of the table.
+        grid.isHidden = viewStyle == .list || currentTab != tab
         document.addSubview(grid)
         gridsByTab[tab] = grid
 
@@ -1379,9 +1382,10 @@ final class LibraryPanelBody: NSView {
             leading,
             grid.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor)
         ])
-        emptyLabelsByTab[tab]?.isHidden = !items.isEmpty || currentTab != tab
+        emptyLabelsByTab[tab]?.isHidden =
+            viewStyle == .list || !items.isEmpty || currentTab != tab
 
-        if currentTab == tab {
+        if currentTab == tab, viewStyle != .list {
             documentHeight?.isActive = false
             documentHeight = document.heightAnchor.constraint(
                 greaterThanOrEqualTo: grid.heightAnchor)
@@ -1522,7 +1526,7 @@ final class LibraryPanelBody: NSView {
         currentTab = tab
 
         let grid = gridsByTab[tab]
-        grid?.isHidden = false
+        grid?.isHidden = viewStyle == .list
         // The empty message shows only when there is genuinely nothing to show.
         let isEmpty = (grid as? NSStackView)?.arrangedSubviews.isEmpty ?? true
         emptyLabelsByTab[tab]?.isHidden = !isEmpty
