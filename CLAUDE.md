@@ -94,6 +94,17 @@ SPEC §14 is normative and `docs/mockups/layout-v6.html` is the visual source of
 - Hardware behavior (displays, capture, MIDI) sits behind protocols with mock implementations so `Core` builds and tests headlessly. Do not fabricate hardware results or claim a `[HARDWARE]` path works without human confirmation.
 - Don't add scope. If a change isn't in the current phase, note it in `docs/BUILD-PLAN.md` backlog and move on.
 
+## Local model delegation
+`qwen "<prompt>"` is available (files can be piped in: `cat file.swift | qwen "..."`). It runs Qwen3-Coder-30B locally via MLX.
+
+Delegate to it: doc comments, commit messages, mechanical renames, summarizing long logs, first-pass summaries of unfamiliar files, test scaffolding, localization strings.
+
+Never delegate: architecture, Swift concurrency, retain cycles, anything spanning more than three files, anything touching the build graph.
+
+The model's Swift knowledge is weak and outdated. Always include the relevant existing code in the prompt rather than relying on its recall.
+
+Never apply a delegated patch without running `xcodebuild` first.
+
 ## Repo hygiene
 - `.claudeignore`: exclude `build/`, vendored binaries, any user media/ROMs.
 - `.claude/settings.json`: deny destructive shell (`rm -rf`, disk tools) and network beyond registries.

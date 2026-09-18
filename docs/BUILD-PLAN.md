@@ -140,3 +140,33 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   badly is worse than leaving it to tap tempo.
 - **Overscan is a toggle, not a continuous control.** The 82A parameter exists and the
   preview overlay reads it; the settings bar only offers on/off.
+- **WeatherStar 3000 / 4000 under the EMU tab.** Requested 2026-09-18. Run the two
+  Weather Channel graphics units as EMU programs beside Scala MM400, fed either by
+  real forecast data or by hand.
+
+  Interface as asked for, three stacked controls in the EMU panel:
+  1. A **ZIP CODE** field and a **SCRAPE** button — pulls the current forecast from an
+     official API and pushes it into the machine. The last successful pull is saved
+     and reloaded on launch, so the unit comes up showing something.
+  2. An expanding box **below** that, revealing a field per data point (temp, wind,
+     conditions, pressure, the city banner, the forecast days) for typing values in
+     directly when no network is wanted or when a specific screen is being set up.
+  3. A **RANDOM** button that fills those fields with gibberish, for a look rather
+     than a forecast.
+
+  Three things to settle before any of it is built:
+  - **Which target.** The WS4000 was Amiga-based, so it plausibly runs on the Amiberry
+    host that already exists. The WS3000 is earlier and (unconfirmed) not Amiga — if
+    so it needs a different core entirely and is a separate piece of work, not a
+    second entry in the same menu. Confirm the hardware before estimating either.
+  - **Runtime network access.** CLAUDE.md currently forbids network calls at runtime
+    except a phase's explicit IP feed. SCRAPE is a runtime network call, so this needs
+    that guardrail amended deliberately rather than quietly broken. The NWS/weather.gov
+    API is the natural source: official, free, no key, though US-only and lat/lon based,
+    so a ZIP-to-coordinate step is needed.
+  - **The disc images are copyrighted.** Same rule as the Kickstart ROM and the Scala
+    discs: referenced by a path the user supplies, never bundled and never downloaded.
+
+  Manual entry and RANDOM have neither problem and could ship first — they make the
+  unit useful with no network and no guardrail change, and they are also what proves
+  the data path into the machine works before a scraper is added on top.
