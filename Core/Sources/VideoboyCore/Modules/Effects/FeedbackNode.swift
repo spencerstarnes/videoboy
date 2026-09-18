@@ -107,12 +107,40 @@ public final class FeedbackNode: Node {
         // intact when it is read, rather than being the one about to be overwritten.
         let requiredSize = delayFrames + 2
 
-        if ringSize != requiredSize || ring.first??.width != width || ring.first??.height != height {
+        // GROW ONLY, AND NEVER ON A PARAMETER CHANGE ALONE.
+        //
+        // This used to rebuild the whole ring whenever `requiredSize` changed — and
+        // `requiredSize` is derived from the DELAY fader, so it changed every time that
+        // fader crossed a rounding boundary. Each entry is a `makeRenderTarget`, and
+        // every one of those clears itself with a committed pass and a
+        // `waitUntilCompleted`. Moving the delay from 59 to 60 therefore destroyed and
+        // rebuilt 62 targets inside a single frame: tens of megabytes of texture churn
+        // and 62 serialized GPU round trips, hundreds of milliseconds, in one `tick`.
+        // Mapped to an LFO it did that on EVERY frame, forever, which is also the
+        // quickest way to fragment Metal's address space in this codebase.
+        //
+        // Geometry is the only thing that justifies discarding the ring, because then
+        // the existing textures are genuinely the wrong shape. A longer delay only
+        // needs MORE entries, so the existing ones are appended to and the history in
+        // them survives. The read already wraps modulo `ringSize`, so a ring that is
+        // larger than strictly required is harmless — it costs memory, not correctness.
+        //
+        // Shrinking is deliberately not done: the fader coming back down would
+        // otherwise pay the whole cost again on the way, and the memory is already
+        // spent.
+        let geometryChanged = ring.first??.width != width || ring.first??.height != height
+        if geometryChanged {
             ring = (0..<requiredSize).map {
                 metal.makeRenderTarget(width: width, height: height, label: "\(identifier)-ring\($0)")
             }
             ringSize = requiredSize
             ringPosition = 0
+        } else if requiredSize > ringSize {
+            for index in ringSize..<requiredSize {
+                ring.append(metal.makeRenderTarget(
+                    width: width, height: height, label: "\(identifier)-ring\(index)"))
+            }
+            ringSize = requiredSize
         }
         guard ringSize > 0, let target = ring[ringPosition] else { return input }
 

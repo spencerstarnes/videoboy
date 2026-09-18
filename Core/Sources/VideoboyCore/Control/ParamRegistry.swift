@@ -95,6 +95,9 @@ public final class ParamRegistry {
     private var valuesBySlot: [String: [ParamCode: Double]] = [:]
     /// Every mapping, including ones whose code is not currently resolvable.
     private(set) public var bindings: [ControlBinding] = []
+    /// Slot/code pairs already reported as unresolvable, so the warning fires once
+    /// rather than once per frame for as long as the stale mapping exists.
+    private var unresolvedSlotsWarned: Set<String> = []
 
     public init() {}
 
@@ -115,6 +118,9 @@ public final class ParamRegistry {
         }
         parametersBySlot[slot] = table
         valuesBySlot[slot] = values
+        // A swap changes which codes resolve, so anything previously reported as
+        // unresolvable in this slot deserves to be reported again if it still is.
+        unresolvedSlotsWarned = unresolvedSlotsWarned.filter { !$0.hasPrefix("\(slot)/") }
 
         let carried = previousValues.keys.filter { table[$0] != nil }.count
         let dropped = previousValues.keys.filter { table[$0] == nil }.count
@@ -145,7 +151,15 @@ public final class ParamRegistry {
     @discardableResult
     public func setValue(_ value: Double, slot: String, code: ParamCode) -> Bool {
         guard let parameter = parametersBySlot[slot]?[code] else {
-            Log.warn(.param, "no parameter \(code.rawValue) in slot '\(slot)'; value ignored")
+            // ONCE PER SLOT/CODE, not once per attempt. An LFO or a mapping pointing at
+            // a code the node no longer exposes writes every frame, and this warning
+            // used to go with it — forever, at the frame rate, from the render thread.
+            // The first one says everything the hundred-thousandth would.
+            let key = "\(slot)/\(code.rawValue)"
+            if unresolvedSlotsWarned.insert(key).inserted {
+                Log.warn(.param, "no parameter \(code.rawValue) in slot '\(slot)'; "
+                    + "value ignored (this is logged once)")
+            }
             return false
         }
         // REJECTED, not coerced. `min`/`max` do not sanitise NaN — every comparison

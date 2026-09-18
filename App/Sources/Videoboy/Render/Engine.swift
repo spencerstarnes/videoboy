@@ -499,12 +499,28 @@ final class Engine {
 
         // Bus data effects re-roll on the beat too, so damage applied to a mix is as
         // musical as damage applied to a source.
-        for (name, codec) in [("ONE", busCodecOne), ("TWO", busCodecTwo), ("PROGRAM", busCodecProgram)] {
-            guard let codec else { continue }
-            scheduler.subscribe(subdivision: .quarter, latencyInFrames: codec.latencyInFrames) { event in
+        //
+        // LOOKED UP THROUGH `self` ON EACH FIRING, never captured. Capturing the node
+        // object meant that anything replacing `busCodecOne` — as the test-pattern
+        // toggle used to — left this closure holding the old instance: the beat reroll
+        // went to a node nothing rendered, and the dead node could never be freed
+        // because the scheduler still owned it. Reading the property each time means a
+        // swap is simply picked up, and nothing here keeps a node alive.
+        for name in ["ONE", "TWO", "PROGRAM"] {
+            scheduler.subscribe(subdivision: .quarter, latencyInFrames: 0) { [weak self] event in
+                guard let codec = self?.busCodec(forBus: name) else { return }
                 codec.rerollCorruptionSeed(using: UInt64(event.targetBeat * 1000) &+ 29)
                 Log.info(.clock, "bus \(name) data effects reseeded for beat \(event.targetBeat)")
             }
+        }
+    }
+
+    /// The data codec on a bus, by the name the schedule and the UI both use.
+    private func busCodec(forBus bus: String) -> BusCodecNode? {
+        switch bus {
+        case "ONE": busCodecOne
+        case "TWO": busCodecTwo
+        default: busCodecProgram
         }
     }
 
@@ -548,7 +564,12 @@ final class Engine {
         lfos.update(atHostTime: now, into: registry)
 
         // Parameters arrive from the UI, MIDI and templates through one path.
-        applyAllParameters()
+        //
+        // Applied by `evaluateGraph`, NOT here. It calls `applyAllParameters` itself so
+        // the self-QA checks get the same treatment as the live loop, so doing it here
+        // too ran the whole thing — ~30 nodes, including a dynamic-cast loop over all
+        // 24 per-channel effects — twice every frame for one set of values. The LFO
+        // update above still happens first, so nothing about the ordering changes.
 
         let context = RenderContext(
             frameIndex: frameIndex,
@@ -737,7 +758,33 @@ final class Engine {
         let inputIndex = (letter == "A" || letter == "C") ? 0 : 1
         let newUpstream = Engine.upstreamSlot(for: kind, channel: letter)
 
-        graph.connect(from: newUpstream, to: subMix, inputIndex: inputIndex)
+        // INTO THE HEAD OF THE CHANNEL'S FX CHAIN, not straight at the sub-mix.
+        //
+        // Connecting the new source directly to `subMix` replaces the edge that the
+        // chain's LAST node owns, which lifts the whole per-channel chain — transform,
+        // grade, composite, echo, feedback, MX-1 — out of the signal path. Switching
+        // once was enough to do it, and switching back to the file did not put it
+        // back: it simply pointed the file at the sub-mix too. Every per-channel
+        // effect on that channel then did nothing, with its card still lit and its
+        // faders still moving, which reads as "the effects are broken" rather than as
+        // a routing mistake.
+        //
+        // The chain is addressed through `channelEffects` rather than by naming the
+        // transform slot here, so adding or reordering a per-channel effect in
+        // `buildGraph` cannot leave this function pointing at a node that is no
+        // longer first.
+        let chain = channelEffects[letter] ?? []
+        if let head = chain.first, let tail = chain.last {
+            graph.connect(from: newUpstream, to: head.identifier, inputIndex: 0)
+            // Re-assert the tail edge as well. A build that ran the old code has
+            // already had this edge replaced, and this is what heals it rather than
+            // requiring the graph to be rebuilt from scratch.
+            graph.connect(from: tail.identifier, to: subMix, inputIndex: inputIndex)
+        } else {
+            // No chain for this channel (nothing builds one today, but a channel
+            // without effects must still reach the mix rather than go silent).
+            graph.connect(from: newUpstream, to: subMix, inputIndex: inputIndex)
+        }
         channelSourceKinds[letter] = kind
 
         let description: String
@@ -919,26 +966,41 @@ final class Engine {
     /// having a test pattern for calibration (SPEC 11).
     private(set) var programShowsTestPattern = false
 
+    /// Where the ONE/TWO fader was before the test pattern took the bus, so switching
+    /// back puts it where the operator left it.
+    ///
+    /// Showing the pattern forces the crossfader to 0 to get bus ONE out of the way.
+    /// Nothing used to put it back, so after one round trip PROGRAM carried ONE only
+    /// and the fader looked broken until it was touched — during calibration, which is
+    /// exactly when the pattern is being toggled.
+    private var crossfadeBeforeTestPattern: Double?
+
     /// Switches the program bus between the live mix and the test pattern.
+    ///
+    /// This used to REBUILD the three bus codecs on the way out — copy-pasted from
+    /// `buildGraph`, comment and all. That orphaned the scheduler's beat subscriptions
+    /// (which hold the node objects), leaked three nodes with their encoders and
+    /// textures on every toggle, and silently reset each node's `interchange` to none
+    /// while `isOutputDVEnabled` still read ON from the registry. The routing was the
+    /// one thing that copy-paste got right, and it is the only thing needed here.
     func setProgramShowsTestPattern(_ showsPattern: Bool) {
         guard showsPattern != programShowsTestPattern else { return }
         programShowsTestPattern = showsPattern
         if showsPattern {
+            crossfadeBeforeTestPattern =
+                registry.value(slot: GraphTopology.primary, code: .crossfadeOneTwo)
             graph.connect(from: Engine.testPatternSlot, to: GraphTopology.primary, inputIndex: 0)
             registry.setValue(0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
         } else {
-            // The bus data stage sits at the END of each chain, just before the mix:
-        // it re-encodes whatever the chain produced, so it damages the finished bus
-        // rather than something half-processed.
-        busCodecOne = BusCodecNode(identifier: Engine.busCodecOneSlot, context: metal)
-        busCodecTwo = BusCodecNode(identifier: Engine.busCodecTwoSlot, context: metal)
-        busCodecProgram = BusCodecNode(identifier: Engine.busCodecProgramSlot, context: metal)
-        graph.add(busCodecOne)
-        graph.add(busCodecTwo)
-        graph.add(busCodecProgram)
-
-        graph.connect(from: Engine.mx1OneSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
-        graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
+            // Put the mix back on PROGRAM's first input. The nodes themselves were
+            // never removed, so only this one edge has to be restored.
+            graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
+            if let crossfadeBeforeTestPattern {
+                registry.setValue(
+                    crossfadeBeforeTestPattern,
+                    slot: GraphTopology.primary, code: .crossfadeOneTwo)
+            }
+            crossfadeBeforeTestPattern = nil
         }
         Log.info(.output, "program bus now carries \(showsPattern ? "the test pattern" : "the live mix")")
     }

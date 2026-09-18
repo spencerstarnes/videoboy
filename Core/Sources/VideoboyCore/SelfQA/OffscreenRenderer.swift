@@ -22,6 +22,12 @@ import Metal
 public final class OffscreenRenderer {
     private let context: MetalContext
 
+    /// Staging texture for `readback`, reused across calls and rebuilt only when the
+    /// geometry changes. See the note in `readback`.
+    private var staging: MTLTexture?
+    /// The destination bytes for `readback`, reused for the same reason.
+    private var stagingBytes: [UInt8] = []
+
     /// Fails only when Metal itself is unavailable.
     public init?(context: MetalContext? = MetalContext.shared) {
         guard let context else {
@@ -40,18 +46,41 @@ public final class OffscreenRenderer {
         let width = texture.width
         let height = texture.height
 
-        let stagingDescriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: MetalContext.pixelFormat, width: width, height: height, mipmapped: false
-        )
-        stagingDescriptor.usage = [.shaderRead]
-        stagingDescriptor.storageMode = .shared
-        guard let staging = context.device.makeTexture(descriptor: stagingDescriptor),
+        // THE STAGING TEXTURE AND ITS BYTES ARE CACHED, not rebuilt per call.
+        //
+        // Despite living under SelfQA this is on the live frame path in three places:
+        // the recorder (once per armed feed), the streamer (once per destination) and
+        // `BusCodecNode` (once per bus with interchange on). Recording every feed with
+        // DV on all three buses is ten calls a FRAME, and each one used to allocate a
+        // fresh 1.38 MB `.shared` texture plus a 1.38 MB array — roughly 400 MB/s
+        // through the allocator at 29.97 fps, which is where a long run's IOSurface and
+        // wired-memory fragmentation comes from.
+        //
+        // Cached on size, exactly the way every effect node already caches its render
+        // target. Geometry is fixed in practice, so this allocates once.
+        if staging?.width != width || staging?.height != height {
+            let stagingDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: MetalContext.pixelFormat,
+                width: width, height: height, mipmapped: false
+            )
+            stagingDescriptor.usage = [.shaderRead]
+            stagingDescriptor.storageMode = .shared
+            guard let texture = context.device.makeTexture(descriptor: stagingDescriptor) else {
+                Log.error(.selfqa, "readback could not allocate its staging texture")
+                return nil
+            }
+            texture.label = "readback-staging"
+            staging = texture
+            stagingBytes = [UInt8](
+                repeating: 0, count: width * height * ImageBuffer.bytesPerPixel)
+        }
+
+        guard let staging,
               let commandBuffer = context.commandQueue.makeCommandBuffer(),
               let blitEncoder = commandBuffer.makeBlitCommandEncoder() else {
             Log.error(.selfqa, "readback could not set up its staging copy")
             return nil
         }
-        staging.label = "selfqa-readback-staging"
         blitEncoder.copy(
             from: texture, sourceSlice: 0, sourceLevel: 0,
             sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
@@ -68,8 +97,7 @@ public final class OffscreenRenderer {
             return nil
         }
 
-        var bgra = [UInt8](repeating: 0, count: width * height * ImageBuffer.bytesPerPixel)
-        bgra.withUnsafeMutableBytes { raw in
+        stagingBytes.withUnsafeMutableBytes { raw in
             staging.getBytes(
                 raw.baseAddress!,
                 bytesPerRow: width * ImageBuffer.bytesPerPixel,
@@ -77,7 +105,7 @@ public final class OffscreenRenderer {
                 mipmapLevel: 0
             )
         }
-        return ImageBuffer.fromBGRA(width: width, height: height, bgra: bgra)
+        return ImageBuffer.fromBGRA(width: width, height: height, bgra: stagingBytes)
     }
 
     /// Runs one full-screen pass into a fresh render target and reads it back.

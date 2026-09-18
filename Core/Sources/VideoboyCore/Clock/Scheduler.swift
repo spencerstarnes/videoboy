@@ -56,7 +56,18 @@ public final class Scheduler {
     public var lookaheadSeconds: Double = 0.2
 
     /// Events fired so far, newest last. Kept for tests and the debug overlay.
+    ///
+    /// BOUNDED. This used to grow for the life of the process: seven subscriptions on
+    /// quarter notes at 120 BPM is 14 events a second, so a four-hour show appended
+    /// ~200,000 of them — several megabytes, and a full-array copy on whichever single
+    /// frame happened to hit a capacity doubling. Nothing outside the tests ever read
+    /// more than the last handful, and `resetHistory()` is called only by tests, so the
+    /// growth was pure cost.
     private(set) public var firedEvents: [ScheduledEvent] = []
+
+    /// How many fired events to keep. Comfortably more than the debug overlay shows or
+    /// any test asserts over, and small enough that the array never has to grow again.
+    private static let firedEventCapacity = 512
 
     public init(transport: Transport) {
         self.transport = transport
@@ -151,6 +162,9 @@ public final class Scheduler {
         for (subscription, event) in due {
             firedEvents.append(event)
             subscription.action(event)
+        }
+        if firedEvents.count > Self.firedEventCapacity {
+            firedEvents.removeFirst(firedEvents.count - Self.firedEventCapacity)
         }
 
         // A very late advance (the app was suspended) would otherwise replay every

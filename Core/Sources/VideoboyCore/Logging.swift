@@ -51,12 +51,26 @@ public struct LogLine: Sendable {
     }
 }
 
-/// Process-wide logger. Thread-safe via a plain lock — this is not on the hot path
-/// of the render loop, and a lock is easier to reason about than a queue here.
+/// Process-wide logger.
+///
+/// IT IS ON THE HOT PATH, whatever an earlier version of this comment claimed. Nodes
+/// log encode failures, `ClipSourceNode` logs an undecodable frame, and the scheduler
+/// logs every beat — all from inside `tick`. So the ring is filled under a lock on the
+/// caller's thread, which is bounded and cheap, and the STDERR WRITE is handed to a
+/// serial queue.
+///
+/// That split is the whole point: `FileHandle.write` is a blocking `write(2)`, and when
+/// stderr is a pipe whose reader is slow — a terminal, Xcode, any log collector — a full
+/// 64 KB pipe buffer blocks the writer until it drains. Doing that on the render thread
+/// is an unbounded stall on the frame path, and a clip that fails to decode every frame
+/// turns it into 29.97 syscalls a second for as long as the show lasts.
 public enum Log {
     private static let lock = NSLock()
     private static var ring: [LogLine] = []
     private static let ringCapacity = 512
+
+    /// Where the stderr write actually happens. Serial, so lines keep their order.
+    private static let output = DispatchQueue(label: "com.videoboy.log", qos: .utility)
 
     /// When false, nothing is written to stderr (tests stay quiet). The ring still fills.
     public nonisolated(unsafe) static var echoesToStandardError = true
@@ -80,7 +94,21 @@ public enum Log {
         if ring.count > ringCapacity { ring.removeFirst(ring.count - ringCapacity) }
         let shouldEcho = echoesToStandardError
         lock.unlock()
-        if shouldEcho { FileHandle.standardError.write(Data((line.formatted + "\n").utf8)) }
+        if shouldEcho {
+            // Formatted here (cheap, and it captures the values now), written there.
+            let text = line.formatted + "\n"
+            output.async { FileHandle.standardError.write(Data(text.utf8)) }
+        }
+    }
+
+    /// Waits for everything already logged to reach stderr.
+    ///
+    /// Only for the places that genuinely need the output on disk before they carry on:
+    /// a self-QA check writing its evidence, or a test asserting on what was printed.
+    /// Nothing on the render path should call this — waiting for the write is the exact
+    /// thing the queue exists to avoid.
+    public static func flush() {
+        output.sync {}
     }
 
     /// The most recent `count` lines, oldest first. Used by the debug overlay and

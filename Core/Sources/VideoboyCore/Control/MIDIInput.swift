@@ -36,7 +36,7 @@ public final class MIDIInput {
     public let registry: ParamRegistry
 
     /// Names of the sources currently connected, for the status bar.
-    public private(set) var connectedSourceNames: [String] = []
+    public internal(set) var connectedSourceNames: [String] = []
 
     /// Called on every event, after any mapping has been applied. Used by the UI to
     /// refresh a moved control.
@@ -52,6 +52,18 @@ public final class MIDIInput {
     private var client = MIDIClientRef()
     private var inputPort = MIDIPortRef()
     private var isStarted = false
+
+    /// Events decoded on the CoreMIDI thread and not yet delivered on main.
+    ///
+    /// A buffer rather than one `main.async` per message, because the old shape posted
+    /// an unbounded number of blocks: a motorised fader or an LFO on a CC streams
+    /// hundreds of messages a second, each one a separate closure allocation and a
+    /// separate main-queue wake-up, all competing with the render loop on that same
+    /// thread. Now the MIDI thread appends and, only if no drain is already scheduled,
+    /// posts exactly one.
+    private let incomingLock = NSLock()
+    private var incoming: [ControlEvent] = []
+    private var isDrainScheduled = false
 
     public init(registry: ParamRegistry) {
         self.registry = registry
@@ -111,7 +123,15 @@ public final class MIDIInput {
                 Log.warn(.midi, "could not connect MIDI source \(index): status \(status)")
             }
         }
-        connectedSourceNames = names
+        // PUBLISHED ON MAIN. `connectAllSources` runs from the CoreMIDI notify block on
+        // CoreMIDI's own thread, and the status bar reads this array on the main thread
+        // while it refreshes — an unsynchronised read of a Swift array being reassigned
+        // underneath it, which is a crash rather than a stale string. The hop costs
+        // nothing here: this only runs when a device is plugged or unplugged.
+        let connected = names
+        DispatchQueue.main.async { [weak self] in
+            self?.connectedSourceNames = connected
+        }
         Log.info(.midi, "connected \(names.count) MIDI source(s): \(names.joined(separator: ", "))")
     }
 
@@ -221,13 +241,42 @@ public final class MIDIInput {
                 for wordIndex in 0..<Int(packet.wordCount) where wordIndex < words.count {
                     if let event = Self.decode(word: words[wordIndex]) {
                         // Core MIDI delivers on its own thread; parameter state and
-                        // the UI both live on the main thread.
-                        DispatchQueue.main.async { self.handle(event: event) }
+                        // the UI both live on the main thread. Buffered and drained in
+                        // one hop — see `incoming`.
+                        enqueue(event)
                     }
                 }
             }
             packet = MIDIEventPacketNext(&packet).pointee
         }
+    }
+
+    /// Takes an event from the CoreMIDI thread and makes sure it gets delivered on main.
+    ///
+    /// At most one drain is ever in flight: under a dense stream the later messages join
+    /// the buffer the pending drain will read, instead of each posting a block of its
+    /// own. `[weak self]` because the old version captured `self` strongly from a
+    /// background thread, which kept the input alive past any attempt to release it.
+    private func enqueue(_ event: ControlEvent) {
+        incomingLock.lock()
+        incoming.append(event)
+        let needsDrain = !isDrainScheduled
+        if needsDrain { isDrainScheduled = true }
+        incomingLock.unlock()
+
+        guard needsDrain else { return }
+        DispatchQueue.main.async { [weak self] in self?.drainIncoming() }
+    }
+
+    /// Delivers everything buffered, on the main thread.
+    private func drainIncoming() {
+        incomingLock.lock()
+        let events = incoming
+        incoming.removeAll(keepingCapacity: true)
+        isDrainScheduled = false
+        incomingLock.unlock()
+
+        for event in events { handle(event: event) }
     }
 
     /// Decodes one Universal MIDI Packet word into a `ControlEvent`.

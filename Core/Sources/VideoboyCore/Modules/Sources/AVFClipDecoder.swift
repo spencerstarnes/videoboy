@@ -195,8 +195,19 @@ public final class AVFClipDecoder: ClipDecoding {
     }
 
     private func store(_ frame: ImageBuffer, at index: Int) {
+        // ONE ENTRY PER INDEX. `cacheOrder` is the eviction queue and it only works if
+        // it corresponds one-to-one with the keys in `cache`. Appending unconditionally
+        // meant re-storing a frame — which ping-pong and stepped playback do constantly,
+        // because they revisit the same indices — pushed a DUPLICATE. The queue then hit
+        // its cap while holding far fewer than `cacheSize` distinct frames, and evicting
+        // the first copy deleted a frame the second copy still claimed was cached.
+        //
+        // The effect was a cache that quietly shrank toward useless exactly when it was
+        // needed most, and every miss it caused is a reader restart on the render thread.
+        if cache[index] == nil {
+            cacheOrder.append(index)
+        }
         cache[index] = frame
-        cacheOrder.append(index)
         while cacheOrder.count > Self.cacheSize {
             cache.removeValue(forKey: cacheOrder.removeFirst())
         }
