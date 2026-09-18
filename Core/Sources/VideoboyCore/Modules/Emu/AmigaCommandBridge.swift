@@ -108,6 +108,21 @@ public final class AmigaCommandBridge: @unchecked Sendable {
     private var sequence: Int
     private var timer: DispatchSourceTimer?
     private var lastAcknowledged: Int
+    /// When the acknowledged sequence last MOVED. Not when an ack was last seen — the
+    /// acks are files on disk and they sit there for ever, so their presence says
+    /// nothing about whether the machine is still reading.
+    private var lastProgress = Date()
+
+    /// How long a queue may sit un-drained before the link is called dead.
+    ///
+    /// The listener polls several times a second and writes a heartbeat about every two,
+    /// so a queue that has not moved in this long is not busy — it is not being read.
+    /// Generous enough to ride out the machine being briefly wedged by a big picture
+    /// load, short enough that an operator finds out during the song rather than after.
+    /// Settable so a test can prove the stall is reported without waiting out a real
+    /// eight seconds. A threshold that can only be exercised by sleeping is a threshold
+    /// nobody tests.
+    public var stallSeconds: TimeInterval = 8
 
     private let lock = NSLock()
     private var _state: AmigaLinkState = .idle
@@ -228,8 +243,30 @@ public final class AmigaCommandBridge: @unchecked Sendable {
             if sequence > 0 { setState(.waiting) }
             return
         }
-        lastAcknowledged = max(lastAcknowledged, newest)
-        setState(.live(queueDepth: max(sequence - lastAcknowledged, 0)))
+        if newest > lastAcknowledged {
+            lastAcknowledged = newest
+            lastProgress = Date()
+        }
+        let queued = max(sequence - lastAcknowledged, 0)
+
+        // A QUEUE THAT IS NOT DRAINING IS A DEAD LINK, not a live one with a backlog.
+        //
+        // This used to report `.live` for ever once a single ack had ever arrived. So
+        // when the listener inside the Amiga stopped — which it does — the panel went on
+        // saying "linked, 40 queued" while every fader and the TAKE button did nothing
+        // at all. Observed exactly that: 40 commands written, last ack 41 sequences
+        // behind, heartbeat six minutes stale, and the app showing a healthy link.
+        //
+        // "Linked, N queued" is a reasonable thing to say for a moment. Saying it
+        // indefinitely, while the number climbs, is the app lying about the one fact the
+        // operator needs.
+        if queued > 0, Date().timeIntervalSince(lastProgress) > stallSeconds {
+            setState(.failed(
+                "the machine has stopped reading commands — \(queued) waiting. "
+                    + "STOP and START the machine."))
+            return
+        }
+        setState(.live(queueDepth: queued))
     }
 
     private func setState(_ new: AmigaLinkState) {

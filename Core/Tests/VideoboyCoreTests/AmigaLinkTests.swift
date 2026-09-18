@@ -548,3 +548,41 @@ final class TitlerModulePlacementTests: XCTestCase {
         XCTAssertTrue(startup.contains("C:Copy"), "modules are copied into place")
     }
 }
+
+// MARK: - A stalled link must not read as healthy
+
+extension AmigaLinkTests {
+
+    /// The failure this is here for: the listener inside the Amiga stops, the app keeps
+    /// queueing, and the panel goes on saying "linked". Every fader and the TAKE button
+    /// then do nothing, with the one control that could explain it reporting success.
+    ///
+    /// Observed on the real machine: 40 commands written, the last ack 41 sequences
+    /// behind, the heartbeat six minutes stale, and the panel showing a healthy link.
+    func testAQueueThatNeverDrainsIsReportedAsFailed() {
+        let transport = RecordingTransport()
+        let bridge = AmigaCommandBridge(transport: transport)
+        // Zero, so "has not moved since the last ack" is true the moment it stops
+        // moving. The real value is eight seconds; waiting that out in a test would buy
+        // nothing except a slower suite.
+        bridge.stallSeconds = 0
+
+        // One command that IS acknowledged, so the link has genuinely been alive —
+        // which is the precondition for the bug. Reporting `.failed` before anything
+        // ever worked would be a different and much less interesting check.
+        bridge.send([ScalaLingo.show()])
+        bridge.flush()
+        transport.acknowledged = [1]
+        bridge.flush()
+        XCTAssertTrue(bridge.state.isLive, "precondition: the link was alive")
+
+        // Now the machine stops reading. More goes out; nothing comes back.
+        for _ in 0..<3 {
+            bridge.send([ScalaLingo.show()])
+            bridge.flush()
+        }
+        XCTAssertFalse(
+            bridge.state.isLive,
+            "a queue that has not moved must not keep reading as live — got \(bridge.state)")
+    }
+}
