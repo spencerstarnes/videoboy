@@ -582,6 +582,12 @@ public final class ScalaTitlerPanel {
         return page()
     }
 
+    /// Puts the page up WITH the chosen wipe. The deliberate act, as opposed to the
+    /// instant redraws every edit performs.
+    public func take() -> [TitlerCommand] {
+        page(transition: true)
+    }
+
     /// Sets the line of text and returns the lines that puts it on screen.
     public func setText(_ text: String) -> [TitlerCommand] {
         state.text = text
@@ -730,7 +736,29 @@ public final class ScalaTitlerPanel {
     /// so dragging a fader sends at most one page per 50ms rather than one per frame.
     /// If a 68k ever struggles with that, slow the COALESCER down — do not go back to
     /// sending fragments, because fragments do not work.
-    public func page() -> [TitlerCommand] {
+    /// - Parameter transition: whether this redraw is a DELIBERATE take, which is the
+    ///   only time the chosen wipe should run.
+    ///
+    /// ── WHY EDITING AND TAKING ARE NOT THE SAME REDRAW ──────────────────────────
+    ///
+    /// Every control here ends in a full page plus `SHOW`, because Scala works in
+    /// pages and fragments are silently ignored (see above). But `SHOW` performs the
+    /// WIPE, and the wipe defaulted to `fade` — so nudging the colour, moving the
+    /// text, or touching any of the fourteen controls that emit a page made the whole
+    /// screen fade out and back in. On a titler that is on air, that is not a cosmetic
+    /// problem: it is a transition nobody asked for, in the middle of a show.
+    ///
+    /// A wipe belongs to a TAKE — the deliberate act of putting a new page up. While
+    /// you are still building the page, the redraw should be instant, which is what
+    /// Scala's `cut` is. So edits cut, and `take()` uses whatever wipe the operator
+    /// dialled in. That is also how the hardware this imitates behaves: you set the
+    /// look on preview, then take it to air with the transition you chose.
+    public func page(transition: Bool = false) -> [TitlerCommand] {
+        // `cut` is index 0 and is Scala's instant one — verified against the disc's own
+        // wipe list, not assumed.
+        let redraw = transition
+            ? currentWipe()
+            : ScalaLingo.wipe(ScalaLingo.instantWipe, direction: nil, speed: state.wipeSpeed)
         var commands: [TitlerCommand] = [
             ScalaLingo.screen(
                 width: screen.width, height: screen.height,
@@ -739,7 +767,7 @@ public final class ScalaTitlerPanel {
             ScalaLingo.colour(fill: 1),
             currentFont(),
             currentAttributes(),
-            currentWipe(),
+            redraw,
             ScalaLingo.textWipe(ScalaLingo.wipes[state.textWipeIndex], speed: state.wipeSpeed)
         ]
 

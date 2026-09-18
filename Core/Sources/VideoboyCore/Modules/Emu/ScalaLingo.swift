@@ -52,6 +52,15 @@ public enum ScalaLingo {
 
     // MARK: - Wipes
 
+    /// Scala's instant transition — no animation at all.
+    ///
+    /// Named rather than written as `wipes[0]`, because "the first one in the list"
+    /// is not a reason for it to be the instant one and the list is harvested from the
+    /// disc rather than curated. If a future dialect orders them differently this is
+    /// the single place that has to change.
+    public static let instantWipe = "cut"
+
+
     /// Every wipe name found in Scala's own scripts.
     ///
     /// Fifty-one of them, harvested from `Scala/Scripts/*.script`. Kept whole rather
