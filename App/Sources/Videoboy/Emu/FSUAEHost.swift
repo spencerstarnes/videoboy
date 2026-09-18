@@ -190,12 +190,28 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
                 self.watchForTermination(of: application)
                 self.unavailableReason = nil
 
-                // ASK before capturing. Without this the first attempt fails silently on
-                // a machine that has never been asked, and the app reports a denial for
-                // a permission nobody was offered.
+                // ASK OFF THE MAIN THREAD. `CGRequestScreenCaptureAccess` BLOCKS its
+                // caller until the dialog is answered, and the main thread is also the
+                // render thread — the display link runs on `.main`. Calling it here
+                // stopped the whole app dead: the prompt appeared, every event stopped
+                // being processed, the pointer did nothing anywhere near the window, and
+                // it only came back when the click that answered the dialog let main
+                // run again. That is the "I lose control of my cursor" report, and it
+                // was never the emulator grabbing it.
+                //
+                // Nothing needs the answer synchronously. The capture retries for ten
+                // seconds either way, so granting the permission mid-retry is picked up
+                // on the next attempt, and refusing it ends with the panel saying so.
                 if !Self.hasScreenRecordingPermission {
-                    Log.info(.titler, "requesting Screen Recording permission")
-                    Self.requestScreenRecordingPermission()
+                    Log.info(.titler, "requesting Screen Recording permission (off-thread)")
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let granted = Self.requestScreenRecordingPermission()
+                        DispatchQueue.main.async {
+                            Log.info(.titler, "Screen Recording "
+                                + (granted ? "granted" : "not granted"))
+                            self.onStateChanged?()
+                        }
+                    }
                 }
 
                 // BELT AND BRACES on the focus. `activates = false` covers the launch,
