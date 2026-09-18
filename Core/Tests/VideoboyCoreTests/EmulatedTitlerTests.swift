@@ -505,14 +505,27 @@ final class TitlerControlTests: XCTestCase {
         let panel = ScalaTitlerPanel()
         _ = panel.set(.wipe, to: 0)
         _ = panel.set(.wipeDirection, to: 1)
-        // A control change now repaints the whole page — Scala only draws pages, so a
-        // lone WIPE line would be accepted and never appear. The WIPE inside that page
-        // still has to carry all three faders.
-        let lines = panel.set(.wipeSpeed, to: 0.5).map(\.line)
+        // A control change repaints the whole page — Scala only draws pages, so a lone
+        // WIPE line would be accepted and never appear.
+        //
+        // ASSERTED ON THE TAKE, NOT ON THE EDIT, and that is the behaviour change rather
+        // than a weakened test. An edit deliberately cuts: running the dialled wipe every
+        // time a fader moved faded the whole screen out and back in, mid-show. The wipe
+        // belongs to the deliberate take, and THAT is where all three faders must still
+        // arrive in one line — which is what this test was always really about.
+        _ = panel.set(.wipeSpeed, to: 0.5)
+        let lines = panel.take().map(\.line)
         let line = lines.first { $0.hasPrefix("WIPE ") } ?? ""
         XCTAssertTrue(line.hasPrefix("WIPE cut "), "the chosen wipe survived: \(line)")
         XCTAssertTrue(line.contains("backwards"), "and so did the direction: \(line)")
         XCTAssertTrue(line.contains("SPEED"))
+
+        // And the edit itself must NOT animate, which is the other half of the contract.
+        let edit = panel.set(.wipeSpeed, to: 0.6).map(\.line)
+        let editWipe = edit.first { $0.hasPrefix("WIPE ") } ?? ""
+        XCTAssertTrue(
+            editWipe.contains(ScalaLingo.instantWipe),
+            "editing must cut, not transition: \(editWipe)")
     }
 
     func testTheReadoutIsInScalasUnitsNotTheFadersUnits() {

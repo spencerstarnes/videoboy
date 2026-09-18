@@ -389,6 +389,12 @@ final class TextAlignmentAnchorTests: XCTestCase {
         })!
         _ = panel.choose(.alignment, option: centre)
         _ = panel.set(.textX, to: 0)
-        XCTAssertEqual(panel.state.textX, 0, "the anchor is a starting point, not a lock")
+        // The bottom of the fader is the title-safe left edge, not column 0: the fader
+        // travels the SAFE area now, because the raster's edges are eaten by overscan on
+        // the analog display this app feeds. The point of this test is unchanged — the
+        // alignment anchor is a starting point and dragging X still overrides it.
+        XCTAssertEqual(
+            panel.state.textX, panel.titleSafeX.lowerBound,
+            "the anchor is a starting point, not a lock")
     }
 }

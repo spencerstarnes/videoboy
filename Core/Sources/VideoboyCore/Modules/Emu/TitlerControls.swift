@@ -529,10 +529,10 @@ public final class ScalaTitlerPanel {
             state.brushScale = clamped < 0.02 ? 0 : 0.1 + clamped * 1.9
 
         case .textX:
-            state.textX = scaled(clamped, into: 0...(screen.width - 1))
+            state.textX = scaled(clamped, into: titleSafeX)
 
         case .textY:
-            state.textY = scaled(clamped, into: 0...(screen.height - 1))
+            state.textY = scaled(clamped, into: titleSafeY)
 
         case .alignment:
             state.alignmentIndex =
@@ -881,6 +881,36 @@ public final class ScalaTitlerPanel {
         // Entry 0 is the background — on the Amiga it is also the genlock key, which is
         // why the background colour control reaches this one specifically.
         ScalaLingo.palette([state.backgroundColour, state.textColour])
+    }
+
+    // MARK: - Title safety
+
+    /// THE FADERS TRAVEL THE TITLE-SAFE AREA, not the whole raster.
+    ///
+    /// They used to map across `0...width-1`, so the bottom of the X fader put text at
+    /// column 0 and the top at the last column — both of which are in overscan and get
+    /// eaten by the CRT this app exists to feed. The picture on the preview looked
+    /// fine, and the words ran off the edge of the television.
+    ///
+    /// This is not a nicety for a tool whose whole output path is an analog SD display:
+    /// it is the difference between a caption you can read and one that is half off the
+    /// screen. Ten percent inset is the broadcast habit (90% title-safe), and it is why
+    /// `docs/SPEC.md` asks for a title-safe clamp on the character generator too.
+    ///
+    /// Deliberately the FADER'S RANGE rather than a clamp applied afterwards. Clamping
+    /// at the end gives a control with dead travel at both ends; moving the range means
+    /// every part of the fader's throw lands somewhere useful.
+    private var titleSafeInsetX: Int { screen.width / 10 }
+    private var titleSafeInsetY: Int { screen.height / 10 }
+
+    /// Where text may sit horizontally.
+    public var titleSafeX: ClosedRange<Int> {
+        titleSafeInsetX...(screen.width - 1 - titleSafeInsetX)
+    }
+
+    /// And vertically.
+    public var titleSafeY: ClosedRange<Int> {
+        titleSafeInsetY...(screen.height - 1 - titleSafeInsetY)
     }
 
     // MARK: - Small conversions

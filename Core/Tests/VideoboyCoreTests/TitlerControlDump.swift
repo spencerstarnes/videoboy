@@ -67,3 +67,34 @@ final class TitlerControlDump: XCTestCase {
         }
     }
 }
+
+// MARK: - Title safety
+
+extension TitlerControlDump {
+
+    /// The output of this app goes to an analog SD display, where the edges of the
+    /// raster are eaten by overscan. Faders that travel the whole raster put captions
+    /// where a television cannot show them — and the preview looks perfectly fine,
+    /// which is what makes it a trap rather than an obvious mistake.
+    func testTextCannotBePlacedIntoOverscan() {
+        let panel = self.panel()
+        for extreme in [0.0, 1.0] {
+            _ = panel.set(.textX, to: extreme)
+            _ = panel.set(.textY, to: extreme)
+            let page = panel.page()
+            guard let text = page.first(where: { $0.verb == "TEXT" }) else {
+                return XCTFail("a page must carry TEXT")
+            }
+            let parts = text.line.split(separator: " ")
+            guard parts.count >= 3, let x = Int(parts[1]), let y = Int(parts[2]) else {
+                return XCTFail("could not read the position out of '\(text.line)'")
+            }
+            XCTAssertTrue(
+                panel.titleSafeX.contains(x),
+                "x=\(x) at fader \(extreme) is outside title-safe \(panel.titleSafeX)")
+            XCTAssertTrue(
+                panel.titleSafeY.contains(y),
+                "y=\(y) at fader \(extreme) is outside title-safe \(panel.titleSafeY)")
+        }
+    }
+}
