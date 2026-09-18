@@ -47,6 +47,12 @@ final class PanelSet {
 
     // The body views, kept so the app can wire them without walking the view tree.
     let sourceBodies: [String: SourcePanelBody]
+
+    /// The ⇅ keys that sit on the joins between A/B and between C/D. Owned here so the
+    /// grid can place them on the seam and the controller can wire them, the same way
+    /// every other control in the window is reached.
+    let swapAB = SeamSwapKey(upper: "A", lower: "B")
+    let swapCD = SeamSwapKey(upper: "C", lower: "D")
     let subMixOneBody: PreviewPanelBody
     let subMixTwoBody: PreviewPanelBody
     let programBody: PreviewPanelBody
@@ -111,14 +117,12 @@ final class PanelSet {
         faderABBody = FaderPanelBody(
             leftLabel: "A", rightLabel: "B",
             leftColor: Theme.Color.busOne, rightColor: Theme.Color.textSecondary,
-            includesSwap: false,
-            swapsSources: true
+            includesSwap: false
         )
         faderCDBody = FaderPanelBody(
             leftLabel: "C", rightLabel: "D",
             leftColor: Theme.Color.busTwo, rightColor: Theme.Color.textSecondary,
-            includesSwap: false,
-            swapsSources: true
+            includesSwap: false
         )
         faderOneTwoBody = FaderPanelBody(
             // The ends match the keys above them. Saying "ONE" under a key marked "1"

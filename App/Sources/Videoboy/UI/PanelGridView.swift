@@ -235,6 +235,14 @@ final class PanelGridView: NSView {
         place(set.sourceD, GridPlacement(column: 4, row: 1), outer: true, joined: .top,
               group: .sourcesRight)
 
+        // The ⇅ keys go ON the joins, and therefore ON TOP of the panels — added after
+        // them so they are above in the subview order. They are positioned in `layout`
+        // from the two frames they straddle rather than being given a cell: the seam is
+        // a boundary between cells, not a cell, and giving one a row of its own would
+        // be redesigning the grid to hold a 26-point button.
+        addSubview(set.swapAB)
+        addSubview(set.swapCD)
+
         // Row 0-1, inner columns: the three previews, each spanning two rows.
         place(set.subMixOne, GridPlacement(column: 1, row: 0, rowSpan: 2))
         place(set.program, GridPlacement(column: 2, row: 0, rowSpan: 2))
@@ -460,6 +468,31 @@ final class PanelGridView: NSView {
             }
             placed.panel.frame = frame
         }
+
+        positionSeamKey(panels.swapAB, between: panels.sourceA, and: panels.sourceB)
+        positionSeamKey(panels.swapCD, between: panels.sourceC, and: panels.sourceD)
+    }
+
+    /// Centres a seam key on the join between two stacked panels.
+    ///
+    /// Driven off the panels' own frames rather than the row edges, so it follows them
+    /// through every breakpoint and through a group collapsing — the two cases where a
+    /// hard-coded position would drift off the join and sit on a picture.
+    private func positionSeamKey(_ key: SeamSwapKey, between upper: PanelView, and lower: PanelView) {
+        // Hidden when either panel it operates on is not on screen. A key floating over
+        // a collapsed rail would still work, and would be pointing at nothing.
+        guard !upper.isHidden, !lower.isHidden,
+              upper.frame.width > SeamSwapKey.diameter else {
+            key.isHidden = true
+            return
+        }
+        key.isHidden = false
+        let seam = (upper.frame.maxY + lower.frame.minY) / 2
+        let size = SeamSwapKey.diameter
+        key.frame = NSRect(
+            x: upper.frame.midX - size / 2,
+            y: seam - size / 2,
+            width: size, height: size)
     }
 
     /// True when this group is collapsed and its sibling has spread over its cells.

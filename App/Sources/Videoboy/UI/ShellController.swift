@@ -34,6 +34,7 @@ final class ShellController {
         self.preferences = preferences
         wireSources()
         wireFaders()
+        wireSeamSwapKeys()
         wireBlendControls()
         wireEffectChains()
         wireToolbar()
@@ -729,6 +730,27 @@ final class ShellController {
         ))
     }
 
+    /// Wires the two ⇅ keys on the joins between the source windows.
+    ///
+    /// On the seam rather than the fader row on purpose: the fader row answers WHEN a
+    /// source reaches air, and this answers WHICH CHANNEL A CLIP IS IN. Sitting between
+    /// the two windows it operates on, it needs no legend to say which pair it means.
+    private func wireSeamSwapKeys() {
+        let panels = shell.grid.panels
+        for (key, channels) in [(panels.swapAB, ("A", "B")), (panels.swapCD, ("C", "D"))] {
+            key.onPressed = { [weak self] in
+                guard let self else { return }
+                guard self.engine.swapChannels(channels.0, channels.1) else { return }
+                // Both panels have to be retold what they hold: the caption, the marked
+                // range and the STEP key all describe the CLIP, and the clip has just
+                // moved to the other panel.
+                for letter in [channels.0, channels.1] {
+                    self.refreshChannelAfterSwap(letter)
+                }
+            }
+        }
+    }
+
     /// Brings a channel's panel back into line after its clip has been exchanged.
     ///
     /// Everything here describes the CLIP rather than the channel — which file it is,
@@ -1032,13 +1054,10 @@ final class ShellController {
         // Each fader writes straight into the registry, so a MIDI move and a mouse
         // drag land in exactly the same place.
         // A hand on a fader cancels whatever it was doing on its own.
-        // The channel pair is carried alongside the bus, because the swap key needs to
-        // know WHICH two channels it exchanges. ONE/TWO has none: it mixes buses, and
-        // a bus has no clip to hand over.
-        let buses: [(body: FaderPanelBody, slot: String, channels: (String, String)?)] = [
-            (panels.faderABBody, GraphTopology.subMixOne, ("A", "B")),
-            (panels.faderCDBody, GraphTopology.subMixTwo, ("C", "D")),
-            (panels.faderOneTwoBody, GraphTopology.primary, nil)
+        let buses: [(body: FaderPanelBody, slot: String)] = [
+            (panels.faderABBody, GraphTopology.subMixOne),
+            (panels.faderCDBody, GraphTopology.subMixTwo),
+            (panels.faderOneTwoBody, GraphTopology.primary)
         ]
         for bus in buses {
             bus.body.setMappingSlot(bus.slot)
@@ -1076,24 +1095,6 @@ final class ShellController {
                     to: target)
                 bus.body.setPosition(target)
                 Log.info(.app, "cut on \(bus.slot) to \(target)")
-            }
-
-            // SWAP exchanges the two channels' clips and leaves the fader alone.
-            // That is the point of it as a show control: whatever is on air stays on
-            // air, and the clip you wanted next is now under the hand that was already
-            // on the fader. Moving the fader instead would put the wrong picture up on
-            // the way past.
-            if let channels = bus.channels {
-                bus.body.onSwapSourcesRequested = { [weak self] in
-                    guard let self else { return }
-                    guard self.engine.swapChannels(channels.0, channels.1) else { return }
-                    // Both panels have to be retold what they hold: the caption, the
-                    // marked range and the STEP key all describe the CLIP, and the clip
-                    // has just moved to the other panel.
-                    for letter in [channels.0, channels.1] {
-                        self.refreshChannelAfterSwap(letter)
-                    }
-                }
             }
 
             bus.body.onCutTo = { [weak self] target in
