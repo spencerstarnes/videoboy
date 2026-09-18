@@ -57,4 +57,15 @@ public enum NormalisedSweep {
         let position = clamp(value) * Double(count - 1)
         return min(Int(position.rounded()), count - 1)
     }
+
+    /// The 0...1 value that `index(_:count:)` maps back to `index`.
+    ///
+    /// The inverse, so a menu choosing item 7 and a MIDI knob landing on item 7 arrive
+    /// at exactly the same number — which is what lets both share one path into the
+    /// engine instead of each having its own.
+    public static func value(forIndex index: Int, count: Int) -> Double {
+        guard count > 1 else { return 0 }
+        let clamped = min(max(index, 0), count - 1)
+        return Double(clamped) / Double(count - 1)
+    }
 }

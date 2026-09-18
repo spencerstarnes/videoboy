@@ -325,6 +325,32 @@ public enum ScalaLingo {
 /// each and there are 4096 of them. Stored as 0...1 so a fader reaches it, and
 /// QUANTISED ON THE WAY OUT rather than on the way in — a fader that visibly snaps
 /// while you drag it feels broken, even when the snapping is correct.
+/// A typeface on the machine, and the sizes it actually exists at.
+///
+/// Both halves matter. A face with no size list is a face that cannot be used safely,
+/// because asking for a size it does not have drops Scala's screen — see
+/// `AmigaSystemInstaller.fonts(in:fileManager:)` for the evidence.
+public struct ScalaFont: Equatable, Sendable, Identifiable {
+    public var id: String { name }
+    public let name: String
+    /// Ascending, and never empty.
+    public let sizes: [Int]
+
+    public init(name: String, sizes: [Int]) {
+        self.name = name
+        self.sizes = sizes
+    }
+
+    /// The size on this face closest to the one asked for.
+    ///
+    /// Used when the face changes under a chosen size: moving from Franklin 72 to Didot
+    /// has to land on 56, because Didot has no 72 and asking for one puts a boot prompt
+    /// on the programme output.
+    public func nearestSize(to wanted: Int) -> Int {
+        sizes.min(by: { abs($0 - wanted) < abs($1 - wanted) }) ?? sizes[0]
+    }
+}
+
 public struct ScalaColour: Equatable, Sendable {
     public var red: Double
     public var green: Double

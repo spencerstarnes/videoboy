@@ -139,6 +139,7 @@ final class EmulatorController {
         let assets = installer.titlerAssets(volumeName: volume)
         panel.backdrops = assets.backdrops
         panel.pageNames = assets.pageNames
+        panel.fontCatalogue = assets.fonts
         panel.setBrush(file: assets.symbols.first)
     }
 
@@ -222,6 +223,7 @@ final class EmulatorController {
                 let assets = installer.titlerAssets(volumeName: mounted.lastPathComponent)
                 DispatchQueue.main.async {
                     self.panel.backdrops = assets.backdrops
+                    self.panel.fontCatalogue = assets.fonts
                     self.panel.pageNames = assets.pageNames
                     self.panel.setBrush(file: assets.symbols.first)
                 }

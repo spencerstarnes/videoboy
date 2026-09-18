@@ -124,8 +124,45 @@ public struct TitlerControl: Equatable, Sendable, Identifiable {
     public let explanation: String
     /// The function inside the software that it reaches.
     public let function: TitlerFunction
+    /// What KIND of control this is, so a view cannot invent the wrong widget.
+    ///
+    /// ── WHY THE PANEL DECLARES THIS AND THE VIEW OBEYS ──────────────────────────
+    ///
+    /// Every one of these was a fader. Choosing one of fifty-one wipes meant dragging a
+    /// slider until the readout happened to say the name you wanted, and choosing a
+    /// typeface meant the same. That is not a control, it is a guessing game — and for
+    /// the font it was a dangerous one, because the sizes in between the real ones drop
+    /// Scala's screen.
+    ///
+    /// A list is a list. It gets a menu. Only quantities get faders.
+    public enum Shape: Equatable, Sendable {
+        /// One of several named things: a menu.
+        case list
+        /// On or off: a switch.
+        case toggle
+        /// A quantity with meaningful in-between values: a fader.
+        case continuous
+        /// A colour: a colour well.
+        case colour
+    }
+
+    /// Which widget this control needs.
+    public var shape: Shape {
+        switch function {
+        case .wipe, .wipeDirection, .textWipe, .fontFace, .fontSize,
+             .alignment, .decoration, .backdrop, .page:
+            return .list
+        case .colourCycle, .italic:
+            return .toggle
+        case .textColour, .backgroundColour:
+            return .colour
+        case .wipeSpeed, .brushScale, .textX, .textY, .hold, .box:
+            return .continuous
+        }
+    }
+
     /// Whether this one is a switch rather than a fader.
-    public var isToggle: Bool { function == .colourCycle }
+    public var isToggle: Bool { shape == .toggle }
 
     /// The stable param code this control lives at.
     ///
@@ -178,6 +215,16 @@ public struct ScalaPanelState: Equatable, Sendable {
     /// reissue the whole `TEXT x y "..."` line, and a line missing its string draws
     /// nothing.
     public var text: String = "VIDEOBOY"
+
+    /// The second line, empty when there is only one.
+    ///
+    /// Scala really does carry several lines on a page — see
+    /// selfqa/out/emu-probe/13-two-texts-on-one-page.png — and a titler that can only
+    /// ever show one is not much of a titler: a lower third is a name and a role.
+    /// The second line sits a line's height below the first rather than having its own
+    /// position, because two independent XY pairs is four faders to keep in agreement
+    /// and nobody wants that mid-set.
+    public var textTwo: String = ""
 
     /// The graphic the scale control scales, when one has been chosen.
     public var brushFile: String? = nil
@@ -241,6 +288,33 @@ public final class ScalaTitlerPanel {
     /// Filled from the disc at setup. Empty until then, and the control says so rather
     /// than offering a fader that picks between nothing.
     public var backdrops: [String] = []
+
+    /// The typefaces on the machine, with the sizes each actually has.
+    ///
+    /// Empty until a drive has been read. `ScalaLingo.fonts` is the fallback list of
+    /// NAMES only — it cannot say which sizes exist, which is why a scanned catalogue
+    /// replaces it as soon as there is one.
+    public var fontCatalogue: [ScalaFont] = [] {
+        didSet { clampFontToCatalogue() }
+    }
+
+    /// The face currently chosen, as the catalogue knows it.
+    public var currentFace: ScalaFont? {
+        guard !fontCatalogue.isEmpty else { return nil }
+        return fontCatalogue[min(state.fontIndex, fontCatalogue.count - 1)]
+    }
+
+    /// Forces the chosen size to be one the chosen face actually has.
+    ///
+    /// Called whenever either changes. Asking Scala for a size a bitmap face does not
+    /// have does not degrade — it drops the screen and the machine's output reverts to
+    /// the AmigaDOS console, which on air is a boot prompt on PROGRAM.
+    private func clampFontToCatalogue() {
+        guard let face = currentFace else { return }
+        if !face.sizes.contains(state.fontSize) {
+            state.fontSize = face.nearestSize(to: state.fontSize)
+        }
+    }
 
     public init() {}
 
@@ -372,6 +446,15 @@ public final class ScalaTitlerPanel {
             return backdrops.isEmpty
                 ? "No backgrounds found — they come from the disc's Scala/Backgrounds drawer"
                 : nil
+        case .fontSize:
+            // An Amiga font exists at fixed sizes and nowhere between them, and the set
+            // is different for every face. Until a drive has been read there is no way
+            // to know which sizes are safe to ask for — and asking for an unsafe one
+            // drops Scala's screen, so this stays shut rather than guessing.
+            return faceSizes.isEmpty
+                ? "No drive read yet — an Amiga font only exists at fixed sizes, and they "
+                    + "have to be read off the disc before any of them is safe to ask for"
+                : nil
         default:
             return nil
         }
@@ -413,10 +496,20 @@ public final class ScalaTitlerPanel {
             state.textWipeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.wipes.count)
 
         case .fontFace:
-            state.fontIndex = NormalisedSweep.index(clamped, count: ScalaLingo.fonts.count)
+            state.fontIndex = NormalisedSweep.index(clamped, count: faceCount)
+            // The new face almost certainly does not have the old face's size. Franklin
+            // has 72 and Didot does not; asking Didot for 72 drops Scala's screen.
+            clampFontToCatalogue()
 
         case .fontSize:
-            state.fontSize = scaled(clamped, into: ScalaLingo.fontSizeRange)
+            // Stepped through the sizes this FACE has, not swept over a range. There is
+            // no such thing as an in-between size for a bitmap font, and asking for one
+            // is how the machine's output ends up showing a boot prompt.
+            if let face = currentFace {
+                state.fontSize = face.sizes[NormalisedSweep.index(clamped, count: face.sizes.count)]
+            } else {
+                state.fontSize = scaled(clamped, into: ScalaLingo.fontSizeRange)
+            }
 
         case .textColour:
             state.textColour = .hue(clamped)
@@ -480,9 +573,69 @@ public final class ScalaTitlerPanel {
         return page()
     }
 
+    /// Sets one of the two lines.
+    public func setText(_ text: String, line: Int) -> [TitlerCommand] {
+        if line == 0 { state.text = text } else { state.textTwo = text }
+        return page()
+    }
+
     /// Chooses the graphic the scale control scales.
     public func setBrush(file: String?) {
         state.brushFile = file
+    }
+
+    /// The choices a list control offers, in the order a menu should show them.
+    ///
+    /// Read from the machine wherever the machine knows: the faces and their sizes come
+    /// off the drive, the backdrops out of the Backgrounds drawer, the page names out of
+    /// the scripts. Hard-coding any of them is how the panel ends up offering a font
+    /// that is not installed.
+    public func options(for function: TitlerFunction) -> [String] {
+        switch function {
+        case .wipe, .textWipe: return ScalaLingo.wipes
+        case .wipeDirection: return ["(none)"] + ScalaLingo.directions
+        case .fontFace:
+            return fontCatalogue.isEmpty ? ScalaLingo.fonts : fontCatalogue.map(\.name)
+        case .fontSize:
+            let sizes = faceSizes
+            return sizes.isEmpty ? [] : sizes.map { "\($0)pt" }
+        case .alignment: return ScalaLingo.alignments
+        case .decoration: return ScalaLingo.edgeStyles
+        case .backdrop: return backdrops.map(Self.leafName)
+        case .page: return pageNames
+        default: return []
+        }
+    }
+
+    /// Which option is currently chosen, as an index into `options(for:)`.
+    public func selectedOption(for function: TitlerFunction) -> Int {
+        switch function {
+        case .wipe: return state.wipeIndex
+        case .textWipe: return state.textWipeIndex
+        case .wipeDirection: return state.directionIndex.map { $0 + 1 } ?? 0
+        case .fontFace: return min(state.fontIndex, max(faceCount - 1, 0))
+        case .fontSize: return faceSizes.firstIndex(of: state.fontSize) ?? 0
+        case .alignment: return state.alignmentIndex
+        case .decoration: return state.edgeIndex
+        case .backdrop: return state.hasBackdrop ? state.backdropIndex : 0
+        case .page: return state.pageIndex
+        default: return 0
+        }
+    }
+
+    /// Chooses option `index` of a list control, and returns what that sends.
+    ///
+    /// Goes through `set` rather than round it, so a menu, a MIDI knob and an LFO all
+    /// travel the same path and cannot disagree about what a value means.
+    public func choose(_ function: TitlerFunction, option index: Int) -> [TitlerCommand] {
+        let count = options(for: function).count
+        guard count > 0 else { return [] }
+        return set(function, to: NormalisedSweep.value(forIndex: index, count: count))
+    }
+
+    /// The last component of an Amiga path, for a menu that has to fit in a panel.
+    private static func leafName(_ path: String) -> String {
+        path.split(separator: "/").last.map(String.init) ?? path
     }
 
     /// What a control currently reads, in Scala's own units, for the readout under it.
@@ -496,7 +649,7 @@ public final class ScalaTitlerPanel {
             return state.directionIndex.map { ScalaLingo.directions[$0].uppercased() } ?? "—"
         case .wipeSpeed: return "\(state.wipeSpeed)"
         case .textWipe: return ScalaLingo.wipes[state.textWipeIndex].uppercased()
-        case .fontFace: return ScalaLingo.fonts[state.fontIndex]
+        case .fontFace: return faceName
         case .fontSize: return "\(state.fontSize)pt"
         case .textColour: return "#" + state.textColour.amigaHex
         case .backgroundColour: return "#" + state.backgroundColour.amigaHex
@@ -563,7 +716,7 @@ public final class ScalaTitlerPanel {
         }
         if let box = currentBox() { commands.append(box) }
         if let brush = currentBrush() { commands.append(brush) }
-        commands.append(currentText())
+        commands.append(contentsOf: currentTextLines())
 
         if state.isCycling { commands.append(ScalaLingo.cycle(true)) }
         commands.append(ScalaLingo.show())
@@ -600,11 +753,40 @@ public final class ScalaTitlerPanel {
     }
 
     private func currentFont() -> TitlerCommand {
-        ScalaLingo.font(ScalaLingo.fonts[state.fontIndex], size: state.fontSize)
+        ScalaLingo.font(faceName, size: state.fontSize)
     }
 
+    /// How many faces there are to choose between.
+    public var faceCount: Int {
+        fontCatalogue.isEmpty ? ScalaLingo.fonts.count : fontCatalogue.count
+    }
+
+    /// The chosen face's name, from the catalogue when there is one.
+    public var faceName: String {
+        if let face = currentFace { return face.name }
+        return ScalaLingo.fonts[min(state.fontIndex, ScalaLingo.fonts.count - 1)]
+    }
+
+    /// The sizes the chosen face offers.
+    public var faceSizes: [Int] { currentFace?.sizes ?? [] }
+
     private func currentText() -> TitlerCommand {
-        ScalaLingo.text(x: state.textX, y: state.textY, state.text)
+        ScalaLingo.text(x: state.textX, y: state.textY, state.text, line: 0)
+    }
+
+    /// Both lines, the second below the first.
+    ///
+    /// The gap is the type size plus a fifth of it — the leading Scala's own scripts
+    /// use, near enough, and the only figure here that is a judgement rather than a
+    /// measurement.
+    private func currentTextLines() -> [TitlerCommand] {
+        var lines = [currentText()]
+        guard !state.textTwo.trimmingCharacters(in: .whitespaces).isEmpty else { return lines }
+        let leading = state.fontSize + state.fontSize / 5
+        lines.append(ScalaLingo.text(
+            x: state.textX, y: min(state.textY + leading, screen.height - 1),
+            state.textTwo, line: 1))
+        return lines
     }
 
     /// The ATTRIBUTES line the state implies.
@@ -662,6 +844,49 @@ public enum TitlerControlSet {
         case ScalaLingo.portName: return ScalaTitlerPanel.controls
         default: return []
         }
+    }
+
+    /// The controls, grouped the way a titler is actually operated.
+    ///
+    /// ── WHY THE GROUPING IS DATA AND NOT LAYOUT CODE ────────────────────────────
+    ///
+    /// Because the view is meant to draw whatever the control set contains and nothing
+    /// else, and a grouping that lives in the view is a second, invisible list that
+    /// drifts from the first. This way a control added to the set lands in a named
+    /// section or it does not appear at all, which is the loud failure rather than the
+    /// quiet one.
+    ///
+    /// The order follows what an operator reaches for, borrowed from the shape every
+    /// modern titler settles on — the words first, then how they look, then where they
+    /// sit, then how they arrive.
+    public static func groups(for program: TitlerProgram) -> [(title: String, controls: [TitlerControl])] {
+        let all = controls(for: program)
+        guard !all.isEmpty else { return [] }
+
+        func pick(_ functions: [TitlerFunction]) -> [TitlerControl] {
+            functions.compactMap { function in all.first { $0.function == function } }
+        }
+
+        let sections: [(String, [TitlerFunction])] = [
+            ("TYPE",       [.fontFace, .fontSize, .decoration, .italic, .alignment]),
+            ("COLOUR",     [.textColour, .backgroundColour, .colourCycle]),
+            ("POSITION",   [.textX, .textY, .box]),
+            ("BACKGROUND", [.backdrop, .brushScale]),
+            ("TRANSITION", [.wipe, .wipeDirection, .wipeSpeed, .textWipe]),
+            ("PAGE",       [.page, .hold])
+        ]
+
+        var grouped = sections.map { (title: $0.0, controls: pick($0.1)) }
+            .filter { !$0.controls.isEmpty }
+
+        // Anything the sections above forgot. A control that exists and is not shown is
+        // the failure this catches; it lands in its own visible group rather than
+        // vanishing.
+        let placed = Set(grouped.flatMap { $0.controls.map(\.function) })
+        let missed = all.filter { !placed.contains($0.function) }
+        if !missed.isEmpty { grouped.append((title: "OTHER", controls: missed)) }
+
+        return grouped
     }
 
     /// Why a program has no panel yet.

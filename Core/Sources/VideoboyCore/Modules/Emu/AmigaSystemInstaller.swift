@@ -272,6 +272,42 @@ public struct AmigaSystemInstaller: Sendable {
         public let pageNames: [String]
         /// Graphics that can be placed and scaled, from the Symbols drawer.
         public let symbols: [String]
+        /// The typefaces on the drive, each with the sizes it actually exists at.
+        public let fonts: [ScalaFont]
+    }
+
+    /// Every typeface in a Fonts drawer, with the sizes it exists at.
+    ///
+    /// ── WHY THE SIZES HAVE TO BE READ OFF THE DISC ──────────────────────────────
+    ///
+    /// Amiga fonts are BITMAPS. A face exists at a handful of fixed sizes and at no
+    /// others, and the set differs per face: Franklin is 18, 23, 36 and 72; Didot is 28
+    /// and 56; GillN is 58 and nothing else. An `X.font` file sits beside a drawer named
+    /// `X`, and that drawer's entries ARE the sizes.
+    ///
+    /// Asking Scala for a size a face does not have is not a cosmetic mistake. It does
+    /// not fall back to the nearest — it drops its screen, and the machine's output
+    /// reverts to the AmigaDOS console. See
+    /// selfqa/out/emu-probe/03-font-franklin-44-not-on-disc.png. Offering a continuous
+    /// size fader over a bitmap font is therefore a way to put a boot prompt on air.
+    private static func fonts(
+        in directory: URL, fileManager: FileManager
+    ) -> [ScalaFont] {
+        let entries = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
+        var found: [ScalaFont] = []
+
+        for entry in entries.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending })
+        where entry.lowercased().hasSuffix(".font") {
+            let face = String(entry.dropLast(5))
+            // The sizes are the names of the files in the face's own drawer.
+            let sizes = ((try? fileManager.contentsOfDirectory(
+                atPath: directory.appendingPathComponent(face).path)) ?? [])
+                .compactMap(Int.init)
+                .sorted()
+            guard !sizes.isEmpty else { continue }
+            found.append(ScalaFont(name: face, sizes: sizes))
+        }
+        return found
     }
 
     /// Every picture in a drawer, as Amiga paths.
@@ -344,9 +380,13 @@ public struct AmigaSystemInstaller: Sendable {
             in: symbolsDirectory, volumeName: volumeName,
             amigaPrefix: "Scala/Symbols", fileManager: fileManager)
 
+        let fonts = Self.fonts(
+            in: scala.appendingPathComponent("Fonts"), fileManager: fileManager)
+
         Log.info(.titler, "titler assets: \(backdrops.count) backdrops, "
-            + "\(pages.count) pages, \(symbols.count) symbols")
-        return TitlerAssets(backdrops: backdrops, pageNames: pages, symbols: symbols)
+            + "\(pages.count) pages, \(symbols.count) symbols, \(fonts.count) fonts")
+        return TitlerAssets(
+            backdrops: backdrops, pageNames: pages, symbols: symbols, fonts: fonts)
     }
 
     public enum InstallError: LocalizedError {

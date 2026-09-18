@@ -400,15 +400,18 @@ final class TitlerControlTests: XCTestCase {
         }
     }
 
-    func testTheEndsOfAFaderReachTheEndsOfTheRange() {
-        let panel = ScalaTitlerPanel()
-        // Scala's only text scale is the font size, and the whole 12...114pt span the
-        // disc uses has to be reachable — the two ends are a caption and a
-        // full-screen word.
+    func testTheEndsOfTheSizeControlReachTheEndsOfWHATTHEFACEHAS() {
+        // Not 12...114. That span is what the DISC uses across all its faces, and no
+        // single face covers it. The control has to reach the ends of the face in use
+        // and stop, because a size in between is not a smaller letter — it is Scala
+        // dropping its screen.
+        let panel = TestFontDisc.panel()
+        _ = panel.choose(.fontFace, option: TestFontDisc.franklin)
+
         _ = panel.set(.fontSize, to: 0)
-        XCTAssertEqual(panel.state.fontSize, ScalaLingo.fontSizeRange.lowerBound)
+        XCTAssertEqual(panel.state.fontSize, 18, "Franklin's smallest")
         _ = panel.set(.fontSize, to: 1)
-        XCTAssertEqual(panel.state.fontSize, ScalaLingo.fontSizeRange.upperBound)
+        XCTAssertEqual(panel.state.fontSize, 72, "Franklin's largest")
     }
 
     func testTheSpeedFaderIsInvertedBecauseScalaCountsBackwards() {
@@ -514,9 +517,10 @@ final class TitlerControlTests: XCTestCase {
 
     func testTheReadoutIsInScalasUnitsNotTheFadersUnits() {
         // "Franklin 44pt" tells an operator something. "0.31" does not.
-        let panel = ScalaTitlerPanel()
+        let panel = TestFontDisc.panel()
+        _ = panel.choose(.fontFace, option: TestFontDisc.franklin)
         _ = panel.set(.fontSize, to: 1)
-        XCTAssertEqual(panel.readout(for: .fontSize), "114pt")
+        XCTAssertEqual(panel.readout(for: .fontSize), "72pt")
         _ = panel.set(.wipe, to: 0)
         XCTAssertEqual(panel.readout(for: .wipe), "CUT")
     }

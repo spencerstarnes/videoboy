@@ -22,7 +22,10 @@ final class EmuAutomationTests: XCTestCase {
     private func makeNode() -> (EmulatedTitlerNode, ParamRegistry, ScalaTitlerPanel) {
         let node = EmulatedTitlerNode(
             identifier: "source.emu", host: MockEmulatorHost(), context: nil)
-        let panel = ScalaTitlerPanel()
+        // A drive that has been read, so the size control is open. Without a catalogue
+        // the panel keeps it SHUT on purpose — an Amiga font exists at fixed sizes and
+        // asking for one it does not have drops Scala's screen.
+        let panel = TestFontDisc.panel()
         node.panel = panel
         let registry = ParamRegistry()
         registry.register(slot: node.identifier, parameters: node.parameters)
@@ -96,7 +99,10 @@ final class EmuAutomationTests: XCTestCase {
         registry.setValue(0.3, slot: node.identifier, code: .emuWipe)
         node.applyParameters(from: registry)
 
-        let viaMouse = ScalaTitlerPanel().set(.wipe, to: 0.3).map(\.line)
+        // The same machine on both sides: a panel that has read the same drive. The
+        // page carries the chosen FONT, so a panel with no catalogue would differ here
+        // for a reason that has nothing to do with knobs or mice.
+        let viaMouse = TestFontDisc.panel().set(.wipe, to: 0.3).map(\.line)
         XCTAssertEqual(viaRegistry, viaMouse)
     }
 
@@ -269,6 +275,7 @@ final class TitlerExtraControlTests: XCTestCase {
         let panel = ScalaTitlerPanel()
         panel.backdrops = ["CUCD19:Scala/Backgrounds/Stones005"]
         panel.pageNames = ["Opening", "Titles"]
+        panel.fontCatalogue = TestFontDisc.fonts
         panel.setBrush(file: "CUCD19:Scala/Symbols/Scala/MM300Stamp")
 
         for control in ScalaTitlerPanel.controls {

@@ -29,7 +29,8 @@ final class AmigaLinkTests: XCTestCase {
         // everything — the render loop must not be waiting on a filesystem.
         let transport = RecordingTransport()
         let bridge = AmigaCommandBridge(transport: transport)
-        let panel = ScalaTitlerPanel()
+        let panel = TestFontDisc.panel()
+        _ = panel.choose(.fontFace, option: TestFontDisc.franklin)
 
         for step in 0...60 {
             bridge.send(panel.set(.fontSize, to: Double(step) / 60.0))
@@ -39,7 +40,8 @@ final class AmigaLinkTests: XCTestCase {
         bridge.flush()
         let fonts = transport.allLines.filter { $0.hasPrefix("FONT") }
         XCTAssertEqual(fonts.count, 1, "sixty-one moves, one command")
-        XCTAssertEqual(fonts.first, "FONT Franklin.font 114", "and it is the LAST value")
+        // 72 and not 114: Franklin is a bitmap face and exists at 18, 23, 36 and 72.
+        XCTAssertEqual(fonts.first, "FONT Franklin.font 72", "and it is the LAST value")
     }
 
     func testOrderIsKeptBecauseScalaCaresAboutIt() {
@@ -47,7 +49,7 @@ final class AmigaLinkTests: XCTestCase {
         // one, which looks like the size fader lagging by one move.
         let transport = RecordingTransport()
         let bridge = AmigaCommandBridge(transport: transport)
-        bridge.send(ScalaTitlerPanel().set(.fontSize, to: 0.5))
+        bridge.send(TestFontDisc.panel().set(.fontSize, to: 0.5))
         bridge.flush()
 
         let lines = transport.allLines

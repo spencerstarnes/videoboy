@@ -187,3 +187,140 @@ final class TextCoalescingTests: XCTestCase {
         XCTAssertTrue(texts[0].contains(" 400 "), "and it is the position last asked for")
     }
 }
+
+/// A bitmap font has the sizes it has, and no others.
+///
+/// Asking Scala for a size a face does not carry drops its screen and the machine's
+/// output reverts to the AmigaDOS console — see
+/// selfqa/out/emu-probe/03-font-franklin-44-not-on-disc.png. The panel must make that
+/// impossible to ask for, not merely unlikely.
+final class ScalaFontCatalogueTests: XCTestCase {
+
+    private let disc = [
+        ScalaFont(name: "Franklin", sizes: [18, 23, 36, 72]),
+        ScalaFont(name: "Didot", sizes: [28, 56]),
+        ScalaFont(name: "GillN", sizes: [58])
+    ]
+
+    func testEverySizeTheSizeFaderCanReachIsOneTheFaceHas() {
+        let panel = ScalaTitlerPanel()
+        panel.fontCatalogue = disc
+
+        for faceValue in stride(from: 0.0, through: 1.0, by: 0.05) {
+            _ = panel.set(.fontFace, to: faceValue)
+            guard let face = panel.currentFace else { return XCTFail("no face") }
+            for sizeValue in stride(from: 0.0, through: 1.0, by: 0.02) {
+                _ = panel.set(.fontSize, to: sizeValue)
+                XCTAssertTrue(
+                    face.sizes.contains(panel.state.fontSize),
+                    "\(face.name) has \(face.sizes) — the fader reached \(panel.state.fontSize)")
+            }
+        }
+    }
+
+    func testChangingFaceMovesToASizeTheNewFaceActuallyHas() {
+        let panel = ScalaTitlerPanel()
+        panel.fontCatalogue = disc
+
+        _ = panel.set(.fontFace, to: 0)          // Franklin
+        _ = panel.set(.fontSize, to: 1)          // 72
+        XCTAssertEqual(panel.state.fontSize, 72)
+
+        _ = panel.set(.fontFace, to: 0.5)        // Didot, which has no 72
+        XCTAssertEqual(panel.state.fontSize, 56, "the nearest size Didot really has")
+    }
+
+    func testAFaceWithOneSizeCannotBeMovedOffIt() {
+        let panel = ScalaTitlerPanel()
+        panel.fontCatalogue = disc
+        _ = panel.set(.fontFace, to: 1)          // GillN, 58 only
+        for value in stride(from: 0.0, through: 1.0, by: 0.1) {
+            _ = panel.set(.fontSize, to: value)
+            XCTAssertEqual(panel.state.fontSize, 58)
+        }
+    }
+
+    func testTheCatalogueArrivingLateStillMakesTheCurrentSizeLegal() {
+        // The panel is built before any drive has been read, so it starts on 44 — a size
+        // exactly one of the eighteen faces on the disc has.
+        let panel = ScalaTitlerPanel()
+        XCTAssertEqual(panel.state.fontSize, 44)
+        panel.fontCatalogue = disc
+        // Whatever face the stored index lands on once a real catalogue replaces the
+        // fallback list, the SIZE has to be legal for it before anything is sent.
+        guard let face = panel.currentFace else { return XCTFail("no face after loading") }
+        XCTAssertTrue(
+            face.sizes.contains(panel.state.fontSize),
+            "\(face.name) has \(face.sizes), panel is on \(panel.state.fontSize)")
+    }
+}
+
+/// Choosing from a menu and arriving by MIDI must mean the same thing.
+final class NormalisedSweepRoundTripTests: XCTestCase {
+
+    func testEveryIndexSurvivesTheRoundTrip() {
+        for count in 1...100 {
+            for index in 0..<count {
+                let value = NormalisedSweep.value(forIndex: index, count: count)
+                XCTAssertEqual(
+                    NormalisedSweep.index(value, count: count), index,
+                    "item \(index) of \(count) came back as something else")
+            }
+        }
+    }
+}
+
+/// Every control has to appear somewhere the operator can reach it.
+final class TitlerGroupingTests: XCTestCase {
+
+    private var scala: TitlerProgram {
+        TitlerLibrary.programs.first { $0.scriptPort == ScalaLingo.portName }!
+    }
+
+    func testEveryControlIsInExactlyOneGroup() {
+        let all = TitlerControlSet.controls(for: scala)
+        let grouped = TitlerControlSet.groups(for: scala).flatMap { $0.controls }
+        XCTAssertEqual(
+            Set(all.map(\.function)), Set(grouped.map(\.function)),
+            "a control exists that no group shows")
+        XCTAssertEqual(all.count, grouped.count, "a control is shown twice")
+    }
+
+    func testNothingLandsInOTHER() {
+        // OTHER is the visible failure for a control nobody placed. It should be empty.
+        let stray = TitlerControlSet.groups(for: scala).first { $0.title == "OTHER" }
+        XCTAssertNil(stray, "unplaced: \(stray?.controls.map(\.name) ?? [])")
+    }
+
+    func testAListThatDependsOnTheDiscSaysSoUntilOneIsRead() {
+        // Three lists are only knowable once a drive has been scanned. Each has to
+        // explain itself rather than show an empty menu — and font size most of all,
+        // because a size that is not on the disc drops Scala's screen.
+        let panel = ScalaTitlerPanel()
+        for function in [TitlerFunction.fontSize, .backdrop, .page] {
+            XCTAssertTrue(panel.options(for: function).isEmpty)
+            XCTAssertNotNil(
+                panel.unavailableReason(for: function),
+                "\(function.rawValue) offers nothing and does not say why")
+        }
+    }
+
+    func testEveryOtherListAlwaysHasSomethingToChooseFrom() {
+        let panel = ScalaTitlerPanel()
+        let discDependent: Set<TitlerFunction> = [.fontSize, .backdrop, .page]
+        for control in TitlerControlSet.controls(for: scala)
+        where control.shape == .list && !discDependent.contains(control.function) {
+            XCTAssertFalse(
+                panel.options(for: control.function).isEmpty,
+                "\(control.name) is a list with no options")
+            XCTAssertNil(panel.unavailableReason(for: control.function))
+        }
+    }
+
+    func testReadingADriveOpensTheSizeList() {
+        let panel = ScalaTitlerPanel()
+        panel.fontCatalogue = [ScalaFont(name: "Franklin", sizes: [18, 23, 36, 72])]
+        XCTAssertNil(panel.unavailableReason(for: .fontSize))
+        XCTAssertEqual(panel.options(for: .fontSize), ["18pt", "23pt", "36pt", "72pt"])
+    }
+}
