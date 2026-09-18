@@ -751,6 +751,44 @@ final class ShellController {
         }
     }
 
+    /// Sends one parameter back to the default its NODE declares.
+    ///
+    /// The node is the authority, not the card model: `Parameter.defaultValue` is what
+    /// the effect was written to sit at, while the card's `value` is a literal typed
+    /// into `PanelSet` in thirty-two places. Resetting to the latter would look right
+    /// today and drift the first time a node's default is tuned.
+    ///
+    /// Writes through `registry.setValue`, the same door a drag, a MIDI knob and an LFO
+    /// all come through, so a reset cannot end up meaning something subtly different
+    /// from setting the fader there by hand.
+    private func resetParameter(_ code: String, bus: Bus) {
+        guard let parameter = ParamCode(rawValue: code) else { return }
+        guard let slot = slot(forParameter: parameter, bus: bus) else {
+            Log.warn(.param, "no slot is registered for param code \(code); cannot reset it")
+            return
+        }
+        guard let declared = engine.graph.nodes[slot]?.parameters
+            .first(where: { $0.code == parameter }) else { return }
+
+        engine.registry.setValue(declared.defaultValue, slot: slot, code: parameter)
+
+        // Move the fader and its readout to match. The write above is the truth; this
+        // is the panel catching up, and without it the control sits where it was
+        // dragged while the engine is somewhere else — which reads as the key not
+        // working.
+        let panel = bus == .one
+            ? shell.grid.panels.effectsOneBody
+            : shell.grid.panels.effectsTwoBody
+        if let effect = panel.effects.first(where: { card in
+            card.parameters.contains { $0.code == code }
+        }) {
+            panel.setDisplayedParameterValues(
+                effectName: effect.name,
+                values: [code: declared.normalise(declared.defaultValue)])
+        }
+        Log.info(.param, "reset \(slot)/\(code) to its default of \(declared.defaultValue)")
+    }
+
     /// Brings a channel's panel back into line after its clip has been exchanged.
     ///
     /// Everything here describes the CLIP rather than the channel — which file it is,
@@ -1274,6 +1312,13 @@ final class ShellController {
             guard let declared = self.engine.graph.nodes[slot]?.parameters
                 .first(where: { $0.code == parameter }) else { return }
             self.engine.registry.setValue(declared.denormalise(value), slot: slot, code: parameter)
+        }
+
+        shell.grid.panels.effectsOneBody.onParameterReset = { [weak self] code in
+            self?.resetParameter(code, bus: .one)
+        }
+        shell.grid.panels.effectsTwoBody.onParameterReset = { [weak self] code in
+            self?.resetParameter(code, bus: .two)
         }
 
         shell.grid.panels.effectsOneBody.onEffectModulationRequested = { [weak self] name, source, view in

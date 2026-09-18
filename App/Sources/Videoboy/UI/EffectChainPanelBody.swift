@@ -151,6 +151,14 @@ final class EffectChainPanelBody: NSView {
     /// Called when a parameter fader moves: (param code, new 0...1 value).
     var onParameterChanged: ((String, Double) -> Void)?
 
+    /// Called when a parameter's reset key is pressed, with its param code.
+    ///
+    /// The VALUE is not carried, because the panel does not know it. A default belongs
+    /// to the node that declares the parameter (`Parameter.defaultValue`), and the one
+    /// in the card model is a display literal written out by hand in thirty-two places
+    /// — resetting to that would slowly drift away from what the node actually does.
+    var onParameterReset: ((String) -> Void)?
+
     /// A modulation badge on an effect header was clicked: (effect name, source,
     /// the badge view to hang a menu from).
     var onEffectModulationRequested: ((String, ModulationSource, NSView) -> Void)?
@@ -480,8 +488,23 @@ final class EffectChainPanelBody: NSView {
         let sweepCancel = Controls.glyphButton("✕", tooltip: "Stop this fader driving itself")
         sweepCancel.isHidden = true
 
+        // RESET, next to the title. A parameter you have pushed somewhere odd mid-set
+        // needs a way back that is not "remember what it used to be", and every one of
+        // these already declares a default — the node that owns the parameter says what
+        // it is. The circular arrow is the ordinary symbol for it and costs one glyph
+        // of a narrow row.
+        //
+        // Disabled along with its parameter: a reset key on a control whose feature is
+        // not built would be a control that looks usable and does nothing, which the
+        // control audit fails the build over.
+        let resetKey = Controls.glyphButton(
+            "↺", enabled: parameter.enabled,
+            tooltip: "Reset \(parameter.name) to its default",
+            target: self, action: #selector(parameterResetPressed(_:)))
+        resetKey.identifier = NSUserInterfaceItemIdentifier("reset|\(parameter.code)")
+
         let topLine = Controls.row(
-            [label, Controls.spacer(), sweepKey, sweepCancel, value], spacing: 5)
+            [label, resetKey, Controls.spacer(), sweepKey, sweepCancel, value], spacing: 5)
 
         // Line 2 — the fader, full width. This is the whole reason for two lines.
         let fader = Controls.fader(
@@ -782,6 +805,13 @@ final class EffectChainPanelBody: NSView {
         onEffectModulationRequested?(parts[0], source, sender)
     }
 
+    /// Sends a parameter back to the default its node declares.
+    @objc private func parameterResetPressed(_ sender: NSButton) {
+        guard let identifier = sender.identifier?.rawValue,
+              identifier.hasPrefix("reset|") else { return }
+        onParameterReset?(String(identifier.dropFirst("reset|".count)))
+    }
+
     /// Folds an effect down to its header, or opens it again.
     ///
     /// COLLAPSING IS NOT DISABLING, and keeping those apart is the whole point of
@@ -825,7 +855,26 @@ final class EffectChainPanelBody: NSView {
     /// `cardChannelSelection` and this is what makes it visible.
     private func restyleFocus(_ control: NSSegmentedControl, options: [String], state: Int) {
         let isBoth = state >= options.count
-        control.selectedSegmentBezelColor = Theme.Color.focusOn
+
+        // THE SELECTION IS NOT YELLOW YET, and it is worth writing down why so the
+        // next person does not spend the afternoon I did on it.
+        //
+        // `selectedSegmentBezelColor` is the documented API and AppKit ignores it here.
+        // Three approaches were tried and photographed: the property alone, the
+        // property with `segmentStyle = .roundRect`, and an `NSSegmentedCell` subclass
+        // overriding `drawSegment`. All three rendered the same system grey, because a
+        // modern NSSegmentedControl no longer draws through its cell.
+        //
+        // The selection is currently said with the caret (▸A) and with BOTH lighting
+        // every segment, which is legible but is not the app's colour language, where
+        // yellow means SELECTED and red means LIVE.
+        //
+        // The fix is to replace this control with two of the app's own VBOptionButton
+        // keys, which colour reliably because they draw themselves — that is how CUT,
+        // FADE, BEAT and the bus keys all light. It is deferred rather than difficult:
+        // UISelfQA's section 11 finds this selector AS an NSSegmentedControl, asserts
+        // it has two segments, and clicks it by setting `selectedSegment` and firing
+        // target/action, so the swap means rewriting that check too.
 
         // BOTH genuinely LIGHTS BOTH. `.selectAny` is what makes that possible: the
         // default one-of-N tracking can only ever bezel a single segment, so BOTH used
