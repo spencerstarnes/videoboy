@@ -800,8 +800,19 @@ final class ShellController {
         guard let node = engine.sources[letter],
               let body = shell.grid.panels.sourceBodies[letter] else { return }
         let range = node.playbackRange
-        body.setMediaName(
-            node.mediaURL.map { range == nil ? $0.lastPathComponent : "\($0.lastPathComponent) [trimmed]" })
+        // The caption names WHAT THE CHANNEL SHOWS, which after a swap may not be a file
+        // at all. Captioning the clip regardless would put a filename on a channel that
+        // is showing the Amiga — a label describing a node the channel is not reading.
+        switch engine.channelSourceKinds[letter] ?? .file {
+        case .emulator:
+            body.setMediaName("Amiga")
+        case .generator:
+            body.setMediaName(engine.generators[letter]?.generator.displayName ?? "Generator")
+        case .file:
+            body.setMediaName(node.mediaURL.map {
+                range == nil ? $0.lastPathComponent : "\($0.lastPathComponent) [trimmed]"
+            })
+        }
         body.setMarkedRange(range)
         body.setTiming(node.timing)
         body.setScrubPosition(node.normalisedPosition)

@@ -2027,6 +2027,46 @@ enum UISelfQA {
         }
 
 
+        // The ⇅ swap key, across SOURCE KINDS. Swapping two channels that are both
+        // playing files exercises almost none of this — the bug it is here to catch was
+        // that a channel pointed at the EMULATOR takes its picture from the shared
+        // emulator slot, so exchanging the two ClipSourceNodes moved the clips
+        // underneath and nothing on screen changed. File/file looked fine, which is the
+        // worst way for it to present.
+        sectionSwap: do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+            withExtendedLifetime(controller) {}
+
+            engine.setChannelSource(.emulator, channel: "A")
+            engine.setChannelSource(.file, channel: "B")
+
+            let swapped = engine.swapChannels("A", "B")
+            check.record(AssertionResult(
+                name: "the swap key reports success across two channels",
+                passed: swapped, detail: swapped ? "swapped" : "refused"))
+
+            let aKind = engine.channelSourceKinds["A"]
+            let bKind = engine.channelSourceKinds["B"]
+            check.record(AssertionResult(
+                name: "swapping moves WHAT THE CHANNEL SHOWS, not just the clip",
+                passed: aKind == .file && bKind == .emulator,
+                detail: "A is \(String(describing: aKind ?? .file)), "
+                    + "B is \(String(describing: bKind ?? .file)) — expected file, emulator"))
+
+            // And the graph has to agree, or the picture comes from the old node while
+            // the state says otherwise.
+            check.record(AssertionResult(
+                name: "the graph follows the swap",
+                passed: engine.sourceSlot(forChannel: "B") == Engine.emulatorSlot
+                    && engine.sourceSlot(forChannel: "A") != Engine.emulatorSlot,
+                detail: "A reads \(engine.sourceSlot(forChannel: "A")), "
+                    + "B reads \(engine.sourceSlot(forChannel: "B"))"))
+        }
+
         return check.finish()
     }
 

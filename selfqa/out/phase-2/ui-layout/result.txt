@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
-verdict:  PASS
-when:     2026-09-18T19:41:58Z
+verdict:  FAIL
+when:     2026-09-18T21:16:41Z
 core:     0.3.0
 
 notes:
@@ -12,19 +12,19 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
   adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 10.93 ms, p95 11.42 ms, worst 11.84 ms, budget 33.37 ms
+  frame time with everything on: mean 11.87 ms, p95 13.96 ms, worst 14.12 ms, budget 33.37 ms
 
-assertions (92/92 passed):
+assertions (93/95 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 828.9
+  PASS  wide is not blank — luminance variance 835.3
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 795.3
+  PASS  compact is not blank — luminance variance 800.2
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 969.9
-  PASS  collapsed-left is not blank — luminance variance 734.4
-  PASS  collapsed-both-edges is not blank — luminance variance 633.7
-  PASS  collapsed-sources-only is not blank — luminance variance 849.7
-  PASS  collapsed-effects-only is not blank — luminance variance 621.5
+  PASS  narrow is not blank — luminance variance 974.4
+  PASS  collapsed-left is not blank — luminance variance 732.5
+  PASS  collapsed-both-edges is not blank — luminance variance 631.3
+  PASS  collapsed-sources-only is not blank — luminance variance 853.9
+  PASS  collapsed-effects-only is not blank — luminance variance 620.4
   PASS  holding Shift lights the mappable faders — 77 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
@@ -79,8 +79,8 @@ assertions (92/92 passed):
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
   PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 11.84 ms against a 33.37 ms budget (mean 10.93, p95 11.42)
-  PASS  frame time is even, not just fast on average — worst is 1.1x the mean
+  PASS  no frame misses the budget with every effect running — worst frame 14.12 ms against a 33.37 ms budget (mean 11.87, p95 13.96)
+  PASS  frame time is even, not just fast on average — worst is 1.2x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there
   PASS  a crossfader accepts sweep marks — 0.19...0.81
@@ -107,3 +107,38 @@ assertions (92/92 passed):
   PASS  every EMU control can be learned to MIDI — 19 of 19 carry a slot and a code
   PASS  holding Shift lights the EMU menus and switches too — 13 of 13 lit
   PASS  the EMU tab takes typed text — 2 editable
+  PASS  the swap key reports success across two channels — swapped
+  FAIL  swapping moves WHAT THE CHANNEL SHOWS, not just the clip — A is emulator, B is file — expected file, emulator
+  FAIL  the graph follows the swap — A reads source.emu, B reads source.b
+
+recent log:
+  1789766200.860 INFO [param] slot 'data.two' now exposes 6 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'fx.d.echo' now exposes 4 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'fx.two.transform' now exposes 5 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'fx.d.feedback' now exposes 6 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'fx.b.colour' now exposes 9 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'fx.one.colour' now exposes 9 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'data.program' now exposes 6 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'source.capture' now exposes 3 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'fx.a.colour' now exposes 9 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'fx.one.transform' now exposes 5 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [param] slot 'generator.c' now exposes 4 params (0 values carried, 0 dropped)
+  1789766200.860 INFO [graph] graph built: 55 nodes, max latency 2 frames
+  1789766200.860 INFO [clock] subscription 1: 1/4, latency 1 frames (33.4ms)
+  1789766200.860 INFO [clock] subscription 2: 1/4, latency 1 frames (33.4ms)
+  1789766200.860 INFO [clock] subscription 3: 1/4, latency 1 frames (33.4ms)
+  1789766200.860 INFO [clock] subscription 4: 1/4, latency 1 frames (33.4ms)
+  1789766200.860 INFO [clock] subscription 5: 1/4, latency 0 frames (0.0ms)
+  1789766200.860 INFO [clock] subscription 6: 1/4, latency 0 frames (0.0ms)
+  1789766200.860 INFO [clock] subscription 7: 1/4, latency 0 frames (0.0ms)
+  1789766200.860 INFO [app] record indicators on 1, 2, A, B, C, D, P
+  1789766200.861 INFO [render] picture fill is now Fill
+  1789766200.861 INFO [output] source.capture will use PC-LM1E Camera when a session opens
+  1789766200.861 INFO [output] capture device set to PC-LM1E Camera
+  1789766200.861 INFO [param] 0 parameters have a driver
+  1789766201.380 INFO [graph] channel A now sourced from the emulator
+  1789766201.380 INFO [graph] channel B now sourced from a file
+  1789766201.380 INFO [dv] swapped channel A and channel B: A now has nothing, B now has nothing
+  1789766201.380 INFO [selfqa] phase-2/ui-layout: PASS  the swap key reports success across two channels — swapped
+  1789766201.380 ERROR [selfqa] phase-2/ui-layout: FAIL  swapping moves WHAT THE CHANNEL SHOWS, not just the clip — A is emulator, B is file — expected file, emulator
+  1789766201.380 ERROR [selfqa] phase-2/ui-layout: FAIL  the graph follows the swap — A reads source.emu, B reads source.b

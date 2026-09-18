@@ -719,6 +719,34 @@ final class Engine {
         firstNode.adopt(secondClip)
         secondNode.adopt(firstClip)
 
+        // AND WHAT THE CHANNEL IS ACTUALLY SHOWING, not only the clip behind it.
+        //
+        // Swapping the two `ClipSourceNode`s is the whole job only when both channels
+        // are playing FILES. A channel pointed at the emulator takes its picture from
+        // the shared emulator slot, and one on a generator from its own generator node
+        // — so the clips changed places underneath and nothing on screen moved. The
+        // swap looked broken, and on a file/file pair it looked fine, which is the
+        // worst way for a bug like this to present.
+        //
+        // The generator KIND travels with the channel for the same reason the clip
+        // does: it is what that channel was showing. The emulator needs nothing moved,
+        // because there is one machine and both channels address the same node — only
+        // which of them is pointed at it changes.
+        let firstGenerator = generators[first]?.generator
+        let secondGenerator = generators[second]?.generator
+        if let secondGenerator { generators[first]?.generator = secondGenerator }
+        if let firstGenerator { generators[second]?.generator = firstGenerator }
+
+        // Re-routed through `setChannelSource` rather than by assigning the dictionary,
+        // so the graph edges move with the state. Setting `channelSourceKinds` directly
+        // would leave each channel's edge pointing at what it used to show.
+        let firstKind = channelSourceKinds[first] ?? .file
+        let secondKind = channelSourceKinds[second] ?? .file
+        if firstKind != secondKind {
+            setChannelSource(secondKind, channel: first)
+            setChannelSource(firstKind, channel: second)
+        }
+
         Log.info(.dv, "swapped channel \(first) and channel \(second): "
             + "\(first) now has \(firstNode.mediaURL?.lastPathComponent ?? "nothing"), "
             + "\(second) now has \(secondNode.mediaURL?.lastPathComponent ?? "nothing")")
