@@ -323,6 +323,24 @@ public enum TitlerLibrary {
             // Confirmed on the CU Amiga disc: Scala/ARexx ships a working example and
             // the install set carries ARexx.lha. This is what the text box talks to.
             scriptPort: ScalaLingo.portName
+        ),
+        TitlerProgram(
+            name: "Scala MM400",
+            platform: .amiga,
+            requires: [
+                "An Amiga Kickstart ROM (3.0 or 3.1)",
+                "A Scala MM400 disc",
+                "Amiberry or FS-UAE"
+            ],
+            boot: [
+                .waitForStableScreen(timeout: 120),
+                .loadState(named: "scala-mm400-ready")
+            ],
+            machine: .amiga1200Vampire,
+            // THE SAME PORT as MM300, verified in its binary. Which is the whole reason
+            // MM400 was worth trying: the translation layer, the command vocabulary and
+            // every one of the nineteen controls work against it unchanged.
+            scriptPort: ScalaLingo.portName
         )
     ]
 }

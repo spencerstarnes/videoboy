@@ -31,8 +31,33 @@ Each of these was tested, not reasoned about. Please do not spend time on them a
 | The copy protection dongle | Scala MM300 is dongle-protected and this error is what that protection looks like when it fails — so this was the strongest lead. FS-UAE 3.2 knows eight dongle types and Scala is not among them, so its `dongle_type` was silently ignored. **Amiberry's WinUAE 4.x core has `scala green`, it is configured, and the error is unchanged.** Necessary, not sufficient. |
 | The chipset | Tried AGA and ECS. No difference. It is 1993 software, so ECS is the better default and is what the config now uses. |
 | AROS being old | FS-UAE ships a 2015 AROS, Amiberry a 2025 one. Identical failure on both. |
+| **The Scala version** | **Tested. MM400 (1996) fails identically to MM300 (1993): `Error 4: Can't open device: scalamm.gfx`.** MM400 was the strongest remaining lead, because it is reported to be far less fussy about OS version — and it makes no difference. Two releases three years apart, failing the same way, isolates the variable to the ROM. |
 | The wrong program | `ScalaMM` (the editor) and `ScalaMMPlayer -rexx` (the runtime) both fail the same way. The Player is now the default anyway — see below. |
 | Display modes not installed | The disc's own startup executes `DEVS:Monitors` to register them. Doing the same **aborts the boot** under AROS, so that path is closed. |
+
+## MM400 was tried, and it is the proof
+
+Scala MM400 is now installed alongside MM300 and mounts correctly as its own volume
+(`SCALA-MM400`, confirmed by the machine's own `Info` output). Its launcher needs no
+DEVS work at all — just two font assigns and a `cd`, which is the first sign it is a
+tidier release than MM300.
+
+**It uses the same ARexx port**, `rexx_ScalaMM`, verified in its binary. That is why it
+was worth trying: the translation layer, the command vocabulary and all nineteen
+controls work against it unchanged. It is in `TitlerLibrary` as a program.
+
+And it fails on exactly the same line. Two Scala releases, three years apart, one
+tidier than the other, both stopped by `scalamm.gfx` — that is not a Scala problem.
+
+## TV Text Professional is not a substitute
+
+Also tried: TV Text Professional 1.0 (Zuma Group, 1989), a genuine broadcast titler,
+cracked so no protection, and old enough that AROS would very likely run it.
+
+**It has no ARexx port at all** — nothing matching `rexx` anywhere in the disk image.
+1989 predates ARexx shipping with the OS. Without a script port there is nothing for
+the translation layer to talk to, and driving it would mean synthesising keystrokes,
+which is the fragile approach this whole design exists to avoid.
 
 ## Why a Kickstart is the answer
 

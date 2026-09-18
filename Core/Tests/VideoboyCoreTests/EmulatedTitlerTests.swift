@@ -68,12 +68,25 @@ final class EmulatedTitlerTests: XCTestCase {
         }
     }
 
-    func testEveryProgramNamesACoreWithoutBundlingOne() {
+    func testEveryProgramNamesWhatItNeedsWithoutBundlingIt() {
+        // This used to insist on the word "core", from when the plan was a libretro
+        // core. It is an emulator now — Amiberry, or FS-UAE — because a core would have
+        // to sit as a GPL dylib beside a process we control, while an application we
+        // launch and never link is the cleanest compliance there is.
+        //
+        // The INTENT is unchanged and is the point: every program says what has to be
+        // supplied, so nothing is quietly expected to be bundled.
+        let emulatorWords = ["core", "amiberry", "fs-uae", "emulator"]
         for program in TitlerLibrary.programs {
             XCTAssertFalse(program.platform.suggestedCore.isEmpty)
             XCTAssertTrue(
-                program.requires.contains { $0.lowercased().contains("core") },
-                "\(program.name) must say a core is needed")
+                program.requires.contains { requirement in
+                    emulatorWords.contains { requirement.lowercased().contains($0) }
+                },
+                "\(program.name) must say which emulator it needs")
+            XCTAssertTrue(
+                program.requires.contains { $0.lowercased().contains("kickstart") },
+                "\(program.name) must say a Kickstart is the user's to supply")
         }
     }
 
