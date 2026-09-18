@@ -170,3 +170,38 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   Manual entry and RANDOM have neither problem and could ship first — they make the
   unit useful with no network and no guardrail change, and they are also what proves
   the data path into the machine works before a scraper is added on top.
+- **Amiberry 8 has an IPC control socket, and it changes what the EMU tab can be.**
+  Found 2026-09-18 while looking for a way to save state without anyone touching the
+  emulator. `/tmp/amiberry.sock`, plain text, tab-delimited, and it answers:
+
+      $ printf 'PING\n' | nc -U /tmp/amiberry.sock
+      OK	PONG
+      $ printf 'GET_VERSION\n' | nc -U /tmp/amiberry.sock
+      OK	version=Amiberry 8.3.0 (2026.08.05)	sdl=SDL 3.4.14
+
+  About a hundred commands. The ones that matter here:
+
+  - `SAVESTATE <statefile> <configfile>` / `LOADSTATE <state>` / `QUICKSAVE [slot]`.
+    **Verified working**: writing to a path of our choosing returned `OK` and produced a
+    540 KB `.uss` there. This is the whole of the requested save-state feature — the app
+    asks, the emulator saves, nobody touches the emulator, and WE choose the filename and
+    the directory, so states live in Videoboy's own app data and can be named after the
+    program with an incrementing suffix.
+  - `SEND_KEY <code> <state>`, `SEND_MOUSE`, `SEND_MOUSE_ABS`. Worth a serious look: the
+    titler currently drives the Amiga through a shared drawer and an ARexx listener
+    inside the machine, which is the most fragile part of this subsystem. This is a
+    direct path that does not depend on anything running guest-side.
+  - `TOGGLE_MOUSE_GRAB`, `RELEASE_MOUSE_BUTTONS` — direct control of the grab.
+  - `SET_WINDOW_SIZE`, `TOGGLE_FULLSCREEN`, `SET_SCALING` — window control at runtime
+    rather than only through the config file.
+  - `QUIT` — a clean shutdown instead of SIGTERM.
+  - `GET_STATUS`, `PING`, `GET_FPS` — a real health signal for the panel, replacing
+    "is the process still running".
+
+  Also `savestate_dir` exists as a config key, so the default location can be set at
+  launch as well as per-call.
+
+  Caveat worth checking before leaning on it: the socket path is fixed at
+  `/tmp/amiberry.sock` and the binary carries "Default socket in use, using instance",
+  so a second Amiberry takes a different path. Anything built on this has to discover
+  which socket belongs to the instance we launched rather than assuming.
