@@ -41,12 +41,23 @@ fail() { printf '\033[1;31m[signing]\033[0m %s\n' "$*" >&2; exit 1; }
 # of this exited silently on a SIGPIPE and read exactly like it had done nothing.
 trap 'status=$?; printf "\033[1;31m[signing]\033[0m failed at line $LINENO (exit $status)\n" >&2' ERR
 
+# UNLOCK FIRST, THEN LOOK. The other way round is a bug that only appears after a
+# reboot: a locked keychain reports no identities, so the check below concluded there
+# was nothing there, tried to create a second one, and failed on the import — leaving
+# the build to fall back to ad-hoc with a perfectly good identity sitting on disk.
+if [ -s "$SECRET_FILE" ] && [ -f "$KEYCHAIN" ]; then
+    security unlock-keychain -p "$(cat "$SECRET_FILE")" "$KEYCHAIN" 2>/dev/null || true
+    # Also make sure it is on the search list. A keychain that is not searched is
+    # invisible to `find-identity` however unlocked it is.
+    EXISTING="$(security list-keychains -d user | sed -e 's/^[[:space:]]*"//' -e 's/"$//')"
+    if ! printf '%s\n' "$EXISTING" | grep -qF "$KEYCHAIN_NAME"; then
+        # shellcheck disable=SC2086
+        security list-keychains -d user -s $(printf '%s\n' "$EXISTING" | tr '\n' ' ') "$KEYCHAIN" 2>/dev/null || true
+    fi
+fi
+
 # Already present and usable? Say so and stop.
 if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$IDENTITY"; then
-    # The keychain can exist but be locked after a reboot; unlocking is cheap.
-    if [ -f "$SECRET_FILE" ] && [ -f "$KEYCHAIN" ]; then
-        security unlock-keychain -p "$(cat "$SECRET_FILE")" "$KEYCHAIN" 2>/dev/null || true
-    fi
     echo "$IDENTITY"
     exit 0
 fi

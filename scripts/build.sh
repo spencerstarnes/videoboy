@@ -78,8 +78,26 @@ if IDENTITY="$(bash "$REPO_ROOT/scripts/signing-identity.sh" 2>/dev/null)" && [ 
   codesign --force --sign "$IDENTITY" --timestamp=none "$APP_BUNDLE" 2>&1 | sed 's/^/  /' \
     || fail "codesign failed"
 else
-  log "ad-hoc signing — NO stable identity; macOS will re-ask for Screen Recording"
-  log "  run scripts/signing-identity.sh once to stop that happening every build"
+  # NEVER SILENTLY DOWNGRADE. If the signing keychain EXISTS but the identity cannot be
+  # seen, this is not "not set up yet" — it is a build that is about to replace a stable
+  # signature with an ad-hoc one and void every permission granted to it. That happened:
+  # a build run from a context that could not read the keychain re-signed the app
+  # ad-hoc, and the Screen Recording grant made minutes earlier stopped matching.
+  #
+  # The build still proceeds, because a build that refuses to run blocks everything. But
+  # it says exactly what it just cost, so nobody has to work it out from a black capture.
+  if [ -f "$HOME/Library/Keychains/videoboy-signing.keychain-db" ]; then
+    log ""
+    log "  ****  WARNING: signing ad-hoc even though a signing keychain EXISTS  ****"
+    log "  The identity is not visible from this shell — a locked keychain, or a"
+    log "  sandboxed/CI context that cannot read it. This build has just VOIDED"
+    log "  Screen Recording and every other permission granted to this app."
+    log "  Re-run scripts/build.sh from a normal terminal to restore it."
+    log ""
+  else
+    log "ad-hoc signing — NO stable identity; macOS will re-ask for Screen Recording"
+    log "  run scripts/signing-identity.sh once to stop that happening every build"
+  fi
   codesign --force --sign - --timestamp=none "$APP_BUNDLE" 2>&1 | sed 's/^/  /' \
     || fail "codesign failed"
 fi
