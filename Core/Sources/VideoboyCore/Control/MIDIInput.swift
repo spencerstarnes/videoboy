@@ -129,16 +129,58 @@ public final class MIDIInput {
     ///
     /// This is the second half of shift-to-detect: the UI highlights mappable
     /// controls while Shift is held, the user touches one, and that call lands here.
-    public func beginDetect(slot: String, code: ParamCode) {
+    public func beginDetect(slot: String, code: ParamCode, accepting: DetectFilter = .anything) {
         pendingDetect = (slot, code)
-        Log.info(.midi, "detect armed for \(slot)/\(code.rawValue) — move a control")
+        detectFilter = accepting
+        Log.info(.midi, "detect armed for \(slot)/\(code.rawValue) — \(accepting.prompt)")
     }
+
+    /// What an armed detect will accept.
+    ///
+    /// ── WHY A BUTTON REFUSES A KNOB ─────────────────────────────────────────────
+    ///
+    /// Learning is done by touching the control you want, and on a controller that
+    /// streams — a motorised fader, a knob being nudged, an LFO on a CC — the first
+    /// message to arrive is very often NOT the one you meant. Arm a button, reach for a
+    /// pad, and a knob you brushed on the way has already taken the mapping.
+    ///
+    /// VDMX solves it by listening for the RIGHT KIND of message: arm a button and it
+    /// waits for a button. That is this. It is not a nicety — without it, learning a
+    /// button on a busy controller is a coin toss.
+    public enum DetectFilter: Sendable {
+        /// Any control surface message. What a fader wants.
+        case anything
+        /// Notes only — pads, keys, transport buttons. What a BUTTON wants.
+        case notesOnly
+
+        /// Whether an event may complete the detect.
+        public func accepts(_ source: ControlSource) -> Bool {
+            switch self {
+            case .anything:
+                return true
+            case .notesOnly:
+                if case .midiNote = source { return true }
+                return false
+            }
+        }
+
+        /// What to tell the person to do.
+        public var prompt: String {
+            switch self {
+            case .anything: "move a control"
+            case .notesOnly: "press a button or pad"
+            }
+        }
+    }
+
+    private var detectFilter: DetectFilter = .anything
 
     /// Cancels an armed detect.
     public func cancelDetect() {
         if pendingDetect != nil {
             Log.info(.midi, "detect cancelled")
             pendingDetect = nil
+            detectFilter = .anything
         }
     }
 
@@ -153,10 +195,11 @@ public final class MIDIInput {
     /// Exposed so tests can drive the whole flow without Core MIDI, and so OSC can
     /// use the identical path.
     public func handle(event: ControlEvent) {
-        if let target = pendingDetect {
+        if let target = pendingDetect, detectFilter.accepts(event.source) {
             let binding = ControlBinding(source: event.source, slot: target.slot, code: target.code)
             registry.bind(binding)
             pendingDetect = nil
+            detectFilter = .anything
             onDetectCompleted?(binding)
             // Deliver the value too, so the parameter jumps to the control's current
             // position rather than waiting for the next move.

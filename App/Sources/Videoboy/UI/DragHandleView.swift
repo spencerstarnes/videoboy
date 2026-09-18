@@ -17,6 +17,12 @@ final class DragHandleView: NSView {
 
     /// Called continuously while dragging, with the offset from where the drag began.
     var onDrag: ((CGFloat) -> Void)?
+    /// Called once when a drag actually starts, before the first movement.
+    ///
+    /// Separate from `onDrag` because lifting the card, dimming the list and building a
+    /// floating snapshot are all things that must happen ONCE — doing them on the first
+    /// movement means doing them again on the second.
+    var onDragBegan: (() -> Void)?
     /// Called when the drag finishes.
     var onDragEnded: (() -> Void)?
 
@@ -80,12 +86,22 @@ final class DragHandleView: NSView {
         NSCursor.closedHand.set()
         let start = convert(event.locationInWindow, from: nil)
         var dragging = true
+        var hasBegun = false
+        // A few points of slop before a drag starts, so a click that wobbles does not
+        // lift the card and dim the whole panel for nothing.
+        let threshold: CGFloat = 3
         while dragging {
             guard let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) else { break }
             switch next.type {
             case .leftMouseDragged:
                 let point = convert(next.locationInWindow, from: nil)
-                onDrag?(point.y - start.y)
+                let offset = point.y - start.y
+                if !hasBegun {
+                    guard abs(offset) > threshold else { break }
+                    hasBegun = true
+                    onDragBegan?()
+                }
+                onDrag?(offset)
             case .leftMouseUp:
                 dragging = false
             default:

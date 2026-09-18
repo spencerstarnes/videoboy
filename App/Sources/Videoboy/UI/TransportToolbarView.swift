@@ -254,6 +254,11 @@ final class TransportToolbarView: NSView {
     }
 
     /// Lights the beat corresponding to the current position in the bar.
+    /// Feeds the tempo readout the beat phase, for its pulse.
+    func setBeatPhase(_ phase: Double, isRunning: Bool) {
+        display.setBeat(phase: phase, isRunning: isRunning)
+    }
+
     func setBeat(_ beatInBar: Int) {
         display.setBeat(beatInBar)
     }

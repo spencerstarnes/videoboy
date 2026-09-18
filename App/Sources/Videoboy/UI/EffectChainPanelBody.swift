@@ -279,6 +279,9 @@ final class EffectChainPanelBody: NSView {
         // ---- Header: grip, name, enable, remove ----
         let grip = DragHandleView()
         grip.translatesAutoresizingMaskIntoConstraints = false
+        grip.onDragBegan = { [weak self] in
+            self?.beginDrag(of: index)
+        }
         grip.onDrag = { [weak self] offset in
             self?.previewReorder(of: index, by: offset)
         }
@@ -499,41 +502,220 @@ final class EffectChainPanelBody: NSView {
     // MARK: - Reordering
 
     /// Offset applied to the dragged card while the drag is in progress.
-    private var draggingIndex: Int?
-    private var pendingOrder: [EffectCardModel]?
+    /// Everything a drag needs, alive only while one is happening.
+    ///
+    /// One struct rather than four optionals, because they are only ever valid
+    /// together — the old version kept a `draggingIndex` and a `pendingOrder` that
+    /// could disagree, and a half-finished drag left one of them set.
+    private struct DragState {
+        /// Where the card started in the chain.
+        let sourceIndex: Int
+        /// The card being moved, kept out of the stack while it floats.
+        let card: NSView
+        /// Its height, so the gap that stands in for it is the right size.
+        let height: CGFloat
+        /// The snapshot that follows the pointer.
+        let floater: CALayer
+        /// Where the floater sat when the drag began.
+        let floaterOrigin: CGPoint
+        /// The empty view standing in for the card at its current target.
+        let gap: NSView
+        /// Where it would land if dropped now.
+        var targetIndex: Int
+    }
+
+    private var drag: DragState?
 
     /// Moves the dragged card past its neighbours as the pointer travels.
     ///
     /// Cards are a similar height, so a drag of roughly one card height means one
     /// position. Measuring the actual neighbour heights would be more precise, but a
     /// chain of near-identical rows does not need it.
-    private func previewReorder(of index: Int, by offset: CGFloat) {
-        let approximateCardHeight: CGFloat = 46
-        let steps = Int((offset / approximateCardHeight).rounded())
-        guard steps != 0 else { return }
+    // MARK: - Reordering
+    //
+    // ── WHY THIS IS NOT A LIST THAT REBUILDS ────────────────────────────────────
+    //
+    // The first version stepped the order by `offset / 46` — a HARD-CODED card height
+    // — and called `rebuild()` on every step. Cards are not 46 points tall; Transform
+    // has four parameters and the composite stage has nine, so the guess was wrong by
+    // a factor of three at the bottom of the chain. And rebuilding tears down every
+    // view in the panel mid-drag, which is why it felt like fighting it.
+    //
+    // Nothing rebuilds during a drag now. The card is LIFTED out of the stack into a
+    // floating layer that follows the pointer; an empty view of the same height takes
+    // its place and moves between positions; the rest of the list dims so the thing
+    // being moved is the only thing at full contrast. The order is committed once, at
+    // the end.
+    //
+    // ── ON APPKIT'S OWN ANSWER ──────────────────────────────────────────────────
+    //
+    // There is one: an `NSTableView` in view-based mode with `pasteboardWriterForRow`
+    // and `acceptDrop` gives the lift, the gap and the drop indicator for free, and
+    // keyboard reordering and accessibility with it. It is the right destination.
+    //
+    // It is not what this is, because these rows are tall, variable-height views full
+    // of live controls, and a table wants to own their heights and their reuse. The
+    // interaction below is the same interaction; moving it into a table later changes
+    // this file and nothing else.
 
-        var reordered = pendingOrder ?? effects
-        let from = draggingIndex ?? index
-        let to = min(max(from + steps, 0), reordered.count - 1)
-        guard to != from else { return }
+    /// Lifts a card out of the chain and starts following the pointer.
+    private func beginDrag(of index: Int) {
+        guard drag == nil, let card = cardView(at: index) else { return }
 
-        let moved = reordered.remove(at: from)
-        reordered.insert(moved, at: to)
-        pendingOrder = reordered
-        draggingIndex = to
-        effects = reordered
-        rebuild()
+        let frame = card.frame
+
+        // The snapshot. A layer rather than a view: it is never interactive, it only
+        // has to move, and a layer moves without touching the view hierarchy at all.
+        let floater = CALayer()
+        floater.contents = snapshot(of: card)
+        floater.frame = frame
+        floater.cornerRadius = Theme.Metrics.buttonCornerRadius
+        floater.shadowColor = NSColor.black.cgColor
+        floater.shadowOpacity = 0.45
+        floater.shadowRadius = 8
+        floater.shadowOffset = CGSize(width: 0, height: -2)
+        floater.zPosition = 100
+        layer?.addSublayer(floater)
+
+        // A slight lift, so it reads as having come off the surface rather than as a
+        // copy drawn on top of it.
+        floater.transform = CATransform3DMakeScale(1.02, 1.02, 1)
+
+        let gap = NSView()
+        gap.translatesAutoresizingMaskIntoConstraints = false
+        gap.heightAnchor.constraint(equalToConstant: frame.height).isActive = true
+
+        stack.removeArrangedSubview(card)
+        card.removeFromSuperview()
+        stack.insertArrangedSubview(gap, at: stackIndex(forCard: index))
+        gap.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -8).isActive = true
+
+        drag = DragState(
+            sourceIndex: index, card: card, height: frame.height,
+            floater: floater, floaterOrigin: frame.origin,
+            gap: gap, targetIndex: index)
+
+        setListDimmed(true, except: nil)
     }
 
-    /// Finalises a reorder and tells the app the new order.
-    private func commitReorder() {
-        defer {
-            draggingIndex = nil
-            pendingOrder = nil
+    /// Moves the floating card and the gap as the pointer travels.
+    private func previewReorder(of index: Int, by offset: CGFloat) {
+        guard var state = drag else {
+            beginDrag(of: index)
+            return
         }
-        guard pendingOrder != nil else { return }
+
+        // The floater tracks the pointer exactly. No animation here — it IS the
+        // pointer, and a lag between the two is the single thing that makes a drag
+        // feel broken.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        state.floater.frame.origin = CGPoint(
+            x: state.floaterOrigin.x, y: state.floaterOrigin.y + offset)
+        CATransaction.commit()
+
+        // Where it would land: the slot whose centre is nearest the floater's centre,
+        // measured against the REAL frames rather than an assumed row height.
+        let centre = state.floater.frame.midY
+        let target = insertionIndex(forCentre: centre, excluding: state.gap)
+        guard target != state.targetIndex else { return }
+
+        state.targetIndex = target
+        drag = state
+
+        // The gap moves, animated, so the list opens and closes under the card.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            context.allowsImplicitAnimation = true
+            stack.removeArrangedSubview(state.gap)
+            stack.insertArrangedSubview(state.gap, at: stackIndex(forCard: target))
+            layoutSubtreeIfNeeded()
+        }
+    }
+
+    /// Drops the card, commits the order, and tells the app.
+    private func commitReorder() {
+        guard let state = drag else { return }
+        drag = nil
+        setListDimmed(false, except: nil)
+
+        let from = state.sourceIndex
+        let to = state.targetIndex
+
+        // Settle the floater into the gap before it disappears, so the card arrives
+        // rather than teleports.
+        let landing = state.gap.frame
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            state.floater.removeFromSuperlayer()
+            self?.rebuild()
+        }
+        let move = CABasicAnimation(keyPath: "position")
+        move.duration = 0.16
+        move.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        state.floater.transform = CATransform3DIdentity
+        state.floater.frame = landing
+        state.floater.add(move, forKey: "land")
+        CATransaction.commit()
+
+        guard to != from, effects.indices.contains(from) else {
+            rebuild()
+            return
+        }
+
+        var reordered = effects
+        let moved = reordered.remove(at: from)
+        reordered.insert(moved, at: min(to, reordered.count))
+        effects = reordered
+
+        // ORDER IS PROCESSING ORDER. The chain runs top to bottom, so moving a card is
+        // not a cosmetic sort — it changes what each effect receives. The graph is told
+        // once, here, rather than on every step of the drag.
         Log.info(.graph, "effect chain reordered: \(effects.map(\.name).joined(separator: " → "))")
         onReordered?(effects.map(\.name))
+    }
+
+    /// The card view for an effect index, if it is in the stack.
+    private func cardView(at index: Int) -> NSView? {
+        let position = stackIndex(forCard: index)
+        guard stack.arrangedSubviews.indices.contains(position) else { return nil }
+        return stack.arrangedSubviews[position]
+    }
+
+    /// Where a card sits in the stack, which is offset by the Add/Save row above it.
+    private func stackIndex(forCard index: Int) -> Int {
+        index + 1
+    }
+
+    /// Which slot a card dropped at this height would take.
+    private func insertionIndex(forCentre centre: CGFloat, excluding gap: NSView) -> Int {
+        var slot = 0
+        for view in stack.arrangedSubviews.dropFirst() where view !== gap {
+            if centre < view.frame.midY { break }
+            slot += 1
+        }
+        return min(max(slot, 0), max(effects.count - 1, 0))
+    }
+
+    /// Dims everything except the card being moved.
+    ///
+    /// The point of the dim is not decoration: it says which thing the gesture is
+    /// about. With every card at full contrast, a lifted card is one more card.
+    private func setListDimmed(_ dimmed: Bool, except: NSView?) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.allowsImplicitAnimation = true
+            for view in stack.arrangedSubviews where view !== except {
+                view.alphaValue = dimmed ? 0.45 : 1
+            }
+        }
+    }
+
+    /// A bitmap of a card, for the thing that follows the pointer.
+    private func snapshot(of view: NSView) -> CGImage? {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return rep.cgImage
     }
 
     // MARK: - Actions

@@ -38,11 +38,18 @@ final class VBSlideToggle: NSControl {
         didSet {
             guard selectedIndex != oldValue else { return }
             moveKnob(animated: true)
-            needsDisplay = true
+            updateIcons()
         }
     }
 
     private let knobLayer = CALayer()
+
+    /// The icons, one layer each, ABOVE the knob.
+    ///
+    /// They were drawn in `draw(_:)`, which paints the view's own backing — and a
+    /// sublayer always composites on top of that, so the knob covered whichever icon
+    /// was selected. The one icon you most need to see was the one hidden.
+    private var iconLayers: [CALayer] = []
     private var hoveredIndex: Int?
     private var trackingArea: NSTrackingArea?
 
@@ -62,6 +69,15 @@ final class VBSlideToggle: NSControl {
         knobLayer.cornerRadius = Theme.OptionButton.cornerRadius - 1
         knobLayer.backgroundColor = Theme.Color.accent.cgColor
         layer?.addSublayer(knobLayer)
+
+        // Added AFTER the knob, so they sit on top of it.
+        for _ in images {
+            let iconLayer = CALayer()
+            iconLayer.contentsGravity = .center
+            layer?.addSublayer(iconLayer)
+            iconLayers.append(iconLayer)
+        }
+        updateIcons()
     }
 
     @available(*, unavailable)
@@ -77,6 +93,7 @@ final class VBSlideToggle: NSControl {
     override func layout() {
         super.layout()
         moveKnob(animated: false)
+        updateIcons()
     }
 
     /// The rectangle a position's knob occupies.
@@ -129,12 +146,12 @@ final class VBSlideToggle: NSControl {
         guard index != hoveredIndex else { return }
         hoveredIndex = index
         toolTip = index.map { tooltips.indices.contains($0) ? tooltips[$0] : nil } ?? nil
-        needsDisplay = true
+        updateIcons()
     }
 
     override func mouseExited(with event: NSEvent) {
         hoveredIndex = nil
-        needsDisplay = true
+        updateIcons()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -151,13 +168,21 @@ final class VBSlideToggle: NSControl {
         return min(max(index, 0), images.count - 1)
     }
 
-    // MARK: - Drawing
+    // MARK: - Icons
 
-    override func draw(_ dirtyRect: NSRect) {
+    /// Positions and tints the icons.
+    ///
+    /// Tinted through the SYMBOL CONFIGURATION rather than by drawing the image and
+    /// flooding it with `.sourceAtop`. The flood trick works on a solid glyph and
+    /// washes out an SF Symbol, whose strokes are antialiased into partial alpha —
+    /// which is why the icons first came out ghostly.
+    private func updateIcons() {
+        guard iconLayers.count == images.count else { return }
+        let scale = window?.backingScaleFactor ?? 2
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         for (index, image) in images.enumerated() {
-            let cell = knobFrame(for: index)
-            // On the knob the icon is white; off it, it takes the ordinary control
-            // tone and brightens under the pointer.
             let tint: NSColor
             if index == selectedIndex {
                 tint = .white
@@ -167,19 +192,22 @@ final class VBSlideToggle: NSControl {
                 tint = Theme.Color.textSecondary
             }
 
-            let size = NSSize(width: 14, height: 14)
-            let origin = NSPoint(
-                x: cell.midX - size.width / 2, y: cell.midY - size.height / 2)
-            let tinted = NSImage(size: size, flipped: false) { rect in
-                image.draw(in: rect)
-                tint.set()
-                rect.fill(using: .sourceAtop)
-                return true
-            }
-            tinted.draw(
-                in: NSRect(origin: origin, size: size),
-                from: .zero, operation: .sourceOver,
-                fraction: isEnabled ? 1 : 0.4)
+            let configuration = NSImage.SymbolConfiguration(
+                pointSize: 12, weight: .semibold
+            ).applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
+            let drawn = image.withSymbolConfiguration(configuration) ?? image
+
+            let cell = knobFrame(for: index)
+            let size = drawn.size
+            let iconLayer = iconLayers[index]
+            iconLayer.contentsScale = scale
+            iconLayer.contents = drawn.cgImage(
+                forProposedRect: nil, context: nil, hints: nil)
+            iconLayer.frame = CGRect(
+                x: cell.midX - size.width / 2, y: cell.midY - size.height / 2,
+                width: size.width, height: size.height)
+            iconLayer.opacity = isEnabled ? 1 : 0.4
         }
+        CATransaction.commit()
     }
 }

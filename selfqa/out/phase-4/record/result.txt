@@ -1,6 +1,6 @@
 check:    phase-4/record
 verdict:  PASS
-when:     2026-09-17T23:58:43Z
+when:     2026-09-18T00:13:56Z
 core:     0.3.0
 
 assertions (8/8 passed):
@@ -11,4 +11,4 @@ assertions (8/8 passed):
   PASS  P is as long as the take — 1.002 s recorded, 1.001 s expected
   PASS  P is SD — 720x480
   PASS  P contains a picture, not black — luminance variance 4173.6
-  PASS  recording two feeds keeps inside the frame budget — 7.1 ms per frame against a 33.4 ms budget
+  PASS  recording two feeds keeps inside the frame budget — 6.6 ms per frame against a 33.4 ms budget

@@ -30,8 +30,6 @@ final class TransportDisplayView: NSView {
     /// Called when Tap is pressed.
     var onTap: (() -> Void)?
 
-    /// Tap tempo, which sits inside the readout beside the number it sets.
-    private let tapButton = VBTransportButton(glyph: "TAP")
 
     /// The transport keys, filled in by the toolbar which owns record and play.
     private let transportKeys = NSStackView()
@@ -46,25 +44,19 @@ final class TransportDisplayView: NSView {
             view.removeFromSuperview()
         }
         for key in keys { transportKeys.addArrangedSubview(key) }
-        transportKeys.addArrangedSubview(tapButton)
     }
 
     /// The recording format, cycled rather than picked from a popup — three choices
     /// do not earn a menu, and a menu does not belong in the top pane at all.
     let formatField = CyclingField(caption: "FMT", value: "ProRes 422")
 
-    @objc private func tapPressed() {
-        // A brief light on the key, so a tap that lands is visibly acknowledged —
-        // otherwise the only feedback is the tempo moving, which it does not do
-        // until the fourth tap.
-        tapButton.isActive = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { [weak self] in
-            self?.tapButton.isActive = false
-        }
-        onTap?()
-    }
-
-    private let tempoField = NSTextField(labelWithString: "120.0")
+    /// The tempo readout, which is ALSO how the tempo is set.
+    ///
+    /// TAP was a separate key beside it — two controls for one value, and a key with
+    /// nothing to do at any other moment. Tapping the number is the same gesture
+    /// against the thing it changes, and dragging it covers the case tapping cannot:
+    /// setting an exact figure you already know.
+    private let tempoField = VBTempoField()
     private let clockField = CyclingField(caption: "CLOCK", value: "Internal")
     private let subdivisionField = CyclingField(caption: "DIV", value: "1/4")
     private let syncLabel = NSTextField(labelWithString: "STOPPED")
@@ -82,13 +74,9 @@ final class TransportDisplayView: NSView {
         // Tempo, in the camcorder OSD face. This is the number you glance at without
         // looking away from the picture, which is exactly what a viewfinder overlay
         // is for — and it is monospaced, so it does not jitter as it changes.
-        tempoField.font = Theme.Font.osd(size: 20, weight: .medium)
-        tempoField.textColor = Theme.Color.displayText
-        tempoField.isSelectable = false
+        tempoField.onTap = { [weak self] in self?.onTap?() }
+        tempoField.onTempoDragged = { [weak self] tempo in self?.onTempoEdited?(tempo) }
 
-        let tempoUnit = NSTextField(labelWithString: "BPM")
-        tempoUnit.font = Theme.Font.osd(size: 10)
-        tempoUnit.textColor = Theme.Color.displayDimText
 
         beatLights = (0..<4).map { _ in
             let light = NSView()
@@ -110,7 +98,7 @@ final class TransportDisplayView: NSView {
         subdivisionField.onClick = { [weak self] in self?.onSubdivisionCycled?() }
 
         let tempoColumn = Controls.column([
-            Controls.row([tempoField, tempoUnit], spacing: 4),
+            tempoField,
             Controls.row(beatLights, spacing: 3)
         ], spacing: 3)
 
@@ -122,12 +110,6 @@ final class TransportDisplayView: NSView {
         let settingsColumn = Controls.column(
             [clockField, subdivisionField, formatField], spacing: 2)
 
-        // Tap lives INSIDE the readout, beside the number it sets. It was a plain
-        // button out in the toolbar, next to things it has nothing to do with; tap
-        // tempo only means anything in relation to the BPM, so it belongs against it.
-        tapButton.target = self
-        tapButton.action = #selector(tapPressed)
-        tapButton.toolTip = "Tap four times to set the tempo"
 
         // Everything that runs a performance lives in this cluster, and it reads
         // outward from the middle: the transport keys, then what they are locked to,
@@ -171,7 +153,13 @@ final class TransportDisplayView: NSView {
     // MARK: - State
 
     func setTempo(_ beatsPerMinute: Double) {
-        tempoField.stringValue = String(format: "%.1f", beatsPerMinute)
+        tempoField.beatsPerMinute = beatsPerMinute
+    }
+
+    /// Feeds the readout the beat, for its pulse.
+    func setBeat(phase: Double, isRunning: Bool) {
+        tempoField.beatPhase = phase
+        tempoField.isRunning = isRunning
     }
 
     func setClockSource(_ name: String) {

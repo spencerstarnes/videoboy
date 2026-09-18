@@ -518,8 +518,8 @@ final class ShellController {
         }
 
         let session = DetectSession(root: shell)
-        session.onDetectRequested = { [weak self] slot, code in
-            self?.armDetect(slot: slot, code: code)
+        session.onDetectRequested = { [weak self] slot, code, accepting in
+            self?.armDetect(slot: slot, code: code, accepting: accepting)
         }
         session.onArmedChanged = { [weak self] armed in
             self?.shell.toolbar.setDetectArmed(armed)
@@ -576,9 +576,14 @@ final class ShellController {
     /// The status bar is the only report for controls with no badge of their own —
     /// a crossfader has nowhere to light up — so arming must be visible there or a
     /// mis-click looks like nothing happened.
-    private func armDetect(slot: String, code: ParamCode) {
-        engine.midi.beginDetect(slot: slot, code: code)
-        shell.statusBar.setMIDIDevice("learning \(code.displayName)…")
+    private func armDetect(
+        slot: String, code: ParamCode, accepting: MIDIInput.DetectFilter = .anything
+    ) {
+        engine.midi.beginDetect(slot: slot, code: code, accepting: accepting)
+        // The status line says what to DO, not only what is happening. "Press a button
+        // or pad" is the difference between a learn that works first time and one where
+        // a stray knob takes the mapping and nobody knows why.
+        shell.statusBar.setMIDIDevice("learning \(code.displayName) — \(accepting.prompt)")
         Log.info(.midi, "detect armed for \(slot)/\(code.rawValue)")
         engine.midi.onDetectCompleted = { [weak self] binding in
             DispatchQueue.main.async {
@@ -1068,9 +1073,11 @@ final class ShellController {
         panels.sourceBodies["C"]?.preview.onAirLevel = (1 - cd) * twoShare
         panels.sourceBodies["D"]?.preview.onAirLevel = cd * twoShare
 
-        // PROGRAM is the output. It is always fully on air, by definition — there is
-        // nothing downstream of it to fade it away.
-        panels.programBody.preview.onAirLevel = 1
+        // PROGRAM gets NO tally. It is the output: it is always on air, by definition,
+        // so a lamp that is always lit tells you nothing. A tally answers "which of
+        // these is going out", and on the one picture that always is, the answer is not
+        // worth a red line around it — it is just a red line.
+        panels.programBody.preview.onAirLevel = 0
     }
 
     /// Which slot each param code in the Sub Mix 1 chain belongs to.
@@ -1725,9 +1732,18 @@ final class ShellController {
             if lastDisplayedBeat != nil {
                 lastDisplayedBeat = nil
                 shell.toolbar.setBeat(-1)   // all four dim: nothing is counting
+                shell.toolbar.setBeatPhase(0, isRunning: false)
             }
             return
         }
+
+        // The PHASE, every frame, for the readout's pulse. Separate from the beat
+        // number below, which only changes four times a bar: a pulse that updated on
+        // the beat would be a blink, and what makes it read as a heartbeat is the
+        // decay between beats.
+        let beats = engine.transport.beats(atHostTime: CACurrentMediaTime())
+        shell.toolbar.setBeatPhase(beats - beats.rounded(.down), isRunning: true)
+
         let beat = engine.transport.position(atHostTime: CACurrentMediaTime()).beat
         guard beat != lastDisplayedBeat else { return }
         lastDisplayedBeat = beat

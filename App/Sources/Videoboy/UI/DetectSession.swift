@@ -25,7 +25,14 @@ import VideoboyCore
 final class DetectSession {
 
     /// Called when a mappable control is Shift-clicked.
-    var onDetectRequested: ((String, ParamCode) -> Void)?
+    /// Called when a control is shift-clicked: its slot, its code, and WHAT KIND of
+    /// control it is.
+    ///
+    /// The kind matters because a button should learn a button. On a controller that is
+    /// streaming — a knob being nudged, an LFO on a CC — the first message to arrive is
+    /// very often not the one you meant, and without the filter, learning a pad is a
+    /// coin toss against every knob on the surface.
+    var onDetectRequested: ((String, ParamCode, MIDIInput.DetectFilter) -> Void)?
 
     /// Called when the Shift state changes, so the toolbar can show it is armed.
     var onArmedChanged: ((Bool) -> Void)?
@@ -98,7 +105,9 @@ final class DetectSession {
             fader.isSweepArming = isSweepArming && mappable
             if mappable && fader.onDetectRequested == nil {
                 fader.onDetectRequested = { [weak self] slot, code in
-                    self?.onDetectRequested?(slot, code)
+                    // A fader takes anything: a knob, a fader, even a pad used as a
+                    // two-position switch.
+                    self?.onDetectRequested?(slot, code, .anything)
                 }
             }
         }
@@ -112,7 +121,8 @@ final class DetectSession {
             key.isDetectHighlighted = isArmed && mappable
             if mappable && key.onDetectRequested == nil {
                 key.onDetectRequested = { [weak self] slot, code in
-                    self?.onDetectRequested?(slot, code)
+                    // A key learns a KEY. Notes only.
+                    self?.onDetectRequested?(slot, code, .notesOnly)
                 }
             }
         }

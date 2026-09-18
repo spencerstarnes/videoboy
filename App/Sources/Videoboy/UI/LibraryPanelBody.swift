@@ -638,7 +638,21 @@ final class LibraryPanelBody: NSView {
     private var documentView: LibraryDropView?
     private var emptyLabelsByTab: [AssetTab: NSTextField] = [:]
     private var currentTab: AssetTab = .sources
-    private let columns: Int
+
+    /// How many thumbnails fit across, recomputed from the panel's actual width.
+    ///
+    /// ── WHY THIS IS NOT A CONSTANT ──────────────────────────────────────────────
+    ///
+    /// It was: 3 for a sub-mix library, 6 for the browser. Those numbers were right for
+    /// one window size and wrong for every other one — a wider panel left a band of
+    /// empty space down the right and a narrower one clipped the last column. The grid
+    /// is a grid of fixed-size thumbnails, so the only question is how many fit, and
+    /// the panel knows its own width.
+    private var columns: Int
+
+    /// The column count this grid was last built at, so a resize rebuilds ONCE when
+    /// the answer actually changes rather than on every layout pass.
+    private var builtColumns: Int = 0
 
     /// Called when an item is double-clicked: the clip, its channel, and any marks.
     var onItemOpened: ((LibraryItem, String, ClosedRange<Double>?) -> Void)?
@@ -706,7 +720,8 @@ final class LibraryPanelBody: NSView {
 
     /// - Parameters:
     ///   - items: what the Sources tab shows.
-    ///   - columns: 3 for the sub-mix libraries, 6 for the central browser.
+    ///   - columns: the starting guess. The real count comes from the panel's width
+    ///     as soon as it has one — see `columns`.
     ///   - showsTabs: true for the asset browser, which is tabbed by asset kind.
     init(
         items: [LibraryItem], columns: Int, showsTabs: Bool,
@@ -974,9 +989,11 @@ final class LibraryPanelBody: NSView {
             addRows(of: ungrouped, to: itemsStack)
         }
         for name in binNames {
-            let heading = Controls.label(
-                name.uppercased(), font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
-            heading.toolTip = "Bin · right-click an item to move it"
+            let heading = BinHeadingField(name: name)
+            heading.onRenamed = { [weak self] from, to in
+                self?.renameBin(from: from, to: to)
+            }
+            binHeadings[name] = heading
             itemsStack.addArrangedSubview(heading)
             addRows(of: items.filter { $0.bin == name }, to: itemsStack)
         }
@@ -1099,23 +1116,36 @@ final class LibraryPanelBody: NSView {
     private var rebuildScheduled = false
 
     private func rebuildSourcesGrid() {
-        guard let document = documentView else { return }
-        let old = gridsByTab[.sources]
-        old?.removeFromSuperview()
+        rebuildGrid(for: .sources)
+        // The tab on screen too, when it is a different one — a resize changes the
+        // column count for EVERY grid, and rebuilding only Sources left whichever tab
+        // you were looking at at the old width.
+        if currentTab != .sources { rebuildGrid(for: currentTab) }
+    }
 
-        let grid = makeGrid(for: matching(sourceItems))
+    /// Rebuilds one tab's grid in place.
+    ///
+    /// EMU is not a grid — it is a machine with its own controls — so it is skipped
+    /// rather than rebuilt into a thumbnail list.
+    private func rebuildGrid(for tab: AssetTab) {
+        guard tab != .emu, let document = documentView else { return }
+
+        gridsByTab[tab]?.removeFromSuperview()
+
+        let items = tab == .sources ? matching(sourceItems) : contents(of: tab, sources: sourceItems)
+        let grid = makeGrid(for: items)
         grid.translatesAutoresizingMaskIntoConstraints = false
-        grid.isHidden = currentTab != .sources
+        grid.isHidden = currentTab != tab
         document.addSubview(grid)
-        gridsByTab[.sources] = grid
+        gridsByTab[tab] = grid
         NSLayoutConstraint.activate([
             grid.topAnchor.constraint(equalTo: document.topAnchor),
             grid.leadingAnchor.constraint(equalTo: document.leadingAnchor),
             grid.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor)
         ])
-        emptyLabelsByTab[.sources]?.isHidden = !sourceItems.isEmpty || currentTab != .sources
+        emptyLabelsByTab[tab]?.isHidden = !items.isEmpty || currentTab != tab
 
-        if currentTab == .sources {
+        if currentTab == tab {
             documentHeight?.isActive = false
             documentHeight = document.heightAnchor.constraint(
                 greaterThanOrEqualTo: grid.heightAnchor)
@@ -1141,23 +1171,54 @@ final class LibraryPanelBody: NSView {
     }
 
     /// Asks for a bin name and makes one. An empty name is a cancel.
+    /// Makes an empty bin and puts its name straight into edit mode.
+    ///
+    /// No dialogue. A bin is a folder — it has no consequences and it can be renamed in
+    /// a second — so asking for a name before making one puts a decision in front of an
+    /// action that does not need it, and makes three bins cost three dialogues. Every
+    /// editing application settled on "make it, select the name, let them type" long
+    /// ago, and this is that.
     @objc private func newBinPressed() {
-        let alert = NSAlert()
-        alert.messageText = "New bin"
-        alert.informativeText = "Bins group clips in this library. "
-            + "Drag a folder in and one is made for you."
-        alert.addButton(withTitle: "Create")
-        alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
-        field.placeholderString = "Bin name"
-        alert.accessoryView = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
+        let name = nextBinName()
         emptyBins.insert(name)
         rebuildSourcesGrid()
         Log.info(.app, "created bin '\(name)'")
+
+        // After the rebuild, because the heading it selects does not exist until then.
+        DispatchQueue.main.async { [weak self] in
+            self?.binHeadings[name]?.beginRename()
+        }
     }
+
+    /// An unused default name: BIN, then BIN 2, BIN 3...
+    private func nextBinName() -> String {
+        let existing = Set(binNames.map { $0.uppercased() })
+        guard existing.contains("BIN") else { return "BIN" }
+        var number = 2
+        while existing.contains("BIN \(number)") { number += 1 }
+        return "BIN \(number)"
+    }
+
+    /// Renames a bin, and every clip that was in it.
+    ///
+    /// The items carry the bin NAME rather than an identifier, so a rename has to move
+    /// them too — otherwise the old bin keeps its contents and the renamed one is
+    /// empty, which looks exactly like the rename having failed.
+    private func renameBin(from oldName: String, to newName: String) {
+        guard oldName != newName else { return }
+        // Merging into an existing bin is allowed: dropping a folder in already merges
+        // by name, so renaming one to match another should do the same rather than
+        // refuse.
+        for index in sourceItems.indices where sourceItems[index].bin == oldName {
+            sourceItems[index].bin = newName
+        }
+        if emptyBins.remove(oldName) != nil { emptyBins.insert(newName) }
+        rebuildSourcesGrid()
+        Log.info(.app, "renamed bin '\(oldName)' to '\(newName)'")
+    }
+
+    /// The heading views, so a freshly made bin can be put into edit mode.
+    private var binHeadings: [String: BinHeadingField] = [:]
 
     /// Bins with nothing in them yet. Items carry their own bin name, so a bin with
     /// contents needs no record of its own — but one you have just made and not
@@ -1276,6 +1337,29 @@ final class LibraryPanelBody: NSView {
                 || $0.badge.lowercased().contains(needle)
                 || ($0.bin?.lowercased().contains(needle) ?? false)
         }
+    }
+
+    /// The number of thumbnails that fit across the panel right now.
+    private var fittingColumns: Int {
+        let padding = Theme.Metrics.panelBodyPadding * 2
+        let gap = Theme.Metrics.thumbnailGap
+        let side = Theme.Metrics.thumbnailSide
+        let available = bounds.width - padding
+        guard available > side else { return 1 }
+        // One thumbnail, then as many "gap plus thumbnail" as will follow it.
+        return max(1, Int((available + gap) / (side + gap)))
+    }
+
+    override func layout() {
+        super.layout()
+        let fitting = fittingColumns
+        guard fitting != builtColumns, bounds.width > 1 else { return }
+        columns = fitting
+        builtColumns = fitting
+        // Deferred, because rebuilding views from inside a layout pass is how you get
+        // a layout loop — and because a live window resize would otherwise rebuild the
+        // grid on every intermediate width.
+        scheduleGridRebuild()
     }
 
     @available(*, unavailable)
