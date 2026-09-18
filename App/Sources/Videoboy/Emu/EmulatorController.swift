@@ -39,6 +39,24 @@ final class EmulatorController {
     private var systemDrive: URL { Self.workspace.appendingPathComponent("System") }
     private var statesDirectory: URL { Self.workspace.appendingPathComponent("states") }
 
+    /// Application volumes found in the workspace.
+    ///
+    /// A folder named after the volume the software expects. MM400's launcher says
+    /// `cd SCALA-MM400:Scala` and its preferences store absolute paths starting with
+    /// that name, so mounting it as anything else gives a machine that boots and then
+    /// asks you to insert a disk — which is exactly what happened.
+    private var applicationDrives: [ApplicationDrive] {
+        let known: [(folder: String, volume: String)] = [
+            ("MM400", "SCALA-MM400")
+        ]
+        return known.compactMap { entry in
+            let path = Self.workspace.appendingPathComponent(entry.folder)
+            guard FileManager.default.fileExists(
+                atPath: path.appendingPathComponent("Scala").path) else { return nil }
+            return ApplicationDrive(volumeName: entry.volume, path: path)
+        }
+    }
+
     /// Where Amiberry writes its save states.
     ///
     /// Its own folder rather than ours: the emulator's GUI writes there and cannot be
@@ -98,7 +116,12 @@ final class EmulatorController {
     /// Called when frames start arriving, so the graph can be pointed at them.
     var onMachineReady: ((EmulatorHost) -> Void)?
 
-    init(program: TitlerProgram = TitlerLibrary.programs.first { $0.name == "Scala MM300" }!) {
+    /// MM400 by default, because it is the one that runs.
+    ///
+    /// MM300 and MM400 are identical to everything above this line — same ARexx port,
+    /// same command vocabulary, same nineteen controls — so this is purely which disc
+    /// gets booted.
+    init(program: TitlerProgram = TitlerLibrary.programs.first { $0.name == "Scala MM400" }!) {
         self.program = program
         self.host = FSUAEHost(workspace: Self.workspace)
         host.onStateChanged = { [weak self] in self?.onStateChanged?() }
@@ -258,11 +281,13 @@ final class EmulatorController {
             program: program, firmware: firmware,
             sharedDrawer: sharedDrawer, systemDrive: systemDrive)
         fsuae.systemVolumeName = volume
+        fsuae.keyFile = kickstartKeyPath
+        fsuae.applicationDrives = applicationDrives
         fsuae.saveStatesDirectory = statesDirectory
         fsuae.loadsSavedState = restoresSavedState && saveState.exists
         try? fsuae.write(to: Self.workspace)
 
-        let amiberry = AmiberryConfiguration(
+        var amiberry = AmiberryConfiguration(
             program: program, firmware: firmware,
             sharedDrawer: sharedDrawer, systemDrive: systemDrive,
             systemVolumeName: volume,
@@ -271,6 +296,8 @@ final class EmulatorController {
             stateFile: (restoresSavedState && saveState.exists)
                 ? saveState.files.first
                 : nil)
+        amiberry.keyFile = kickstartKeyPath
+        amiberry.applicationDrives = applicationDrives
         try? amiberry.write(to: Self.workspace)
     }
 
@@ -358,10 +385,52 @@ final class EmulatorController {
     /// Looked for in ONE place and never fetched. A Kickstart is copyrighted; this app
     /// uses one if its owner has supplied it and boots on AROS if not.
     private func kickstartPath() -> String? {
-        let directory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/FS-UAE/Kickstarts")
-        let contents = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil)) ?? []
-        return contents.first { $0.pathExtension.lowercased() == "rom" }?.path
+        for directory in Self.kickstartSearchPaths {
+            let contents = (try? FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: nil)) ?? []
+
+            // Prefer a 3.1 A1200 ROM when there are several. Kickstart 3.1 is v40.68 on
+            // the A1200, so its usual file names carry "40068" or "3.1" — and version
+            // matters here: MM300 is reported to fail on 3.2 and work on 3.1, so
+            // grabbing whichever ROM sorted first would be a coin toss.
+            let roms = contents.filter { $0.pathExtension.lowercased() == "rom" }
+            let preferred = roms.first { url in
+                let name = url.lastPathComponent.lowercased()
+                return name.contains("40068") || name.contains("3.1") || name.contains("310")
+            }
+            if let found = preferred ?? roms.first {
+                Log.info(.titler, "using Kickstart \(found.lastPathComponent)")
+                return found.path
+            }
+        }
+        return nil
+    }
+
+    /// Everywhere a Kickstart might reasonably have been put.
+    ///
+    /// Both emulators' own folders, because someone installing a ROM will put it where
+    /// the emulator they are thinking about expects it — and this app chooses the
+    /// emulator, not them. Looking in one place and reporting "no Kickstart" while the
+    /// file sits in the other is a needless dead end.
+    static var kickstartSearchPaths: [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return [
+            home.appendingPathComponent("Documents/Amiberry/ROMs"),
+            home.appendingPathComponent("Documents/FS-UAE/Kickstarts"),
+            workspace.appendingPathComponent("roms")
+        ]
+    }
+
+    /// Cloanto's ROMs are encrypted and need `rom.key` beside them.
+    ///
+    /// Amiga Forever is the one legitimate way to buy a Kickstart, so this is the
+    /// common case rather than an edge one — and a ROM that needs a key it cannot find
+    /// fails in a way that looks exactly like a ROM that is simply wrong.
+    var kickstartKeyPath: String? {
+        for directory in Self.kickstartSearchPaths {
+            let key = directory.appendingPathComponent("rom.key")
+            if FileManager.default.fileExists(atPath: key.path) { return key.path }
+        }
+        return nil
     }
 }

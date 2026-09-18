@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-18T04:02:13Z
+when:     2026-09-18T04:14:00Z
 core:     0.3.0
 
 notes:
@@ -14,16 +14,16 @@ notes:
 
 assertions (59/59 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 835.9
+  PASS  wide is not blank — luminance variance 835.3
   PASS  dimensions — expected 1000x760, got 1000x760
   PASS  compact is not blank — luminance variance 798.8
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 973.4
+  PASS  narrow is not blank — luminance variance 972.6
   PASS  collapsed-left is not blank — luminance variance 732.6
   PASS  collapsed-both-edges is not blank — luminance variance 630.6
   PASS  collapsed-sources-only is not blank — luminance variance 855.8
   PASS  collapsed-effects-only is not blank — luminance variance 618.6
-  PASS  holding Shift lights the mappable faders — 90 faders highlighted
+  PASS  holding Shift lights the mappable faders — 71 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
@@ -35,7 +35,7 @@ assertions (59/59 passed):
   PASS  preferences inputs has content — luminance variance 166.2
   PASS  preferences hotKeys has content — luminance variance 171.8
   PASS  preferences midiMapping has content — luminance variance 145.8
-  PASS  preferences emu has content — luminance variance 335.8
+  PASS  preferences emu has content — luminance variance 331.3
   PASS  preferences macros has content — luminance variance 262.7
   PASS  double-click fills a pair then comes back round — channels offered: A, B, A
   PASS  switching pair starts at that pair's first channel — offered C after switching to C/D

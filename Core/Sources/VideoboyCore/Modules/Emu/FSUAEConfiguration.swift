@@ -76,6 +76,11 @@ public struct FSUAEConfiguration: Equatable, Sendable {
     /// The window title, which is how the capture finds it.
     public var windowTitle: String = "Videoboy Amiga"
 
+    /// Cloanto's `rom.key`, when the ROM is an encrypted Amiga Forever one.
+    public var keyFile: String?
+    /// Extra volumes carrying applications — see `ApplicationDrive`.
+    public var applicationDrives: [ApplicationDrive] = []
+
     /// Restore the saved state instead of booting from cold.
     ///
     /// ── WHY A SAVE STATE IS THE WHOLE ANSWER HERE ───────────────────────────────
@@ -178,6 +183,13 @@ public struct FSUAEConfiguration: Equatable, Sendable {
 
         if case .kickstart(let path) = firmware {
             lines.append("kickstart_file = \(path)")
+            // Cloanto's ROMs are encrypted and need rom.key beside them. Amiga Forever
+            // is the one legitimate way to buy a Kickstart, so this is the common case
+            // — and a ROM that cannot find its key fails in a way indistinguishable
+            // from a ROM that is simply wrong.
+            if let key = keyFile {
+                lines.append("kickstart_key_file = \(key)")
+            }
         } else {
             lines.append("# No kickstart_file: FS-UAE falls back to its built-in AROS.")
         }
@@ -215,6 +227,12 @@ public struct FSUAEConfiguration: Equatable, Sendable {
         // the ARexx listener inside the machine forwards them.
         lines.append("hard_drive_\(slot) = \(sharedDrawer.path)")
         lines.append("hard_drive_\(slot)_label = \(AmigaSideScripts.volumeName)")
+        for drive in applicationDrives {
+            slot += 1
+            lines.append("hard_drive_\(slot) = \(drive.path.path)")
+            lines.append("hard_drive_\(slot)_label = \(drive.volumeName)")
+        }
+
         if let cdImage {
             lines.append("cdrom_drive_0 = \(cdImage.path)")
         }
@@ -287,6 +305,24 @@ public struct FSUAEConfiguration: Equatable, Sendable {
     }
 }
 
+/// A drive carrying an application, mounted beside the system drive.
+///
+/// Software that was installed to its own volume expects to find itself there: Scala
+/// MM400's launcher says `cd SCALA-MM400:Scala`, and its own preferences store absolute
+/// paths beginning with that volume name. Mounting it as anything else produces a
+/// machine that boots and then asks you to insert a disk.
+public struct ApplicationDrive: Sendable, Equatable {
+    /// The Amiga volume name. It must match what the software expects.
+    public let volumeName: String
+    /// The host directory holding it.
+    public let path: URL
+
+    public init(volumeName: String, path: URL) {
+        self.volumeName = volumeName
+        self.path = path
+    }
+}
+
 /// The same machine, written as an Amiberry (WinUAE-style) configuration.
 ///
 /// ── WHY THERE ARE TWO EMITTERS ──────────────────────────────────────────────────
@@ -314,6 +350,10 @@ public struct AmiberryConfiguration: Sendable {
     public var systemVolumeName: String
     /// A state to restore instead of booting cold.
     public var stateFile: URL?
+    /// Cloanto's `rom.key`, for an encrypted Amiga Forever ROM.
+    public var keyFile: String?
+    /// Extra volumes carrying applications — see `ApplicationDrive`.
+    public var applicationDrives: [ApplicationDrive] = []
     public var windowSize: (width: Int, height: Int)
 
     public init(
@@ -351,6 +391,9 @@ public struct AmiberryConfiguration: Sendable {
         switch firmware {
         case .kickstart(let path):
             lines.append("kickstart_rom_file=\(path)")
+            if let keyFile {
+                lines.append("kickstart_key_file=\(keyFile)")
+            }
         case .aros:
             // Amiberry's built-in AROS, same idea as FS-UAE's: a machine that boots
             // with no copyrighted ROM at all.
@@ -388,6 +431,14 @@ public struct AmiberryConfiguration: Sendable {
         }
         lines.append(
             "uaehf\(unit)=dir,rw,DH\(unit):\(AmigaSideScripts.volumeName):\(sharedDrawer.path),0")
+
+        // Application volumes AFTER the system and the shared drawer, so their unit
+        // numbers are stable no matter how many of them there are.
+        for drive in applicationDrives {
+            unit += 1
+            lines.append(
+                "uaehf\(unit)=dir,rw,DH\(unit):\(drive.volumeName):\(drive.path.path),0")
+        }
 
         if let stateFile {
             lines.append("statefile=\(stateFile.path)")
