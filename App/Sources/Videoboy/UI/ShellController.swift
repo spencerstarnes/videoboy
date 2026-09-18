@@ -416,6 +416,29 @@ final class ShellController {
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
                isDirectory.boolValue {
+
+                // A FOLDER OF PHOTOGRAPHS IS ONE CLIP, not a bin of stills.
+                //
+                // Checked before the bin path, because the two readings of "a folder"
+                // are mutually exclusive and this one is far more specific: a folder of
+                // clips is a group of things you choose between, a folder of images is
+                // a single thing that plays. Two or more images and no video decides it.
+                //
+                // From here it is an ordinary clip. It loads through the same door as a
+                // DV file, so playback, looping, in and out points and stepping a frame
+                // on the beat all work without being written again.
+                if ImageSequenceDecoder.isSequence(url) {
+                    let frames = ImageSequenceDecoder.frames(in: url)
+                    accepted.append(LibraryItem(
+                        name: url.lastPathComponent, badge: "SEQ", isAvailable: true,
+                        url: url,
+                        // 30fps, which is what the decoder gives a stack of pictures.
+                        duration: Double(frames.count) / 30.0))
+                    Log.info(.app, "\(url.lastPathComponent) is a photo sequence: "
+                        + "\(frames.count) frames")
+                    continue
+                }
+
                 let contents = (try? FileManager.default.contentsOfDirectory(
                     at: url, includingPropertiesForKeys: nil)) ?? []
                 // The folder BECOMES a bin, named after itself. Dropping a folder

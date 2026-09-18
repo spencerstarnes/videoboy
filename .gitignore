@@ -32,3 +32,8 @@ selfqa/out/**/*.raw
 
 # Local device identity (machine-specific)
 config/devices.json
+
+# Photo sequences are USER MEDIA. A folder of photographs dropped in here plays as a
+# clip (see ImageSequenceDecoder) and is exactly the kind of thing CLAUDE.md says is
+# referenced and never bundled — these are someone's own pictures.
+samples/photos/

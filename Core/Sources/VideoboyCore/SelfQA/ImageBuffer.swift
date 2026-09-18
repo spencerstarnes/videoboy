@@ -166,6 +166,57 @@ public extension ImageBuffer {
     }
 
     /// Builds a `CGImage` view of these pixels.
+    /// Draws a CGImage into a buffer of the project's geometry, letterboxed.
+    ///
+    /// ── WHY LETTERBOX AND NOT STRETCH ──────────────────────────────────────────
+    ///
+    /// A photo folder is full of pictures in whatever shape the camera was held, and
+    /// most of them are not 4:3. Stretching each one to fill the frame makes a sequence
+    /// where people change width from frame to frame, which is far more distracting
+    /// than a black edge. Fitting inside preserves the shape and matches what every
+    /// other source in this app does with mismatched footage.
+    public init(scaling image: CGImage, toWidth width: Int, height: Int) {
+        self.init(width: width, height: height)
+
+        guard width > 0, height > 0,
+              let context = CGContext(
+                data: nil, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+
+        context.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+        let scale = min(
+            Double(width) / Double(image.width),
+            Double(height) / Double(image.height))
+        let drawnWidth = Double(image.width) * scale
+        let drawnHeight = Double(image.height) * scale
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(
+            x: (Double(width) - drawnWidth) / 2,
+            y: (Double(height) - drawnHeight) / 2,
+            width: drawnWidth, height: drawnHeight))
+
+        guard let base = context.data else { return }
+        let bytes = base.assumingMemoryBound(to: UInt8.self)
+        // Built as one array and handed over, because `pixels` is private(set) and the
+        // whole-array initialiser is both the supported route and a single allocation.
+        var rgba = [UInt8](repeating: 255, count: width * height * 4)
+        rgba.withUnsafeMutableBufferPointer { destination in
+            guard let out = destination.baseAddress else { return }
+            // Straight through. CGContext's COORDINATE SYSTEM has its origin at the
+            // bottom left, which is what makes people reach for a row reversal here —
+            // but its backing buffer is still stored top row first, the same way an
+            // ImageBuffer is. Reversing produced an upside-down slideshow, which a test
+            // caught and reasoning did not: it is obvious on a photograph and invisible
+            // on a test pattern.
+            out.update(from: bytes, count: width * height * 4)
+        }
+        self = ImageBuffer(width: width, height: height, pixels: rgba)
+    }
+
     func makeCGImage() -> CGImage? {
         let data = Data(pixels)
         guard let provider = CGDataProvider(data: data as CFData) else { return nil }

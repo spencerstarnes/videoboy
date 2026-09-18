@@ -306,6 +306,29 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         // AVFoundation. A .dv that will not open is NOT retried as ordinary video —
         // it would then play without the effects that are the reason to use DV.
         let decoder: ClipDecoding?
+
+        // A FOLDER is a sequence of photographs. It comes first because a directory has
+        // no useful extension to switch on, and because everything downstream —
+        // playback, looping, in and out points, stepping a frame on the beat — is the
+        // same work whether the frames came from a file or from a stack of pictures.
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+           isDirectory.boolValue {
+            decoder = try? ImageSequenceDecoder(folder: url)
+            guard let decoder, decoder.frameCount > 0 else {
+                Log.error(.dv, "\(identifier) found no images in \(url.lastPathComponent)")
+                self.clipDecoder = nil
+                self.mediaURL = nil
+                return false
+            }
+            self.clipDecoder = decoder
+            self.mediaURL = url
+            self.playheadFrame = 0
+            Log.info(.dv, "\(identifier) loaded \(url.lastPathComponent): "
+                + "\(decoder.frameCount) photographs")
+            return true
+        }
+
         switch url.pathExtension.lowercased() {
         case "dv":
             decoder = try? DVClipDecoder(url: url)

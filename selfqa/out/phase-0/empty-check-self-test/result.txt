@@ -1,6 +1,6 @@
 check:    phase-0/empty-check-self-test
 verdict:  FAIL
-when:     2026-09-18T00:37:54Z
+when:     2026-09-18T00:44:45Z
 core:     0.3.0
 
 notes:
@@ -9,5 +9,33 @@ notes:
 assertions (0/0 passed):
 
 recent log:
-  1789691874.288 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
-  1789691874.289 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt
+  1789692285.726 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0173.png
+  1789692285.727 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0174.png
+  1789692285.727 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0175.png
+  1789692285.727 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0176.png
+  1789692285.727 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0177.png
+  1789692285.728 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0178.png
+  1789692285.728 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0179.png
+  1789692285.728 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0180.png
+  1789692285.728 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0181.png
+  1789692285.729 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0182.png
+  1789692285.729 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0183.png
+  1789692285.729 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0184.png
+  1789692285.729 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0185.png
+  1789692285.730 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0186.png
+  1789692285.730 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0187.png
+  1789692285.730 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0188.png
+  1789692285.731 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0189.png
+  1789692285.731 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0190.png
+  1789692285.731 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0191.png
+  1789692285.731 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0192.png
+  1789692285.732 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0193.png
+  1789692285.732 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0194.png
+  1789692285.732 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0195.png
+  1789692285.732 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0196.png
+  1789692285.733 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0197.png
+  1789692285.733 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0198.png
+  1789692285.733 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80/f0199.png
+  1789692285.738 INFO [dv] image sequence seq-B9D8CC53-0DA0-40EF-A5E4-F946BA634F80: 200 frames at 30fps
+  1789692285.995 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1789692285.996 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt
