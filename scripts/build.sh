@@ -52,9 +52,33 @@ else
   log "icon could not be drawn; the app will use the default"
 fi
 
-# Ad-hoc signature only. CLAUDE.md rules out the Apple Developer Program,
-# notarization, and distribution signing; this is what lets the app run locally.
-log "ad-hoc signing"
-codesign --force --sign - --timestamp=none "$APP_BUNDLE" 2>&1 | sed 's/^/  /' || fail "codesign failed"
+# SIGNING, AND WHY IT IS NOT AD-HOC ANY MORE.
+#
+# An ad-hoc signature gives the bundle a new cdhash on every build. macOS TCC pins each
+# permission grant to a code-signing requirement, and for an ad-hoc binary that
+# requirement is literally `cdhash H"..."` — verified by reading the requirement back
+# out of TCC.db. So every rebuild silently revoked Screen Recording, and the emulator
+# capture went black with nothing on screen saying why. Re-granting fixed it until the
+# next build, which is what made it look intermittent.
+#
+# A stable self-signed certificate makes the requirement certificate-based instead, so
+# the grant survives rebuilds. Still local-only: not the Apple Developer Program, not
+# notarization, not distribution signing, all of which CLAUDE.md rules out.
+#
+# `scripts/signing-identity.sh` creates it on first run. If it is unavailable — it has
+# not been run yet, or the keychain is locked — this FALLS BACK to ad-hoc rather than
+# failing the build, because an app that builds and needs its permission re-granted
+# beats an app that does not build at all. The log line says which one happened, so a
+# black capture is traceable to this rather than mysterious.
+if IDENTITY="$("$REPO_ROOT/scripts/signing-identity.sh" 2>/dev/null)" && [ -n "$IDENTITY" ]; then
+  log "signing as '$IDENTITY' (stable — permissions survive rebuilds)"
+  codesign --force --sign "$IDENTITY" --timestamp=none "$APP_BUNDLE" 2>&1 | sed 's/^/  /' \
+    || fail "codesign failed"
+else
+  log "ad-hoc signing — NO stable identity; macOS will re-ask for Screen Recording"
+  log "  run scripts/signing-identity.sh once to stop that happening every build"
+  codesign --force --sign - --timestamp=none "$APP_BUNDLE" 2>&1 | sed 's/^/  /' \
+    || fail "codesign failed"
+fi
 
 log "built $APP_BUNDLE"
