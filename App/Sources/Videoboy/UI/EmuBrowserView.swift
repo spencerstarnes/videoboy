@@ -107,10 +107,16 @@ final class EmuBrowserView: NSStackView {
     private func buildScreen() {
         screen.onOpenMachine = { [weak self] in self?.controller.showMachine() }
         addArrangedSubview(screen)
+        // A FIXED HEIGHT, not a 4:3 box the width of the panel.
+        //
+        // At panel width, 4:3 is over three hundred points and pushes all nineteen
+        // faders below the fold — and the whole reason the screen is here is to watch
+        // what the faders do. The picture letterboxes inside this band (the layer's
+        // gravity keeps its shape), so nothing is distorted; there is just less of it,
+        // which is the right trade in a monitor.
         NSLayoutConstraint.activate([
             screen.widthAnchor.constraint(equalTo: widthAnchor),
-            // 4:3, like every other picture in this window.
-            screen.heightAnchor.constraint(equalTo: screen.widthAnchor, multiplier: 3.0 / 4.0)
+            screen.heightAnchor.constraint(equalToConstant: 150)
         ])
     }
 
