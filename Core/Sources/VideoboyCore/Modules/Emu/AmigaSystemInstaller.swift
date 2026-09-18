@@ -193,8 +193,20 @@ public struct AmigaSystemInstaller: Sendable {
         ; invisible to it.
         IF EXISTS SYS:Scala
             Assign SCALA: SYS:Scala
-            Assign DEVS: SYS:Scala/System ADD
-            Assign LIBS: SYS:Scala/System ADD
+            ; The titler's modules must be where exec LOOKS FOR THEM BY NAME, and the two
+            ; halves go to different places. Read out of the binaries themselves:
+            ;
+            ;   scalamm.gfx  romtag type NT_DEVICE,  name "scalamm.gfx"  -> DEVS:
+            ;   scalamm.sys  romtag type NT_LIBRARY, name "scalamm.sys"  -> LIBS:
+            ;
+            ; An ADD assign to the drawer they live in is NOT enough and was actively
+            ; wrong: exec asks for "scalamm.gfx", and DEVS: assigned to .../System
+            ; resolved the relative form to System/System/scalamm.gfx. They are copied
+            ; in flat, by name.
+            C:Copy >NIL: SYS:Scala/System/#?.gfx SYS:Devs QUIET
+            C:Copy >NIL: SYS:Scala/System/#?.sys SYS:Libs QUIET
+            C:Copy >NIL: SYS:Scala/System/#? SYS:Devs QUIET
+            C:Copy >NIL: SYS:Scala/System/#? SYS:Libs QUIET
         ENDIF
 
         ; Programs read their preferences from ENV:, not from where they were installed.

@@ -400,12 +400,21 @@ final class AmigaLinkTests: XCTestCase {
     }
 
     func testTheStartupPutsTheTitlersDevicesWhereOpenDeviceLooks() {
-        // The first boot failed with "Can't open device: scalamm.gfx". Its devices
-        // live in its own System drawer and OpenDevice() searches DEVS:.
+        // THIS TEST USED TO ASSERT THE BUG. It insisted on
+        // `Assign DEVS: SYS:Scala/System ADD`, which I wrote believing it was the fix
+        // and which actually makes the module UNREACHABLE: exec asks for
+        // "scalamm.gfx", and with DEVS: pointing at .../System the relative form
+        // resolves to System/System/scalamm.gfx.
+        //
+        // A test that pins a mistake is worse than no test — it defends it. What
+        // matters is that the modules end up where exec looks them up BY NAME, which
+        // for a device is DEVS: and for a library is LIBS:.
         let startup = AmigaSystemInstaller(
             destination: URL(fileURLWithPath: "/tmp/x")
-        ).startupSequence(titlerPath: "SYS:Scala/ScalaMM")
-        XCTAssertTrue(startup.contains("Assign DEVS: SYS:Scala/System ADD"))
+        ).startupSequence(titlerPath: "SYS:Scala/ScalaMMPlayer -rexx")
+        XCTAssertTrue(startup.contains("SYS:Devs"))
+        XCTAssertTrue(startup.contains("SYS:Libs"))
+        XCTAssertFalse(startup.contains("Assign DEVS: SYS:Scala/System"))
     }
 
     func testTheListenerReportsItsOwnHealthRatherThanRelyingOnARedirect() {
@@ -478,5 +487,47 @@ final class AmigaLinkTests: XCTestCase {
                     atPath: root.appendingPathComponent("VB/\(name)").path),
                 "\(name) was not written beside the config")
         }
+    }
+}
+
+/// Where the titler's modules have to land, learnt the hard way.
+final class TitlerModulePlacementTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        Log.echoesToStandardError = false
+    }
+
+    private var startup: String {
+        AmigaSystemInstaller(destination: URL(fileURLWithPath: "/tmp/x"))
+            .startupSequence(titlerPath: "SYS:Scala/ScalaMMPlayer -rexx")
+    }
+
+    func testTheDeviceGoesToDEVSAndTheLibraryToLIBS() {
+        // Read out of the binaries themselves rather than guessed:
+        //   scalamm.gfx  romtag NT_DEVICE,  name "scalamm.gfx"  -> DEVS:
+        //   scalamm.sys  romtag NT_LIBRARY, name "scalamm.sys"  -> LIBS:
+        // Exec looks them up BY NAME, so they have to be in those drawers flat.
+        XCTAssertTrue(startup.contains("SYS:Devs"), "the device needs DEVS:")
+        XCTAssertTrue(startup.contains("SYS:Libs"), "the library needs LIBS:")
+    }
+
+    func testTheOldWRONGAssignIsGone() {
+        // THE BUG THIS FILE EXISTS FOR. `Assign DEVS: SYS:Scala/System ADD` resolves
+        // the relative form `System/scalamm.gfx` to `System/System/scalamm.gfx`, so the
+        // module was never reachable. I diagnosed that early, wrote the fix, and the
+        // patch silently failed to apply — so every experiment afterwards was run
+        // against a machine where the module could not be found, and every conclusion
+        // drawn from them was worthless.
+        XCTAssertFalse(
+            startup.contains("Assign DEVS: SYS:Scala/System"),
+            "this assign makes the device unreachable and reads as though it helps")
+    }
+
+    func testTheModulesAreCopiedRatherThanAssigned() {
+        // A copy is verifiable from the host — the file is either in the drawer or it
+        // is not. An assign is a promise about lookup that can be silently wrong, which
+        // is exactly how this went unnoticed.
+        XCTAssertTrue(startup.contains("C:Copy"), "modules are copied into place")
     }
 }
