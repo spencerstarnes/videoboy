@@ -1,27 +1,38 @@
 check:    emu-probe
 verdict:  PASS
-when:     2026-09-18T05:36:21Z
+when:     2026-09-18T06:09:02Z
 core:     0.3.0
 
 notes:
-  00 font franklin 18 — 1.000 moved, 90 frames captured → 00-font-franklin-18.png
-  01 font franklin 36 — 0.724 moved, 240 frames captured → 01-font-franklin-36.png
-  02 font franklin 72 — 0.000 moved, 389 frames captured → 02-font-franklin-72.png
-  03 font franklin 44 NOT ON DISC — 0.009 moved, 540 frames captured → 03-font-franklin-44-not-on-disc.png
-  04 font newsgothic 56 — 0.724 moved, 690 frames captured → 04-font-newsgothic-56.png
-  05 font newsgothic 44 NOT ON DISC — 0.010 moved, 839 frames captured → 05-font-newsgothic-44-not-on-disc.png
-  06 text at 40,100 — 0.008 moved, 990 frames captured → 06-text-at-40100.png
-  07 text at 300,300 — 0.013 moved, 1141 frames captured → 07-text-at-300300.png
-  08 text at 40,400 — 0.013 moved, 1291 frames captured → 08-text-at-40400.png
-  09 palette white on black — 0.013 moved, 1441 frames captured → 09-palette-white-on-black.png
-  10 palette red on black — 0.007 moved, 1592 frames captured → 10-palette-red-on-black.png
-  11 palette black on yellow — 0.726 moved, 1742 frames captured → 11-palette-black-on-yellow.png
-  12 backdrop CUCD19:Scala/Backgrounds/Fabrics001 — 0.518 moved, 2043 frames captured → 12-backdrop-cucd19scalabackgroundsfabrics001.png
-  13 two texts on one page — 0.551 moved, 2194 frames captured → 13-two-texts-on-one-page.png
-  14 one text again — 0.010 moved, 2346 frames captured → 14-one-text-again.png
-  15 box behind the text — 0.084 moved, 2496 frames captured → 15-box-behind-the-text.png
+  fonts on this drive: BetonC 44, Compact 16/24/31/64, CompactL 16/31, Didot 28/56, Franklin 18/23/36/72, FranklinC 28/58/114, FuturaB 12/16/20/32, FuturaC 22/32/78, FuturaL 20/85, FuturaX 24/47/94, Garamond 23/32/64, Gill 16/24/57/96, GillN 58, GoudyB 23/48, GoudyL 23/48, HelveticaN 39/78, NewsGothic 56/114, Scala 6/8/11
+  00 font franklin 18 — 1.000 moved, 54 frames captured → 00-font-franklin-18.png
+  01 font franklin 36 — 0.721 moved, 143 frames captured → 01-font-franklin-36.png
+  02 font franklin 72 — 0.000 moved, 226 frames captured → 02-font-franklin-72.png
+  03 font franklin 44 NOT ON DISC — 0.010 moved, 321 frames captured → 03-font-franklin-44-not-on-disc.png
+  04 font newsgothic 56 — 0.724 moved, 432 frames captured → 04-font-newsgothic-56.png
+  05 font newsgothic 44 NOT ON DISC — 0.025 moved, 533 frames captured → 05-font-newsgothic-44-not-on-disc.png
+  06 text at 40,100 — 0.008 moved, 627 frames captured → 06-text-at-40100.png
+  07 text at 300,300 — 0.013 moved, 720 frames captured → 07-text-at-300300.png
+  08 text at 40,400 — 0.013 moved, 806 frames captured → 08-text-at-40400.png
+  09 palette white on black — 0.013 moved, 894 frames captured → 09-palette-white-on-black.png
+  10 palette red on black — 0.007 moved, 983 frames captured → 10-palette-red-on-black.png
+  11 palette black on yellow — 0.725 moved, 1071 frames captured → 11-palette-black-on-yellow.png
+  12 backdrop CUCD19:Scala/Backgrounds/Fabrics001 — 0.517 moved, 1258 frames captured → 12-backdrop-cucd19scalabackgroundsfabrics001.png
+  13 two texts on one page — 0.555 moved, 1358 frames captured → 13-two-texts-on-one-page.png
+  14 one text again — 0.010 moved, 1458 frames captured → 14-one-text-again.png
+  15 box behind the text — 0.084 moved, 1573 frames captured → 15-box-behind-the-text.png
+  16 panel: two lines through setText — 0.080 moved, 1699 frames captured → 16-panel-two-lines-through-settext.png
+  17 panel: FONT menu to FuturaB — 0.022 moved, 1776 frames captured → 17-panel-font-menu-to-futurab.png
+  18 panel: SIZE menu item 0 — 12pt — 0.013 moved, 1855 frames captured → 18-panel-size-menu-item-0--12pt.png
+  19 panel: SIZE menu item 1 — 16pt — 0.005 moved, 1929 frames captured → 19-panel-size-menu-item-1--16pt.png
+  20 panel: SIZE menu item 2 — 20pt — 0.007 moved, 2003 frames captured → 20-panel-size-menu-item-2--20pt.png
+  21 panel: SIZE menu item 3 — 32pt — 0.015 moved, 2078 frames captured → 21-panel-size-menu-item-3--32pt.png
+  22 panel: ALIGN menu to centre — 0.012 moved, 2165 frames captured → 22-panel-align-menu-to-centre.png
+  23 panel: EDGE menu to bevel — 0.004 moved, 2248 frames captured → 23-panel-edge-menu-to-bevel.png
+  24 panel: ITALIC switch on — 0.006 moved, 2325 frames captured → 24-panel-italic-switch-on.png
+  25 panel: BACKDROP menu — 0.433 moved, 2497 frames captured → 25-panel-backdrop-menu.png
   steps that changed NOTHING: font franklin 72
 
 assertions (2/2 passed):
-  PASS  the machine answers — starting · port closed
-  PASS  the probe reached the machine — 15 steps changed the picture
+  PASS  the machine answers — alive · port open
+  PASS  the probe reached the machine — 25 steps changed the picture

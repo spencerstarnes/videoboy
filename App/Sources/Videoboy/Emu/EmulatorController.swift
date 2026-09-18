@@ -136,11 +136,28 @@ final class EmulatorController {
         guard installer.isInstalled else { return }
         let volume = findDisc().flatMap { try? DiscImage(path: $0).existingMountPoint() }?
             .lastPathComponent ?? "Workbench"
-        let assets = installer.titlerAssets(volumeName: volume)
+        let assets = installer.titlerAssets(
+            volumeName: volume, fontDrawers: fontDrawers())
         panel.backdrops = assets.backdrops
         panel.pageNames = assets.pageNames
         panel.fontCatalogue = assets.fonts
         panel.setBrush(file: assets.symbols.first)
+    }
+
+    /// Where the typefaces really are.
+    ///
+    /// On the mounted volumes, not in the workspace: the installer does not copy the
+    /// Fonts drawer in, and the boot assigns `Fonts:` straight at the disc. Every drive
+    /// this machine will have is offered, in the order the machine itself assigns them.
+    private func fontDrawers() -> [URL] {
+        var drawers: [URL] = []
+        for drive in applicationDrives {
+            drawers.append(drive.path.appendingPathComponent("Scala/Fonts"))
+        }
+        if let disc = findDisc().flatMap({ try? DiscImage(path: $0).existingMountPoint() }) {
+            drawers.append(disc.appendingPathComponent("Scala/Fonts"))
+        }
+        return drawers
     }
 
     // MARK: - What the panel shows
@@ -350,9 +367,18 @@ final class EmulatorController {
         bridge?.send(commands)
     }
 
-    /// Sets the line of text being titled.
-    func setText(_ text: String) {
-        bridge?.send(panel.setText(text))
+    /// Sets one of the two lines of text being titled.
+    func setText(_ text: String, line: Int = 0) {
+        bridge?.send(panel.setText(text, line: line))
+    }
+
+    /// Chooses an item from a list control.
+    ///
+    /// Goes through the panel's own `choose`, which goes through `set`, so a menu, a
+    /// MIDI knob and an LFO all travel one path and cannot disagree about what a value
+    /// means.
+    func choose(_ function: TitlerFunction, option index: Int) {
+        bridge?.send(panel.choose(function, option: index))
     }
 
     /// What a control currently reads, in the software's own units.

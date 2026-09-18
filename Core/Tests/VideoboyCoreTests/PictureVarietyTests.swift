@@ -324,3 +324,71 @@ final class TitlerGroupingTests: XCTestCase {
         XCTAssertEqual(panel.options(for: .fontSize), ["18pt", "23pt", "36pt", "72pt"])
     }
 }
+
+/// A page carries a placed graphic only when one has been asked for.
+///
+/// The drive is scanned for symbols so the scale control has something to scale, and for
+/// a while that meant every page drew the first symbol on the disc — a full-screen arrow
+/// over the title that no control would remove.
+final class PlacedGraphicTests: XCTestCase {
+
+    func testAFreshPageHasNoGraphicOnIt() {
+        let panel = ScalaTitlerPanel()
+        panel.setBrush(file: "CUCD19:Scala/Symbols/Arrow")
+        XCTAssertFalse(
+            panel.page().contains { $0.verb == "BRUSH" },
+            "a graphic appeared that nobody asked for")
+        XCTAssertEqual(panel.readout(for: .brushScale), "OFF")
+    }
+
+    func testTurningTheScaleUpPutsTheGraphicOn() {
+        let panel = ScalaTitlerPanel()
+        panel.setBrush(file: "CUCD19:Scala/Symbols/Arrow")
+        _ = panel.set(.brushScale, to: 0.5)
+        XCTAssertTrue(panel.page().contains { $0.verb == "BRUSH" })
+    }
+
+    func testTheBottomOfTheScaleTakesItOffAgain() {
+        let panel = ScalaTitlerPanel()
+        panel.setBrush(file: "CUCD19:Scala/Symbols/Arrow")
+        _ = panel.set(.brushScale, to: 0.5)
+        _ = panel.set(.brushScale, to: 0)
+        XCTAssertFalse(panel.page().contains { $0.verb == "BRUSH" })
+        XCTAssertEqual(panel.readout(for: .brushScale), "OFF")
+    }
+}
+
+/// Picking an alignment has to move the anchor, or the text falls off the screen.
+///
+/// Scala aligns text AROUND the X it is given. Choosing "centre" while X sits at the
+/// left margin centres the line on the left margin and half of it is gone — see
+/// selfqa/out/emu-probe/25-panel-backdrop-menu.png before this.
+final class TextAlignmentAnchorTests: XCTestCase {
+
+    func testCentringMovesTheAnchorToTheMiddle() {
+        let panel = ScalaTitlerPanel()
+        let centre = ScalaLingo.alignments.firstIndex(where: {
+            $0 == "center" || $0 == "centre"
+        })!
+        _ = panel.choose(.alignment, option: centre)
+        XCTAssertEqual(panel.state.textX, panel.screen.width / 2)
+    }
+
+    func testRightAligningMovesItToTheRightMargin() {
+        let panel = ScalaTitlerPanel()
+        guard let right = ScalaLingo.alignments.firstIndex(of: "right") else { return }
+        _ = panel.choose(.alignment, option: right)
+        XCTAssertGreaterThan(panel.state.textX, panel.screen.width / 2)
+        XCTAssertLessThan(panel.state.textX, panel.screen.width)
+    }
+
+    func testXCanStillBeDraggedAfterwards() {
+        let panel = ScalaTitlerPanel()
+        let centre = ScalaLingo.alignments.firstIndex(where: {
+            $0 == "center" || $0 == "centre"
+        })!
+        _ = panel.choose(.alignment, option: centre)
+        _ = panel.set(.textX, to: 0)
+        XCTAssertEqual(panel.state.textX, 0, "the anchor is a starting point, not a lock")
+    }
+}

@@ -340,8 +340,14 @@ public struct AmigaSystemInstaller: Sendable {
     }
 
     /// Scans the installed drive for what the panel can offer.
+    /// - Parameter fontDrawers: where to look for typefaces, in order of preference.
+    ///   The installed drive is NOT one of them by default: the fonts are not copied
+    ///   in — they stay on the disc, which is why the boot assigns `Fonts:` to
+    ///   `SCALA-MM400:Scala/Fonts` rather than to `SYS:`. Scanning the workspace found
+    ///   nothing, so the panel offered no sizes and kept its size menu shut for ever.
     public func titlerAssets(
-        volumeName: String, fileManager: FileManager = .default
+        volumeName: String, fontDrawers: [URL] = [],
+        fileManager: FileManager = .default
     ) -> TitlerAssets {
         let scala = destination.appendingPathComponent("Scala")
 
@@ -380,8 +386,13 @@ public struct AmigaSystemInstaller: Sendable {
             in: symbolsDirectory, volumeName: volumeName,
             amigaPrefix: "Scala/Symbols", fileManager: fileManager)
 
-        let fonts = Self.fonts(
-            in: scala.appendingPathComponent("Fonts"), fileManager: fileManager)
+        // First drawer that actually has faces in it wins. The installed drive is
+        // tried last, because it is the one that usually does not have them.
+        let candidates = fontDrawers + [scala.appendingPathComponent("Fonts")]
+        let fonts = candidates
+            .lazy
+            .map { Self.fonts(in: $0, fileManager: fileManager) }
+            .first { !$0.isEmpty } ?? []
 
         Log.info(.titler, "titler assets: \(backdrops.count) backdrops, "
             + "\(pages.count) pages, \(symbols.count) symbols, \(fonts.count) fonts")

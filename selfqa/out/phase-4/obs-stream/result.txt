@@ -1,6 +1,6 @@
 check:    phase-4/obs-stream
 verdict:  PASS
-when:     2026-09-18T05:42:32Z
+when:     2026-09-18T06:10:03Z
 core:     0.3.0
 
 notes:

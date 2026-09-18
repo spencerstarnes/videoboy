@@ -67,6 +67,10 @@ enum EmuProbe {
         var changed = 0
         var inert: [String] = []
 
+        check.note("fonts on this drive: " + controller.panel.fontCatalogue
+            .map { "\($0.name) \($0.sizes.map(String.init).joined(separator: "/"))" }
+            .joined(separator: ", "))
+
         for (index, step) in plan(controller.panel).enumerated() {
             controller.send(step.commands)
             let until = Date().addingTimeInterval(step.settle)
@@ -181,6 +185,29 @@ enum EmuProbe {
         // ── Q6. A bar behind the text.
         ask("box behind the text", page(
             extra: [ScalaLingo.box(x1: 0, y1: 80, x2: 639, y2: 160)]))
+
+        // ── Q7. THE PANEL'S OWN PATH ────────────────────────────────────────────────
+        //
+        // Everything above sends hand-written Lingo, which proves what Scala does and
+        // nothing about what the panel does. These go through `choose` and `setText` —
+        // the exact calls a menu and a text field make — so a picture here is a picture
+        // of the control working, not of the dialect working.
+        _ = panel.setText("LOWER THIRD", line: 0)
+        ask("panel: two lines through setText", panel.setText("SECOND LINE", line: 1),
+            settle: 5)
+
+        if let face = panel.fontCatalogue.firstIndex(where: { $0.name == "FuturaB" }) {
+            ask("panel: FONT menu to FuturaB", panel.choose(.fontFace, option: face))
+            // Its real sizes, chosen the way the size menu chooses them.
+            for size in 0..<panel.faceSizes.count {
+                ask("panel: SIZE menu item \(size) — \(panel.faceSizes[size])pt",
+                    panel.choose(.fontSize, option: size))
+            }
+        }
+        ask("panel: ALIGN menu to centre", panel.choose(.alignment, option: 1))
+        ask("panel: EDGE menu to bevel", panel.choose(.decoration, option: 3))
+        ask("panel: ITALIC switch on", panel.set(.italic, to: 1))
+        ask("panel: BACKDROP menu", panel.choose(.backdrop, option: 3), settle: 6)
 
         return steps
     }

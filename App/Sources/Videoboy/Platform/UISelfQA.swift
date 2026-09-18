@@ -1943,21 +1943,76 @@ enum UISelfQA {
             emuTab.layoutSubtreeIfNeeded()
 
             let emuFaders = faders(in: emuTab)
+            let emuMenus = popUpButtons(in: emuTab)
+            let emuSwitches = switches(in: emuTab)
+            let emuWells = colourWells(in: emuTab)
+
             check.record(AssertionResult(
                 name: "the EMU tab has controls on it",
-                passed: !emuFaders.isEmpty,
-                detail: emuFaders.isEmpty
-                    ? "NO FADERS — the running program has no control set"
-                    : "\(emuFaders.count) faders"))
+                passed: !emuFaders.isEmpty || !emuMenus.isEmpty,
+                detail: "\(emuFaders.count) faders, \(emuMenus.count) menus, "
+                    + "\(emuSwitches.count) switches, \(emuWells.count) wells"))
 
-            // Every one of them has to be mappable, for the same reason every other
-            // fader in the window is: a control the operator cannot put under a knob
-            // is half a control.
-            let mappable = emuFaders.filter { $0.mappingSlot != nil && $0.mappingCode != nil }
+            // The count of each KIND has to match what the control set asks for. This is
+            // the assertion that keeps lists off faders: choosing one of fifty-one wipes
+            // by dragging a slider until the readout happens to say the right word is
+            // not a control, and for the font size it is a way to drop Scala's screen.
+            let wanted = TitlerControlSet.controls(for: EmulatorController().program)
+            func expected(_ shape: TitlerControl.Shape) -> Int {
+                wanted.filter { $0.shape == shape }.count
+            }
+            let mismatches = [
+                ("faders", emuFaders.count, expected(.continuous)),
+                ("menus", emuMenus.count, expected(.list)),
+                ("switches", emuSwitches.count, expected(.toggle)),
+                ("colour wells", emuWells.count, expected(.colour))
+            ].filter { $0.1 != $0.2 }
+
             check.record(AssertionResult(
-                name: "every EMU fader can be learned to MIDI",
-                passed: mappable.count == emuFaders.count,
-                detail: "\(mappable.count) of \(emuFaders.count)"))
+                name: "every control is drawn as the KIND it says it is",
+                passed: mismatches.isEmpty,
+                detail: mismatches.isEmpty
+                    ? "\(wanted.count) controls, each with the widget it asked for"
+                    : mismatches.map { "\($0.0): \($0.1) drawn, \($0.2) wanted" }
+                        .joined(separator: "; ")))
+
+            // A menu with nothing in it is a control that cannot be used. The ones that
+            // depend on a drive being read are allowed to be empty and say why; the
+            // rest must have something to choose from.
+            let emptyMenus = emuMenus.filter { $0.numberOfItems <= 1 && $0.isEnabled }
+            check.record(AssertionResult(
+                name: "no menu is both empty and clickable",
+                passed: emptyMenus.isEmpty,
+                detail: emptyMenus.isEmpty
+                    ? "every enabled menu has choices in it"
+                    : "\(emptyMenus.count) empty menus look usable"))
+
+            // EVERY control, not just the faders. A control the operator cannot put
+            // under a knob is half a control, and the promise Shift makes is that one
+            // gesture reveals all of them.
+            let mappableFaders = emuFaders.filter {
+                $0.mappingSlot != nil && $0.mappingCode != nil
+            }
+            let wrapped = mappableControls(in: emuTab)
+            let totalControls = emuFaders.count + emuMenus.count
+                + emuSwitches.count + emuWells.count
+            check.record(AssertionResult(
+                name: "every EMU control can be learned to MIDI",
+                passed: mappableFaders.count == emuFaders.count
+                    && wrapped.count == emuMenus.count + emuSwitches.count + emuWells.count,
+                detail: "\(mappableFaders.count + wrapped.count) of \(totalControls) "
+                    + "carry a slot and a code"))
+
+            // And Shift really reaches them, rather than them merely being able to be
+            // reached. Driven through DetectSession, which is what the key press drives.
+            let detect = DetectSession(root: emuTab)
+            detect.setArmed(true)
+            let lit = mappableControls(in: emuTab).filter(\.isDetectHighlighted).count
+            detect.setArmed(false)
+            check.record(AssertionResult(
+                name: "holding Shift lights the EMU menus and switches too",
+                passed: lit == wrapped.count,
+                detail: "\(lit) of \(wrapped.count) lit"))
 
             // And the text field, which is the first thing anyone touches.
             let fields = textFields(in: emuTab).filter { $0.isEditable }
@@ -2075,6 +2130,30 @@ enum UISelfQA {
         var found: [VBFader] = []
         if let fader = view as? VBFader { found.append(fader) }
         return found + view.subviews.flatMap { faders(in: $0) }
+    }
+
+    private static func mappableControls(in view: NSView) -> [MappableControl] {
+        var found: [MappableControl] = []
+        if let control = view as? MappableControl { found.append(control) }
+        return found + view.subviews.flatMap { mappableControls(in: $0) }
+    }
+
+    private static func popUpButtons(in view: NSView) -> [NSPopUpButton] {
+        var found: [NSPopUpButton] = []
+        if let menu = view as? NSPopUpButton { found.append(menu) }
+        return found + view.subviews.flatMap { popUpButtons(in: $0) }
+    }
+
+    private static func switches(in view: NSView) -> [NSSwitch] {
+        var found: [NSSwitch] = []
+        if let toggle = view as? NSSwitch { found.append(toggle) }
+        return found + view.subviews.flatMap { switches(in: $0) }
+    }
+
+    private static func colourWells(in view: NSView) -> [NSColorWell] {
+        var found: [NSColorWell] = []
+        if let well = view as? NSColorWell { found.append(well) }
+        return found + view.subviews.flatMap { colourWells(in: $0) }
     }
 
     private static func textFields(in view: NSView) -> [NSTextField] {

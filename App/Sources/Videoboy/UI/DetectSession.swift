@@ -126,6 +126,18 @@ final class DetectSession {
                 }
             }
         }
+        // Menus, switches and colour wells. They became mappable when the EMU panel
+        // stopped using a fader for everything: a knob on a menu steps through its
+        // items, and a pad on a switch is exactly what a pad is for.
+        if let mappable = view as? MappableControl {
+            mappable.isDetectHighlighted = isArmed
+            if mappable.onDetectRequested == nil {
+                mappable.onDetectRequested = { [weak self] slot, code, filter in
+                    self?.onDetectRequested?(slot, code, filter)
+                }
+            }
+        }
+
         for subview in view.subviews { apply(to: subview) }
     }
 }

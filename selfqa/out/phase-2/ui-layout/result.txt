@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-18T05:42:30Z
+when:     2026-09-18T06:10:01Z
 core:     0.3.0
 
 notes:
@@ -12,20 +12,20 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
   adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 10.61 ms, p95 11.68 ms, worst 12.72 ms, budget 33.37 ms
+  frame time with everything on: mean 11.06 ms, p95 12.01 ms, worst 12.51 ms, budget 33.37 ms
 
-assertions (89/89 passed):
+assertions (92/92 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
   PASS  wide is not blank — luminance variance 835.3
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 798.8
+  PASS  compact is not blank — luminance variance 798.1
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 972.6
+  PASS  narrow is not blank — luminance variance 977.0
   PASS  collapsed-left is not blank — luminance variance 732.6
   PASS  collapsed-both-edges is not blank — luminance variance 630.6
   PASS  collapsed-sources-only is not blank — luminance variance 855.8
   PASS  collapsed-effects-only is not blank — luminance variance 618.6
-  PASS  holding Shift lights the mappable faders — 90 faders highlighted
+  PASS  holding Shift lights the mappable faders — 77 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
@@ -79,8 +79,8 @@ assertions (89/89 passed):
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
   PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 12.72 ms against a 33.37 ms budget (mean 10.61, p95 11.68)
-  PASS  frame time is even, not just fast on average — worst is 1.2x the mean
+  PASS  no frame misses the budget with every effect running — worst frame 12.51 ms against a 33.37 ms budget (mean 11.06, p95 12.01)
+  PASS  frame time is even, not just fast on average — worst is 1.1x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there
   PASS  a crossfader accepts sweep marks — 0.19...0.81
@@ -101,6 +101,9 @@ assertions (89/89 passed):
   PASS  plain shift still arms detect rather than marking a sweep — detect armed, no mark set
   PASS  every enabled effect switch actually reaches the engine — 12 switches moved a wet/dry in the graph
   PASS  every enabled effect fader actually reaches the engine — 58 faders moved a value in the registry
-  PASS  the EMU tab has controls on it — 19 faders
-  PASS  every EMU fader can be learned to MIDI — 19 of 19
-  PASS  the EMU tab takes typed text — 1 editable
+  PASS  the EMU tab has controls on it — 6 faders, 9 menus, 2 switches, 2 wells
+  PASS  every control is drawn as the KIND it says it is — 19 controls, each with the widget it asked for
+  PASS  no menu is both empty and clickable — every enabled menu has choices in it
+  PASS  every EMU control can be learned to MIDI — 19 of 19 carry a slot and a code
+  PASS  holding Shift lights the EMU menus and switches too — 13 of 13 lit
+  PASS  the EMU tab takes typed text — 2 editable

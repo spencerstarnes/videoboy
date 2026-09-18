@@ -197,8 +197,14 @@ public struct ScalaPanelState: Equatable, Sendable {
     public var fontSize: Int = 44
     public var textColour: ScalaColour = .white
     public var backgroundColour: ScalaColour = .black
-    /// A placed graphic's width as a fraction of the screen, 0.1...2.
-    public var brushScale: Double = 1
+    /// A placed graphic's width as a fraction of the screen. ZERO means no graphic.
+    ///
+    /// Zero by default, and zero is a real setting rather than a very small one — the
+    /// same idiom the bar uses. A drive is scanned for symbols so that the scale control
+    /// has something to scale, and for a while that meant every page carried the first
+    /// symbol on the disc: a full-screen arrow, over the title, that nobody had asked
+    /// for and no control would remove.
+    public var brushScale: Double = 0
     public var textX: Int = 20
     public var textY: Int = 40
     /// Index into `ScalaLingo.alignments`.
@@ -518,7 +524,9 @@ public final class ScalaTitlerPanel {
             state.backgroundColour = .hue(clamped)
 
         case .brushScale:
-            state.brushScale = 0.1 + clamped * 1.9
+            // The bottom of the control is "no graphic", so a page carries one only when
+            // it has been asked for.
+            state.brushScale = clamped < 0.02 ? 0 : 0.1 + clamped * 1.9
 
         case .textX:
             state.textX = scaled(clamped, into: 0...(screen.width - 1))
@@ -529,6 +537,13 @@ public final class ScalaTitlerPanel {
         case .alignment:
             state.alignmentIndex =
                 NormalisedSweep.index(clamped, count: ScalaLingo.alignments.count)
+            // Move the anchor with it. Scala aligns text AROUND the X it is given, so
+            // picking "centre" while X sits at the left margin centres the line on the
+            // left margin and half of it falls off the screen — which is exactly what
+            // happened in selfqa/out/emu-probe/25-panel-backdrop-menu.png. Every titler
+            // moves the anchor when you press an align button; X is still free to be
+            // dragged afterwards.
+            state.textX = anchorX(forAlignment: state.alignmentIndex)
 
         case .decoration:
             state.edgeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.edgeStyles.count)
@@ -638,6 +653,24 @@ public final class ScalaTitlerPanel {
         path.split(separator: "/").last.map(String.init) ?? path
     }
 
+    /// Whether a toggle control is currently on.
+    public func isOn(_ function: TitlerFunction) -> Bool {
+        switch function {
+        case .colourCycle: return state.isCycling
+        case .italic: return state.isItalic
+        default: return false
+        }
+    }
+
+    /// The colour a colour control currently holds, for the well that shows it.
+    public func colour(for function: TitlerFunction) -> ScalaColour? {
+        switch function {
+        case .textColour: return state.textColour
+        case .backgroundColour: return state.backgroundColour
+        default: return nil
+        }
+    }
+
     /// What a control currently reads, in Scala's own units, for the readout under it.
     ///
     /// In native units on purpose: "Franklin 44pt" tells an operator something, "0.31"
@@ -653,7 +686,8 @@ public final class ScalaTitlerPanel {
         case .fontSize: return "\(state.fontSize)pt"
         case .textColour: return "#" + state.textColour.amigaHex
         case .backgroundColour: return "#" + state.backgroundColour.amigaHex
-        case .brushScale: return "\(Int(state.brushScale * 100))%"
+        case .brushScale:
+            return state.brushScale <= 0 ? "OFF" : "\(Int(state.brushScale * 100))%"
         case .textX: return "\(state.textX)"
         case .textY: return "\(state.textY)"
         case .alignment: return ScalaLingo.alignments[state.alignmentIndex].uppercased()
@@ -723,6 +757,19 @@ public final class ScalaTitlerPanel {
         return commands
     }
 
+    /// Where text should sit for a given alignment, before anyone drags it.
+    ///
+    /// The margin is a twentieth of the screen — the safe-area habit, near enough, and
+    /// the only figure here that is a judgement rather than a measurement.
+    private func anchorX(forAlignment index: Int) -> Int {
+        let margin = screen.width / 20
+        switch ScalaLingo.alignments[min(index, ScalaLingo.alignments.count - 1)] {
+        case "center", "centre": return screen.width / 2
+        case "right": return screen.width - margin
+        default: return margin
+        }
+    }
+
     /// The bar behind the text, when the fader is above its "no bar" bottom.
     private func currentBox() -> TitlerCommand? {
         guard state.boxHeight > 0.02 else { return nil }
@@ -735,7 +782,7 @@ public final class ScalaTitlerPanel {
 
     /// The placed graphic, when one has been chosen.
     private func currentBrush() -> TitlerCommand? {
-        guard let file = state.brushFile else { return nil }
+        guard let file = state.brushFile, state.brushScale > 0 else { return nil }
         let width = Int(Double(screen.width) * state.brushScale)
         let height = Int(Double(screen.height) * state.brushScale)
         return ScalaLingo.brush(

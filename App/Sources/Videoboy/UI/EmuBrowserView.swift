@@ -45,8 +45,15 @@ final class EmuBrowserView: NSStackView {
     private let screen = EmuScreenView()
 
     private var faders: [TitlerFunction: VBFader] = [:]
+    private var menus: [TitlerFunction: NSPopUpButton] = [:]
+    private var switches: [TitlerFunction: NSSwitch] = [:]
+    private var wells: [TitlerFunction: NSColorWell] = [:]
     private var readouts: [TitlerFunction: NSTextField] = [:]
-    private var textField: NSTextField?
+    /// Which control a menu, switch or well drives. Keyed by identity because an
+    /// NSPopUpButton has no room to carry one and a tag is an Int.
+    private var mappingByControl: [ObjectIdentifier: TitlerFunction] = [:]
+    private var textFieldsByLine: [Int: NSTextField] = [:]
+    private var takeButton: VBOptionButton?
 
     /// Called when the machine is dragged onto a source, with the channel letter.
     var onAssignedToChannel: ((String) -> Void)?
@@ -157,30 +164,77 @@ final class EmuBrowserView: NSStackView {
         row.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
     }
 
+    /// The two lines of the title, and the key that puts them on air.
+    ///
+    /// ── WHY THERE IS A TAKE AND THE FIELDS DO NOT SEND AS YOU TYPE ──────────────
+    ///
+    /// Because this reaches PROGRAM. A field that sent on every keystroke would put
+    /// half-typed words on air, one letter at a time, in front of an audience. Every
+    /// broadcast character generator ever built solves this the same way: type freely,
+    /// then take. The fields commit on Return or when focus leaves them — that is
+    /// AppKit's own behaviour for an NSTextField action and it is the right one here —
+    /// and TAKE repaints the page from whatever the panel currently holds, which is
+    /// also how you put a page back after the machine has been touched by hand.
+    ///
+    /// Everything else on this panel IS live, because a menu choice and a fader move
+    /// are single deliberate gestures, not a stream of half-finished ones.
     private func buildTextRow() {
-        let field = NSTextField(string: controller.panel.state.text)
-        field.font = Theme.Font.label
-        field.controlSize = .small
-        field.placeholderString = "Title text"
-        field.target = self
-        field.action = #selector(textChanged(_:))
-        field.toolTip = "The line of text on screen. Sent as a TEXT command the moment "
-            + "you press Return."
-        field.translatesAutoresizingMaskIntoConstraints = false
-        textField = field
-
-        let row = Controls.row([
+        let header = Controls.row([
             Controls.label("TEXT", font: Theme.Font.tinyLabel,
-                           color: Theme.Color.textTertiary, holdsWidth: true),
-            field
+                           color: Theme.Color.textSecondary, holdsWidth: true),
+            Controls.spacer()
         ], spacing: 4)
-        addArrangedSubview(row)
-        row.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        addArrangedSubview(header)
+        header.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+
+        for line in 0..<2 {
+            let field = NSTextField(string: line == 0
+                ? controller.panel.state.text
+                : controller.panel.state.textTwo)
+            field.font = Theme.Font.label
+            field.controlSize = .small
+            field.placeholderString = line == 0 ? "Title" : "Second line (optional)"
+            field.tag = line
+            field.target = self
+            field.action = #selector(textChanged(_:))
+            field.toolTip = line == 0
+                ? "The first line. Goes to the machine when you press Return or click "
+                    + "away — not as you type, because this reaches PROGRAM."
+                : "A second line, drawn below the first. Leave it empty for a one-line "
+                    + "title; Scala is only sent a line that has something in it."
+            field.translatesAutoresizingMaskIntoConstraints = false
+            textFieldsByLine[line] = field
+
+            let row = Controls.row([
+                Controls.label(line == 0 ? "1" : "2", font: Theme.Font.tinyLabel,
+                               color: Theme.Color.textTertiary, holdsWidth: true),
+                field
+            ], spacing: 4)
+            addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        }
+
+        let take = VBOptionButton(title: "TAKE", onColour: Theme.Color.tallyOnAir)
+        take.target = self
+        take.action = #selector(takePressed)
+        take.toolTip = "Repaint the page on the machine from everything this panel "
+            + "holds. Use it after typing, or to put the title back after the machine "
+            + "has been touched by hand."
+        takeButton = take
+
+        let takeRow = Controls.row([Controls.spacer(), take], spacing: 4)
+        addArrangedSubview(takeRow)
+        takeRow.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
     }
 
+    /// Draws the control set, grouped, with the widget each control asks for.
+    ///
+    /// The SHAPE comes from the control, not from here. Every one of these used to be a
+    /// fader: choosing one of fifty-one wipes meant dragging until the readout happened
+    /// to say the right word, and choosing a typeface meant the same. A list is a list.
     private func buildControls() {
-        let controls = TitlerControlSet.controls(for: controller.program)
-        guard !controls.isEmpty else {
+        let groups = TitlerControlSet.groups(for: controller.program)
+        guard !groups.isEmpty else {
             let note = Controls.label(
                 TitlerControlSet.noPanelReason(for: controller.program) ?? "No controls.",
                 font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
@@ -188,42 +242,133 @@ final class EmuBrowserView: NSStackView {
             return
         }
 
-        for control in controls {
-            // Two lines per control, the same shape an effect parameter uses, so a
-            // fader here behaves and reads exactly like a fader anywhere else in the
-            // window.
-            let name = Controls.label(
-                control.name, font: Theme.Font.tinyLabel,
-                color: Theme.Color.textSecondary, holdsWidth: true)
+        for group in groups {
+            addArrangedSubview(sectionHeader(group.title))
+            for control in group.controls { addArrangedSubview(row(for: control)) }
+        }
+
+        for view in arrangedSubviews where view.identifier?.rawValue == Self.fullWidthRow {
+            view.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        }
+    }
+
+    /// A quiet rule with a name on it, so the panel reads as sections rather than a
+    /// list of thirty things.
+    private func sectionHeader(_ title: String) -> NSView {
+        let label = Controls.label(
+            title, font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
+        let row = Controls.row([label, Controls.spacer()], spacing: 4)
+        row.identifier = NSUserInterfaceItemIdentifier(Self.fullWidthRow)
+        return row
+    }
+
+    private static let fullWidthRow = "emu.row"
+
+    /// One control: its name, its widget, and its current value in Scala's own units.
+    private func row(for control: TitlerControl) -> NSView {
+        let name = Controls.label(
+            control.name, font: Theme.Font.tinyLabel,
+            color: Theme.Color.textSecondary, holdsWidth: true)
+
+        let inner: NSView
+        switch control.shape {
+        case .list:      inner = listWidget(for: control)
+        case .toggle:    inner = toggleWidget(for: control)
+        case .colour:    inner = colourWidget(for: control)
+        case .continuous: inner = faderWidget(for: control)
+        }
+        inner.toolTip = control.explanation
+
+        // A fader already carries its own slot and code. Everything else gets wrapped
+        // so that Shift lights it too — the promise is that ONE gesture reveals every
+        // control that can go under a knob, and that only holds if it reveals all of
+        // them.
+        let widget: NSView
+        if control.shape == .continuous {
+            widget = inner
+        } else {
+            widget = MappableControl(
+                content: inner,
+                slot: Engine.emulatorSlot,
+                code: control.code,
+                // A switch learns a KEY; a menu takes anything, because stepping a list
+                // with a knob is the point of putting a knob on one.
+                detectFilter: control.shape == .toggle ? .notesOnly : .anything)
+            widget.toolTip = control.explanation
+        }
+
+        // The readout stays for the continuous controls, where a number is the only way
+        // to know where you are. A menu already shows its own answer.
+        var pieces: [NSView] = [name, widget]
+        if control.shape == .continuous {
             let readout = Controls.label(
                 controller.readout(for: control.function),
                 font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
             readout.alignment = .right
             readouts[control.function] = readout
-
-            let header = Controls.row([name, Controls.spacer(), readout], spacing: 4)
-            addArrangedSubview(header)
-            header.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
-
-            let fader = Controls.fader(
-                value: control.function == .colourCycle ? 0 : 0.5,
-                compact: true,
-                // SLOT AND CODE, which is what makes this fader exactly like every
-                // other fader in the window: Shift-click learns it to a MIDI control,
-                // Cmd-Option marks a sweep between two points, an LFO or the beat clock
-                // can drive it, and a template saves it. None of that machinery knows
-                // or needs to know that the thing at the other end is an emulator.
-                mappingSlot: Engine.emulatorSlot,
-                mappingCode: control.code,
-                target: self, action: #selector(faderMoved(_:)))
-            // The tooltip explains what it does TO THE SOFTWARE, which is the whole
-            // point of the control set — a slider labelled SCALE that cannot say what
-            // it scales is a slider nobody trusts.
-            fader.toolTip = control.explanation
-            faders[control.function] = fader
-            addArrangedSubview(fader)
-            fader.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+            pieces = [name, widget, readout]
         }
+
+        let row = Controls.row(pieces, spacing: 6)
+        row.identifier = NSUserInterfaceItemIdentifier(Self.fullWidthRow)
+        return row
+    }
+
+    private func listWidget(for control: TitlerControl) -> NSView {
+        let menu = NSPopUpButton(frame: .zero, pullsDown: false)
+        menu.controlSize = .small
+        menu.font = Theme.Font.tinyLabel
+        menu.target = self
+        menu.action = #selector(listChanged(_:))
+        menu.translatesAutoresizingMaskIntoConstraints = false
+        menu.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        menus[control.function] = menu
+        // A control's param code rides on the widget so a Shift-click can learn it,
+        // exactly as it does for a fader. A menu under a MIDI knob steps through its
+        // items, which is what a knob on a list should do.
+        mappingByControl[ObjectIdentifier(menu)] = control.function
+        return menu
+    }
+
+    private func toggleWidget(for control: TitlerControl) -> NSView {
+        let toggle = NSSwitch()
+        toggle.controlSize = .mini
+        toggle.target = self
+        toggle.action = #selector(toggleChanged(_:))
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        switches[control.function] = toggle
+        mappingByControl[ObjectIdentifier(toggle)] = control.function
+        let holder = Controls.row([toggle, Controls.spacer()], spacing: 0)
+        return holder
+    }
+
+    private func colourWidget(for control: TitlerControl) -> NSView {
+        let well = NSColorWell()
+        well.isBordered = true
+        well.target = self
+        well.action = #selector(colourChanged(_:))
+        well.translatesAutoresizingMaskIntoConstraints = false
+        well.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        well.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        wells[control.function] = well
+        mappingByControl[ObjectIdentifier(well)] = control.function
+        let holder = Controls.row([well, Controls.spacer()], spacing: 0)
+        return holder
+    }
+
+    private func faderWidget(for control: TitlerControl) -> NSView {
+        let fader = Controls.fader(
+            value: control.function == .colourCycle ? 0 : 0.5,
+            compact: true,
+            // SLOT AND CODE, which is what makes this fader exactly like every other
+            // fader in the window: Shift-click learns it to a MIDI control, Cmd-Option
+            // marks a sweep, an LFO or the beat clock can drive it, and a template
+            // saves it. None of that machinery knows it is driving an emulator.
+            mappingSlot: Engine.emulatorSlot,
+            mappingCode: control.code,
+            target: self, action: #selector(faderMoved(_:)))
+        faders[control.function] = fader
+        return fader
     }
 
     // MARK: - Actions
@@ -290,7 +435,34 @@ final class EmuBrowserView: NSStackView {
     }
 
     @objc private func textChanged(_ sender: NSTextField) {
-        controller.setText(sender.stringValue)
+        controller.setText(sender.stringValue, line: sender.tag)
+    }
+
+    /// Repaints the page on the machine from everything the panel holds.
+    @objc private func takePressed() {
+        controller.synchronise()
+    }
+
+    @objc private func listChanged(_ sender: NSPopUpButton) {
+        guard let function = mappingByControl[ObjectIdentifier(sender)] else { return }
+        controller.choose(function, option: sender.indexOfSelectedItem)
+        // Choosing a face changes which SIZES exist, so that menu is rebuilt rather
+        // than left showing sizes the new face does not have.
+        if function == .fontFace { refreshList(.fontSize) }
+    }
+
+    @objc private func toggleChanged(_ sender: NSSwitch) {
+        guard let function = mappingByControl[ObjectIdentifier(sender)] else { return }
+        controller.move(function, to: sender.state == .on ? 1 : 0)
+    }
+
+    @objc private func colourChanged(_ sender: NSColorWell) {
+        guard let function = mappingByControl[ObjectIdentifier(sender)] else { return }
+        // Scala has one hue control per colour, so the well's hue is what reaches it.
+        // The well is the honest widget to CHOOSE with; the 0...1 hue behind it is what
+        // a MIDI knob or an LFO drives, and both end up in the same place.
+        let colour = sender.color.usingColorSpace(.deviceRGB) ?? .white
+        controller.move(function, to: Double(colour.hueComponent))
     }
 
     @objc private func faderMoved(_ sender: VBFader) {
@@ -332,14 +504,70 @@ final class EmuBrowserView: NSStackView {
                 + "in the emulator's own window."
         linkDot.state = controller.linkState
 
+        takeButton?.isEnabled = controller.isRunning
+
         // A control with nothing behind it greys and says why, rather than moving and
-        // changing nothing.
+        // changing nothing. That matters most for the font size: until a drive has been
+        // read there is no way to know which sizes are safe, and an unsafe one drops
+        // Scala's screen.
         for (function, fader) in faders {
             let reason = controller.unavailableReason(for: function)
             fader.isEnabled = reason == nil
             if let reason { fader.toolTip = reason }
             readouts[function]?.stringValue = controller.readout(for: function)
         }
+        for function in menus.keys { refreshList(function) }
+        for (function, toggle) in switches {
+            let reason = controller.unavailableReason(for: function)
+            toggle.isEnabled = reason == nil
+            if let reason { toggle.toolTip = reason }
+            toggle.state = controller.panel.isOn(function) ? .on : .off
+        }
+        for (function, well) in wells {
+            let reason = controller.unavailableReason(for: function)
+            well.isEnabled = reason == nil
+            if let reason { well.toolTip = reason }
+            well.color = controller.panel.colour(for: function).map(Self.nsColour) ?? .white
+        }
+
+        for (line, field) in textFieldsByLine {
+            let wanted = line == 0
+                ? controller.panel.state.text
+                : controller.panel.state.textTwo
+            // Only when it differs, and never while it is being typed into: writing to a
+            // field under the cursor moves the insertion point to the end mid-word.
+            if field.stringValue != wanted, field.currentEditor() == nil {
+                field.stringValue = wanted
+            }
+        }
+    }
+
+    /// Refills one menu from the panel, and greys it when there is nothing to choose.
+    private func refreshList(_ function: TitlerFunction) {
+        guard let menu = menus[function] else { return }
+        let options = controller.panel.options(for: function)
+        let reason = controller.unavailableReason(for: function)
+
+        menu.removeAllItems()
+        if options.isEmpty {
+            // A menu with nothing in it still has to be a menu — an empty popup that
+            // looks clickable and is not is worse than one that says what is missing.
+            menu.addItem(withTitle: "—")
+            menu.isEnabled = false
+            menu.toolTip = reason ?? "Nothing to choose from yet"
+            return
+        }
+        menu.addItems(withTitles: options)
+        menu.selectItem(at: min(controller.panel.selectedOption(for: function),
+                                options.count - 1))
+        menu.isEnabled = reason == nil
+        if let reason { menu.toolTip = reason }
+    }
+
+    /// An `NSColor` for a Scala colour, for the wells.
+    private static func nsColour(_ colour: ScalaColour) -> NSColor {
+        NSColor(deviceRed: CGFloat(colour.red), green: CGFloat(colour.green),
+                blue: CGFloat(colour.blue), alpha: 1)
     }
 }
 
