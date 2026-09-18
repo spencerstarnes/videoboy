@@ -116,6 +116,13 @@ security set-key-partition-list \
 # the list, so the existing entries are read back first — dropping the login keychain
 # here would break every other tool on the machine that expects to find it.
 EXISTING="$(security list-keychains -d user | sed -e 's/^[[:space:]]*"//' -e 's/"$//')"
+# Recorded before anything is changed, so the search list is trivially reversible.
+# Changing a keychain search list on someone's machine should never be a one-way door.
+printf '%s\n' "$EXISTING" > "$SECRET_DIR/keychain-list.before"
+note "previous keychain search list saved to $SECRET_DIR/keychain-list.before"
+note "to undo everything this script did:"
+note "  security list-keychains -d user -s \$(cat '$SECRET_DIR/keychain-list.before' | tr '\\n' ' ')"
+note "  security delete-keychain $KEYCHAIN_NAME"
 if ! printf '%s\n' "$EXISTING" | grep -qF "$KEYCHAIN_NAME"; then
     # shellcheck disable=SC2086
     security list-keychains -d user -s $(printf '%s\n' "$EXISTING" | tr '\n' ' ') "$KEYCHAIN_NAME"
