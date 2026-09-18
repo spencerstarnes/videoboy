@@ -252,8 +252,14 @@ final class TitlerExtraControlTests: XCTestCase {
         panel.backdrops = ["CUCD19:Scala/Backgrounds/Stones005",
                            "CUCD19:Scala/Backgrounds/Fabrics001"]
         XCTAssertNil(panel.unavailableReason(for: .backdrop))
+        // A repainted page, not a lone PICTURE: Scala paints pages, and a command sent
+        // without a SCREEN in front of it lands on a page that is already on screen.
         let lines = panel.set(.backdrop, to: 0).map(\.line)
-        XCTAssertEqual(lines.first, "PICTURE \"CUCD19:Scala/Backgrounds/Stones005\"")
+        XCTAssertTrue(lines.contains("PICTURE \"CUCD19:Scala/Backgrounds/Stones005\""))
+        XCTAssertTrue(
+            lines.firstIndex(of: "PICTURE \"CUCD19:Scala/Backgrounds/Stones005\"")!
+                < lines.firstIndex { $0.hasPrefix("TEXT ") }!,
+            "the backdrop has to be painted BEFORE the text, or it covers it")
         XCTAssertEqual(lines.last, "SHOW", "or the background changes on the next draw")
     }
 

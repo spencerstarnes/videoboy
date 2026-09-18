@@ -66,3 +66,56 @@ final class PictureVarietyTests: XCTestCase {
         XCTAssertFalse(PictureVariety.isPicture(frame))
     }
 }
+
+/// Every program that speaks a dialect we have must offer its controls.
+///
+/// This exists because the panel used to match on the product NAME, so switching the
+/// default from Scala MM300 to MM400 emptied the EMU tab of every slider while the app
+/// reported the machine as healthy.
+final class TitlerControlSetTests: XCTestCase {
+
+    func testEveryScalaProgramHasAPanel() {
+        let scalas = TitlerLibrary.programs.filter { $0.scriptPort == ScalaLingo.portName }
+        XCTAssertFalse(scalas.isEmpty, "the library should carry at least one Scala")
+        for program in scalas {
+            XCTAssertFalse(
+                TitlerControlSet.controls(for: program).isEmpty,
+                "\(program.name) speaks Scala Lingo but offers no controls")
+            XCTAssertNil(TitlerControlSet.noPanelReason(for: program))
+        }
+    }
+
+    func testAProgramWithNoScriptPortExplainsItself() {
+        let mute = TitlerLibrary.programs.filter { $0.scriptPort == nil }
+        for program in mute {
+            XCTAssertTrue(TitlerControlSet.controls(for: program).isEmpty)
+            XCTAssertNotNil(TitlerControlSet.noPanelReason(for: program))
+        }
+    }
+}
+
+/// The emulator source must not freeze on the first frame it ever sees.
+///
+/// It did. The node cached its uploaded texture and cleared the cache from an
+/// `invalidateFrame()` call that nothing in the app ever made, so routing the machine to
+/// a channel showed the blank window it had been looking at during boot, for ever.
+final class EmulatorFrameGenerationTests: XCTestCase {
+
+    func testTheMockReportsANewGenerationForEachNewFrame() {
+        let host = MockEmulatorHost()
+        let atRest = host.frameGeneration
+
+        XCTAssertTrue(host.boot(TitlerLibrary.programs[0]))
+        let afterBoot = host.frameGeneration
+        XCTAssertGreaterThan(afterBoot, atRest, "booting produced a frame but no new generation")
+
+        host.shutdown()
+        XCTAssertGreaterThan(host.frameGeneration, afterBoot, "shutdown changed the frame silently")
+    }
+
+    func testAHostWithNoPictureNeverClaimsANewFrame() {
+        let host = UnavailableEmulatorHost(reason: "no emulator installed")
+        XCTAssertNil(host.latestFrame())
+        XCTAssertEqual(host.frameGeneration, host.frameGeneration)
+    }
+}

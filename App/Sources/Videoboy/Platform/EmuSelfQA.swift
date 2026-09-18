@@ -145,6 +145,81 @@ enum EmuSelfQA {
                     detail: String(format: "%.1f%% detail — see titled.png", detail * 100)))
                 _ = try? check.writeImage(titled, named: "titled.png")
             }
+
+            // AND DOES IT REACH PROGRAM. Everything above proves the machine draws and
+            // that Videoboy can capture it; none of it proves the picture survives the
+            // trip through the graph to the output the operator is actually looking at.
+            // It did not: the source node cached its uploaded texture and cleared that
+            // cache from a call nothing made, so a channel pointed at the Amiga showed
+            // the blank boot window for ever.
+            renderCheck: do {
+                guard let metal = MetalContext.shared,
+                      let renderer = OffscreenRenderer(context: metal) else {
+                    check.record(AssertionResult(
+                        name: "the machine reaches PROGRAM", passed: false,
+                        detail: "no Metal device"))
+                    break renderCheck
+                }
+
+                let engine = Engine()
+                engine.emulator?.host = controller.host
+                engine.setChannelSource(.emulator, channel: "A")
+                // A fully to PROGRAM, so what comes out is the machine and nothing else.
+                engine.registry.setValue(0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
+                engine.registry.setValue(0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+
+                func renderProgram(frameIndex: Int) -> ImageBuffer? {
+                    let context = RenderContext(
+                        frameIndex: frameIndex,
+                        presentationTime: Double(frameIndex) / 29.97,
+                        musicalPosition: nil)
+                    let produced = engine.evaluateGraph(context: context)
+                    guard let texture = produced[Engine.outputSlot]
+                        ?? produced[GraphTopology.primary] else { return nil }
+                    return renderer.readback(texture)
+                }
+
+                guard let onProgram = renderProgram(frameIndex: 1) else {
+                    check.record(AssertionResult(
+                        name: "the machine reaches PROGRAM", passed: false,
+                        detail: "PROGRAM produced no frame at all"))
+                    break renderCheck
+                }
+                let detail = PictureVariety.score(of: onProgram)
+                check.record(AssertionResult(
+                    name: "the machine reaches PROGRAM",
+                    passed: PictureVariety.isPicture(onProgram),
+                    detail: String(format: "%.1f%% detail on the programme output", detail * 100)))
+                _ = try? check.writeImage(onProgram, named: "on-program.png")
+
+                // And it must still be MOVING. A frozen source passes every test above,
+                // because a still picture of a title is a perfectly good picture.
+                let hostBefore = controller.host.latestFrame()
+                // Through the ordinary path a typed character takes. Anything else
+                // would prove the machine can redraw without proving the app can make
+                // it, which is the distinction that mattered here.
+                controller.setText("SECOND LINE")
+                let moved = Date().addingTimeInterval(20)
+                while Date() < moved {
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+                }
+                // Captured from the HOST as well as from PROGRAM, because "the picture
+                // did not change" has two completely different causes — the machine did
+                // not redraw, or our pipeline froze — and they are fixed in different
+                // places. Comparing both says which.
+                if let hostBefore, let hostAfter = controller.host.latestFrame() {
+                    check.record(FrameAssertions.framesDiffer(
+                        hostBefore, hostAfter, minimumFraction: 0.001,
+                        name: "the machine itself redrew after the text changed"))
+                    _ = try? check.writeImage(hostAfter, named: "host-after-text.png")
+                }
+                if let later = renderProgram(frameIndex: 2) {
+                    check.record(FrameAssertions.framesDiffer(
+                        onProgram, later, minimumFraction: 0.001,
+                        name: "the picture on PROGRAM is live, not the first frame frozen"))
+                    _ = try? check.writeImage(later, named: "on-program-changed.png")
+                }
+            }
         }
 
         return check.finish()

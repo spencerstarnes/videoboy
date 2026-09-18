@@ -187,6 +187,12 @@ public struct ScalaPanelState: Equatable, Sendable {
     public var isItalic: Bool = false
     /// Index into the backdrops the panel knows about.
     public var backdropIndex: Int = 0
+    /// Whether a backdrop has been chosen at all.
+    ///
+    /// `backdropIndex` has no "none" value — index 0 is a real picture — so without this
+    /// every repaint would put the first backdrop on the screen whether or not anyone
+    /// asked for one.
+    public var hasBackdrop: Bool = false
     /// How tall the bar behind the text is, as a fraction of the screen. 0 is off.
     public var boxHeight: Double = 0
 
@@ -388,7 +394,6 @@ public final class ScalaTitlerPanel {
         switch function {
         case .wipe:
             state.wipeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.wipes.count)
-            return [currentWipe()]
 
         case .wipeDirection:
             // The bottom of the fader means NO direction, which is a real setting —
@@ -397,65 +402,60 @@ public final class ScalaTitlerPanel {
             let count = ScalaLingo.directions.count + 1
             let index = NormalisedSweep.index(clamped, count: count)
             state.directionIndex = index == 0 ? nil : index - 1
-            return [currentWipe()]
 
         case .wipeSpeed:
             // Inverted: Scala's 1 is the fast one. A fader labelled SPEED that gets
             // slower as it goes up is the kind of small wrongness that makes a panel
             // untrustworthy.
             state.wipeSpeed = invertedSpeed(clamped)
-            return [currentWipe()]
 
         case .textWipe:
             state.textWipeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.wipes.count)
-            return [
-                ScalaLingo.textWipe(
-                    ScalaLingo.wipes[state.textWipeIndex], speed: state.wipeSpeed)
-            ]
 
         case .fontFace:
             state.fontIndex = NormalisedSweep.index(clamped, count: ScalaLingo.fonts.count)
-            return [currentFont(), currentText(), ScalaLingo.show()]
 
         case .fontSize:
             state.fontSize = scaled(clamped, into: ScalaLingo.fontSizeRange)
-            return [currentFont(), currentText(), ScalaLingo.show()]
 
         case .textColour:
             state.textColour = .hue(clamped)
-            return [currentPalette(), ScalaLingo.colour(fill: 1), ScalaLingo.show()]
 
         case .backgroundColour:
             state.backgroundColour = .hue(clamped)
-            return [currentPalette(), ScalaLingo.show()]
 
         case .brushScale:
             state.brushScale = 0.1 + clamped * 1.9
-            guard let file = state.brushFile else { return [] }
-            let width = Int(Double(screen.width) * state.brushScale)
-            let height = Int(Double(screen.height) * state.brushScale)
-            return [
-                ScalaLingo.brush(
-                    x: (screen.width - width) / 2, y: (screen.height - height) / 2,
-                    file: file, width: max(width, 1), height: max(height, 1)),
-                ScalaLingo.show()
-            ]
 
         case .textX:
             state.textX = scaled(clamped, into: 0...(screen.width - 1))
-            return [currentText(), ScalaLingo.show()]
 
         case .textY:
             state.textY = scaled(clamped, into: 0...(screen.height - 1))
-            return [currentText(), ScalaLingo.show()]
 
         case .alignment:
             state.alignmentIndex =
                 NormalisedSweep.index(clamped, count: ScalaLingo.alignments.count)
-            return [
-                currentAttributes(), currentText(), ScalaLingo.show()
-            ]
 
+        case .decoration:
+            state.edgeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.edgeStyles.count)
+
+        case .italic:
+            state.isItalic = clamped >= 0.5
+
+        case .backdrop:
+            guard !backdrops.isEmpty else { return [] }
+            state.backdropIndex = NormalisedSweep.index(clamped, count: backdrops.count)
+            state.hasBackdrop = true
+
+        case .box:
+            state.boxHeight = clamped
+
+        // ── The three that are NOT page paint ────────────────────────────────────
+        //
+        // These change what the machine DOES rather than what the page looks like, so
+        // they go on their own and deliberately do not force a repaint. Sending GOTO
+        // wrapped in a fresh page would throw away the page it just went to.
         case .colourCycle:
             state.isCycling = clamped >= 0.5
             return [ScalaLingo.cycle(state.isCycling)]
@@ -469,43 +469,15 @@ public final class ScalaTitlerPanel {
         case .page:
             state.pageIndex = NormalisedSweep.index(clamped, count: pageNames.count)
             return [ScalaLingo.goTo(event: pageNames[state.pageIndex])]
-
-        case .decoration:
-            state.edgeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.edgeStyles.count)
-            return [currentAttributes(), currentText(), ScalaLingo.show()]
-
-        case .italic:
-            state.isItalic = clamped >= 0.5
-            return [currentAttributes(), currentText(), ScalaLingo.show()]
-
-        case .backdrop:
-            state.backdropIndex = NormalisedSweep.index(clamped, count: backdrops.count)
-            // The picture, then SHOW: Scala builds a page off-screen and reveals it, so
-            // without the SHOW the background changes on the NEXT thing that draws.
-            return [ScalaLingo.picture(backdrops[state.backdropIndex]), ScalaLingo.show()]
-
-        case .box:
-            state.boxHeight = clamped
-            guard clamped > 0.02 else {
-                // The bottom of the fader is "no bar", which is a real setting rather
-                // than a very short one.
-                return [currentText(), ScalaLingo.show()]
-            }
-            let height = Int(Double(screen.height) * clamped * 0.4)
-            let top = max(state.textY - height / 3, 0)
-            return [
-                ScalaLingo.box(
-                    x1: 0, y1: top,
-                    x2: screen.width - 1, y2: min(top + height, screen.height - 1)),
-                currentText(), ScalaLingo.show()
-            ]
         }
+
+        return page()
     }
 
     /// Sets the line of text and returns the lines that puts it on screen.
     public func setText(_ text: String) -> [TitlerCommand] {
         state.text = text
-        return [currentText(), ScalaLingo.show()]
+        return page()
     }
 
     /// Chooses the graphic the scale control scales.
@@ -550,7 +522,28 @@ public final class ScalaTitlerPanel {
     ///
     /// Used when a program has just booted: the emulated Amiga has no idea what the
     /// faders are showing, so everything is sent once and the two agree from then on.
-    public func fullState() -> [TitlerCommand] {
+    public func fullState() -> [TitlerCommand] { page() }
+
+    /// Everything the current state describes, as ONE page.
+    ///
+    /// ── WHY EVERY CHANGE SENDS ALL OF THIS ──────────────────────────────────────
+    ///
+    /// Because Scala draws PAGES, not pixels. `SCREEN` begins a new page, the drawing
+    /// commands paint it while it is off-screen, and `SHOW` reveals it. A command sent
+    /// on its own — `TEXT`, then `SHOW` — paints a page that has ALREADY been shown,
+    /// which is invisible. Scala accepts it and returns zero, so nothing anywhere
+    /// reports a problem.
+    ///
+    /// That is exactly what happened: every fader and the text field sent a small
+    /// fragment ending in `SHOW`, every command was accepted, and the screen never
+    /// changed once after the first page. The panel looked completely dead. Sending the
+    /// whole page is not wasteful here — it is the unit Scala actually works in.
+    ///
+    /// The cost is real but bounded: the bridge coalesces at 20Hz, last-wins per verb,
+    /// so dragging a fader sends at most one page per 50ms rather than one per frame.
+    /// If a 68k ever struggles with that, slow the COALESCER down — do not go back to
+    /// sending fragments, because fragments do not work.
+    public func page() -> [TitlerCommand] {
         var commands: [TitlerCommand] = [
             ScalaLingo.screen(
                 width: screen.width, height: screen.height,
@@ -560,12 +553,41 @@ public final class ScalaTitlerPanel {
             currentFont(),
             currentAttributes(),
             currentWipe(),
-            ScalaLingo.textWipe(ScalaLingo.wipes[state.textWipeIndex], speed: state.wipeSpeed),
-            currentText()
+            ScalaLingo.textWipe(ScalaLingo.wipes[state.textWipeIndex], speed: state.wipeSpeed)
         ]
+
+        // Backdrop, then bar, then brush, then text — back to front, because that is
+        // the order they have to be painted in for the text to end up on top.
+        if state.hasBackdrop, backdrops.indices.contains(state.backdropIndex) {
+            commands.append(ScalaLingo.picture(backdrops[state.backdropIndex]))
+        }
+        if let box = currentBox() { commands.append(box) }
+        if let brush = currentBrush() { commands.append(brush) }
+        commands.append(currentText())
+
         if state.isCycling { commands.append(ScalaLingo.cycle(true)) }
         commands.append(ScalaLingo.show())
         return commands
+    }
+
+    /// The bar behind the text, when the fader is above its "no bar" bottom.
+    private func currentBox() -> TitlerCommand? {
+        guard state.boxHeight > 0.02 else { return nil }
+        let height = Int(Double(screen.height) * state.boxHeight * 0.4)
+        let top = max(state.textY - height / 3, 0)
+        return ScalaLingo.box(
+            x1: 0, y1: top,
+            x2: screen.width - 1, y2: min(top + height, screen.height - 1))
+    }
+
+    /// The placed graphic, when one has been chosen.
+    private func currentBrush() -> TitlerCommand? {
+        guard let file = state.brushFile else { return nil }
+        let width = Int(Double(screen.width) * state.brushScale)
+        let height = Int(Double(screen.height) * state.brushScale)
+        return ScalaLingo.brush(
+            x: (screen.width - width) / 2, y: (screen.height - height) / 2,
+            file: file, width: max(width, 1), height: max(height, 1))
     }
 
     // MARK: - The lines the state currently implies
@@ -628,9 +650,16 @@ public enum TitlerControlSet {
     /// them. Returning an empty set makes the EMU tab show them greyed with a reason
     /// rather than offering knobs that go nowhere.
     public static func controls(for program: TitlerProgram) -> [TitlerControl] {
-        guard program.scriptPort != nil else { return [] }
-        switch program.name {
-        case "Scala MM300": return ScalaTitlerPanel.controls
+        guard let port = program.scriptPort else { return [] }
+        // Matched on the PORT, not the product name. Scala MM300 and MM400 are the same
+        // dialect answering on the same port — ScalaLingo was read off the MM400 disc —
+        // so a name switch means nothing to the commands. Keying this on the name meant
+        // that changing the default program to MM400 silently emptied the panel: every
+        // slider disappeared and the tab explained that the vocabulary had not been read
+        // off the media yet, which was not true and pointed at nothing that could be
+        // fixed. A control set belongs to a language, not to a product name.
+        switch port {
+        case ScalaLingo.portName: return ScalaTitlerPanel.controls
         default: return []
         }
     }

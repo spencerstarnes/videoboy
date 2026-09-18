@@ -224,6 +224,13 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
         return framesCaptured
     }
 
+    /// The same count, as the graph node reads it to tell a new picture from the one it
+    /// has already uploaded. See `EmulatorHost.frameGeneration`.
+    var frameGeneration: UInt64 {
+        frameLock.lock(); defer { frameLock.unlock() }
+        return UInt64(framesCaptured)
+    }
+
     func send(_ step: TitlerBootStep) {
         // Commands reach the machine through the shared drawer, not through here —
         // see AmigaCommandBridge. This exists for the EmulatorHost protocol and is

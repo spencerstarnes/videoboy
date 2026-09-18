@@ -244,7 +244,7 @@ enum UISelfQA {
         // Preferences, one render per pane. A settings window is where people go to
         // find out what an app can do, so a pane that lays out badly or comes up
         // empty is worth catching here rather than on first open.
-        do {
+        section3: do {
             let engine = Engine()
             let store = PreferenceStore(
                 fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
@@ -259,7 +259,7 @@ enum UISelfQA {
             guard let content = preferences.window?.contentView else {
                 check.record(AssertionResult(
                     name: "the preferences window has content", passed: false, detail: "no content view"))
-                return check.finish()
+                break section3
             }
 
             for pane in PreferencesWindowController.Pane.allCases {
@@ -858,7 +858,7 @@ enum UISelfQA {
         // callbacks, with window-space points. It has been rewritten twice, and both
         // times the bug was coordinate spaces rather than logic — which is exactly the
         // class of bug a screenshot cannot show and an assertion can.
-        do {
+        section10: do {
             let shell = ShellView()
             let engine = Engine()
             _ = ShellController(shell: shell, engine: engine)
@@ -872,7 +872,7 @@ enum UISelfQA {
                 check.record(AssertionResult(
                     name: "the FX chain can be reordered by dragging",
                     passed: false, detail: "no drag handle found"))
-                return check.finish()
+                break section10
             }
 
             // Grab the first card and drag it down past the second.
@@ -910,7 +910,7 @@ enum UISelfQA {
         // through the same paths a real click and a real drag would use — the
         // selector's own target/action, and the fader's own onParameterChanged
         // closure — not a shortcut into the engine.
-        do {
+        section11: do {
             let shell = ShellView()
             let engine = Engine()
             let controller = ShellController(shell: shell, engine: engine)
@@ -934,7 +934,7 @@ enum UISelfQA {
                         ? "a card is still being built for a switched-off subsystem"
                         : "omitted from both chains, as the flag says"
                 ))
-                return check.finish()
+                break section11
             }
 
             guard let selectorOne = segmentedControl(named: corruptorName, in: shell.grid.panels.effectsOneBody),
@@ -943,7 +943,7 @@ enum UISelfQA {
                     name: "both FX chains have a channel selector on the corruptor card",
                     passed: false, detail: "one or both selectors were not found"
                 ))
-                return check.finish()
+                break section11
             }
             check.record(AssertionResult(
                 name: "both FX chains have a channel selector on the corruptor card",
@@ -1014,7 +1014,7 @@ enum UISelfQA {
             let motionClip = RepoPaths.samples.appendingPathComponent("motion.dv")
             guard FileManager.default.fileExists(atPath: motionClip.path) else {
                 check.note("samples/motion.dv is missing; the C/D chFX render check was skipped")
-                return check.finish()
+                break section11
             }
             _ = engine.load(url: motionClip, intoChannel: "D")
             engine.registry.setValue(0, slot: GraphTopology.subMixTwo, code: .crossfadeCD) // pure D
@@ -1025,7 +1025,7 @@ enum UISelfQA {
             guard let metal = MetalContext.shared, let renderer = OffscreenRenderer(context: metal) else {
                 check.record(AssertionResult(
                     name: "channel D chFX renders", passed: false, detail: "no Metal device"))
-                return check.finish()
+                break section11
             }
 
             // Read straight from evaluateGraph's own returned dictionary, the same
@@ -1236,7 +1236,7 @@ enum UISelfQA {
         // jitters. The render loop runs on the MAIN thread, so any main-thread work
         // during a library add is time the picture is not being drawn — and a drop is
         // exactly when a lot of work happens at once.
-        do {
+        section13: do {
             let shell = ShellView()
             let engine = Engine()
             let controller = ShellController(shell: shell, engine: engine)
@@ -1247,7 +1247,7 @@ enum UISelfQA {
             let sample = RepoPaths.samples.appendingPathComponent("motion.mov")
             guard FileManager.default.fileExists(atPath: sample.path) else {
                 check.note("samples missing; the library-add stall check was skipped")
-                return check.finish()
+                break section13
             }
 
             // A realistic drop: several files at once.
@@ -1285,14 +1285,14 @@ enum UISelfQA {
         //
         // So this reports the WORST frame and the spread, not the average, with every
         // effect switched on so it measures the real load rather than a bypassed one.
-        do {
+        section14: do {
             let engine = Engine()
             let url = RepoPaths.samples.appendingPathComponent("motion.dv")
             guard FileManager.default.fileExists(atPath: url.path),
                   engine.load(url: url, intoChannel: "A"),
                   engine.load(url: url, intoChannel: "B") else {
                 check.note("samples/motion.dv missing; the jitter check was skipped")
-                return check.finish()
+                break section14
             }
             engine.setPlaying(true, channel: "A")
             engine.setPlaying(true, channel: "B")
@@ -1912,6 +1912,58 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+
+        // The EMU tab, built for real.
+        //
+        // This exists because the panel shipped with NO SLIDERS AT ALL and every other
+        // check passed. The control set was matched on the program's product name, so
+        // changing the default machine from Scala MM300 to MM400 emptied the tab — and
+        // nothing noticed, because the emu check drives EmulatorController directly and
+        // never touches the view the operator actually clicks. A check that exercises
+        // the engine is not a check of the UI.
+        //
+        // Needs no emulator, no permission and no hardware: building the view is enough
+        // to show whether it has controls on it.
+        do {
+            let emuTab = EmuBrowserView(controller: EmulatorController())
+            emuTab.frame = NSRect(x: 0, y: 0, width: 300, height: 900)
+            // Without this the labels and readouts are empty strings: they are filled
+            // from the controller, not at construction. Rendering before it produces a
+            // picture of faders with nothing written beside them, which is not what the
+            // tab looks like and would make this PNG useless as evidence.
+            emuTab.refresh()
+            emuTab.layoutSubtreeIfNeeded()
+
+            let emuFaders = faders(in: emuTab)
+            check.record(AssertionResult(
+                name: "the EMU tab has controls on it",
+                passed: !emuFaders.isEmpty,
+                detail: emuFaders.isEmpty
+                    ? "NO FADERS — the running program has no control set"
+                    : "\(emuFaders.count) faders"))
+
+            // Every one of them has to be mappable, for the same reason every other
+            // fader in the window is: a control the operator cannot put under a knob
+            // is half a control.
+            let mappable = emuFaders.filter { $0.mappingSlot != nil && $0.mappingCode != nil }
+            check.record(AssertionResult(
+                name: "every EMU fader can be learned to MIDI",
+                passed: mappable.count == emuFaders.count,
+                detail: "\(mappable.count) of \(emuFaders.count)"))
+
+            // And the text field, which is the first thing anyone touches.
+            let fields = textFields(in: emuTab).filter { $0.isEditable }
+            check.record(AssertionResult(
+                name: "the EMU tab takes typed text",
+                passed: !fields.isEmpty,
+                detail: fields.isEmpty ? "no editable field" : "\(fields.count) editable"))
+
+            if let image = render(view: emuTab) {
+                _ = try? check.writeImage(image, named: "emu-tab.png")
+            }
+        }
+
+
         return check.finish()
     }
 
@@ -2015,6 +2067,12 @@ enum UISelfQA {
         var found: [VBFader] = []
         if let fader = view as? VBFader { found.append(fader) }
         return found + view.subviews.flatMap { faders(in: $0) }
+    }
+
+    private static func textFields(in view: NSView) -> [NSTextField] {
+        var found: [NSTextField] = []
+        if let field = view as? NSTextField { found.append(field) }
+        return found + view.subviews.flatMap { textFields(in: $0) }
     }
 
     private static func drivenFaders(in view: NSView) -> [VBFader] {

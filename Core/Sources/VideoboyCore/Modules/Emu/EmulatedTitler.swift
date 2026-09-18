@@ -360,6 +360,20 @@ public protocol EmulatorHost: AnyObject {
     func boot(_ program: TitlerProgram) -> Bool
     /// The most recent frame, or nil before the first one arrives.
     func latestFrame() -> ImageBuffer?
+    /// Increments every time a NEW frame arrives, so a consumer can tell a fresh
+    /// picture from the one it already has.
+    ///
+    /// This exists because the graph node caches its uploaded texture — an upload per
+    /// frame would allocate on the render path, which the house rules forbid — and it
+    /// had no way to know when to stop. It relied on an `invalidateFrame()` call that
+    /// NOTHING made, so the emulator source uploaded the first frame it ever saw, which
+    /// during boot is a blank window, and froze there for ever. Routing the machine to
+    /// a channel produced a permanently empty rectangle.
+    ///
+    /// A counter rather than a flag: a flag has to be cleared by whoever sets it, which
+    /// is exactly the arrangement that failed. Asking "is this the frame I have?" needs
+    /// no cooperation from anyone.
+    var frameGeneration: UInt64 { get }
     /// Sends one boot step or one piece of user input.
     func send(_ step: TitlerBootStep)
     /// Whether this host can reach a script port at all.
@@ -387,6 +401,7 @@ public final class UnavailableEmulatorHost: EmulatorHost {
         return false
     }
     public func latestFrame() -> ImageBuffer? { nil }
+    public var frameGeneration: UInt64 { 0 }
     public func send(_ step: TitlerBootStep) {}
     public func shutdown() {}
     public var supportsCommands: Bool { false }
@@ -422,11 +437,13 @@ public final class MockEmulatorHost: EmulatorHost {
         received.removeAll()
         // A recognisable picture, so "is anything coming out of it" has an answer.
         frame = TestPattern.colorBars()
+        frameGeneration += 1
         for step in program.boot { send(step) }
         return true
     }
 
     public func latestFrame() -> ImageBuffer? { frame }
+    public private(set) var frameGeneration: UInt64 = 0
 
     public func send(_ step: TitlerBootStep) {
         received.append(step)
@@ -442,6 +459,7 @@ public final class MockEmulatorHost: EmulatorHost {
     public func shutdown() {
         bootedProgram = nil
         frame = nil
+        frameGeneration += 1
         received.removeAll()
     }
 }

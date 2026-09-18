@@ -502,7 +502,11 @@ final class TitlerControlTests: XCTestCase {
         let panel = ScalaTitlerPanel()
         _ = panel.set(.wipe, to: 0)
         _ = panel.set(.wipeDirection, to: 1)
-        let line = panel.set(.wipeSpeed, to: 0.5).first?.line ?? ""
+        // A control change now repaints the whole page — Scala only draws pages, so a
+        // lone WIPE line would be accepted and never appear. The WIPE inside that page
+        // still has to carry all three faders.
+        let lines = panel.set(.wipeSpeed, to: 0.5).map(\.line)
+        let line = lines.first { $0.hasPrefix("WIPE ") } ?? ""
         XCTAssertTrue(line.hasPrefix("WIPE cut "), "the chosen wipe survived: \(line)")
         XCTAssertTrue(line.contains("backwards"), "and so did the direction: \(line)")
         XCTAssertTrue(line.contains("SPEED"))
@@ -550,6 +554,11 @@ final class TitlerControlTests: XCTestCase {
             host.send(.command(command))
         }
 
-        XCTAssertEqual(host.commands.last?.line, "WIPE cut SPEED 5")
+        // The page ends with SHOW, because a page that is painted and never revealed
+        // is the bug this whole model exists to prevent.
+        XCTAssertEqual(host.commands.last?.line, "SHOW")
+        XCTAssertTrue(
+            host.commands.contains { $0.line == "WIPE cut SPEED 5" },
+            "the fader's own line has to be in the page it repainted")
     }
 }

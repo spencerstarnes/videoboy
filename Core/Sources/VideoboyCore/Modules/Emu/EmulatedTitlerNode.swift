@@ -30,9 +30,13 @@ public final class EmulatedTitlerNode: Node {
 
     private let context: MetalContext?
     private var texture: MTLTexture?
-    /// The frame already uploaded, so an emulator running slower than the render loop
-    /// does not cost an upload per render for a picture that has not changed.
-    private var uploadedFrameIsCurrent = false
+    /// The host's frame counter at the moment `texture` was uploaded, so an emulator
+    /// running slower than the render loop does not cost an upload per render for a
+    /// picture that has not changed.
+    ///
+    /// This used to be a flag that something else was supposed to clear, and nothing
+    /// ever did — see `EmulatorHost.frameGeneration`.
+    private var uploadedGeneration: UInt64?
 
     public init(
         identifier: String,
@@ -120,7 +124,7 @@ public final class EmulatedTitlerNode: Node {
     /// Boots a program and starts producing frames.
     @discardableResult
     public func boot(_ program: TitlerProgram) -> Bool {
-        uploadedFrameIsCurrent = false
+        uploadedGeneration = nil
         let started = host.boot(program)
         Log.info(.titler, started
             ? "\(identifier) booted \(program.name)"
@@ -149,14 +153,10 @@ public final class EmulatedTitlerNode: Node {
         // without a core, and it must render as an empty source rather than a crash.
         guard let frame = host.latestFrame() else { return nil }
 
-        if uploadedFrameIsCurrent, let texture { return texture }
+        let generation = host.frameGeneration
+        if let texture, uploadedGeneration == generation { return texture }
         texture = metal.makeTexture(from: frame, label: identifier)
-        uploadedFrameIsCurrent = true
+        uploadedGeneration = generation
         return texture
-    }
-
-    /// Called when the emulator reports a new frame, so the next render uploads it.
-    public func invalidateFrame() {
-        uploadedFrameIsCurrent = false
     }
 }
