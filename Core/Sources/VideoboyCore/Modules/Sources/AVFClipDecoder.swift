@@ -38,6 +38,15 @@ public final class AVFClipDecoder: ClipDecoding {
     /// reader than to decode everything in between.
     private static let maximumForwardScan = 90
 
+    /// How many frames a BACKWARD seek decodes in one go, so reverse playback pays for
+    /// a reader restart once per block instead of once per frame.
+    ///
+    /// Comfortably under `cacheSize`, so a block cannot evict its own earlier frames
+    /// before the playhead reaches them — that would put the restart-per-frame
+    /// behaviour straight back. The rest of the cache stays available for the forward
+    /// direction, which is what a ping-pong turn needs immediately afterwards.
+    private static let backwardPrefetch = 24
+
     private let asset: AVAsset
     private let track: AVAssetTrack
 
@@ -98,7 +107,29 @@ public final class AVFClipDecoder: ClipDecoding {
         // a thousand frames to reach one is slower than a seek, and seeking to reach
         // the very next frame is slower than reading it.
         if wrapped < nextFrameIndex || wrapped > nextFrameIndex + Self.maximumForwardScan {
-            guard restartReader(atFrame: wrapped) else { return nil }
+            // A BACKWARD SEEK STARTS A BLOCK EARLY, so one restart serves many frames.
+            //
+            // Restarting exactly at `wrapped` was pathological in reverse. The restart
+            // sets `nextFrameIndex = wrapped`, one frame is decoded, and it becomes
+            // `wrapped + 1` — so the NEXT frame backwards is again `< nextFrameIndex`
+            // and restarts again. One whole `AVAssetReader` construction per displayed
+            // frame, for the entire backward half of a ping-pong.
+            //
+            // And each restart is far worse than it looks: `timeRange` starts at an
+            // arbitrary frame, not a keyframe, so the reader decodes from the preceding
+            // keyframe to get there — on H.264 with a two-second GOP that is ~60
+            // decodes to show one frame.
+            //
+            // Starting the block early means the walk below decodes forward THROUGH the
+            // wanted frame and stores everything on the way, so the frames the playhead
+            // is about to ask for are already cached. The keyframe seek dominates the
+            // cost either way, so this is roughly the price of one restart in place of
+            // `backwardPrefetch` of them.
+            let isBackwardSeek = wrapped < nextFrameIndex
+            let start = isBackwardSeek
+                ? max(0, wrapped - Self.backwardPrefetch + 1)
+                : wrapped
+            guard restartReader(atFrame: start) else { return nil }
         }
 
         while nextFrameIndex <= wrapped {
@@ -126,7 +157,13 @@ public final class AVFClipDecoder: ClipDecoding {
 
     // MARK: - Reading
 
+    /// How many times a reader has been rebuilt. Instrumentation: reverse playback used
+    /// to do this once per displayed frame, and a count is the only way to show it does
+    /// not any more — the symptom is a dropped frame, which a unit test cannot see.
+    private(set) var readerRestarts = 0
+
     private func restartReader(atFrame index: Int) -> Bool {
+        readerRestarts += 1
         reader?.cancelReading()
 
         guard let newReader = try? AVAssetReader(asset: asset) else {

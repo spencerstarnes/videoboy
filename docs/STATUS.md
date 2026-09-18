@@ -54,14 +54,19 @@ adaptive onset threshold and autocorrelation tempo.
 
 ### 6 — Sources
 ✅ DV stream · test pattern · generators · capture node (built, not routed live).
-○ **AVFoundation path for ordinary video** — only `.dv` plays. This is the biggest
-single gap.
-○ **Photo folder as a beat-locked clip** — note that the *mechanism* now exists:
-step playback holds each frame until the next subdivision. What is missing is folder
-import and treating an image set as a source.
+✅ **AVFoundation path for ordinary video** — `AVFClipDecoder` plays anything
+AVFoundation opens; `.mov`, `.mp4`, ProRes, H.264. The MPEG families go through the
+bitstream decoder instead so the wedge still has a packet to damage. This was listed
+as "the biggest single gap" long after it was closed.
+✅ **Photo folder as a beat-locked clip** (SPEC §153) — a folder is one clip, not a
+bin of stills: `ImageSequenceDecoder` orders the frames naturally (frame10 does not
+sort between frame1 and frame2), the library badges it `SEQ`, and loading one sets
+**one frame per quarter note** so it arrives locked to the beat rather than flickering
+past at 29.97. The STEP ladder walks either way from there, and loop / ping-pong /
+one-shot all work because it is an ordinary clip from there on.
 ○ Screen capture (`ScreenCaptureKit`) · IP in · SVG · titler.
-◐ Clip bin: the browser lists `samples/` and the generators; no import, tagging or
-drag-to-channel.
+◐ Clip bin: folders of clips become bins and folders of images become clips; there is
+still no tagging, and no drag-to-channel from the grid.
 
 ### 6A — Generators
 ✅ All twelve of the base set · NTSC out-of-gamut check · **transport LFO** with

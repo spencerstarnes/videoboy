@@ -729,6 +729,22 @@ final class ShellController {
         ))
     }
 
+    /// Closes everything that owes the outside world an ending, at quit.
+    ///
+    /// `MPEGTSStreamer.close()` writes the trailer and flushes the encoder, and it was
+    /// reachable only through `deinit` or `closeAll()` — neither of which process exit
+    /// runs. So every stream this app ever sent ended TRUNCATED, and nothing said so.
+    /// The display link is stopped for the same reason: it holds the engine, and a
+    /// render tick arriving mid-teardown has nothing useful to do.
+    ///
+    /// Called from `applicationWillTerminate`. Safe to call twice: `closeAll` empties
+    /// its dictionaries and `Engine.stop` clears the link it invalidates.
+    func shutdown() {
+        Log.info(.app, "shutting down: closing outputs and stopping the render clock")
+        router.closeAll()
+        engine.stop()
+    }
+
     /// Connects the EMU tab to the graph.
     ///
     /// Called once, at startup: dragging the machine onto a source assigns it, and the

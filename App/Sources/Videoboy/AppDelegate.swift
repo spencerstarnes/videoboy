@@ -184,6 +184,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Quitting when the window closes is right for a single-window instrument.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    /// Gives anything holding a file or a socket the chance to finish it properly.
+    ///
+    /// There was no `applicationWillTerminate` at all, so `OutputRouter.closeAll()` and
+    /// `Engine.stop()` had no production caller — `closeAll` was reached only from a
+    /// self-QA check. An MPEG-TS stream therefore never got its trailer written: every
+    /// stream ended truncated, and because the picture had looked correct right up to
+    /// the moment of quitting, nothing about it looked like a bug.
+    func applicationWillTerminate(_ notification: Notification) {
+        mainWindowController?.shellController?.shutdown()
+    }
+
     /// Records what this build is and what it can see, once, at startup.
     private func logEnvironment() {
         Log.info(.app, "Videoboy \(Videoboy.version) starting")

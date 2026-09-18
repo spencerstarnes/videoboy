@@ -47,7 +47,10 @@ which is honest.
   hold-Shift highlight of mappable controls are not wired.
 - **Fader Fade / Auto / Beat** — timed crossfades and cut-on-beat. The scheduler
   exists; the mixer is not subscribed to it.
-- **Non-DV playback.** Only `.dv` plays. See "Open questions" below.
+- ~~**Non-DV playback.**~~ DONE. `AVFClipDecoder` plays anything AVFoundation
+  opens; a folder of photographs plays as a beat-locked clip (SPEC §153). The
+  MPEG families still route through the bitstream decoder so the wedge keeps a
+  packet to damage.
 
 ### Deliberately deferred (Phase 4+ backlog)
 
@@ -113,3 +116,95 @@ handling of inter-frame latency; it is not done.
 **Cost to be measured before this ships:** a readback plus encode plus decode per
 frame, per bus. If it will not hold 29.97 it is not worth having, and the honest
 answer may be that it runs on PROGRAM only.
+
+---
+
+# Everything outstanding — as of 2026-09-18
+
+Written after the overnight render-path audit (`docs/AUDIT-2026-09-18.md`) and a
+session of fixes. Ordered by what unblocks what, not by severity.
+
+## Blocked on a human — nothing else in this file matters until the first one is done
+
+1. **Run `scripts/signing-identity.sh`.** Once, ever. Until then the build is ad-hoc
+   signed, every rebuild mints a new cdhash, and macOS TCC — which pins each grant to
+   a code-signing requirement — silently revokes Screen Recording, Camera and
+   Microphone. Read back out of `TCC.db`, the requirement is literally
+   `cdhash H"..."`. This is why emulator capture "randomly" stops working and why
+   re-granting only helps until the next build. `build.sh` says which branch it took.
+   Creating a keychain is a system change an agent cannot make.
+2. **Report what the EMU panel now says.** It surfaces the host's own
+   `unavailableReason` instead of showing "Booting the machine…" for all four ways it
+   can fail. That sentence decides whether the remaining EMU problem is permission,
+   capture attach, window matching, or something else.
+
+## Render-path bugs still open
+
+Nine of the audit's eighteen confirmed findings are fixed. These remain:
+
+| | Severity | What | Bites at |
+|---|---|---|---|
+| C6 | High | `MPEGTSStreamer.send` — MPEG-2 encode + blocking socket write on the render thread | Immediately when a stream route opens |
+| C8/C9 | Medium | `AudioInput.consume` allocates and does `O(n)` work on the AUDIO thread; `stop()` races an in-flight tap block | Audio clock on; any clock-source switch |
+| C12/C14 | Medium | BGRA→RGBA→BGRA, then a third swizzle in `FrameRecorder` | Continuous — ~4 ms/frame of a 33.4 ms budget |
+| C15 | Medium | Eight `nextDrawable()` per frame on main; one blocked call stalls up to a second | Drawable pressure |
+| C17 | Low | Evaluation order and edge lookups re-derived with fresh allocations every frame | Continuous, small |
+| C18 | Low | `Engine.stop()` / `OutputRouter.closeAll()` never called; display link retains the engine | Quit — streams never get a trailer |
+
+**C12/C14 should be one change**: a BGRA-native `ImageBuffer` path, ideally alongside
+a `CVMetalTextureCache`. Doing them separately means touching the same three call
+sites twice. It is also the change most likely to introduce a colour-channel bug, so
+it wants the scope checks and `PictureVariety` re-run afterwards, not just `swift test`.
+
+Suspected, each needing a runtime confirmation the audit could not make:
+
+- **S1** graph reconfiguration is safe only because everything happens to be on main,
+  and nothing says so. One `DispatchQueue.global` in a UI handler makes it a data race.
+- **S2** a feedback send from an *upstream* slot may not get its one-frame delay.
+- **S3** `ObjectKey` hashes a captured `ObjectIdentifier` while holding the control
+  weakly — a reused address can alias a dead control.
+- **S4** `armedSweeps` holds faders STRONGLY; the tuple label reads like the weak
+  pattern beside it and is not.
+- **S5** `beatSubdivision` still only changes a label. `buildSchedule` hardcodes
+  `.quarter` for all seven subscriptions, so the DIV field means nothing.
+
+## Asked for, not built
+
+- **WeatherStar 3000 / 4000** — see the backlog entry in `BUILD-PLAN.md`. Settle the
+  three questions first: whether WS3000 is Amiga at all (WS4000 was), that SCRAPE is a
+  runtime network call CLAUDE.md forbids, and that the disc images are copyrighted.
+  Manual entry and RANDOM have neither problem and should ship first — they also prove
+  the data path into the machine before a scraper is stacked on top.
+- **A/B/BOTH on every effect — asked three times.** Not landed because it is
+  architectural: one instance per channel, 20 full-frame passes instead of 10. Check
+  the budget first — the per-channel benchmark already reads 21.08 ms plus 10.54 ms of
+  bus chains against 33.4 ms, which is far tighter than the 11.4 ms in CLAUDE.md.
+- **Per-app audio beat detection** — probed and viable, never built.
+- **Now-playing / Engine DJ** — blocked on an Automation permission granted at the
+  keyboard, and on hardware.
+
+## Half-built — present, inert, honest about it
+
+`scripts/selfqa.sh audit` is the authority: **0 enabled-but-unwired**, which is the
+dangerous state. These are disabled and labelled, waiting on their feature:
+
+- Record / stream **encoders** — arming and indicators are real, no `AVAssetWriter`
+- Asset browser **import, tagging, drag-to-channel**
+- **⇧ Learn** button and the hold-Shift highlight (learn works from the M badges)
+- Fader **Fade / Auto / Beat** — the scheduler exists, the mixer is not subscribed
+- **Capture as a live source** — node built, never routed into a channel
+- **Physical feedback loop** — round trip measured, capture not routed to the node
+- **Templates** — round-trip tested, not wired to the File menu
+- **Character generator** — Core node done and pixel-tested, no way to reach it
+
+## Not started — later phases
+
+ISF host + FFGL · SVG/PS1 source · IP in/out · libretro out-of-process host · Core
+Image / AU passthrough · NTSC scopes · discrete A/B/C/D recording · optional Syphon.
+
+## Keeping this file honest
+
+This document claimed "only `.dv` plays — the biggest single gap" and "photo folder:
+what is missing is folder import" for a long time after both were built. Anyone
+reading it to choose work was sent at solved problems. CLAUDE.md rule 6 makes updating
+the touched docs part of done; that rule is the only thing preventing a recurrence.

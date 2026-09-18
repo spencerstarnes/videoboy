@@ -128,3 +128,51 @@ final class AVFClipDecoderTests: XCTestCase {
             "the panel would still be offering DV damage on a clip that cannot take it")
     }
 }
+
+// MARK: - Reverse playback does not rebuild the reader per frame (audit C2)
+
+extension AVFClipDecoderTests {
+
+    /// Ping-pong's backward half used to construct a whole `AVAssetReader` for EVERY
+    /// displayed frame: the restart set `nextFrameIndex = wrapped`, one frame was
+    /// decoded so it became `wrapped + 1`, and the next frame backwards was therefore
+    /// `< nextFrameIndex` again. Each restart also seeks from the preceding keyframe,
+    /// so on a two-second GOP that is ~60 decodes to show one frame.
+    ///
+    /// The symptom is dropped frames, which a unit test cannot observe — so this counts
+    /// reader restarts instead, which is the thing actually causing them.
+    func testPlayingBackwardsDoesNotRestartTheReaderEveryFrame() throws {
+        let url = try movieURL()
+        guard let decoder = AVFClipDecoder(url: url) else {
+            return XCTFail("motion.mov did not open")
+        }
+
+        // THE WALK MUST OUTRUN THE CACHE or it proves nothing. A backward pass shorter
+        // than `cacheSize` is served entirely from frames the forward priming pass
+        // already stored, so it restarts a handful of times whatever the seek logic
+        // does — an earlier version of this test walked 60 frames, sat inside the
+        // 48-frame cache, and passed with the fix deliberately disabled.
+        let frames = decoder.frameCount
+        try XCTSkipUnless(
+            frames >= 120,
+            "clip must be well over the 48-frame cache for a backward walk to mean anything")
+
+        // Prime the forward direction the way playback would.
+        _ = decoder.image(at: frames - 1, corruption: .inert)
+        let restartsBefore = decoder.readerRestarts
+
+        var decoded = 0
+        for index in stride(from: frames - 1, through: 0, by: -1) {
+            if decoder.image(at: index, corruption: .inert) != nil { decoded += 1 }
+        }
+        let restarts = decoder.readerRestarts - restartsBefore
+
+        XCTAssertEqual(decoded, frames, "every frame of the backward walk should decode")
+        // One restart per block, not one per frame. Generous bound: the point is the
+        // ORDER of magnitude, so this still fails loudly if per-frame behaviour returns.
+        XCTAssertLessThan(
+            restarts, frames / 4,
+            "\(restarts) reader restarts for \(frames) backward frames — that is the "
+                + "restart-per-frame regression audit C2 describes")
+    }
+}
