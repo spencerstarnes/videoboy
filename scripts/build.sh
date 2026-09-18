@@ -70,7 +70,10 @@ fi
 # failing the build, because an app that builds and needs its permission re-granted
 # beats an app that does not build at all. The log line says which one happened, so a
 # black capture is traceable to this rather than mysterious.
-if IDENTITY="$("$REPO_ROOT/scripts/signing-identity.sh" 2>/dev/null)" && [ -n "$IDENTITY" ]; then
+# Invoked through bash rather than executed directly: the script lost its exec bit
+# once in a git round-trip, and the only symptom was this falling back to ad-hoc
+# signing forever with nobody able to see why.
+if IDENTITY="$(bash "$REPO_ROOT/scripts/signing-identity.sh" 2>/dev/null)" && [ -n "$IDENTITY" ]; then
   log "signing as '$IDENTITY' (stable — permissions survive rebuilds)"
   codesign --force --sign "$IDENTITY" --timestamp=none "$APP_BUNDLE" 2>&1 | sed 's/^/  /' \
     || fail "codesign failed"
