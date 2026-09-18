@@ -34,6 +34,7 @@
 //  has stalled shows its last frame rather than stalling the mixer with it.
 //
 
+import AppKit
 import Foundation
 @preconcurrency import ScreenCaptureKit
 import CoreMedia
@@ -46,7 +47,7 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
     private(set) var unavailableReason: String?
 
     /// Whether a machine is running and frames are arriving.
-    var isReady: Bool { process?.isRunning == true }
+    var isReady: Bool { runningApp?.isTerminated == false }
 
     /// FS-UAE has no script port of its own; the commands go through the shared
     /// drawer and the ARexx listener inside the machine. See `AmigaCommandBridge`.
@@ -55,7 +56,16 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
     /// Called on the main thread when the running state changes, for the panel.
     var onStateChanged: (() -> Void)?
 
-    private var process: Process?
+    /// The emulator, as a running application rather than a child process.
+    ///
+    /// LAUNCHED WITHOUT ACTIVATING, which is the whole reason this is not a `Process`.
+    /// A GUI application started by `Process.run()` brings itself to the front, and the
+    /// moment Amiberry has focus SDL grabs the pointer — so starting the titler took
+    /// the mouse for the whole machine until you clicked somewhere else. Nothing in
+    /// this app was asking for that; it is simply what launching an app does.
+    /// `NSWorkspace.OpenConfiguration.activates = false` is the documented way not to.
+    private var runningApp: NSRunningApplication?
+    private var terminationObserver: NSObjectProtocol?
     private var stream: SCStream?
     private let captureQueue = DispatchQueue(label: "com.videoboy.fsuae-capture", qos: .userInitiated)
 
@@ -101,12 +111,14 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
     /// dongle Scala needs, its AROS is a decade newer, and it restores a save state
     /// from the command line. FS-UAE stays because it works and because having two
     /// proves nothing above this line depends on which one is running.
-    static func emulator() -> (executable: String, configName: String)? {
+    static func emulator() -> (bundle: String, executable: String, configName: String)? {
         if AmiberryInstallation.isInstalled() {
-            return (AmiberryInstallation.executablePath, "videoboy-amiga.uae")
+            return (AmiberryInstallation.applicationPath,
+                    AmiberryInstallation.executablePath, "videoboy-amiga.uae")
         }
         if FSUAEInstallation.isInstalled() {
-            return (FSUAEInstallation.executablePath, "videoboy-amiga.fs-uae")
+            return (FSUAEInstallation.applicationPath,
+                    FSUAEInstallation.executablePath, "videoboy-amiga.fs-uae")
         }
         return nil
     }
@@ -132,82 +144,115 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
         // machines on the same shared drawer both consume the command files, so half
         // the commands go to a window nobody is watching — and both windows carry the
         // same title, so the capture attaches to whichever it finds first.
-        if let existing = self.process, existing.isRunning {
+        if let runningApp, !runningApp.isTerminated {
             Log.info(.titler, "an emulator is already running; reusing it")
             return true
         }
 
         shutdown()
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: emulator.executable)
-        // Amiberry takes `-f`; FS-UAE takes the path alone. The only place in this file
-        // that knows the difference.
-        process.arguments = emulator.configName.hasSuffix(".uae")
-            ? ["-f", config.path]
-            : [config.path]
         // THE MOUSE, AT THE LAYER BELOW THE EMULATOR'S OWN SETTING.
         //
-        // Amiberry 8 is built on SDL3, and SDL captures the mouse itself the moment a
-        // button goes down inside the window — before any emulator preference is
-        // consulted. `mouse_untrap=both` in the config governs Amiberry; this governs
-        // SDL underneath it, and without both the pointer is still swallowed on the
-        // first click. SDL reads its hints from the environment, which is why this is
-        // set here rather than in the config file.
-        //
-        // The parent environment is carried through rather than replaced: dropping it
-        // would take PATH and the display environment with it.
+        // Amiberry 8 is built on SDL3, and SDL captures the pointer when its window has
+        // focus. `mouse_untrap=both` in the config governs Amiberry; these govern SDL
+        // underneath it. The parent environment is carried through rather than
+        // replaced, or PATH and the display environment go with it.
         var environment = ProcessInfo.processInfo.environment
         environment["SDL_MOUSE_AUTO_CAPTURE"] = "0"
         environment["SDL_MOUSE_FOCUS_CLICKTHROUGH"] = "1"
-        process.environment = environment
 
-        // FS-UAE is chatty and none of it is ours. Its own log file keeps whatever
-        // matters; this keeps it out of the app's.
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        process.terminationHandler = { [weak self] _ in
+        let configuration = NSWorkspace.OpenConfiguration()
+        // THE IMPORTANT LINE. Without it the emulator comes to the front on launch,
+        // takes the keyboard and mouse with it, and the machine is unusable until you
+        // click back into something else. This is a titler: it should arrive behind the
+        // window that is driving it and stay there.
+        configuration.activates = false
+        configuration.addsToRecentItems = false
+        configuration.createsNewApplicationInstance = false
+        configuration.arguments = emulator.configName.hasSuffix(".uae")
+            ? ["-f", config.path]
+            : [config.path]
+        configuration.environment = environment
+
+        let bundleURL = URL(fileURLWithPath: emulator.bundle)
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) {
+            [weak self] application, error in
             DispatchQueue.main.async {
-                Log.info(.titler, "FS-UAE exited")
-                self?.stopCapture()
-                self?.onStateChanged?()
+                guard let self else { return }
+                if let error {
+                    self.unavailableReason =
+                        "Could not start the emulator: \(error.localizedDescription)"
+                    Log.error(.titler, self.unavailableReason ?? "")
+                    self.onStateChanged?()
+                    return
+                }
+                self.runningApp = application
+                self.watchForTermination(of: application)
+                self.unavailableReason = nil
+
+                // ASK before capturing. Without this the first attempt fails silently on
+                // a machine that has never been asked, and the app reports a denial for
+                // a permission nobody was offered.
+                if !Self.hasScreenRecordingPermission {
+                    Log.info(.titler, "requesting Screen Recording permission")
+                    Self.requestScreenRecordingPermission()
+                }
+
+                // BELT AND BRACES on the focus. `activates = false` covers the launch,
+                // but an SDL window can still raise itself once it exists, and one
+                // frame of focus is enough for the pointer to be captured. Taking it
+                // back costs nothing when it was never lost.
+                NSApp.activate(ignoringOtherApps: true)
+
+                Log.info(.titler, "\(bundleURL.lastPathComponent) started for "
+                    + "\(program.name) (pid \(application?.processIdentifier ?? -1)), "
+                    + "without activating it")
+                self.onStateChanged?()
+                self.startCapture(attempt: 0)
             }
         }
 
-        do {
-            try process.run()
-        } catch {
-            unavailableReason = "Could not start the emulator: \(error.localizedDescription)"
-            Log.error(.titler, unavailableReason ?? "")
-            return false
-        }
-
-        self.process = process
         self.bootedProgram = program
         self.unavailableReason = nil
-
-        // ASK before capturing. Without this the first capture attempt fails silently
-        // on a machine that has never been asked, and the app reports a denial for a
-        // permission nobody was ever offered.
-        if !Self.hasScreenRecordingPermission {
-            Log.info(.titler, "requesting Screen Recording permission")
-            Self.requestScreenRecordingPermission()
-        }
-        Log.info(.titler, "\(URL(fileURLWithPath: emulator.executable).lastPathComponent) "
-            + "started for \(program.name) (pid \(process.processIdentifier))")
-
-        // The window does not exist the instant the process does. Rather than sleeping
-        // a guessed interval on the main thread, the capture retries until it appears.
-        startCapture(attempt: 0)
         return true
     }
 
+    /// Notices the emulator going away, so the panel stops claiming it is running.
+    ///
+    /// A `Process` had `terminationHandler`; a launched application does not, so this is
+    /// the equivalent. Without it a quit emulator leaves the panel lit and the capture
+    /// retrying against a window that no longer exists.
+    private func watchForTermination(of application: NSRunningApplication?) {
+        guard let application else { return }
+        if let terminationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(terminationObserver)
+        }
+        let pid = application.processIdentifier
+        terminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil, queue: .main
+        ) { [weak self] notification in
+            let ended = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication
+            guard ended?.processIdentifier == pid else { return }
+            Log.info(.titler, "the emulator exited")
+            self?.stopCapture()
+            self?.runningApp = nil
+            self?.onStateChanged?()
+        }
+    }
+
+
     func shutdown() {
         stopCapture()
-        if let process, process.isRunning {
-            process.terminate()
+        if let terminationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(terminationObserver)
+            self.terminationObserver = nil
         }
-        process = nil
+        if let runningApp, !runningApp.isTerminated {
+            runningApp.terminate()
+        }
+        runningApp = nil
         bootedProgram = nil
         frameLock.lock()
         newestFrame = nil
@@ -221,10 +266,8 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
     /// things a performance needs, and everything else — loading a script, fixing a
     /// page — is done in the software itself.
     func bringToFront() {
-        guard let process, process.isRunning else { return }
-        let identifier = process.processIdentifier
-        NSRunningApplication(processIdentifier: identifier)?
-            .activate(options: [.activateAllWindows])
+        guard let runningApp, !runningApp.isTerminated else { return }
+        runningApp.activate(options: [.activateAllWindows])
     }
 
     // MARK: - Frames
@@ -313,7 +356,7 @@ final class FSUAEHost: NSObject, EmulatorHost, SCStreamOutput, SCStreamDelegate 
                     let title = candidate.title ?? ""
                     return prefixes.contains { title.hasPrefix($0) }
                 }) else {
-                    if attempt < maximumAttempts, self.process?.isRunning == true {
+                    if attempt < maximumAttempts, self.runningApp?.isTerminated == false {
                         try? await Task.sleep(nanoseconds: 500_000_000)
                         self.startCapture(attempt: attempt + 1)
                     } else {
