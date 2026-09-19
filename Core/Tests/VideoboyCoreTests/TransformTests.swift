@@ -167,13 +167,17 @@ final class TransformTests: XCTestCase {
         registry.setValue(0.25, slot: node.identifier, code: .rotation)
         registry.setValue(1, slot: node.identifier, code: .flipHorizontal)
         registry.setValue(1, slot: node.identifier, code: .flipVertical)
+        registry.setValue(0.5, slot: node.identifier, code: .positionX)
+        registry.setValue(-0.5, slot: node.identifier, code: .positionY)
         node.applyParameters(from: registry)
 
         XCTAssertEqual(node.settings.scale, 2.5, accuracy: 0.001)
         XCTAssertEqual(node.settings.rotation, 0.25, accuracy: 0.001)
         XCTAssertTrue(node.settings.flipHorizontal)
         XCTAssertTrue(node.settings.flipVertical)
-        XCTAssertEqual(node.parameters.count, 5, "a new control needs a line here too")
+        XCTAssertEqual(node.settings.offsetX, 0.5, accuracy: 0.001)
+        XCTAssertEqual(node.settings.offsetY, -0.5, accuracy: 0.001)
+        XCTAssertEqual(node.parameters.count, 7, "a new control needs a line here too")
     }
 
     func testTheTransformIsVisibleEndToEnd() throws {

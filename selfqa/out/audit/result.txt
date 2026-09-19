@@ -1,6 +1,6 @@
 check:    audit
 verdict:  FAIL
-when:     2026-09-18T23:37:48Z
+when:     2026-09-19T05:14:45Z
 core:     0.3.0
 
 notes:
@@ -19,33 +19,33 @@ assertions (9/10 passed):
   PASS  the interface has controls at all — 1022 found
 
 recent log:
-  1789774667.774 INFO [clock] subscription 3: 1/4, latency 1 frames (33.4ms)
-  1789774667.774 INFO [clock] subscription 4: 1/4, latency 1 frames (33.4ms)
-  1789774667.774 INFO [clock] subscription 5: 1/4, latency 0 frames (0.0ms)
-  1789774667.774 INFO [clock] subscription 6: 1/4, latency 0 frames (0.0ms)
-  1789774667.774 INFO [clock] subscription 7: 1/4, latency 0 frames (0.0ms)
-  1789774667.889 INFO [titler] titler assets: 96 backdrops, 234 pages, 102 symbols, 18 fonts
-  1789774667.916 INFO [app] panel 'Output' expanded
-  1789774667.917 INFO [app] panel grid built with 16 panels
-  1789774667.935 INFO [dv] opened bars.dv: 119 NTSC frames, 720x480
-  1789774667.935 INFO [dv] DV decoder ready (libavcodec 9.0.1)
-  1789774667.940 INFO [dv] opened motion.dv: 179 NTSC frames, 720x480
-  1789774667.941 INFO [dv] DV decoder ready (libavcodec 9.0.1)
-  1789774667.954 INFO [dv] opened motion.m2v: 176 frames at 29.97 fps, 720x480
-  1789774668.030 INFO [dv] opened motion.mov: 180 frames at 29.97 fps, 720x480
-  1789774668.055 INFO [app] record indicators on 1, 2, A, B, C, D, P
-  1789774668.056 INFO [render] picture fill is now Fit
-  1789774668.056 INFO [output] source.capture will use no camera when a session opens
-  1789774668.056 INFO [output] capture device set to none
-  1789774668.056 INFO [param] 0 parameters have a driver
-  1789774668.781 INFO [midi] connected 0 MIDI source(s): 
-  1789774668.781 INFO [render] render clock started
-  1789774668.781 INFO [app] main window built at 1766x970
-  1789774668.781 INFO [selfqa] audit: PASS  the main window refuses full screen — fullScreenNone is set
-  1789774668.781 INFO [selfqa] audit: PASS  the main window can still be maximised — the zoom button is enabled, and with fullScreenNone set it zooms rather than going full screen
-  1789774668.782 INFO [selfqa] audit: PASS  maximising fills the screen rather than best-fitting the content — standard frame 1920x1055, visible frame 1920x1055
-  1789774668.782 INFO [selfqa] audit: PASS  no panel header hides its panel and leaves the cell reserved — 6 headers collapse their group, 10 are deliberately inert
-  1789774668.782 INFO [selfqa] audit: PASS  no label in the output bar is cut off — every label fits
-  1789774668.785 INFO [selfqa] audit: PASS  no modulation badge is cut off — MIDI, AUD and LFO all fit in both chains
-  1789774668.785 ERROR [selfqa] audit: FAIL  no control is enabled but unwired — 4: window/Tap to set the tempo by ear. Drag up and down to set it exactly — hold Shift while dragging for tenths., A/B/Blend: Normal. How A and B combine — the fader below sets how much of each., Program/Blend: Normal. How 1 and 2 combine — the fader below sets how much of each., C/D/Blend: Normal. How C and D combine — the fader below sets how much of each.
-  1789774668.785 INFO [selfqa] audit: PASS  the interface has controls at all — 1022 found
+  1789794885.611 INFO [clock] subscription 3: 1/4, latency 1 frames (33.4ms)
+  1789794885.611 INFO [clock] subscription 4: 1/4, latency 1 frames (33.4ms)
+  1789794885.611 INFO [clock] subscription 5: 1/4, latency 0 frames (0.0ms)
+  1789794885.611 INFO [clock] subscription 6: 1/4, latency 0 frames (0.0ms)
+  1789794885.611 INFO [clock] subscription 7: 1/4, latency 0 frames (0.0ms)
+  1789794885.729 INFO [titler] titler assets: 96 backdrops, 234 pages, 102 symbols, 18 fonts
+  1789794885.758 INFO [app] panel 'Output' expanded
+  1789794885.760 INFO [app] panel grid built with 16 panels
+  1789794885.775 INFO [dv] opened bars.dv: 119 NTSC frames, 720x480
+  1789794885.775 INFO [dv] DV decoder ready (libavcodec 9.0.1)
+  1789794885.781 INFO [dv] opened motion.dv: 179 NTSC frames, 720x480
+  1789794885.781 INFO [dv] DV decoder ready (libavcodec 9.0.1)
+  1789794885.791 INFO [dv] opened motion.m2v: 176 frames at 29.97 fps, 720x480
+  1789794885.882 INFO [dv] opened motion.mov: 180 frames at 29.97 fps, 720x480
+  1789794885.908 INFO [app] record indicators on 1, 2, A, B, C, D, P
+  1789794885.909 INFO [render] picture fill is now Fit
+  1789794885.909 INFO [output] source.capture will use no camera when a session opens
+  1789794885.909 INFO [output] capture device set to none
+  1789794885.909 INFO [param] 0 parameters have a driver
+  1789794885.931 INFO [midi] connected 0 MIDI source(s): 
+  1789794885.931 INFO [render] render clock started
+  1789794885.931 INFO [app] main window built at 1766x970
+  1789794885.931 INFO [selfqa] audit: PASS  the main window refuses full screen — fullScreenNone is set
+  1789794885.931 INFO [selfqa] audit: PASS  the main window can still be maximised — the zoom button is enabled, and with fullScreenNone set it zooms rather than going full screen
+  1789794885.931 INFO [selfqa] audit: PASS  maximising fills the screen rather than best-fitting the content — standard frame 1920x1055, visible frame 1920x1055
+  1789794885.931 INFO [selfqa] audit: PASS  no panel header hides its panel and leaves the cell reserved — 6 headers collapse their group, 10 are deliberately inert
+  1789794885.931 INFO [selfqa] audit: PASS  no label in the output bar is cut off — every label fits
+  1789794885.932 INFO [selfqa] audit: PASS  no modulation badge is cut off — MIDI, AUD and LFO all fit in both chains
+  1789794885.932 ERROR [selfqa] audit: FAIL  no control is enabled but unwired — 4: window/Tap to set the tempo by ear. Drag up and down to set it exactly — hold Shift while dragging for tenths., A/B/Blend: Normal. How A and B combine — the fader below sets how much of each., Program/Blend: Normal. How 1 and 2 combine — the fader below sets how much of each., C/D/Blend: Normal. How C and D combine — the fader below sets how much of each.
+  1789794885.932 INFO [selfqa] audit: PASS  the interface has controls at all — 1022 found

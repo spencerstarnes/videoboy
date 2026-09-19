@@ -271,6 +271,13 @@ final class PanelSet {
                 parameters: [
                     EffectParameterModel(name: "scale", code: ParamCode.scale.rawValue,
                                          value: 0.231, enabled: true),
+                    // Position before rotation: moving the picture is the thing most
+                    // reached for, and a card reads top to bottom in the order a hand
+                    // uses it. 0.5 is centred, which is why these open mid-fader.
+                    EffectParameterModel(name: "pos X", code: ParamCode.positionX.rawValue,
+                                         value: 0.5, enabled: true),
+                    EffectParameterModel(name: "pos Y", code: ParamCode.positionY.rawValue,
+                                         value: 0.5, enabled: true),
                     EffectParameterModel(name: "rotate", code: ParamCode.rotation.rawValue,
                                          value: 0.0, enabled: true),
                     EffectParameterModel(name: "flip H", code: ParamCode.flipHorizontal.rawValue,

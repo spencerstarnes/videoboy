@@ -271,6 +271,8 @@ enum ShaderSource {
         float rotation;     // turns, 0..1
         float flipH;        // 0 or 1
         float flipV;        // 0 or 1
+        float offsetX;      // -1..1 of the frame width, 0 is centred
+        float offsetY;      // -1..1 of the frame height
     };
 
     fragment float4 transform_fragment(VertexOut in [[stage_in]],
@@ -293,6 +295,12 @@ enum ShaderSource {
 
         // Inverse scale: divide.
         float2 sampleUV = rotated / max(p.scale, 0.01) + 0.5;
+
+        // Inverse offset: SUBTRACT, because this is a backward map. The shader is asked
+        // "which source pixel belongs here", so moving the picture right means reading
+        // from further left. Adding here would move it the wrong way, which is the kind
+        // of thing that reads as the control being inverted rather than wrong.
+        sampleUV -= float2(p.offsetX, p.offsetY);
 
         // Outside the frame is BLACK, not the clamped edge pixel. Clamping smears the
         // border outward into a streaked mess, which reads as a broken render rather

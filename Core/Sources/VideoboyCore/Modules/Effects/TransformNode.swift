@@ -28,15 +28,25 @@ public struct TransformSettings: Equatable, Codable, Sendable {
     public var rotation: Double
     public var flipHorizontal: Bool
     public var flipVertical: Bool
+    /// Where the picture sits, -1...1 of the frame. 0 is centred.
+    ///
+    /// A share of the frame rather than pixels, so the same value means the same thing
+    /// whatever the project geometry is — and so a mapped knob or an LFO travelling
+    /// 0...1 covers the whole useful range rather than a few pixels of a 720-wide frame.
+    public var offsetX: Double
+    public var offsetY: Double
 
     public init(
         scale: Double = 1, rotation: Double = 0,
-        flipHorizontal: Bool = false, flipVertical: Bool = false
+        flipHorizontal: Bool = false, flipVertical: Bool = false,
+        offsetX: Double = 0, offsetY: Double = 0
     ) {
         self.scale = scale
         self.rotation = rotation
         self.flipHorizontal = flipHorizontal
         self.flipVertical = flipVertical
+        self.offsetX = offsetX
+        self.offsetY = offsetY
     }
 
     public static let neutral = TransformSettings()
@@ -51,6 +61,10 @@ public struct TransformSettings: Equatable, Codable, Sendable {
         // would jam at the top of its travel instead of coming round again.
         rotation = rotation.truncatingRemainder(dividingBy: 1)
         if rotation < 0 { rotation += 1 }
+        // Clamped, not wrapped. Rotation coming round again is a continuous gesture;
+        // a picture leaping from one edge to the other is not.
+        offsetX = min(max(offsetX, -1), 1)
+        offsetY = min(max(offsetY, -1), 1)
     }
 }
 
@@ -60,6 +74,8 @@ private struct TransformParams {
     var rotation: Float
     var flipH: Float
     var flipV: Float
+    var offsetX: Float
+    var offsetY: Float
 }
 
 /// Scales, rotates and mirrors its input.
@@ -87,7 +103,12 @@ public final class TransformNode: Node {
             Parameter(code: .scale, range: 0.1...4, defaultValue: 1),
             Parameter(code: .rotation, range: 0...1, defaultValue: 0),
             Parameter(code: .flipHorizontal, range: 0...1, defaultValue: 0),
-            Parameter(code: .flipVertical, range: 0...1, defaultValue: 0)
+            Parameter(code: .flipVertical, range: 0...1, defaultValue: 0),
+            // Centred is the middle of the fader, so the control reads as an
+            // adjustment either way rather than something that only pushes one
+            // direction from nothing.
+            Parameter(code: .positionX, range: -1...1, defaultValue: 0),
+            Parameter(code: .positionY, range: -1...1, defaultValue: 0)
         ]
     }
 
@@ -101,6 +122,8 @@ public final class TransformNode: Node {
         if let v = registry.value(slot: identifier, code: .flipVertical) {
             settings.flipVertical = v > 0.5
         }
+        if let v = registry.value(slot: identifier, code: .positionX) { settings.offsetX = v }
+        if let v = registry.value(slot: identifier, code: .positionY) { settings.offsetY = v }
         settings.clampToValidRanges()
     }
 
@@ -131,7 +154,9 @@ public final class TransformNode: Node {
             scale: Float(settings.scale),
             rotation: Float(settings.rotation),
             flipH: settings.flipHorizontal ? 1 : 0,
-            flipV: settings.flipVertical ? 1 : 0
+            flipV: settings.flipVertical ? 1 : 0,
+            offsetX: Float(settings.offsetX),
+            offsetY: Float(settings.offsetY)
         )
         encoder.label = identifier
         encoder.setRenderPipelineState(metal.transformPipeline)
