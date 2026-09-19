@@ -1,15 +1,15 @@
 check:    phase-4/emu-capture
 verdict:  FAIL
-when:     2026-09-19T04:13:15Z
+when:     2026-09-19T04:21:03Z
 core:     0.3.0
 
 assertions (10/11 passed):
   PASS  an emulator is installed — Amiberry
   PASS  a machine has been set up — /Users/spencerstarnes/Library/Application Support/Videoboy/amiga
   PASS  the emulator starts — running
-  PASS  frames arrive from the machine — 2235 captured in 60s
+  PASS  frames arrive from the machine — 2905 captured in 60s
   PASS  the picture is the project's geometry — 720x480
-  FAIL  the machine has actually drawn something — the window is still blank — 0.09% detail after 60s
+  FAIL  the machine has actually drawn something — the window is still blank — 0.06% detail after 60s
   PASS  the machine answers the command link — alive · port open
   PASS  the titler is up and taking commands — 0.2% detail — see titled.png
   PASS  the machine reaches PROGRAM — 0.2% detail on the programme output, host has 0.2%
@@ -17,33 +17,33 @@ assertions (10/11 passed):
   PASS  the picture on PROGRAM is live, not the first frame frozen — 0.001 of sampled pixels differ, needed >= 0.001
 
 recent log:
-  1789791175.754 INFO [param] slot 'generator.b' now exposes 4 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'fx.two.feedback' now exposes 6 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'fx.d.transform' now exposes 5 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'data.program' now exposes 6 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'mix.one' now exposes 4 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'fx.program.composite' now exposes 9 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'source.a' now exposes 7 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'fx.one.colour' now exposes 9 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'fx.two.echo' now exposes 4 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'source.emu' now exposes 20 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'fx.d.composite' now exposes 9 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'fx.b.feedback' now exposes 6 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [param] slot 'mix.primary' now exposes 4 params (0 values carried, 0 dropped)
-  1789791175.754 INFO [graph] graph built: 55 nodes, max latency 2 frames
-  1789791175.754 INFO [clock] subscription 1: 1/4, latency 1 frames (33.4ms)
-  1789791175.754 INFO [clock] subscription 2: 1/4, latency 1 frames (33.4ms)
-  1789791175.754 INFO [clock] subscription 3: 1/4, latency 1 frames (33.4ms)
-  1789791175.754 INFO [clock] subscription 4: 1/4, latency 1 frames (33.4ms)
-  1789791175.754 INFO [clock] subscription 5: 1/4, latency 0 frames (0.0ms)
-  1789791175.754 INFO [clock] subscription 6: 1/4, latency 0 frames (0.0ms)
-  1789791175.754 INFO [clock] subscription 7: 1/4, latency 0 frames (0.0ms)
-  1789791175.754 INFO [graph] channel A now sourced from the emulator
-  1789791175.760 INFO [selfqa] phase-4/emu-capture: PASS  the machine reaches PROGRAM — 0.2% detail on the programme output, host has 0.2%
-  1789791175.766 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-4/emu-capture/on-program.png
-  1789791175.807 INFO [titler] amiga link: the machine has stopped reading commands — 1 waiting. STOP and START the machine.
-  1789791176.226 INFO [titler] amiga link: linked
-  1789791195.832 INFO [selfqa] phase-4/emu-capture: PASS  the machine itself redrew after the text changed — 0.001 of sampled pixels differ, needed >= 0.001
-  1789791195.847 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-4/emu-capture/host-after-text.png
-  1789791195.851 INFO [selfqa] phase-4/emu-capture: PASS  the picture on PROGRAM is live, not the first frame frozen — 0.001 of sampled pixels differ, needed >= 0.001
-  1789791195.855 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-4/emu-capture/on-program-changed.png
+  1789791643.270 INFO [param] slot 'fx.b.composite' now exposes 9 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'fx.b.echo' now exposes 4 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'source.d' now exposes 7 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'fx.b.transform' now exposes 5 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'fx.one.echo' now exposes 4 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'fx.c.composite' now exposes 9 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'fx.a.feedback' now exposes 6 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'fx.a.transform' now exposes 5 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'generator.d' now exposes 4 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'fx.b.feedback' now exposes 6 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'fx.d.echo' now exposes 4 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [param] slot 'source.a' now exposes 7 params (0 values carried, 0 dropped)
+  1789791643.270 INFO [graph] graph built: 55 nodes, max latency 2 frames
+  1789791643.270 INFO [clock] subscription 1: 1/4, latency 1 frames (33.4ms)
+  1789791643.270 INFO [clock] subscription 2: 1/4, latency 1 frames (33.4ms)
+  1789791643.270 INFO [clock] subscription 3: 1/4, latency 1 frames (33.4ms)
+  1789791643.270 INFO [clock] subscription 4: 1/4, latency 1 frames (33.4ms)
+  1789791643.270 INFO [clock] subscription 5: 1/4, latency 0 frames (0.0ms)
+  1789791643.270 INFO [clock] subscription 6: 1/4, latency 0 frames (0.0ms)
+  1789791643.270 INFO [clock] subscription 7: 1/4, latency 0 frames (0.0ms)
+  1789791643.270 INFO [graph] channel A now sourced from the emulator
+  1789791643.276 INFO [selfqa] phase-4/emu-capture: PASS  the machine reaches PROGRAM — 0.2% detail on the programme output, host has 0.2%
+  1789791643.280 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-4/emu-capture/on-program.png
+  1789791643.308 INFO [titler] WIRE #910011: BLANK 640 400 3 lace hires 0 | PALETTE 000 fff 444 666 999 bbb ddd fff | COLOR 1 0 0 | FONT Franklin.font 36 | ATTRIBUTES antialias remap center shadow | MARGINS on 65 575 | WIPE cut SPEED 5 | TEXTWIPE dump SPEED 5 | TEXT 320 200 "SECOND LINE" | SHOW
+  1789791643.311 INFO [titler] amiga link: the machine has stopped reading commands — 1 waiting. STOP and START the machine.
+  1789791643.860 INFO [titler] amiga link: linked
+  1789791663.343 INFO [selfqa] phase-4/emu-capture: PASS  the machine itself redrew after the text changed — 0.001 of sampled pixels differ, needed >= 0.001
+  1789791663.351 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-4/emu-capture/host-after-text.png
+  1789791663.356 INFO [selfqa] phase-4/emu-capture: PASS  the picture on PROGRAM is live, not the first frame frozen — 0.001 of sampled pixels differ, needed >= 0.001
+  1789791663.361 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-4/emu-capture/on-program-changed.png

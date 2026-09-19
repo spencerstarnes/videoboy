@@ -625,7 +625,6 @@ public final class ScalaTitlerPanel {
                 ? "No backgrounds found — they come from the disc's Scala/Backgrounds drawer"
                 : nil
         case .fontSize:
-            sizeHasBeenChosen = true
             // An Amiga font exists at fixed sizes and nowhere between them, and the set
             // is different for every face. Until a drive has been read there is no way
             // to know which sizes are safe to ask for — and asking for an unsafe one
@@ -682,6 +681,16 @@ public final class ScalaTitlerPanel {
             clampFontToCatalogue()
 
         case .fontSize:
+            // Recorded HERE, where a size is genuinely chosen, and nowhere else.
+            //
+            // This line spent a while inside `unavailableReason`, which the panel calls
+            // on every refresh to ask whether the control is enabled. So merely DRAWING
+            // the panel counted as the operator picking a size, the large-size default
+            // never applied, the size stayed at 44 — a size Franklin does not have —
+            // and Scala fell back to the system font. That is the whole of the tiny
+            // text, and it is why the SCALE control looked dead: a query with a side
+            // effect, answering a question by changing the thing it was asked about.
+            sizeHasBeenChosen = true
             // Stepped through the sizes this FACE has, not swept over a range. There is
             // no such thing as an in-between size for a bitmap font, and asking for one
             // is how the machine's output ends up showing a boot prompt.
