@@ -2067,6 +2067,56 @@ enum UISelfQA {
                     + "B reads \(engine.sourceSlot(forChannel: "B"))"))
         }
 
+        // DROPPING A FOLDER TREE. The old importer read one level and silently discarded
+        // everything below it, which is the shape most real clip libraries have. A drop
+        // that accepts a folder and quietly ignores most of it is worse than one that
+        // refuses, so this builds a tree on disk and counts what comes back.
+        sectionFolders: do {
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("drop-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+
+            func make(_ path: String) {
+                let url = root.appendingPathComponent(path)
+                try? FileManager.default.createDirectory(
+                    at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                FileManager.default.createFile(atPath: url.path, contents: Data("x".utf8))
+            }
+            make("top.mov")
+            make("Reel A/one.mov")
+            make("Reel A/two.dv")
+            make("Reel B/Deep/three.mov")
+            make("Reel B/notes.txt")
+
+            let items = ShellController.itemsWalking(root)
+            let names = Set(items.map(\.name))
+
+            check.record(AssertionResult(
+                name: "a dropped folder is walked all the way down",
+                passed: names.contains("three.mov"),
+                detail: names.contains("three.mov")
+                    ? "found a clip two folders deep"
+                    : "missed the nested clip — found \(names.sorted())"))
+
+            check.record(AssertionResult(
+                name: "every playable file in the tree arrives",
+                passed: items.count == 4,
+                detail: "\(items.count) of 4 — \(names.sorted().joined(separator: ", "))"))
+
+            check.record(AssertionResult(
+                name: "a file the app cannot play is left out",
+                passed: !names.contains("notes.txt"),
+                detail: names.contains("notes.txt") ? "notes.txt was imported" : "notes.txt skipped"))
+
+            // The folders someone made ARE the grouping they chose; rebuilding it here
+            // would be inventing an organisation they did not ask for.
+            let deep = items.first { $0.name == "three.mov" }
+            check.record(AssertionResult(
+                name: "each folder becomes its own bin",
+                passed: deep?.bin == "Deep",
+                detail: "the clip in Reel B/Deep is binned as \(deep?.bin ?? "nothing")"))
+        }
+
         return check.finish()
     }
 

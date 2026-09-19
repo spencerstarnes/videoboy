@@ -412,6 +412,64 @@ final class ShellController {
     ///
     /// Silently ignoring a file someone dropped is the worst option: it looks like
     /// the drop failed. Anything unplayable is named, once, with what this build can
+    /// Every playable thing under a folder, with each folder becoming its own bin.
+    ///
+    /// Depth-first, and deliberately not flattened into one bin: the folders someone
+    /// made are the grouping they already chose, and rebuilding it here would be
+    /// inventing an organisation they did not ask for.
+    ///
+    /// Bounded, because a drop is a gesture and should not be able to start an
+    /// unbounded walk of somebody's whole disk by accident — a home folder dropped by
+    /// mistake would otherwise take minutes and fill the library with thousands of rows.
+    static func itemsWalking(
+        _ folder: URL, depth: Int = 0, fileManager: FileManager = .default
+    ) -> [LibraryItem] {
+        guard depth <= maximumFolderDepth else { return [] }
+
+        // A folder of photographs is ONE CLIP, and is not descended into — its contents
+        // are frames, not clips.
+        if ImageSequenceDecoder.isSequence(folder) {
+            let frames = ImageSequenceDecoder.frames(in: folder)
+            return [LibraryItem(
+                name: folder.lastPathComponent, badge: "SEQ", isAvailable: true,
+                url: folder, duration: Double(frames.count) / 30.0)]
+        }
+
+        let contents = (try? fileManager.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        var found: [LibraryItem] = []
+        let binName = folder.lastPathComponent
+
+        for child in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: child.path, isDirectory: &isDirectory) else {
+                continue
+            }
+            if isDirectory.boolValue {
+                found.append(contentsOf: itemsWalking(child, depth: depth + 1,
+                                                      fileManager: fileManager))
+            } else if playableExtensions.contains(child.pathExtension.lowercased()) {
+                var item = libraryItem(for: child)
+                item.bin = binName
+                found.append(item)
+            }
+        }
+
+        // A sequence found further down carries the bin of the folder holding it, so it
+        // sits with its neighbours rather than alone at the top level.
+        return found.map { item in
+            var item = item
+            if item.bin == nil { item.bin = binName }
+            return item
+        }
+    }
+
+    /// How deep a dropped folder is walked.
+    ///
+    /// Deep enough for the way people actually file clips — by year, by shoot, by reel —
+    /// and shallow enough that a mis-dropped home folder stops rather than grinding.
+    static let maximumFolderDepth = 4
+
     /// actually read.
     private func addToLibrary(_ urls: [URL], library: LibraryPanelBody) {
         var accepted: [LibraryItem] = []
@@ -446,19 +504,19 @@ final class ShellController {
                     continue
                 }
 
-                let contents = (try? FileManager.default.contentsOfDirectory(
-                    at: url, includingPropertiesForKeys: nil)) ?? []
-                // The folder BECOMES a bin, named after itself. Dropping a folder
-                // of clips already meant "these belong together"; before this the
-                // grouping was thrown away at the door and everything landed in one
-                // flat pile.
-                let binName = url.lastPathComponent
-                for child in contents where Self.playableExtensions.contains(
-                    child.pathExtension.lowercased()) {
-                    var item = Self.libraryItem(for: child)
-                    item.bin = binName
-                    accepted.append(item)
-                }
+                // WALKED ALL THE WAY DOWN, not one level.
+                //
+                // It used to read only the immediate children, so dropping a folder with
+                // any structure inside it — which is how anyone with a real clip library
+                // keeps things — silently took the loose files at the top and threw the
+                // rest away. Nothing said so. A drop that accepts a folder and quietly
+                // ignores most of it is worse than one that refuses.
+                //
+                // Every folder that holds clips becomes a bin named after ITSELF, so the
+                // shape of the library follows the shape on disk. A folder of images
+                // along the way is a clip, by the same rule as above, and is not
+                // descended into.
+                accepted.append(contentsOf: Self.itemsWalking(url))
                 continue
             }
 
@@ -483,12 +541,12 @@ final class ShellController {
     }
 
     /// What this build can open. Kept here rather than guessed at each call site.
-    private static let playableExtensions: Set<String> = [
+    static let playableExtensions: Set<String> = [
         "dv", "mov", "mp4", "m4v", "m2v", "mpg", "mpeg", "ts", "m2t", "m2ts"
     ]
 
     /// A library entry for a file, badged by what it is.
-    private static func libraryItem(for url: URL) -> LibraryItem {
+    static func libraryItem(for url: URL) -> LibraryItem {
         let family = DataEffectFamily.forMediaFile(at: url)
         let badge: String
         switch family {
@@ -1506,7 +1564,17 @@ final class ShellController {
     /// it is a fader that silently writes to the wrong copy.
     private static func cardOwning(_ code: ParamCode) -> String? {
         switch code {
-        case .scale, .rotation, .flipHorizontal, .flipVertical:
+        case .scale, .rotation, .flipHorizontal, .flipVertical, .positionX, .positionY:
+            // `.positionX`/`.positionY` are also what a GENERATOR's position uses, and
+            // that is not a clash: a code is a label and the SLOT is the address, which
+            // is the same reason every effect in the app shares `.wetDry`. The generator
+            // reaches its own node through the generator slot and never comes through
+            // this resolver, which only answers for faders on an FX card.
+            //
+            // Leaving them unclaimed here is what made the two new Transform faders
+            // enabled-and-dead: unowned codes fall through to a fixed bus table that has
+            // no entry for them, so the resolver returned nil and the fader wrote
+            // nowhere. Caught by the self-QA rather than by review.
             return "Transform"
         case .brightness, .contrast, .saturation, .shadow,
              .highlight, .blackLevel, .whiteLevel, .gamma:
