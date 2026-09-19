@@ -402,7 +402,36 @@ public final class ScalaTitlerPanel {
     /// NAMES only — it cannot say which sizes exist, which is why a scanned catalogue
     /// replaces it as soon as there is one.
     public var fontCatalogue: [ScalaFont] = [] {
-        didSet { clampFontToCatalogue() }
+        didSet { adoptCatalogue() }
+    }
+
+    /// Whether the operator has picked a typeface themselves.
+    private var faceHasBeenChosen = false
+
+    /// Settles on a real face when the drive's fonts arrive.
+    ///
+    /// `fontIndex` DEFAULTED TO 4 FOR A DIFFERENT LIST. Until a drive is read the faces
+    /// are `ScalaLingo.fonts`, a list of NAMES, and 4 is Franklin there. The scanned
+    /// catalogue is a different list in a different order, so the moment it arrived the
+    /// panel was pointing at whatever happened to be fifth — on this disc a 6/8/11pt
+    /// face, which is why the title rendered at eleven points and looked like a
+    /// footnote.
+    ///
+    /// Chosen BY NAME, with a fallback to whichever face carries the largest type. A
+    /// title card wants a big face, and "the one with the biggest size available" is a
+    /// better guess than any index.
+    private func adoptCatalogue() {
+        guard !fontCatalogue.isEmpty else { return }
+        if !faceHasBeenChosen {
+            let preferred = fontCatalogue.firstIndex {
+                $0.name.lowercased().hasPrefix("franklin")
+            }
+            let biggest = fontCatalogue.indices.max {
+                (fontCatalogue[$0].sizes.max() ?? 0) < (fontCatalogue[$1].sizes.max() ?? 0)
+            }
+            state.fontIndex = preferred ?? biggest ?? 0
+        }
+        clampFontToCatalogue()
     }
 
     /// The face currently chosen, as the catalogue knows it.
@@ -418,10 +447,54 @@ public final class ScalaTitlerPanel {
     /// the AmigaDOS console, which on air is a boot prompt on PROGRAM.
     private func clampFontToCatalogue() {
         guard let face = currentFace else { return }
+
+        // A TITLE IS BIG. Until someone chooses a size, take the largest the face
+        // actually has.
+        //
+        // The default was 44 — a number Franklin does not have at all, so it snapped to
+        // the NEAREST, which is 36, and a 36pt line on a 640-wide screen is a caption
+        // about a quarter of the picture wide. On an SD display across a room that is
+        // not a title, it is a footnote. Franklin carries 18/23/36/72; 72 is what a
+        // title card wants and what the disc's own title pages use.
+        //
+        // Only until it is chosen. Once the operator picks a size, that is the size —
+        // `sizeHasBeenChosen` is what stops a face change quietly resizing their type.
+        if !sizeHasBeenChosen {
+            state.fontSize = Self.defaultSize(from: (currentFace ?? face).sizes)
+            return
+        }
         if !face.sizes.contains(state.fontSize) {
             state.fontSize = face.nearestSize(to: state.fontSize)
         }
     }
+
+    /// The size to open on, given what a face carries.
+    ///
+    /// THE LARGEST IS NOT ALWAYS USABLE, which was found the hard way. Franklin
+    /// advertises 18/23/36/72 and the 72 file is present and byte-identical to the
+    /// disc — and Scala will not render it. Asked for 72 it silently falls back to the
+    /// system font, so the title came out at about eight points. Verified by sending
+    /// `FONT Franklin.font 72` straight to the machine, with and without
+    /// `antialias remap`, and photographing both: tiny either way. 36 renders
+    /// correctly. Why 72 fails is not known.
+    ///
+    /// So the automatic choice is the largest size at or under `safeAutomaticSize`,
+    /// which covers the sizes observed to work and leaves the very large ones to be
+    /// asked for deliberately. The SIZE control still offers everything the disc
+    /// carries — if a face has a usable 114 it can be chosen, and if it falls back the
+    /// operator can see that and pick another. A silent fallback is only dangerous when
+    /// nobody chose it.
+    static func defaultSize(from sizes: [Int]) -> Int {
+        guard !sizes.isEmpty else { return 36 }
+        return sizes.filter { $0 <= safeAutomaticSize }.max() ?? sizes.min() ?? 36
+    }
+
+    /// The largest size picked automatically. Above this, sizes are offered but not
+    /// chosen for you.
+    static let safeAutomaticSize = 48
+
+    /// Whether the operator has picked a type size themselves.
+    private var sizeHasBeenChosen = false
 
     /// The controls this panel offers.
     ///
@@ -552,6 +625,7 @@ public final class ScalaTitlerPanel {
                 ? "No backgrounds found — they come from the disc's Scala/Backgrounds drawer"
                 : nil
         case .fontSize:
+            sizeHasBeenChosen = true
             // An Amiga font exists at fixed sizes and nowhere between them, and the set
             // is different for every face. Until a drive has been read there is no way
             // to know which sizes are safe to ask for — and asking for an unsafe one
@@ -601,6 +675,7 @@ public final class ScalaTitlerPanel {
             state.textWipeIndex = NormalisedSweep.index(clamped, count: ScalaLingo.wipes.count)
 
         case .fontFace:
+            faceHasBeenChosen = true
             state.fontIndex = NormalisedSweep.index(clamped, count: faceCount)
             // The new face almost certainly does not have the old face's size. Franklin
             // has 72 and Didot does not; asking Didot for 72 drops Scala's screen.
