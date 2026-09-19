@@ -1,17 +1,17 @@
 check:    phase-4/emu-capture
 verdict:  PASS
-when:     2026-09-18T21:07:19Z
+when:     2026-09-19T00:39:26Z
 core:     0.3.0
 
 assertions (11/11 passed):
   PASS  an emulator is installed — Amiberry
   PASS  a machine has been set up — /Users/spencerstarnes/Library/Application Support/Videoboy/amiga
   PASS  the emulator starts — running
-  PASS  frames arrive from the machine — 238 captured in 6s
+  PASS  frames arrive from the machine — 237 captured in 6s
   PASS  the picture is the project's geometry — 720x480
   PASS  the machine has actually drawn something — 6.6% of the picture carries detail
   PASS  the machine answers the command link — alive · port open
-  PASS  the titler is up and taking commands — 1.0% detail — see titled.png
-  PASS  the machine reaches PROGRAM — 1.0% detail on the programme output, host has 1.0%
+  PASS  the titler is up and taking commands — 1.4% detail — see titled.png
+  PASS  the machine reaches PROGRAM — 1.4% detail on the programme output, host has 1.4%
   PASS  the machine itself redrew after the text changed — 0.010 of sampled pixels differ, needed >= 0.001
   PASS  the picture on PROGRAM is live, not the first frame frozen — 0.010 of sampled pixels differ, needed >= 0.001

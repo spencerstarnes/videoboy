@@ -871,6 +871,21 @@ public final class ScalaTitlerPanel {
             ScalaLingo.colour(fill: textColourIndex),
             currentFont(),
             currentAttributes(),
+            // HORIZONTAL POSITION IS MARGINS. SCALA IGNORES THE X IN `TEXT`.
+            //
+            // This was found by experiment against the running machine, because the X
+            // fader had never moved anything and no amount of reading said why. Three
+            // lines sent at once, `TEXT 20 80`, `TEXT 300 200`, `TEXT 480 320`, came
+            // back as three rows at three different HEIGHTS and all at the SAME left
+            // edge. Then `MARGINS on 300 620` with `TEXT 0 200` put the text at 300.
+            //
+            //    TEXT <x> <y>   y is honoured, x is ignored
+            //    MARGINS        this is what places text horizontally
+            //
+            // So the X control drives the margin column, and alignment decides where in
+            // that column the words sit. The `TEXT` x is still sent because the disc's
+            // own scripts send it and it costs nothing, but nothing depends on it.
+            currentMargins(),
             redraw,
             ScalaLingo.textWipe(ScalaLingo.wipes[state.textWipeIndex], speed: state.wipeSpeed)
         ]
@@ -926,6 +941,51 @@ public final class ScalaTitlerPanel {
     }
 
     // MARK: - The lines the state currently implies
+
+    /// The margin column that puts the text where the X control asks for.
+    ///
+    /// Alignment decides what the column means, which is the only way to get all three
+    /// alignments out of one position control:
+    ///
+    ///   left    the column STARTS at the position — words run rightwards from it
+    ///   right   the column ENDS there — words run leftwards
+    ///   centre  a column centred on the position, as wide as it can be without
+    ///           leaving title-safe, so the words sit centred ON the point
+    ///
+    /// Clamped to title-safe at both ends, because a margin outside it puts words where
+    /// an analog display cannot show them.
+    private func currentMargins() -> TitlerCommand {
+        let safeLeft = titleSafeX.lowerBound
+        let safeRight = titleSafeX.upperBound
+        let x = min(max(state.textX, safeLeft), safeRight)
+        let alignment = ScalaLingo.alignments[
+            min(state.alignmentIndex, ScalaLingo.alignments.count - 1)]
+
+        switch alignment {
+        case "right":
+            return ScalaLingo.margins(left: safeLeft, right: x)
+        case "center", "centre":
+            // Symmetric about the point where it can be, but NEVER narrower than a
+            // usable column. Taking the smaller side outright collapses the column to
+            // nothing at either end of the fader — `MARGINS on 64 64` — and a
+            // zero-width column is the very thing that rendered "VIDEOBOY" as "OBOY".
+            //
+            // So: a floor of a third of the safe width, then slide the column inward if
+            // that pushed it past title-safe. Near the ends the words stop being exactly
+            // centred on the point, which is the honest trade — a caption slightly off
+            // its mark beats one with its first half off the screen.
+            let minimumHalf = (safeRight - safeLeft) / 6
+            let half = max(minimumHalf, min(x - safeLeft, safeRight - x))
+            var left = x - half
+            var right = x + half
+            if left < safeLeft { right += safeLeft - left; left = safeLeft }
+            if right > safeRight { left -= right - safeRight; right = safeRight }
+            return ScalaLingo.margins(
+                left: max(left, safeLeft), right: min(right, safeRight))
+        default:
+            return ScalaLingo.margins(left: x, right: safeRight)
+        }
+    }
 
     private func currentWipe() -> TitlerCommand {
         ScalaLingo.wipe(
