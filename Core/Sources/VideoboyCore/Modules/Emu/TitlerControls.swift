@@ -625,14 +625,18 @@ public final class ScalaTitlerPanel {
                 ? "No backgrounds found — they come from the disc's Scala/Backgrounds drawer"
                 : nil
         case .fontSize:
-            // An Amiga font exists at fixed sizes and nowhere between them, and the set
-            // is different for every face. Until a drive has been read there is no way
-            // to know which sizes are safe to ask for — and asking for an unsafe one
-            // drops Scala's screen, so this stays shut rather than guessing.
-            return faceSizes.isEmpty
-                ? "No drive read yet — an Amiga font only exists at fixed sizes, and they "
-                    + "have to be read off the disc before any of them is safe to ask for"
-                : nil
+            // NEVER SHUT. This used to grey itself out whenever the font catalogue had
+            // not been read, which is a defensible rule and a terrible control: the one
+            // thing most obviously wrong with the picture is the size of the type, and
+            // the size control sat greyed with its reason hidden in a tooltip.
+            //
+            // The original worry is real — an Amiga bitmap font exists only at fixed
+            // sizes, and asking for one a face has not got makes Scala fall back to the
+            // system font, which is how the title ended up at about eight points. But
+            // the answer to that is to offer a SAFE list, not no list. With no catalogue
+            // the fallback sizes are the ones Scala's own faces actually carry, so every
+            // entry is a size something on the disc really has.
+            return nil
         default:
             return nil
         }
@@ -1094,7 +1098,23 @@ public final class ScalaTitlerPanel {
     }
 
     /// The sizes the chosen face offers.
-    public var faceSizes: [Int] { currentFace?.sizes ?? [] }
+    /// The sizes the chosen face has — or a safe list when no drive has been read.
+    ///
+    /// NEVER EMPTY. An empty list is what made the SIZE control a dead menu: nothing to
+    /// choose, greyed out, with its reason buried in a tooltip, while the most obviously
+    /// wrong thing about the picture was the size of the type.
+    ///
+    /// The fallback is not invented. These are sizes the disc's own faces carry —
+    /// Franklin has 18/23/36, Compact 16/24/31, Didot 28/56 — so every entry is a real
+    /// size of a real font, and asking for one is not the guess that makes Scala fall
+    /// back to the system font.
+    public var faceSizes: [Int] {
+        if let sizes = currentFace?.sizes, !sizes.isEmpty { return sizes }
+        return Self.fallbackSizes
+    }
+
+    /// Sizes to offer before a drive has been read.
+    static let fallbackSizes = [16, 18, 23, 24, 28, 31, 36, 44, 56]
 
     private func currentText() -> TitlerCommand {
         ScalaLingo.text(x: state.textX, y: state.textY, state.text, line: 0)

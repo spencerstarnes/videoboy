@@ -293,16 +293,36 @@ final class TitlerGroupingTests: XCTestCase {
     }
 
     func testAListThatDependsOnTheDiscSaysSoUntilOneIsRead() {
-        // Three lists are only knowable once a drive has been scanned. Each has to
-        // explain itself rather than show an empty menu — and font size most of all,
-        // because a size that is not on the disc drops Scala's screen.
+        // Backdrops and pages are only knowable once a drive has been scanned — there
+        // is no honest fallback for "which pictures are on this disc". Each has to
+        // explain itself rather than show an empty menu.
         let panel = ScalaTitlerPanel()
-        for function in [TitlerFunction.fontSize, .backdrop, .page] {
+        for function in [TitlerFunction.backdrop, .page] {
             XCTAssertTrue(panel.options(for: function).isEmpty)
             XCTAssertNotNil(
                 panel.unavailableReason(for: function),
                 "\(function.rawValue) offers nothing and does not say why")
         }
+    }
+
+    /// FONT SIZE IS NO LONGER ONE OF THEM, and that is a deliberate reversal.
+    ///
+    /// It used to grey itself out until a drive was read, for a real reason: a size a
+    /// face has not got makes Scala fall back to the system font. But the result was
+    /// that the single most obviously wrong thing about the picture — the size of the
+    /// type — had a control that could not be touched, with its reason buried in a
+    /// tooltip. The answer to "an unsafe size is dangerous" is a SAFE list, not no list.
+    ///
+    /// The fallback sizes are ones the disc's own faces actually carry, so every entry
+    /// is a real size of a real font.
+    func testTheSizeControlIsNeverDead() {
+        let panel = ScalaTitlerPanel()
+        XCTAssertFalse(
+            panel.options(for: .fontSize).isEmpty,
+            "the size control must always offer something to choose")
+        XCTAssertNil(
+            panel.unavailableReason(for: .fontSize),
+            "and must not be greyed out")
     }
 
     func testEveryOtherListAlwaysHasSomethingToChooseFrom() {

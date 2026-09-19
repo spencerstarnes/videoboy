@@ -99,7 +99,22 @@ final class EmulatorController {
     /// Defaults to TRUE once a state exists, because that is invariably what someone
     /// wants: the reason to save a state is not to have one, it is to stop waiting for
     /// a cold boot.
-    var restoresSavedState: Bool = true
+    /// Whether the next start restores a saved state instead of booting cold.
+    ///
+    /// OFF BY DEFAULT, and that is a correction rather than a preference. It defaulted
+    /// to true, so the moment a state existed every start silently restored it — and a
+    /// state captures the machine's WHOLE appearance, including the font and layout that
+    /// were set when it was taken. A state saved while the titler was mis-configured
+    /// therefore pinned that mis-configuration into every subsequent boot, and the panel
+    /// appeared to have no effect no matter what it sent.
+    ///
+    /// That is exactly what happened here: a state captured while the title was tiny and
+    /// in a corner made every later boot come up tiny and in a corner, which read as the
+    /// size control being broken.
+    ///
+    /// Restoring is now something you ask for, in the states list, rather than something
+    /// that happens to you.
+    var restoresSavedState: Bool = false
 
     /// The program being driven. One for now; the second is a menu.
     let program: TitlerProgram
