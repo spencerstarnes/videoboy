@@ -27,7 +27,10 @@ import AppKit
 import VideoboyCore
 
 /// A square key showing the armed transition, which pops out the pattern menu.
-final class VBTransitionButton: NSControl {
+final class VBTransitionButton: NSControl, AuditableControl {
+
+    /// Driven by `onTransitionChosen`, not target/action, so it answers the audit itself.
+    var isWiredForAudit: Bool { onTransitionChosen != nil }
 
     /// The pattern currently armed, drawn on the key and ticked in the menu.
     var transition: Transition = .dissolve {
