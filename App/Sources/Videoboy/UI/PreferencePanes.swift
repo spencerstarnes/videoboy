@@ -239,6 +239,27 @@ extension PreferencesWindowController {
         return Controls.column(rows, spacing: 8)
     }
 
+    // MARK: - Shaders
+
+    func makeShadersPane() -> NSView {
+        let list = makeShaderList()
+        shaderList = list
+        list.translatesAutoresizingMaskIntoConstraints = false
+        list.heightAnchor.constraint(equalToConstant: 360).isActive = true
+
+        return Controls.column([
+            header(.shaders),
+            spacer(10),
+            Controls.note(
+                "+ copies .fs files (or whole folders) into Videoboy's own ISF folder, with "
+                + "their images, so they stay even if the originals move. − moves an "
+                + "imported module to the Trash. You can also drop files on the list.",
+                width: Self.noteWidth),
+            spacer(6),
+            list
+        ], spacing: 8)
+    }
+
     // MARK: - Hot keys
 
     func makeHotKeysPane() -> NSView {

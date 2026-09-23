@@ -392,6 +392,11 @@ enum Theme {
         /// Active/selected state. The system accent, so it follows the user's setting.
         static let accent = NSColor.controlAccentColor
 
+        /// An ISF module that converts and compiles — the Shaders pane's "ready".
+        static let moduleReady = NSColor.systemGreen
+        /// An ISF module that cannot run, with the reason beside it.
+        static let moduleProblem = NSColor.systemOrange
+
         /// Highlight drawn over every mappable control while Shift is held (SPEC 7).
         static let detectHighlight = NSColor.systemYellow
 

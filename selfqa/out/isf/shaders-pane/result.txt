@@ -1,0 +1,31 @@
+check:    isf/shaders-pane
+verdict:  PASS
+when:     2026-09-23T18:17:41Z
+core:     0.3.0
+
+notes:
+  import: Imported 3 modules. 1 skipped.
+  VDMX folder: Imported 7 modules.
+    ALifeLEDWall: Ready — converts and compiles for Metal.
+    AlgorithmAtEgdeOfUniverse: Ready — converts and compiles for Metal.
+    Broken Tesseract: Ready — converts and compiles for Metal.
+    GridZoomSandwich: Ready — converts and compiles for Metal.
+    LogarithmicPinwheel: Ready — converts and compiles for Metal.
+    Random Lines: Ready — converts and compiles for Metal.
+    Tapestry Fract +: Ready — converts and compiles for Metal.
+  VDMX shaders ready: 7 of 7
+
+assertions (13/13 passed):
+  PASS  the Shaders tab is last in the sidebar, so no tab moved — save, defaults, outputs, inputs, hotKeys, midiMapping, emu, macros, shaders
+  PASS  the list shows the built-ins and the shared folder — Colour (built-in), Echo (built-in), Shared Glow (shared), Transform (built-in)
+  PASS  a click on + lands on the button — NSButton
+  PASS  a click on − lands on the button — NSButton
+  PASS  − is disabled on a built-in module — Built-in modules ship with Videoboy and cannot be removed.
+  PASS  import copies every ISF file into Videoboy's folder — Glow.fs, Pack One.fs, Pack Two.fs
+  PASS  a file that is not ISF is refused, and the reason is shown — alert shown
+  PASS  with the originals deleted, the imported modules are all still there — Glow, Pack One, Pack Two
+  PASS  an imported module is compiled and reported ready — Ready — converts and compiles for Metal.
+  PASS  the pane leaves the window its size, even showing a long path — before 820x568, now 820x568
+  PASS  − is enabled on an imported module — 
+  PASS  − removes the import from the list and the folder — disposed of: ["Glow.fs"]
+  PASS  a click on Copy into Videoboy keeps a shared module under its own name — Imported 1 module.

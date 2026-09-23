@@ -30,6 +30,8 @@ public enum Subsystem: String, Sendable {
     case titler
     /// The live H.264 datamosh: encode, frame surgery, decode.
     case mosh
+    /// ISF shader modules: parsing, conversion to Metal, compiling (SPEC 8).
+    case isf
 }
 
 /// Severity. Deliberately only three levels.

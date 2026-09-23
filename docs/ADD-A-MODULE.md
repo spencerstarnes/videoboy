@@ -60,3 +60,26 @@ Report `.none` for `dataEffectFamily` unless the codec can genuinely be damaged 
 decode. The interface reads that value to decide whether to offer the bitstream
 controls at all, so claiming a family the decoder cannot honour puts a control on
 screen that does nothing.
+
+
+## Adding a shader effect: write an ISF file, not a node
+
+Most effects are just a shader. Those don't need Swift at all: write an ISF `.fs`
+file and `ISFNode` runs it (see `docs/ISF-SYSTEM.md`). The three built-ins in
+`App/Resources/ISF/Builtin/` are the worked examples; `Colour.fs` is the simplest.
+
+1. Write the file: a `/*{ … }*/` JSON header declaring `INPUTS`, then a GLSL
+   `void main()` that sets `gl_FragColor`. Sample the picture with
+   `IMG_THIS_PIXEL(inputImage)` or `IMG_NORM_PIXEL(inputImage, uv)`. Coordinates are
+   ISF's: y runs UP.
+2. Give each control a param code with `"VIDEOBOY_CODE"`. Reuse a shared code where
+   the control is a common one, exactly as rule 3 above says for native nodes.
+3. If the effect does nothing at its defaults, add
+   `"VIDEOBOY": { "IDENTITY_AT_DEFAULTS": true }` so it costs nothing until touched.
+4. Drop it in `~/Library/Application Support/Videoboy/ISF/` (yours) or
+   `App/Resources/ISF/Builtin/` (shipped). Add it to the fixture list in
+   `ISFConverterTests.testEveryBuiltinModuleCompiles` if it ships.
+
+Write a native `Node` only for work that isn't a shader: anything touching bytes
+before decode (the corruptors), a runtime-variable number of passes, or history
+deeper than one persistent buffer (Feedback's N-frame ring).

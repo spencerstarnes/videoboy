@@ -58,8 +58,10 @@ enum SelfQARunner {
             verdict = StressSelfQA.run()
         case "mosh":
             verdict = MoshSelfQA.run()
+        case "shaders":
+            verdict = ShadersSelfQA.run()
         default:
-            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend, stream, record, audit, stress, mosh)")
+            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend, stream, record, audit, shaders, stress, mosh)")
             return 2
         }
         // Blocked is not a failure: absent hardware must never fail a build.

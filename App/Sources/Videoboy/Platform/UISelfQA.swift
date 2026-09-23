@@ -2610,7 +2610,7 @@ enum UISelfQA {
     }
 
     /// Draws a view hierarchy into an `ImageBuffer` with no window involved.
-    private static func render(view: NSView) -> ImageBuffer? {
+    static func render(view: NSView) -> ImageBuffer? {
         guard let representation = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
             Log.error(.selfqa, "view refused to provide a bitmap representation")
             return nil
