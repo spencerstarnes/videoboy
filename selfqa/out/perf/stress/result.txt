@@ -1,0 +1,23 @@
+check:    perf/stress
+verdict:  PASS
+when:     2026-09-23T07:50:05Z
+core:     0.3.0
+
+notes:
+  loaded A=bars.dv, B=motion.dv, C=motion.m2v, D=motion.mov
+  display link at 30.0 Hz (33.33 ms/refresh)
+  240 frames rendered in 8 s = 30.00/s; 0 dropped refreshes
+  whole tick: mean 8.85 ms, p95 10.53 ms, worst 20.04 ms
+    of which graph: mean 8.48 ms, worst 19.60 ms; UI/onFrame: mean 0.37 ms
+    node source.b: 2.44 ms/tick
+    node source.a: 2.06 ms/tick
+    node source.d: 1.60 ms/tick
+    node source.c: 0.20 ms/tick
+    node fx.a.transform: 0.07 ms/tick
+  window hidden: 120 frames in 4 s, worst tick 21.19 ms
+
+assertions (4/4 passed):
+  PASS  the graph renders at the 29.97 content rate under full load — 30.00 frames/s against 29.97
+  PASS  under 1% of display-link ticks dropped under full load — 0 dropped of 240
+  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 20.04 ms, p95 10.53 ms, mean 8.85 ms
+  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 21.19 ms
