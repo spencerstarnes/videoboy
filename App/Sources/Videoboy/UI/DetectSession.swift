@@ -119,9 +119,26 @@ final class DetectSession {
         if let key = view as? VBOptionButton {
             let mappable = key.mappingSlot != nil && key.mappingCode != nil
             key.isDetectHighlighted = isArmed && mappable
+            // Only CUT/FADE/BEAT answer to ⌘⌥ — `onFlipRateChanged` is set solely by
+            // `wireButtonTapRate`, so a plain toggle like AUTO or Safe never pulses
+            // for a gesture it has no rate key to show.
+            key.isSweepArming = isSweepArming && key.onFlipRateChanged != nil
             if mappable && key.onDetectRequested == nil {
                 key.onDetectRequested = { [weak self] slot, code in
                     // A key learns a KEY. Notes only.
+                    self?.onDetectRequested?(slot, code, .notesOnly)
+                }
+            }
+        }
+        // Bus keys — A, B, C, D — the same idea. They are square lamps, not faders,
+        // and a performer reaching for a physical button to cut straight to a source
+        // wants exactly the same button here, never a knob or a fader brushed on the
+        // way to it.
+        if let bus = view as? VBBusButton {
+            let mappable = bus.mappingSlot != nil && bus.mappingCode != nil
+            bus.isDetectHighlighted = isArmed && mappable
+            if mappable && bus.onDetectRequested == nil {
+                bus.onDetectRequested = { [weak self] slot, code in
                     self?.onDetectRequested?(slot, code, .notesOnly)
                 }
             }

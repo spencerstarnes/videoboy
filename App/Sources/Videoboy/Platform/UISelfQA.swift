@@ -1488,6 +1488,209 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
+        // A BUTTON HAS ITS OWN PING-PONG: Option-Command arms CUT to tap on the beat
+        // instead of once, the same gesture that marks a fader sweep — and a rate key
+        // on the SAME ladder (click for faster, right-click for slower) appears
+        // beside it, exactly as the crossfader's `sweepKey` does beside the fader.
+        // There is no separate pair of marks here, so the rate key walking down to
+        // STEP is what disarms it — proved below alongside the two directions and the
+        // beat actually landing.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1460, height: 912),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = shell
+            shell.layoutSubtreeIfNeeded()
+
+            let body = shell.grid.panels.faderABBody
+            let cut = VBOptionButton.all(in: body).first(where: { $0.mappingCode == .cutTrigger })
+            let rateKey = body.tapRateKeysForChecks.cut
+            check.record(AssertionResult(
+                name: "CUT and its tap-rate key exist on the A/B fader",
+                passed: cut != nil && rateKey != nil,
+                detail: "CUT found: \(cut != nil), rate key found: \(rateKey != nil)"
+            ))
+
+            if let cut, let rateKey {
+                check.record(AssertionResult(
+                    name: "the tap-rate key is hidden until CUT is armed",
+                    passed: rateKey.isHidden && !cut.isAutomated,
+                    detail: "hidden=\(rateKey.isHidden), isAutomated=\(cut.isAutomated)"
+                ))
+
+                func optionCommandClick(on control: NSControl) {
+                    let point = control.convert(
+                        NSPoint(x: control.bounds.midX, y: control.bounds.midY), to: nil)
+                    if let event = NSEvent.mouseEvent(
+                        with: .leftMouseDown, location: point, modifierFlags: [.command, .option],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil,
+                        eventNumber: 0, clickCount: 1, pressure: 1) {
+                        control.mouseDown(with: event)
+                    }
+                }
+
+                optionCommandClick(on: cut)
+                check.record(AssertionResult(
+                    name: "Option-Command-clicking CUT arms it and reveals the tap-rate key",
+                    passed: cut.isAutomated && !rateKey.isHidden,
+                    detail: "isAutomated=\(cut.isAutomated), hidden=\(rateKey.isHidden), "
+                        + "rate=\(rateKey.timing.displayName)"
+                ))
+                check.record(AssertionResult(
+                    name: "arming starts at the same rung Option-Command-click always used",
+                    passed: rateKey.timing.displayName == "1/1",
+                    detail: "rate reads \(rateKey.timing.displayName)"
+                ))
+
+                let forwardClick = NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: .zero, modifierFlags: [],
+                    timestamp: 0, windowNumber: 0, context: nil,
+                    eventNumber: 0, clickCount: 1, pressure: 1)
+                if let forwardClick { rateKey.mouseDown(with: forwardClick) }
+                check.record(AssertionResult(
+                    name: "clicking the tap-rate key walks CUT's own rate forward",
+                    passed: rateKey.timing.displayName == "1/2" && cut.flipRate == rateKey.timing,
+                    detail: "rate reads \(rateKey.timing.displayName), "
+                        + "CUT's flipRate matches: \(cut.flipRate == rateKey.timing)"
+                ))
+
+                let backClick = NSEvent.mouseEvent(
+                    with: .rightMouseDown, location: .zero, modifierFlags: [],
+                    timestamp: 0, windowNumber: 0, context: nil,
+                    eventNumber: 0, clickCount: 1, pressure: 1)
+                if let backClick {
+                    rateKey.rightMouseDown(with: backClick)  // 1/2 -> 1/1
+                    rateKey.rightMouseDown(with: backClick)  // 1/1 -> STEP
+                }
+                check.record(AssertionResult(
+                    name: "right-clicking the tap-rate key back to STEP disarms CUT",
+                    passed: !cut.isAutomated && cut.flipRate == nil && rateKey.isHidden,
+                    detail: "isAutomated=\(cut.isAutomated), flipRate is nil: \(cut.flipRate == nil), "
+                        + "hidden=\(rateKey.isHidden)"
+                ))
+
+                // And the part a look at the highlight cannot confirm: armed for real,
+                // CUT has to land on the beat, not just claim to. Re-armed at the
+                // default 1/1 that would take a full bar — several seconds at 120bpm —
+                // to cross even one boundary in this short a drive, so walk it up to
+                // 1/16 first the same way a performer reaching for a fast tap would.
+                optionCommandClick(on: cut)
+                if let forwardClick {
+                    for _ in 0..<4 { rateKey.mouseDown(with: forwardClick) }  // 1/1 -> 1/16
+                }
+                var cutCount = 0
+                body.onCutRequested = { cutCount += 1 }
+                engine.setTransportRunning(true)
+                for _ in 0..<12 {
+                    controller.flipAutomatedButtonsForChecks()
+                    RunLoop.main.run(until: Date().addingTimeInterval(0.04))
+                }
+                engine.setTransportRunning(false)
+                check.record(AssertionResult(
+                    name: "an armed CUT actually taps on the beat, not just arms",
+                    passed: cutCount > 1,
+                    detail: "\(cutCount) cuts fired while armed"
+                ))
+            }
+
+            withExtendedLifetime(controller) {}
+        }
+
+        // ARMING A KEY MOVES NOTHING, AND SAYS SO BEFORE THE CLICK. Holding ⌘⌥ must
+        // pulse CUT/FADE/BEAT the way it pulses the faders; the rate key must float
+        // ABOVE its button, unclipped, without shifting a single key or the fader —
+        // a row that reflows under a performer's fingers is worse than no feature.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1460, height: 912),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = shell
+            shell.layoutSubtreeIfNeeded()
+
+            let body = shell.grid.panels.faderABBody
+            let keys = VBOptionButton.all(in: body)
+            let tapKeys = keys.filter { $0.onFlipRateChanged != nil }
+            controller.detectSession?.setSweepArming(true)
+            let pulsing = keys.filter(\.isSweepArming)
+            check.record(AssertionResult(
+                name: "holding ⌘⌥ pulses exactly the keys that can tap on the beat",
+                passed: tapKeys.count == 3 && Set(pulsing.map(\.title)) == Set(tapKeys.map(\.title)),
+                detail: "pulsing: \(pulsing.map(\.title).joined(separator: ", "))"
+            ))
+            controller.detectSession?.setSweepArming(false)
+
+            let cut = keys.first { $0.mappingCode == .cutTrigger }
+            let rateKey = body.tapRateKeysForChecks.cut
+            if let cut, let rateKey {
+                func frames() -> [NSRect] {
+                    (keys.map { $0.convert($0.bounds, to: nil) })
+                        + [body.fader.convert(body.fader.bounds, to: nil)]
+                }
+                let before = frames()
+
+                // Through hit-testing, not a direct call: the floating rate key sits
+                // over the row and must never intercept a click meant for a key.
+                let centre = cut.convert(NSPoint(x: cut.bounds.midX, y: cut.bounds.midY), to: nil)
+                let hit = shell.hitTest(shell.convert(centre, from: nil))
+                if let event = NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: centre, modifierFlags: [.command, .option],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil,
+                    eventNumber: 0, clickCount: 1, pressure: 1) {
+                    (hit as? NSControl)?.mouseDown(with: event)
+                }
+                shell.layoutSubtreeIfNeeded()
+                let after = frames()
+
+                check.record(AssertionResult(
+                    name: "an ⌥⌘ click at CUT's centre lands on CUT and arms it",
+                    passed: hit === cut && cut.isAutomated && !rateKey.isHidden,
+                    detail: "hit \(hit.map { String(describing: type(of: $0)) } ?? "nothing"), "
+                        + "armed=\(cut.isAutomated), rate key shown=\(!rateKey.isHidden)"
+                ))
+                check.record(AssertionResult(
+                    name: "arming CUT moves no key and not the fader",
+                    passed: before == after,
+                    detail: before == after ? "all \(before.count) frames identical"
+                        : "moved: \(zip(before, after).filter { $0 != $1 }.count) of \(before.count)"
+                ))
+                let keyFrame = rateKey.convert(rateKey.bounds, to: nil)
+                let cutFrame = cut.convert(cut.bounds, to: nil)
+                // It floats past the body's own top edge into the panel's header
+                // gap, so "not clipped" means: every ancestor that actually clips
+                // (a clip view, or a layer masking to bounds) still contains it.
+                // (`visibleRect` is unreliable for an offscreen window.)
+                var clippedBy: String?
+                var ancestor = rateKey.superview
+                while let view = ancestor, clippedBy == nil {
+                    let clips = view is NSClipView || (view.layer?.masksToBounds ?? false)
+                    if clips, !view.convert(view.bounds, to: nil).contains(keyFrame) {
+                        clippedBy = String(describing: type(of: view))
+                    }
+                    ancestor = view.superview
+                }
+                check.record(AssertionResult(
+                    name: "the rate key sits above CUT, centred on it, and nothing clips it",
+                    passed: keyFrame.minY >= cutFrame.maxY
+                        && abs(keyFrame.midX - cutFrame.midX) < 1
+                        && clippedBy == nil,
+                    detail: "key \(keyFrame), CUT \(cutFrame), clipped by \(clippedBy ?? "nothing")"
+                ))
+                if let image = render(view: shell) {
+                    _ = try? check.writeImage(image, named: "cut-tap-armed.png")
+                }
+            }
+
+            withExtendedLifetime(controller) {}
+        }
+
         // ACTION KEYS CAN BE LEARNED. Shift-to-map reached faders only, so the keys
         // you most want on a controller — CUT and FADE — were the ones you could not
         // put there.
@@ -1528,6 +1731,116 @@ enum UISelfQA {
                     detail: asked.map { "\($0.0) · \($0.1.rawValue)" } ?? "detect was never asked"
                 ))
             }
+
+            withExtendedLifetime(controller) {}
+        }
+
+        // BUS KEYS (A, B, C, D) CAN BE LEARNED TOO. CUT and FADE reached MIDI
+        // buttons; the bus keys that cut straight to a named source did not, because
+        // VBBusButton carried no mapping address at all — Shift-clicking one just
+        // cut, silently, no matter how the performer was holding the modifier.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1460, height: 912),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = shell
+            shell.layoutSubtreeIfNeeded()
+
+            let busKeys = VBBusButton.all(in: shell.grid.panels.faderABBody)
+                .filter { $0.mappingCode != nil }
+            check.record(AssertionResult(
+                name: "A and B bus keys carry a mapping address",
+                passed: busKeys.count == 2,
+                detail: "\(busKeys.count) learnable bus keys on the A/B fader: "
+                    + busKeys.compactMap { $0.mappingCode?.displayName }.joined(separator: ", ")
+            ))
+
+            if let aKey = busKeys.first(where: { $0.mappingCode == .cutToLeftTrigger }) {
+                var asked: (String, ParamCode)?
+                aKey.onDetectRequested = { asked = ($0, $1) }
+                let point = aKey.convert(
+                    NSPoint(x: aKey.bounds.midX, y: aKey.bounds.midY), to: nil)
+                if let shiftClick = NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: point, modifierFlags: [.shift],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil,
+                    eventNumber: 0, clickCount: 1, pressure: 1) {
+                    aKey.mouseDown(with: shiftClick)
+                }
+                check.record(AssertionResult(
+                    name: "shift-clicking the A key arms it for learning rather than cutting",
+                    passed: asked?.1 == .cutToLeftTrigger,
+                    detail: asked.map { "\($0.0) · \($0.1.rawValue)" } ?? "detect was never asked"
+                ))
+            }
+
+            // DetectSession must ask for a NOTE, not a knob — the same rule CUT and
+            // FADE already get. A knob brushed on the way to a bus key must not steal
+            // the mapping. Cleared first: the direct click above already claimed
+            // `onDetectRequested` for itself, and DetectSession only wires its own
+            // wrapper onto a control that does not have one yet.
+            var requestedFilter: MIDIInput.DetectFilter?
+            if let aKey = busKeys.first(where: { $0.mappingCode == .cutToLeftTrigger }) {
+                aKey.onDetectRequested = nil
+            }
+            controller.detectSession?.onDetectRequested = { _, _, filter in requestedFilter = filter }
+            controller.detectSession?.setArmed(true)
+            if let aKey = busKeys.first(where: { $0.mappingCode == .cutToLeftTrigger }) {
+                let point = aKey.convert(
+                    NSPoint(x: aKey.bounds.midX, y: aKey.bounds.midY), to: nil)
+                if let shiftClick = NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: point, modifierFlags: [.shift],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil,
+                    eventNumber: 0, clickCount: 1, pressure: 1) {
+                    aKey.mouseDown(with: shiftClick)
+                }
+            }
+            let askedNotesOnly: Bool = {
+                if case .notesOnly = requestedFilter { return true }
+                return false
+            }()
+            check.record(AssertionResult(
+                name: "a bus key asks DetectSession for notes only, never a fader or knob",
+                passed: askedNotesOnly,
+                detail: requestedFilter.map { "\($0)" } ?? "no request reached DetectSession"
+            ))
+
+            withExtendedLifetime(controller) {}
+        }
+
+        // A MAPPED BUS KEY ACTUALLY FIRES. Arming a mapping is only half the story —
+        // ParamCode.cutTrigger and .fadeTrigger were never registered as parameters
+        // on CrossfadeNode, so a learned CUT/FADE button showed "mapped" in the log
+        // and then did nothing when pressed: ParamRegistry.deliver has nowhere to
+        // land a value for a code the slot does not expose. Prove the whole path —
+        // registry write through to the fader actually moving — for the new bus-key
+        // triggers, which share that same registration.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+
+            let slot = GraphTopology.subMixOne
+            engine.registry.setValue(1, slot: slot, code: .crossfadeAB)   // B is up
+            engine.registry.setValue(1, slot: slot, code: .cutToLeftTrigger)
+            controller.fireActionTriggersForChecks()
+
+            check.record(AssertionResult(
+                name: "a mapped A key actually cuts the A/B fader, not just arms",
+                passed: (engine.registry.value(slot: slot, code: .crossfadeAB) ?? 1) < 0.01,
+                detail: "crossfadeAB = \(engine.registry.value(slot: slot, code: .crossfadeAB) ?? -1)"
+            ))
+            check.record(AssertionResult(
+                name: "the trigger falls back to 0 so the next press is a fresh edge",
+                passed: (engine.registry.value(slot: slot, code: .cutToLeftTrigger) ?? 1) == 0,
+                detail: "cutToLeftTrigger = \(engine.registry.value(slot: slot, code: .cutToLeftTrigger) ?? -1)"
+            ))
 
             withExtendedLifetime(controller) {}
         }

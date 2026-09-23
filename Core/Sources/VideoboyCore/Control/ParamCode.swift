@@ -143,6 +143,13 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case cutTrigger = "68A"
     /// Fade to the other source on this bus, at the set rate.
     case fadeTrigger = "69A"
+    /// Cut straight to this bus's LEFT source (e.g. A, C, or ONE) — what the left
+    /// bus key does. Unlike `cutTrigger`, this names a direction rather than
+    /// toggling to whichever end is not already up.
+    case cutToLeftTrigger = "6AA"
+    /// Cut straight to this bus's RIGHT source (e.g. B, D, or TWO) — what the
+    /// right bus key does.
+    case cutToRightTrigger = "6BA"
 
     // MARK: Genlock/chroma key (6xE)
     //
@@ -325,6 +332,8 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .scrubPosition: "position"
         case .cutTrigger: "cut"
         case .fadeTrigger: "fade"
+        case .cutToLeftTrigger: "cut to left"
+        case .cutToRightTrigger: "cut to right"
         case .mx1Effect: "MX-1 effect"
         case .mx1Amount: "MX-1 amount"
         case .blendMode: "blend mode"
