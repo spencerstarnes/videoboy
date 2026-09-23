@@ -664,7 +664,7 @@ enum AssetTab: String, CaseIterable {
         case .sources: "No sources configured. Add one in Settings > Sources."
         case .generators: "No generators available."
         case .graphics: "SVG and vector sources are not built yet (SPEC §17)."
-        case .clips: "No media in samples/. Drop files there and re-run scripts/make-fixtures.sh."
+        case .clips: "No clips yet. Drop clips or folders here, or press + to add."
         case .images: "Still-image sources are not built yet."
         case .emu: "No emulated machines are set up."
         }
@@ -1253,7 +1253,11 @@ final class LibraryPanelBody: NSView {
     private func scheduleGridRebuild() {
         guard !rebuildScheduled else { return }
         rebuildScheduled = true
-        DispatchQueue.main.async { [weak self] in
+        // On the RUN LOOP, not the main dispatch queue: identical in the live app, but a
+        // dispatch block is not drained by a nested `RunLoop.run` — so in the self-QA
+        // harness the search never rebuilt, and `rebuildScheduled` stuck at true,
+        // silently swallowing every later rebuild in that panel.
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
             guard let self else { return }
             self.rebuildScheduled = false
             self.rebuildClipsGrid()
@@ -1395,7 +1399,13 @@ final class LibraryPanelBody: NSView {
 
         gridsByTab[tab]?.removeFromSuperview()
 
-        var items = tab == .clips ? matching() : contents(of: tab, sources: sourceItems)
+        // Every tab honours the search field — it is on screen for all of them, and a
+        // field that filters one tab and silently ignores the rest looks broken.
+        var items = tab == .clips
+            ? matching()
+            : contents(of: tab, sources: sourceItems).filter {
+                LibraryModel.matches($0, search: searchText)
+            }
         // In column view the grid shows one bin at a time — that IS the column view.
         if viewStyle == .column, let focusedBin {
             items = items.filter { $0.bin == focusedBin }
@@ -1423,6 +1433,11 @@ final class LibraryPanelBody: NSView {
         ])
         emptyLabelsByTab[tab]?.isHidden =
             viewStyle == .list || !items.isEmpty || currentTab != tab
+        // An empty grid while searching means "nothing matches", never "your library is
+        // empty" — the old text sent people looking for files that were still there.
+        emptyLabelsByTab[tab]?.stringValue = searchText.isEmpty
+            ? tab.emptyMessage
+            : "Nothing in \(tab.displayName) matches “\(searchText)”."
 
         if currentTab == tab, viewStyle != .list {
             documentHeight?.isActive = false

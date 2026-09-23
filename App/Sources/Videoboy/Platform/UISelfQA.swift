@@ -1855,7 +1855,13 @@ enum UISelfQA {
             shell.layoutSubtreeIfNeeded()
 
             let library = shell.grid.panels.libraryOneBody
-            let before = LibraryItemView.all(in: library).count
+            // VISIBLE item views only. A hidden grid (list style, or another tab) keeps
+            // its item views, so counting all of them could never go down — this check
+            // failed while search worked live, and "clearing restores" passed trivially.
+            func visibleItems() -> Int {
+                LibraryItemView.all(in: library).filter { !$0.isHiddenOrHasHiddenAncestor }.count
+            }
+            let before = visibleItems()
 
             if let field = searchField(in: library), before > 0 {
                 // A string that cannot match anything must empty the grid — the
@@ -1866,7 +1872,7 @@ enum UISelfQA {
                 // check has to let the runloop turn before reading the result.
                 RunLoop.main.run(until: Date().addingTimeInterval(0.1))
                 shell.layoutSubtreeIfNeeded()
-                let filtered = LibraryItemView.all(in: library).count
+                let filtered = visibleItems()
 
                 check.record(AssertionResult(
                     name: "library search actually filters",
@@ -1880,8 +1886,34 @@ enum UISelfQA {
                 shell.layoutSubtreeIfNeeded()
                 check.record(AssertionResult(
                     name: "clearing the search brings everything back",
-                    passed: LibraryItemView.all(in: library).count == before,
-                    detail: "\(LibraryItemView.all(in: library).count) of \(before) restored"
+                    passed: visibleItems() == before,
+                    detail: "\(visibleItems()) of \(before) restored"
+                ))
+            } else {
+                // Never skip silently: a check that quietly stops running looks green.
+                check.record(AssertionResult(
+                    name: "library search actually filters",
+                    passed: false,
+                    detail: "nothing to search: \(before) visible items, search field found: "
+                        + "\(searchField(in: library) != nil)"
+                ))
+            }
+
+            // Same NAME in two folders is two clips (camera cards name every file
+            // CLIP0001); the same FILE twice is one. De-duplicating by name used to
+            // drop the second reel silently.
+            do {
+                let model = LibraryModel()
+                func item(_ path: String) -> LibraryItem {
+                    LibraryItem(name: "CLIP0001.dv", badge: "DV", isAvailable: true,
+                                url: URL(fileURLWithPath: path))
+                }
+                model.add([item("/tmp/Reel A/CLIP0001.dv"), item("/tmp/Reel B/CLIP0001.dv")])
+                model.add([item("/tmp/Reel A/CLIP0001.dv")])
+                check.record(AssertionResult(
+                    name: "same-named clips from two folders are both kept, a re-drop is not doubled",
+                    passed: model.items.count == 2,
+                    detail: "\(model.items.count) items (expected 2)"
                 ))
             }
 
