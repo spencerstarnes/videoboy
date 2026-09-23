@@ -317,6 +317,7 @@ final class EffectChainPanelBody: NSView {
         // has been removed, so ✕ is reversible rather than a one-way door.
         let addPopUp = Controls.popUp(
             [], target: self, action: #selector(addEffectChosen(_:)))
+        addPopUp.identifier = NSUserInterfaceItemIdentifier("fx-add")
         addPopUp.setAccessibilityIdentifier("fx-add")
         addPopUp.toolTip = "Add an effect to this chain — built-in, or any ISF file you have imported"
         self.addPopUp = addPopUp

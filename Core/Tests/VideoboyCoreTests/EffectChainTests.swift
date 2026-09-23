@@ -139,6 +139,9 @@ final class EffectChainTests: XCTestCase {
         XCTAssertEqual(badTV.group, "Glitch", "the Add menu groups by the file's own category")
         XCTAssertEqual(badTV.controls.map(\.code.rawValue), ["x:noise", "x:tint.r", "x:tint.g", "x:tint.b", "x:tint.a"])
         XCTAssertFalse(names.contains("Plain Generator"), "a generator is a source, not a chain effect")
+        XCTAssertEqual(catalog.generators.map(\.name), ["Plain Generator"], "…and is offered as a source instead")
+        XCTAssertTrue(catalog.generator(ModuleCatalog.ID.isf("Plain Generator"))?
+            .makeNode(identifier: "source.isf.a", context: nil) is ISFNode)
         XCTAssertEqual(catalog.unavailable.map(\.name), ["Broken"], "a broken file is listed as broken, with its reason")
         XCTAssertNotNil(catalog.unavailable.first?.problem)
 

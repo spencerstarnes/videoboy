@@ -39,6 +39,10 @@ struct LibraryItem {
     /// stale placeholder before this type existed.
     var configuredSourceID: String?
 
+    /// The module ID of an ISF generator this item stands for (ISF-PLAN M9). Opening
+    /// it sends the generator to the chosen channel.
+    var isfModuleID: String?
+
     /// Which bin this item sits in. Nil means the ungrouped set at the top.
     ///
     /// A plain string rather than a bin object: bins here are a way of arranging a
@@ -63,6 +67,7 @@ struct LibraryItem {
         case "MOV": "QuickTime movie"
         case "MPG", "M2V": "MPEG video"
         case "GEN": "Generator"
+        case "ISF": "ISF generator"
         case "SVG": "Vector"
         case "SCR": "Screen capture"
         case "IP": "Network feed"
@@ -715,6 +720,15 @@ final class LibraryPanelBody: NSView {
         }
     }
 
+    /// The ISF generators, shown in the Generators tab after the built-in ones. Set
+    /// from the module catalogue, and again whenever the ISF folders change.
+    var isfGeneratorItems: [LibraryItem] = [] {
+        didSet {
+            guard currentTab == .generators || gridsByTab[.generators] != nil else { return }
+            rebuildGrid(for: .generators)
+        }
+    }
+
     /// How THIS browser is drawing the shared library.
     ///
     /// Per panel, not per library. The two sub-mix browsers are used at the same time
@@ -1114,7 +1128,7 @@ final class LibraryPanelBody: NSView {
             // Every generator is real and assignable, so they are all available.
             return GeneratorKind.allCases.map {
                 LibraryItem(name: $0.displayName, badge: "GEN", isAvailable: true)
-            }
+            } + isfGeneratorItems
         case .graphics, .images:
             // Empty on purpose; the tab says why rather than showing a blank box.
             return []

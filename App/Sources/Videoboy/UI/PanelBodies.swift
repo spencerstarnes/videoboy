@@ -123,6 +123,21 @@ final class SourcePanelBody: NSView {
     /// Called when the Camera row is chosen in the source menu.
     var onCameraSelected: (() -> Void)?
 
+    /// Called when an ISF generator is chosen in the source menu, with its module ID.
+    var onISFGeneratorSelected: ((String) -> Void)?
+
+    /// The ISF generators the source menu offers (ISF-PLAN M9), from the module
+    /// catalogue. Setting it rebuilds the menu's items, keeping what is selected.
+    var isfGenerators: [SourceKindMenu.ISFGenerator] = [] {
+        didSet {
+            guard let popUp = generatorPopUp else { return }
+            let selected = popUp.titleOfSelectedItem
+            popUp.removeAllItems()
+            popUp.addItems(withTitles: SourceKindMenu.titles(isf: isfGenerators))
+            if let selected, popUp.item(withTitle: selected) != nil { popUp.selectItem(withTitle: selected) }
+        }
+    }
+
     /// Called when the Amiga (EMU) row is chosen in the source menu.
     var onEmulatorSelected: (() -> Void)?
 
@@ -311,7 +326,7 @@ final class SourcePanelBody: NSView {
             // emulator were reachable from neither this menu nor anywhere else on the
             // panel, which made them feel absent rather than unbuilt — "I don't see my
             // webcam" was exactly that.
-            SourceKindMenu.titles,
+            SourceKindMenu.titles(),
             target: self, action: #selector(generatorChanged(_:))
         )
         self.generatorPopUp = generatorPopUp
@@ -494,11 +509,13 @@ final class SourcePanelBody: NSView {
     }
 
     @objc private func generatorChanged(_ sender: NSPopUpButton) {
-        switch SourceKindMenu.kind(at: sender.indexOfSelectedItem) {
+        switch SourceKindMenu.kind(at: sender.indexOfSelectedItem, isf: isfGenerators) {
         case .file:
             onGeneratorSelected?(nil)
         case .generator(let kind):
             onGeneratorSelected?(kind)
+        case .isfGenerator(let id):
+            onISFGeneratorSelected?(id)
         case .camera:
             onCameraSelected?()
         case .emulator:
@@ -517,19 +534,32 @@ enum SourceKindMenu {
     enum Kind {
         case file
         case generator(GeneratorKind)
+        /// An ISF generator file, by module ID (ISF-PLAN M9).
+        case isfGenerator(String)
         case camera
         case emulator
     }
 
-    static var titles: [String] {
-        ["File"] + GeneratorKind.allCases.map(\.displayName) + ["Camera", "Amiga (EMU)"]
+    /// An ISF generator as the menu lists it.
+    struct ISFGenerator: Equatable {
+        let id: String
+        let name: String
     }
 
-    static func kind(at index: Int) -> Kind {
+    /// File, the built-in generators, the ISF generators, then the camera and the
+    /// emulator. ISF rows are prefixed so they read as files, not built-ins.
+    static func titles(isf: [ISFGenerator] = []) -> [String] {
+        ["File"] + GeneratorKind.allCases.map(\.displayName) + isf.map { "ISF · \($0.name)" }
+            + ["Camera", "Amiga (EMU)"]
+    }
+
+    static func kind(at index: Int, isf: [ISFGenerator] = []) -> Kind {
         let generators = GeneratorKind.allCases
         if index == 0 { return .file }
         if index <= generators.count { return .generator(generators[index - 1]) }
-        return index == generators.count + 1 ? .camera : .emulator
+        let isfIndex = index - generators.count - 1
+        if isfIndex < isf.count { return .isfGenerator(isf[isfIndex].id) }
+        return isfIndex == isf.count ? .camera : .emulator
     }
 }
 

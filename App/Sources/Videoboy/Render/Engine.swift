@@ -34,6 +34,9 @@ enum ChannelSourceKind: Equatable {
     /// exist now, so the case needs to say WHICH one — an id rather than a kind,
     /// because two cameras of the same kind are still two different sources.
     case capture(String)
+    /// An ISF generator (a file with no image input), by module ID (ISF-PLAN M9).
+    /// One node per channel, so two channels can run two different ones.
+    case isfGenerator(String)
 }
 
 /// Where the musical clock's tempo comes from (SPEC 4b).
@@ -400,6 +403,34 @@ final class Engine {
         }
     }
 
+    // MARK: - ISF generators as sources (ISF-PLAN M9)
+
+    /// Each channel's ISF generator node, when it has one.
+    private(set) var isfGenerators: [String: ISFNode] = [:]
+
+    /// Points a channel at an ISF generator. The node is made (or remade, for a
+    /// different file) off nothing heavier than a header parse; it compiles in the
+    /// background and shows black until ready — the channel is a generator that has
+    /// not started yet, not a frozen clip.
+    @discardableResult
+    func setISFGenerator(_ moduleID: String, channel letter: String) -> Bool {
+        guard let module = catalog.generator(moduleID) else {
+            Log.warn(.isf, "no ISF generator '\(moduleID)'")
+            return false
+        }
+        let slot = Engine.isfGeneratorSlot(forChannel: letter)
+        guard let node = module.makeNode(identifier: slot, context: metal) as? ISFNode else { return false }
+        graph.add(node)
+        isfGenerators[letter] = node
+        isfGeneratorModules[letter] = moduleID
+        registry.register(slot: slot, parameters: node.parameters)
+        setChannelSource(.isfGenerator(moduleID), channel: letter)
+        return true
+    }
+
+    /// Which ISF generator each channel was given, for hot reload.
+    private var isfGeneratorModules: [String: String] = [:]
+
     // MARK: - Hot reload (ISF-PLAN M6)
 
     /// Watches the ISF folders; see `startWatchingModules`.
@@ -460,6 +491,14 @@ final class Engine {
                 }
             }
             if restored { rebuildChain(bus) }
+        }
+        for (letter, node) in isfGenerators {
+            guard let id = isfGeneratorModules[letter],
+                  let url = catalog.generator(id)?.fileURL?.standardizedFileURL,
+                  let source = sources[url], source != node.sourceText else { continue }
+            node.load(source: source, name: url.deletingPathExtension().lastPathComponent)
+            registry.register(slot: node.identifier, parameters: node.parameters)
+            reloaded += 1
         }
         Log.info(.isf, "ISF folders changed: \(catalog.modules.count) modules, \(catalog.unavailable.count) unavailable, \(reloaded) live copies reloaded")
         onModulesChanged?()
@@ -604,6 +643,11 @@ final class Engine {
     /// The generator slot name for a channel letter.
     static func generatorSlot(forChannel letter: String) -> String {
         "generator.\(letter.lowercased())"
+    }
+
+    /// A channel's ISF generator slot.
+    static func isfGeneratorSlot(forChannel letter: String) -> String {
+        "generator.isf.\(letter.lowercased())"
     }
 
     /// The mapping slot name for a channel letter.
@@ -826,6 +870,7 @@ final class Engine {
         for node in chainNodes.values {
             (node as? ParameterApplying)?.applyParameters(from: registry)
         }
+        for node in isfGenerators.values { node.applyParameters(from: registry) }
         compositeProgram.applyParameters(from: registry)
         for generator in generators.values { generator.applyParameters(from: registry) }
         busCodecOne.applyParameters(from: registry)
@@ -960,8 +1005,17 @@ final class Engine {
         let firstKind = channelSourceKinds[first] ?? .file
         let secondKind = channelSourceKinds[second] ?? .file
         if firstKind != secondKind {
-            setChannelSource(secondKind, channel: first)
-            setChannelSource(firstKind, channel: second)
+            // An ISF generator's node belongs to its channel's slot, so the FILE is
+            // what travels: it is remade on the other channel.
+            func route(_ kind: ChannelSourceKind, to letter: String) {
+                if case .isfGenerator(let id) = kind {
+                    setISFGenerator(id, channel: letter)
+                } else {
+                    setChannelSource(kind, channel: letter)
+                }
+            }
+            route(secondKind, to: first)
+            route(firstKind, to: second)
         }
 
         Log.info(.dv, "swapped channel \(first) and channel \(second): "
@@ -1038,6 +1092,7 @@ final class Engine {
         case .generator: Engine.generatorSlot(forChannel: letter)
         case .emulator: Engine.emulatorSlot
         case .capture(let id): Engine.captureSlot(for: id)
+        case .isfGenerator: Engine.isfGeneratorSlot(forChannel: letter)
         }
     }
 
@@ -1087,6 +1142,7 @@ final class Engine {
         case .generator: description = "a generator"
         case .emulator: description = "the emulator"
         case .capture(let id): description = "configured source \(id)"
+        case .isfGenerator(let id): description = "ISF generator \(id)"
         }
         Log.info(.graph, "channel \(letter) now sourced from \(description)")
     }
@@ -1301,7 +1357,7 @@ final class Engine {
         // A channel showing a generator or a live configured source has no bitstream,
         // whatever file may also be loaded behind it.
         switch channelSourceKinds[letter] {
-        case .generator, .capture: return .none
+        case .generator, .capture, .isfGenerator: return .none
         default: return sources[letter]?.dataEffectFamily ?? .none
         }
     }

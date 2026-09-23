@@ -19,6 +19,7 @@
 #           mosh        — the Datamosh card, clicked for real; a cut moshed on the A/B bus
 #           calibrate   — measure the physical feedback round trip (needs hardware)
 #           shaders     — the Preferences Shaders pane: import copies, − removes, in a real window
+#           isf         — ISF modules end to end: Add menu, faders, reorder, MIDI, hot reload, generators
 #           all         — every check that can run here
 # Outputs : selfqa/out/<check>/{*.png,metrics.json,result.txt}
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
@@ -69,6 +70,7 @@ case "$CHECK" in
   record)    run_app_check record ;;
   audit)     run_app_check audit ;;
   shaders)   run_app_check shaders ;;
+  isf)       run_app_check isf ;;
   # Opens a real window on the main display and runs the live display link under full
   # load for ~10 s. Needs a logged-in GUI session, so it is opt-in, not part of `all`.
   stress)    run_app_check stress ;;
@@ -91,8 +93,9 @@ case "$CHECK" in
     run_app_check record
     run_app_check audit
     run_app_check shaders
+    run_app_check isf
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, shaders, stress, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, shaders, isf, stress, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

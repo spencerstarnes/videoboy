@@ -322,6 +322,10 @@ final class ShellController {
                     self.assignSource(sourceID, toChannel: channel)
                     return
                 }
+                if let moduleID = item.isfModuleID {
+                    self.assignISFGenerator(moduleID, toChannel: channel)
+                    return
+                }
                 guard let url = item.url else {
                     self.presentNotice(
                         "\(item.name) is not a file",
@@ -728,6 +732,9 @@ final class ShellController {
             body.onEmulatorSelected = { [weak self] in
                 self?.assignEmulator(toChannel: letter)
             }
+            body.onISFGeneratorSelected = { [weak self] id in
+                self?.assignISFGenerator(id, toChannel: letter)
+            }
             body.onCameraSelected = { [weak self] in
                 self?.assignCamera(toChannel: letter)
             }
@@ -883,6 +890,8 @@ final class ShellController {
         case .capture(let id):
             let name = preferences.preferences.configuredSources.first { $0.id == id }?.name
             body.setMediaName(name ?? "Source")
+        case .isfGenerator(let id):
+            body.setMediaName(engine.catalog.generator(id)?.name ?? "ISF generator")
         case .file:
             body.setMediaName(node.mediaURL.map {
                 range == nil ? $0.lastPathComponent : "\($0.lastPathComponent) [trimmed]"
@@ -1484,6 +1493,39 @@ final class ShellController {
     func refreshEffectPanels() {
         refreshCards(.one)
         refreshCards(.two)
+        refreshISFGeneratorLists()
+    }
+
+    // MARK: - ISF generators (ISF-PLAN M9)
+
+    /// Puts the catalogue's ISF generators in every source menu and every library's
+    /// Generators tab.
+    private func refreshISFGeneratorLists() {
+        let generators = engine.catalog.generators
+        let menu = generators.map { SourceKindMenu.ISFGenerator(id: $0.id, name: $0.name) }
+        for letter in Self.channels { shell.grid.panels.sourceBodies[letter]?.isfGenerators = menu }
+        let items = generators.map { generator -> LibraryItem in
+            var item = LibraryItem(name: generator.name, badge: "ISF", isAvailable: true, url: nil)
+            item.isfModuleID = generator.id
+            return item
+        }
+        for library in [shell.grid.panels.libraryOneBody, shell.grid.panels.libraryTwoBody,
+                        shell.grid.panels.assetBrowserBody] {
+            library.isfGeneratorItems = items
+        }
+    }
+
+    /// Points a channel at an ISF generator and says so on its panel.
+    private func assignISFGenerator(_ moduleID: String, toChannel letter: String) {
+        guard engine.setISFGenerator(moduleID, channel: letter) else {
+            presentNotice("That generator is not available",
+                          "It may have been removed from the ISF folder. The list refreshes when the folder changes.")
+            return
+        }
+        // A generator is live, never a paused file: the file's LFO and transport no longer apply.
+        engine.lfos.remove(slot: Engine.generatorSlot(forChannel: letter), code: .positionX)
+        shell.grid.panels.sourceBodies[letter]?.setMediaName(engine.catalog.generator(moduleID)?.name ?? "ISF generator")
+        Log.info(.isf, "channel \(letter) now runs ISF generator \(moduleID)")
     }
 
     /// Updates each card's status line from its node, without rebuilding anything.
@@ -1525,6 +1567,7 @@ final class ShellController {
         // Files added, edited or fixed in the ISF folders show up without a relaunch.
         engine.onModulesChanged = { [weak self] in self?.refreshEffectPanels() }
         engine.startWatchingModules()
+        refreshISFGeneratorLists()
 
         // ISF modules compile off the render path; a card says "compiling…" until its
         // program arrives, and why, if it never does.

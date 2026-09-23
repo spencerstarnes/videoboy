@@ -18,7 +18,7 @@ import VideoboyCore
 final class MainWindowController: NSWindowController {
 
     /// The running instrument this window drives.
-    let engine = Engine()
+    let engine: Engine
 
     /// Settings that outlive a patch, handed down from the app delegate so there is
     /// one store rather than one per window.
@@ -75,7 +75,10 @@ final class MainWindowController: NSWindowController {
     }
 
     /// Builds the window at a size that shows the full wide layout on first run.
-    init(preferences: PreferenceStore) {
+    /// - Parameter engine: normally a fresh one; the self-QA passes one whose module
+    ///   catalogue points at temporary ISF folders.
+    init(preferences: PreferenceStore, engine: Engine = Engine()) {
+        self.engine = engine
         self.preferences = preferences
         let initialSize = Self.initialSize(for: NSScreen.main)
         let window = NSWindow(

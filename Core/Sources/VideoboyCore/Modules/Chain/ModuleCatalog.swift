@@ -116,6 +116,10 @@ public final class ModuleCatalog {
     /// ISF files that were found but cannot be offered (they failed, or are not
     /// effects), for the Add menu's "Failed to load" group.
     public private(set) var unavailable: [ModuleDescriptor] = []
+    /// ISF GENERATORS — files with no image input. Sources, not chain effects: the
+    /// Asset Browser's Generators tab and each channel's source menu offer them
+    /// (ISF-PLAN M9). Their factory makes an ISFNode that renders at project size.
+    public private(set) var generators: [ModuleDescriptor] = []
 
     /// Where ISF modules are looked for, in precedence order.
     public let folders: [(URL, ISFLibraryEntry.Folder)]
@@ -142,6 +146,7 @@ public final class ModuleCatalog {
     public func refresh(with entries: [ISFLibraryEntry]) {
         var available = ModuleCatalog.nativeModules()
         var failed: [ModuleDescriptor] = []
+        var sources: [ModuleDescriptor] = []
         let builtinNames: [String: (id: String, title: String)] = [
             "Transform": (ID.transform, "Transform"),
             "Colour": (ID.colour, "Colour"),
@@ -162,6 +167,11 @@ public final class ModuleCatalog {
                     id: id, title: title, origin: origin, document: nil, entry: entry,
                     problem: error.description))
             case .success(let document):
+                if document.kind == .generator {
+                    sources.append(ModuleCatalog.isfDescriptor(
+                        id: id, title: title, origin: origin, document: document, entry: entry, problem: nil))
+                    continue
+                }
                 guard document.kind == .effect else { continue }
                 let descriptor = ModuleCatalog.isfDescriptor(
                     id: id, title: title, origin: origin, document: document, entry: entry, problem: nil)
@@ -175,6 +185,12 @@ public final class ModuleCatalog {
                 : $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
         unavailable = failed.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        generators = sources.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Looks up an ISF generator by ID.
+    public func generator(_ id: String) -> ModuleDescriptor? {
+        generators.first { $0.id == id }
     }
 
     // MARK: - ISF modules
