@@ -316,8 +316,8 @@ public enum ISFMetalGenerator {
         tail += "    return shader.gl_FragColor;\n"
         tail += "}\n"
 
-        let headLines = head.reduce(0) { $1 == "\n" ? $0 + 1 : $0 }
-        let bodyLines = body.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
+        let headLines = GLSLTokenizer.lineBreakCount(head)
+        let bodyLines = GLSLTokenizer.lineBreakCount(body) + 1
         return ISFGeneratedShader(
             source: head + body + tail,
             uniformLayout: layout,

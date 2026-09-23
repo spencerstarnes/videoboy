@@ -332,6 +332,50 @@ final class ISFConverterTests: XCTestCase {
         XCTAssertFalse(rewritten.contains("uniform"))
     }
 
+    func testMatrixCompoundAssignment() throws {
+        // GLSL allows `m *= r` and `v *= m`; Metal only has the binary operators.
+        // Found in a real VDMX pack ("Broken Tesseract": mat *= mat4(...)).
+        try compiles(effect("""
+        mat4 spin = mat4(1.0);
+        void main() {
+            mat2 a = mat2(1.0);  a *= mat2(0.0, 1.0, -1.0, 0.0);
+            mat3 b = mat3(1.0);  b *= mat3(2.0);
+            spin *= mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0),
+                         vec4(0.0, 0.0, 1.0, 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+            vec2 p = isf_FragNormCoord;  p *= a;
+            vec3 q = vec3(p, 1.0);       q *= b;
+            vec4 r = vec4(q, 1.0);       r *= spin;
+            gl_FragColor = r;
+        }
+        """))
+    }
+
+    func testWindowsAndClassicMacLineEndingsStillMapErrorsToTheAuthorsLine() throws {
+        let device = try device()
+        // Swift reads "\r\n" as ONE Character, so counting "\n" Characters saw no
+        // lines at all in a CRLF file and every error came back as "generated line".
+        let lines = [
+            "/*{",
+            "    \"INPUTS\": [ { \"NAME\": \"inputImage\", \"TYPE\": \"image\" } ]",
+            "}*/",
+            "#version 120",
+            "void main() {",
+            "    vec4 c = IMG_THIS_PIXEL(inputImage);",
+            "    float broken = c.rgb;",
+            "    gl_FragColor = c;",
+            "}"
+        ]
+        for (label, separator) in [("CRLF", "\r\n"), ("CR", "\r")] {
+            let source = lines.joined(separator: separator)
+            XCTAssertThrowsError(try ISFProgram.compile(source: source, name: label, device: device)) { error in
+                guard case .metal(_, let firstError) = error as? ISFCompileError else {
+                    return XCTFail("\(label): expected a Metal error, got \(error)")
+                }
+                XCTAssertTrue(firstError.hasPrefix("line 7:"), "\(label): first error was \(firstError)")
+            }
+        }
+    }
+
     // MARK: - The built-ins
 
     func testEveryBuiltinModuleCompiles() throws {

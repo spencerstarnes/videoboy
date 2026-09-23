@@ -46,6 +46,15 @@ enum ISFMetalPrelude {
     typedef float3x3 mat3;
     typedef float4x4 mat4;
 
+    // GLSL has compound assignment with matrices (`m *= r`, `v *= m`); Metal has only
+    // the binary operators. Same meaning as GLSL: m = m * r, v = v * m.
+    inline thread float2x2& operator*=(thread float2x2& a, float2x2 b) { a = a * b; return a; }
+    inline thread float3x3& operator*=(thread float3x3& a, float3x3 b) { a = a * b; return a; }
+    inline thread float4x4& operator*=(thread float4x4& a, float4x4 b) { a = a * b; return a; }
+    inline thread float2& operator*=(thread float2& v, float2x2 m) { v = v * m; return v; }
+    inline thread float3& operator*=(thread float3& v, float3x3 m) { v = v * m; return v; }
+    inline thread float4& operator*=(thread float4& v, float4x4 m) { v = v * m; return v; }
+
     // Precision qualifiers mean nothing on Apple GPUs.
     #define lowp
     #define mediump
