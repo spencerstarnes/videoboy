@@ -325,6 +325,72 @@ final class ISFNodeTests: XCTestCase {
         XCTAssertEqual(node.controls.first { $0.inputName == "on" }?.valueText(0.7), "on")
     }
 
+    // MARK: - Hot reload (ISF-PLAN M6)
+
+    /// Loads through the real asynchronous path and waits for the program.
+    private func loadAndWait(_ node: ISFNode, _ source: String, until: @escaping (ISFNode) -> Bool) {
+        node.load(source: source, name: "reload")
+        let deadline = Date().addingTimeInterval(10)
+        while !until(node) && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+    }
+
+    func testASavedEditRecompilesAndKeepsTheFaders() throws {
+        let node = ISFNode(identifier: "test.reload", context: metal)
+        let red = effect("void main() { gl_FragColor = vec4(amount, 0.0, 0.0, 1.0); }",
+                         inputs: #"{ "NAME": "amount", "TYPE": "float", "DEFAULT": 0.2 }"#)
+        loadAndWait(node, red) { $0.state == .ready }
+        node.setValue(0.8, forInput: "amount")
+        let input = try upload(ISFTestSupport.gradient())
+        XCTAssertEqual(Int(try render(node, input).pixel(x: 4, y: 4).r), 204, accuracy: 2)
+
+        // The file is saved with the same input, now painting green.
+        let green = effect("void main() { gl_FragColor = vec4(0.0, amount, 0.0, 1.0); }",
+                           inputs: #"{ "NAME": "amount", "TYPE": "float", "DEFAULT": 0.2 }"#)
+        loadAndWait(node, green) { $0.program?.document.fragmentSource.contains("0.0, amount") == true }
+        let after = try render(node, input)
+        XCTAssertEqual(Int(after.pixel(x: 4, y: 4).g), 204, accuracy: 2, "the new program runs with the fader where it was")
+        XCTAssertEqual(Int(after.pixel(x: 4, y: 4).r), 0, accuracy: 2)
+        XCTAssertNil(node.reloadProblem)
+    }
+
+    func testABrokenSaveKeepsTheLastGoodVersionRunning() throws {
+        let node = ISFNode(identifier: "test.broken-reload", context: metal)
+        let good = effect("void main() { gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }")
+        loadAndWait(node, good) { $0.state == .ready }
+        let input = try upload(ISFTestSupport.gradient())
+
+        // A header that no longer parses.
+        node.load(source: "/*{ \"INPUTS\": [ oops }*/ void main() {}", name: "reload")
+        XCTAssertEqual(node.state, .ready, "still running")
+        XCTAssertNotNil(node.reloadProblem)
+        XCTAssertEqual(Int(try render(node, input).pixel(x: 4, y: 4).r), 255, accuracy: 2, "…the previous program")
+
+        // A header that parses but a body Metal rejects.
+        loadAndWait(node, effect("void main() { gl_FragColor = nonsense(); }")) { $0.reloadProblem?.isEmpty == false && $0.program != nil }
+        XCTAssertEqual(node.state, .ready)
+        XCTAssertEqual(Int(try render(node, input).pixel(x: 4, y: 4).r), 255, accuracy: 2, "a compile failure keeps it too")
+
+        // And a good save clears the warning.
+        loadAndWait(node, effect("void main() { gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0); }")) { $0.reloadProblem == nil }
+        XCTAssertEqual(Int(try render(node, input).pixel(x: 4, y: 4).b), 255, accuracy: 2)
+    }
+
+    func testDroppingAFileIntoAWatchedFolderIsNoticed() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("watch-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var seen: [String] = []
+        let watcher = ISFFolderWatcher(folders: [(folder, .user)], settle: 0.1) { entries in
+            seen = entries.map(\.name)
+        }
+        try effect("void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage); }")
+            .write(to: folder.appendingPathComponent("Dropped.fs"), atomically: true, encoding: .utf8)
+        let deadline = Date().addingTimeInterval(10)
+        while !seen.contains("Dropped") && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        watcher.stop()
+        XCTAssertEqual(seen, ["Dropped"], "a new file is picked up without a relaunch")
+    }
+
     func testValuesAreClampedAndNonsenseIsRefused() throws {
         let node = try ISFTestSupport.node(effect(
             "void main() { gl_FragColor = tint * amount; }",

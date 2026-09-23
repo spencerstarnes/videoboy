@@ -400,6 +400,71 @@ final class Engine {
         }
     }
 
+    // MARK: - Hot reload (ISF-PLAN M6)
+
+    /// Watches the ISF folders; see `startWatchingModules`.
+    private var moduleWatcher: ISFFolderWatcher?
+
+    /// Called on main after the modules changed on disk, so the panels can rebuild
+    /// their cards and Add menus.
+    var onModulesChanged: (() -> Void)?
+
+    /// Starts noticing ISF files being added, edited, fixed or removed.
+    func startWatchingModules() {
+        // Videoboy's own folder exists from the start, so the first import into it
+        // is noticed rather than needing a relaunch.
+        if let user = catalog.folders.first(where: { $0.1 == .user })?.0 {
+            do {
+                try FileManager.default.createDirectory(at: user, withIntermediateDirectories: true)
+            } catch {
+                Log.warn(.isf, "could not create \(user.path): \(error.localizedDescription)")
+            }
+        }
+        moduleWatcher = ISFFolderWatcher(folders: catalog.folders) { [weak self] entries in
+            self?.applyLibrary(entries)
+        }
+    }
+
+    /// Applies a fresh scan of the ISF folders. Main thread, between ticks.
+    ///
+    /// - A live ISF node whose file changed reloads it: controls kept by name, the
+    ///   old program drawing until the new one compiles, and — if the edit does not
+    ///   parse or compile — kept drawing, with the reason on its card.
+    /// - A card whose module was missing and is back gets its real node.
+    /// - New files appear in the Add menu (`onModulesChanged`).
+    func applyLibrary(_ entries: [ISFLibraryEntry]) {
+        catalog.refresh(with: entries)
+        let sources = Dictionary(entries.compactMap { entry in entry.source.map { (entry.url.standardizedFileURL, $0) } },
+                                 uniquingKeysWith: { first, _ in first })
+        var reloaded = 0
+        for bus in ChainBus.allCases {
+            guard let chain = chains[bus] else { continue }
+            var restored = false
+            for entry in chain.entries {
+                let module = catalog.module(entry.moduleID)
+                for slot in EffectChain.slots(instanceID: entry.instanceID, bus: bus) {
+                    switch chainNodes[slot] {
+                    case let isf as ISFNode:
+                        guard let url = module?.fileURL?.standardizedFileURL, let source = sources[url],
+                              source != isf.sourceText else { continue }
+                        isf.load(source: source, name: url.deletingPathExtension().lastPathComponent)
+                        registry.register(slot: slot, parameters: isf.parameters)
+                        reloaded += 1
+                    case is MissingModuleNode where module?.isAvailable == true:
+                        graph.remove(slot)
+                        chainNodes.removeValue(forKey: slot)
+                        restored = true
+                    default:
+                        continue
+                    }
+                }
+            }
+            if restored { rebuildChain(bus) }
+        }
+        Log.info(.isf, "ISF folders changed: \(catalog.modules.count) modules, \(catalog.unavailable.count) unavailable, \(reloaded) live copies reloaded")
+        onModulesChanged?()
+    }
+
     /// The node in a chain slot, if there is one.
     func chainNode(_ slot: String) -> Node? { chainNodes[slot] }
 

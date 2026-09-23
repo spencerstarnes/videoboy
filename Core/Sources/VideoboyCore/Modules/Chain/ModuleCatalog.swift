@@ -117,7 +117,8 @@ public final class ModuleCatalog {
     /// effects), for the Add menu's "Failed to load" group.
     public private(set) var unavailable: [ModuleDescriptor] = []
 
-    private let folders: [(URL, ISFLibraryEntry.Folder)]
+    /// Where ISF modules are looked for, in precedence order.
+    public let folders: [(URL, ISFLibraryEntry.Folder)]
 
     /// - Parameter folders: where to look for ISF files. Defaults to the three
     ///   standard folders; the self-QA points it at temporary ones.

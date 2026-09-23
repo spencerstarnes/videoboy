@@ -1377,7 +1377,9 @@ final class ShellController {
             switch isf.state {
             case .compiling: return "compiling…"
             case .failed(let reason): return "⚠ \(reason)"
-            case .ready: return nil
+            case .ready:
+                // A saved edit that does not work: the last good version keeps running.
+                return isf.reloadProblem.map { "⚠ edit not applied (running the last good version): \($0)" }
             }
         case let missing as MissingModuleNode:
             return "⚠ \(missing.reason)"
@@ -1520,6 +1522,10 @@ final class ShellController {
             panel.onReordered = { [weak self] names in self?.chainReordered(names, bus: bus) }
             refreshCards(bus)
         }
+        // Files added, edited or fixed in the ISF folders show up without a relaunch.
+        engine.onModulesChanged = { [weak self] in self?.refreshEffectPanels() }
+        engine.startWatchingModules()
+
         // ISF modules compile off the render path; a card says "compiling…" until its
         // program arrives, and why, if it never does.
         statusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in

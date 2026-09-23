@@ -74,6 +74,13 @@ public final class ISFNode: Node, ParameterApplying {
     /// Every input's current value BY NAME: the truth that survives a recompile, a
     /// hot reload, and values set before the program arrived.
     private var valuesByName: [String: [Double]] = [:]
+    /// The text last handed to `load`, so a hot reload can tell whether the file
+    /// really changed.
+    public private(set) var sourceText: String?
+    /// Why the most recent reload did not take, while the previous program keeps
+    /// drawing (ISF-PLAN §3.2: saving a broken file never blanks a live chain). Nil
+    /// once a reload succeeds.
+    public private(set) var reloadProblem: String?
 
     /// 0 bypasses the node entirely; 1 is fully applied. Driven by 02A.
     public var wetDry = 1.0
@@ -151,12 +158,21 @@ public final class ISFNode: Node, ParameterApplying {
         // The header first, here and now: it is a JSON parse, microseconds, and it is
         // what tells the registry which controls exist. A file that does not parse
         // fails visibly at once rather than after a compile that could never start.
+        sourceText = source
+        let document: ISFDocument
         do {
-            declare(try ISFDocument(source: source, name: name))
+            document = try ISFDocument(source: source, name: name)
         } catch {
-            markFailed("\(error)")
+            // A reload of a running module keeps the old program; a first load fails.
+            if program != nil {
+                reloadProblem = "\(error)"
+                Log.warn(.isf, "\(identifier): reload rejected, keeping the last good version: \(error)")
+            } else {
+                markFailed("\(error)")
+            }
             return
         }
+        declare(document)
         guard let metal = context else {
             markFailed("no Metal device")
             return
@@ -165,9 +181,21 @@ public final class ISFNode: Node, ParameterApplying {
         // saving a broken file never blanks a live chain.
         if program == nil { state = .compiling }
         compiler.compile(source: source, name: name, device: metal.device) { [weak self] result in
+            guard let self else { return }
             switch result {
-            case .success(let program): self?.install(program)
-            case .failure(let error): self?.markFailed(error.description)
+            case .success(let program):
+                self.reloadProblem = nil
+                self.install(program)
+            case .failure(let error):
+                if let running = self.program {
+                    // The edit does not compile: keep drawing what does, and put the
+                    // header back to the program's so controls match what is running.
+                    self.reloadProblem = error.description
+                    self.declare(running.document)
+                    Log.warn(.isf, "\(self.identifier): reload did not compile, keeping the last good version")
+                } else {
+                    self.markFailed(error.description)
+                }
             }
         }
     }
