@@ -1,0 +1,20 @@
+check:    isf/app
+verdict:  PASS
+when:     2026-09-23T23:09:05Z
+core:     0.3.0
+
+assertions (14/14 passed):
+  PASS  the Add menu offers built-ins, the imported shader by category, and the broken file greyed — Add effect… | Built-in | Composite · NTSC | Datamosh · H.264 | Feedback | Freeze | Colour | Echo / Trails | Transform | QA Test | QA Invert | Failed to load (1) | QA Broken
+  PASS  the Add menu is where a click lands — 
+  PASS  adding a shader puts its card in the chain and moves no existing card — cards: Freeze → Feedback → Echo / Trails → Composite · NTSC → Colour → Transform → Datamosh · H.264 → QA Invert
+  PASS  the card says ISF and has a fader per input, each mappable — badge ISF; faders ["x:amount→fx.one.isf-qa-invert", "x:mode→fx.one.isf-qa-invert", "x:tint.r→fx.one.isf-qa-invert", "x:tint.g→fx.one.isf-qa-invert", "x:tint.b→fx.one.isf-qa-invert", "x:tint.a→fx.one.isf-qa-invert"]
+  PASS  the shader compiles off the render path and its card stops saying 'compiling' — state Optional(VideoboyCore.ISFNodeState.ready), status ''
+  PASS  the card's switch and fader, clicked, reach the shader and invert the picture — hits yes/yes, x:amount 0.97, picture changed by 181.6
+  PASS  a choice input's readout says the choice — plain
+  PASS  dragging the card to the top rewires the graph, and the picture follows — chain mosh → transform → colour → composite → echo → feedback → freeze → isf-qa-invert; input was ["mix.one"], now ["fx.one.freeze"]; picture changed by 134.5
+  PASS  a MIDI mapping to an x: code moves the shader's input — amount [0.25]
+  PASS  saving the shader reloads it live, keeping its fader — picture changed by 169.7; amount still 1.00
+  PASS  a broken save keeps the last good version on screen and says why on the card — status '⚠ edit not applied (running the last good version): line 13:25: use of undeclare'
+  PASS  a shader dropped into the folder shows up in the Add menu — 
+  PASS  an ISF generator runs as channel A's source, animated, from the Generators tab — listed true, in source menu true, kind Optional(Videoboy.ChannelSourceKind.isfGenerator("isf.QA Stripes"))
+  PASS  ✕ removes the card and every copy of its node — cards: Freeze, Feedback, Echo / Trails, Composite · NTSC, Colour, Transform, Datamosh · H.264
