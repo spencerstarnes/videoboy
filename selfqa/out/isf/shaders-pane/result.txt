@@ -1,6 +1,6 @@
 check:    isf/shaders-pane
 verdict:  PASS
-when:     2026-09-23T17:38:30Z
+when:     2026-09-23T18:17:41Z
 core:     0.3.0
 
 notes:
@@ -8,12 +8,12 @@ notes:
   VDMX folder: Imported 7 modules.
     ALifeLEDWall: Ready — converts and compiles for Metal.
     AlgorithmAtEgdeOfUniverse: Ready — converts and compiles for Metal.
-    Broken Tesseract: ⚠ generated line 295:6: no viable overloaded '*='
+    Broken Tesseract: Ready — converts and compiles for Metal.
     GridZoomSandwich: Ready — converts and compiles for Metal.
     LogarithmicPinwheel: Ready — converts and compiles for Metal.
     Random Lines: Ready — converts and compiles for Metal.
     Tapestry Fract +: Ready — converts and compiles for Metal.
-  VDMX shaders ready: 6 of 7
+  VDMX shaders ready: 7 of 7
 
 assertions (13/13 passed):
   PASS  the Shaders tab is last in the sidebar, so no tab moved — save, defaults, outputs, inputs, hotKeys, midiMapping, emu, macros, shaders
