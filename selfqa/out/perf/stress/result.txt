@@ -1,23 +1,35 @@
 check:    perf/stress
 verdict:  PASS
-when:     2026-09-23T07:50:05Z
+when:     2026-09-23T17:29:21Z
 core:     0.3.0
 
 notes:
   loaded A=bars.dv, B=motion.dv, C=motion.m2v, D=motion.mov
+    fx.a.mosh: MoshStatistics(received: 293, emitted: 290, droppedKeyframes: 0, droppedCuts: 3, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.b.mosh: MoshStatistics(received: 292, emitted: 292, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.c.mosh: MoshStatistics(received: 292, emitted: 292, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.d.mosh: MoshStatistics(received: 292, emitted: 292, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.one.mosh: MoshStatistics(received: 292, emitted: 292, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.two.mosh: MoshStatistics(received: 292, emitted: 292, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
   display link at 30.0 Hz (33.33 ms/refresh)
   240 frames rendered in 8 s = 30.00/s; 0 dropped refreshes
-  whole tick: mean 8.85 ms, p95 10.53 ms, worst 20.04 ms
-    of which graph: mean 8.48 ms, worst 19.60 ms; UI/onFrame: mean 0.37 ms
-    node source.b: 2.44 ms/tick
-    node source.a: 2.06 ms/tick
-    node source.d: 1.60 ms/tick
-    node source.c: 0.20 ms/tick
-    node fx.a.transform: 0.07 ms/tick
-  window hidden: 120 frames in 4 s, worst tick 21.19 ms
+  whole tick: mean 8.75 ms, p95 9.11 ms, worst 25.44 ms
+    of which graph: mean 8.45 ms, worst 25.16 ms; UI/onFrame: mean 0.29 ms
+    node source.b: 1.67 ms/tick
+    node source.a: 1.38 ms/tick
+    node source.d: 1.17 ms/tick
+    node fx.a.mosh: 0.21 ms/tick
+    node fx.d.mosh: 0.20 ms/tick
+    node fx.one.mosh: 0.19 ms/tick
+    node fx.c.mosh: 0.19 ms/tick
+    node fx.b.mosh: 0.19 ms/tick
+    node fx.two.mosh: 0.18 ms/tick
+    node source.c: 0.14 ms/tick
+  window hidden: 120 frames in 4 s, worst tick 27.50 ms
 
-assertions (4/4 passed):
+assertions (5/5 passed):
+  PASS  every datamosh node is encoding and decoding under load — 6 of 6 running with frames flowing
   PASS  the graph renders at the 29.97 content rate under full load — 30.00 frames/s against 29.97
   PASS  under 1% of display-link ticks dropped under full load — 0 dropped of 240
-  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 20.04 ms, p95 10.53 ms, mean 8.85 ms
-  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 21.19 ms
+  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 25.44 ms, p95 9.11 ms, mean 8.75 ms
+  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 27.50 ms
