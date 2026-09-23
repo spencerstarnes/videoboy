@@ -1,19 +1,19 @@
 check:    mosh/app
 verdict:  PASS
-when:     2026-09-23T17:42:41Z
+when:     2026-09-23T18:22:07Z
 core:     0.3.0
 
 notes:
   mosh fader: enabled true, in window true, value 0.0
   app active false, window key false, fader accepts first mouse true
   after the click the fader reads 0.7107055961070559
-  fx.one.mosh over the cut: MoshStatistics(received: 97, emitted: 65, droppedKeyframes: 0, droppedCuts: 30, droppedRandom: 2, bloomed: 0, passedUnchanged: 0)
+  fx.one.mosh over the cut: MoshStatistics(received: 96, emitted: 64, droppedKeyframes: 0, droppedCuts: 30, droppedRandom: 2, bloomed: 0, passedUnchanged: 0)
 
 assertions (7/7 passed):
   PASS  the Datamosh card is last in the chain, so no existing card moved — Transform → Composite · NTSC → Colour → Echo / Trails → Feedback → MX-1 → Datamosh · H.264
   PASS  a click on the Datamosh switch lands on the switch — hitTest returns the switch
   PASS  switching the card on reaches the bus mosh node — switch on, fx.one.mosh wet/dry 1.00
   PASS  a click on the mosh fader lands on it and sets the bus node's amount — hit yes, fx.one.mosh 35B = 0.71
-  PASS  the bus mosh node is running and dropped the cut — running true, cut frames kept from the decoder: 27
-  PASS  after the cut, clean shows B and moshed shows something else — mean |Δ| from B's own picture: clean 0.0, moshed 110.6
+  PASS  the bus mosh node is running and dropped the cut — running true, cut frames kept from the decoder: 28
+  PASS  after the cut, clean shows B and moshed shows something else — mean |Δ| from B's own picture: clean 0.0, moshed 111.0
   PASS  pulling mosh to zero releases the encoder — running false
