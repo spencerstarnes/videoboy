@@ -36,5 +36,9 @@
 	<string>Videoboy reads the DVC100 capture device to verify the analog video signal it is sending out, and to use live capture as a video source.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Videoboy reads audio input for beat detection, which drives the musical clock.</string>
+	<!-- Required for CLOCK ▸ System Audio and per-app sources (Core Audio process
+	     taps, macOS 14.2+). Without it the tap is refused permission silently. -->
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Videoboy listens to the music this Mac is playing — all of it, or one app you choose — to detect the beat that drives the musical clock. Nothing is recorded.</string>
 </dict>
 </plist>

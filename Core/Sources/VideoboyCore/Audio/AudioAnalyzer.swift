@@ -7,7 +7,7 @@
 //  Inputs  : mono float samples, -1...1.
 //  Outputs : an `AudioFrame` of measurements.
 //  Connects: the App's AVAudioEngine tap supplies the samples; AudioReactivityBus
-//            distributes the results; TempoEstimator consumes the onset envelope.
+//            distributes the results; BeatTracker consumes `onsetStrength`.
 //  Extend  : add a measurement to `AudioFrame` and compute it in `analyze`. Keep
 //            this type free of any audio-session or device concept — it takes
 //            numbers and returns numbers, which is what makes it testable with
@@ -32,13 +32,26 @@ public struct AudioFrame: Equatable, Sendable {
     public let flux: Double
     /// True when this window looks like the start of a new sound.
     public let onset: Bool
+    /// Log-compressed, log-frequency spectral flux — the signal the beat tracker
+    /// listens to. Two changes from `flux`, both standard (Böck & Widmer's
+    /// SuperFlux, Klapuri's band-wise flux):
+    ///  - measured over log-spaced bands, so every octave has an equal say. Summed
+    ///    over raw FFT bins, the treble owns most of the bins and a hi-hat outvotes
+    ///    the kick drum, which is how a tracker ends up locked to the hats.
+    ///  - log(1 + C·level) rather than level, so a quiet snare still counts next to
+    ///    a loud sustained bass line.
+    public let onsetStrength: Double
 
-    public init(rms: Double, peak: Double, bands: [Double], flux: Double, onset: Bool) {
+    public init(
+        rms: Double, peak: Double, bands: [Double], flux: Double, onset: Bool,
+        onsetStrength: Double = 0
+    ) {
         self.rms = rms
         self.peak = peak
         self.bands = bands
         self.flux = flux
         self.onset = onset
+        self.onsetStrength = onsetStrength
     }
 
     /// A window of silence.
@@ -68,6 +81,16 @@ public final class AudioAnalyzer {
 
     /// Magnitude spectrum of the previous window, for spectral flux.
     private var previousMagnitudes: [Float]
+    /// Log-compressed band levels of the previous window, for `onsetStrength`.
+    private var previousCompressed: [Float]
+    /// FFT bin ranges of the log-spaced bands `onsetStrength` is measured over.
+    private let onsetBands: [ClosedRange<Int>]
+    /// The Hann window, computed once. It depends only on the window size.
+    private let hann: [Float]
+    /// Compression constant for `onsetStrength`: log(1 + C·level). Magnitudes here
+    /// are scaled by 1/windowSize, so a full-scale tone peaks around 0.25; C = 1000
+    /// puts the knee of the curve around -50 dBFS, below anything musical.
+    private let compression: Float = 1000
     /// Recent flux values, for the adaptive onset threshold.
     private var fluxHistory: [Double] = []
     /// How many windows of flux history the threshold adapts over. About a second.
@@ -84,6 +107,11 @@ public final class AudioAnalyzer {
         self.log2Size = vDSP_Length(log2(Double(AudioAnalyzer.windowSize)))
         self.fftSetup = vDSP_create_fftsetup(log2Size, FFTRadix(kFFTRadix2))
         self.previousMagnitudes = Array(repeating: 0, count: AudioAnalyzer.windowSize / 2)
+        self.onsetBands = AudioAnalyzer.logBands(sampleRate: sampleRate)
+        self.previousCompressed = Array(repeating: 0, count: onsetBands.count)
+        var hann = [Float](repeating: 0, count: AudioAnalyzer.windowSize)
+        vDSP_hann_window(&hann, vDSP_Length(AudioAnalyzer.windowSize), Int32(vDSP_HANN_NORM))
+        self.hann = hann
         if fftSetup == nil {
             Log.error(.clock, "could not create an FFT setup; audio bands will read zero")
         }
@@ -120,8 +148,6 @@ public final class AudioAnalyzer {
 
         // A Hann window before the FFT, or every window boundary looks like an edge
         // and smears energy across the whole spectrum.
-        var hann = [Float](repeating: 0, count: size)
-        vDSP_hann_window(&hann, vDSP_Length(size), Int32(vDSP_HANN_NORM))
         vDSP_vmul(window, 1, hann, 1, &window, 1, vDSP_Length(size))
 
         let halfSize = size / 2
@@ -158,6 +184,20 @@ public final class AudioAnalyzer {
         }
         previousMagnitudes = magnitudes
 
+        // The same, over log-spaced bands and log-compressed, for the beat tracker.
+        var compressed = [Float](repeating: 0, count: onsetBands.count)
+        for (bandIndex, bins) in onsetBands.enumerated() {
+            var sum: Float = 0
+            for bin in bins { sum += magnitudes[bin] }
+            compressed[bandIndex] = log(1 + compression * sum / Float(bins.count))
+        }
+        var onsetStrength = 0.0
+        for index in 0..<compressed.count {
+            let difference = Double(compressed[index] - previousCompressed[index])
+            if difference > 0 { onsetStrength += difference }
+        }
+        previousCompressed = compressed
+
         let bands = bandEnergies(magnitudes: magnitudes, halfSize: halfSize)
         let onset = detectOnset(flux: flux)
 
@@ -166,8 +206,31 @@ public final class AudioAnalyzer {
             peak: min(Double(peak), 1),
             bands: bands,
             flux: flux,
-            onset: onset
+            onset: onset,
+            onsetStrength: onsetStrength
         )
+    }
+
+    /// Log-spaced bands from 40 Hz to 16 kHz, about a third of an octave each, as
+    /// FFT bin ranges. At the bottom a third of an octave is narrower than one bin,
+    /// so those bands collapse to a bin apiece and duplicates are dropped.
+    static func logBands(sampleRate: Double) -> [ClosedRange<Int>] {
+        let binWidth = sampleRate / Double(windowSize)
+        let lastBin = windowSize / 2 - 1
+        let low = 40.0, high = min(16_000.0, sampleRate / 2 - binWidth)
+        let bandCount = 26
+        var bands: [ClosedRange<Int>] = []
+        var previousTop = 0
+        for index in 0..<bandCount {
+            let bottomHz = low * pow(high / low, Double(index) / Double(bandCount))
+            let topHz = low * pow(high / low, Double(index + 1) / Double(bandCount))
+            let bottom = max(Int((bottomHz / binWidth).rounded()), previousTop + 1)
+            let top = min(max(Int((topHz / binWidth).rounded()), bottom), lastBin)
+            guard bottom <= top else { continue }
+            bands.append(bottom...top)
+            previousTop = top
+        }
+        return bands
     }
 
     /// Sums magnitudes into the configured bands.
@@ -226,6 +289,7 @@ public final class AudioAnalyzer {
     /// Clears the analyser's history. Used when the input changes.
     public func reset() {
         previousMagnitudes = Array(repeating: 0, count: AudioAnalyzer.windowSize / 2)
+        previousCompressed = Array(repeating: 0, count: onsetBands.count)
         fluxHistory.removeAll()
         windowsSinceOnset = 0
     }

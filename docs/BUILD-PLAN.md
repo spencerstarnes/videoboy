@@ -205,9 +205,15 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   expose the video-rate ones as mappable modules. Not started.
 - **Generator colours are not editable.** Each generator has two colours with an
   out-of-gamut check, but no colour well in the UI.
-- **Audio does not drive transport phase, only tempo.** SPEC 4c mentions phase; the
-  estimator deliberately does not guess where the downbeat is, because guessing it
-  badly is worse than leaving it to tap tempo.
+- **Audio aligns the beat, not the bar.** Since 2026-09-23 beat detection drives
+  transport phase as well as tempo (`BeatTracker.phaseCorrection`, nudged four times
+  a second while locked). Which beat is "one" of the bar is still not guessed, and
+  output latency to the screen is not compensated — both would need a per-rig
+  offset control (SPEC 4b's "offset/nudge") rather than an algorithm.
+- **Beat detection picks one metrical level and sticks to it.** On drum & bass it may
+  lock at 92.8 rather than 185.6, or at a 4:5 relation (148); it then holds that
+  level rather than wandering between them. A ×2 / ÷2 control beside the tempo would
+  let a performer correct the level in one click. Not built.
 - **Overscan is a toggle, not a continuous control.** The 82A parameter exists and the
   preview overlay reads it; the settings bar only offers on/off.
 - **WeatherStar 3000 / 4000 under the EMU tab.** Requested 2026-09-18. Run the two

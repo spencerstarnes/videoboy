@@ -59,6 +59,7 @@ final class ShellController {
             self?.shell.flashTempoChange()
             self?.shell.toolbar.setTempo(tempo)
         }
+        engine.onBeatReport = { [weak self] report in self?.showBeatReport(report) }
         engine.onFrame = { [weak self] engine in self?.refresh(from: engine) }
     }
 
@@ -2188,7 +2189,7 @@ final class ShellController {
                 self.engine.audioReactivity.assign(ReactivityAssignment(
                     tap: tap, shape: shape, slot: slot, code: parameter))
                 panel.setEffectModulationActive(effect: name, source: .audio, isActive: true)
-                if self.engine.clockSource != .audio {
+                if !self.engine.clockSource.isAudio {
                     // An audio mapping with no audio running would silently do
                     // nothing, which is the kind of thing found out mid-set. Worth
                     // saying once; not worth saying to someone who maps ten of them
@@ -2197,7 +2198,7 @@ final class ShellController {
                         .audioMappingWithoutAudioClock,
                         store: self.preferences,
                         title: "Audio input is not running",
-                        detail: "The mapping is saved, but nothing will move until you set Clock to Audio in the toolbar.",
+                        detail: "The mapping is saved, but nothing will move until you choose an audio source from CLOCK in the toolbar.",
                         buttons: ["OK"]
                     )
                 }
@@ -2273,29 +2274,71 @@ final class ShellController {
             guard let subdivision = Subdivision(rawValue: name) else { return }
             self?.engine.beatSubdivision = subdivision
         }
-        shell.toolbar.onClockSourceChanged = { [weak self] choice in
-            guard let self else { return false }
-            switch choice {
-            case "Audio":
-                let started = self.engine.setClockSource(.audio)
-                if !started {
-                    self.presentNotice(
-                        "Audio clock unavailable",
-                        "Videoboy could not open an audio input. Check that an input device is connected and that microphone access is allowed in System Settings ▸ Privacy & Security ▸ Microphone."
-                    )
-                }
-                return started
-            case "Internal":
-                return self.engine.setClockSource(.internalTransport)
-            default:
-                // MIDI clock and Ableton Link are not built yet. Saying so is better
-                // than selecting them and quietly doing nothing.
-                self.presentNotice(
-                    "\(choice) is not built yet",
-                    "The clock currently runs from its internal transport or from audio beat detection. MIDI clock and Link are later work."
-                )
-                return false
+        shell.toolbar.onClockMenuRequested = { [weak self] anchor in
+            guard let self else { return }
+            ClockSourceMenu.present(current: self.engine.clockSource, from: anchor) { [weak self] choice in
+                self?.chooseClockSource(choice)
             }
+        }
+    }
+
+    /// Switches the clock source and says what happened.
+    private func chooseClockSource(_ choice: ClockSource) {
+        if engine.setClockSource(choice) {
+            shell.toolbar.setClockSource(engine.clockSource.displayName)
+            if choice.isAudio {
+                shell.toolbar.setSyncStatus(SyncStatus(text: "listening", tone: .dim))
+            } else {
+                shell.toolbar.setSyncStatus(engine.transport.isRunning ? "running" : "stopped")
+            }
+            return
+        }
+        // The engine kept the old source; the field already shows it. Say why.
+        guard case .audio(let source) = choice else { return }
+        presentNotice(
+            "Can't listen to \(source.longName)",
+            engine.audioClockFailure ?? "Videoboy could not open that audio source."
+        )
+    }
+
+    /// Shows what beat detection is doing, and acknowledges a new tempo.
+    ///
+    /// Four reports a second arrive here; the readout only redraws when its text or
+    /// colour actually changes, and the flash only fires on a lock or relock — the
+    /// moments the tempo genuinely jumped — never for drift.
+    private func showBeatReport(_ report: BeatTrackerReport) {
+        guard engine.clockSource.isAudio else { return }
+        let status: SyncStatus
+        switch report.state {
+        case .silent:
+            status = SyncStatus(text: "no signal", tone: .warning)
+        case .listening:
+            status = SyncStatus(text: "listening", tone: .dim)
+        case .holding:
+            status = SyncStatus(text: "holding", tone: .dim)
+        case .locked:
+            status = SyncStatus(
+                text: String(format: "locked %.0f%%", report.confidence * 100), tone: .locked)
+        }
+        shell.toolbar.setSyncStatus(status)
+        if let tempo = report.beatsPerMinute, report.state != .silent {
+            shell.toolbar.setTempo(tempo)
+        }
+        switch report.event {
+        case .locked(let tempo):
+            Log.info(.clock, String(format: "beat detection locked at %.1f BPM", tempo))
+            shell.toolbar.flashDetectedTempo()
+            shell.flashTempoChange()
+        case .relocked(let from, let to):
+            Log.info(.clock, String(format: "beat detection moved %.1f -> %.1f BPM", from, to))
+            shell.toolbar.flashDetectedTempo()
+            shell.flashTempoChange()
+        case .lost:
+            Log.info(.clock, "beat detection lost the pulse; holding the tempo")
+        case .silenced:
+            Log.info(.clock, "beat detection hears silence")
+        case nil:
+            break
         }
     }
 
@@ -2538,18 +2581,11 @@ final class ShellController {
             shell.statusBar.setMIDIDevice(engine.midi.connectedSourceNames.first)
             shell.grid.panels.settingsBarBody.setStreamStatus(router.streamSummary)
 
-            // The sync readout says what the clock is actually doing, including how
-            // confident audio detection is — a number the performer needs when
-            // deciding whether to trust it or tap the tempo in by hand.
-            if engine.clockSource == .audio {
-                if let estimate = engine.latestTempoEstimate {
-                    shell.toolbar.setTempo(engine.transport.beatsPerMinute)
-                    shell.toolbar.setSyncStatus(
-                        String(format: "audio %.0f%%", estimate.confidence * 100))
-                } else {
-                    shell.toolbar.setSyncStatus("listening")
-                }
-            } else {
+            // The sync readout says what the clock is actually doing. With audio as
+            // the clock, `showBeatReport` owns it — lock state and confidence, the
+            // number the performer needs when deciding whether to trust detection
+            // or tap the tempo in by hand.
+            if !engine.clockSource.isAudio {
                 shell.toolbar.setSyncStatus(engine.transport.isRunning ? "running" : "stopped")
             }
         }

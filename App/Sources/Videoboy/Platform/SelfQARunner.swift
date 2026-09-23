@@ -30,6 +30,8 @@ enum SelfQARunner {
             verdict = runLoopback()
         case "displays":
             verdict = runDisplays()
+        case "beat":
+            verdict = BeatSelfQA.run()
         case "ui":
             verdict = UISelfQA.run()
         case "playback":

@@ -170,7 +170,7 @@ enum ModulationMenus {
 }
 
 /// Holds a closure so an `NSMenuItem` can call it.
-private final class ClosureMenuTarget: NSObject {
+final class ClosureMenuTarget: NSObject {
     private let action: () -> Void
 
     init(action: @escaping () -> Void) {

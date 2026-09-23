@@ -123,6 +123,17 @@ public final class Transport {
         Log.info(.clock, "transport stopped at beat \(String(format: "%.2f", anchorBeats))")
     }
 
+    /// Moves the musical position by a fraction of a beat without touching tempo.
+    ///
+    /// For phase correction: audio beat tracking uses this to pull the beat of the
+    /// clock onto the beat of the music. Positive moves the clock ahead; negative
+    /// holds it back. Callers keep each step small — the scheduler would skip a
+    /// boundary that a large forward jump crossed.
+    public func shiftPosition(byBeats delta: Double) {
+        guard delta.isFinite else { return }
+        anchorBeats += delta
+    }
+
     /// Total beats elapsed at a host time. Frozen when stopped.
     public func beats(atHostTime hostTime: Double) -> Double {
         guard isRunning else { return anchorBeats }

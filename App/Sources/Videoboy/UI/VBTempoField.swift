@@ -140,15 +140,24 @@ final class VBTempoField: NSControl {
     /// A brief light, so a tap that lands is acknowledged.
     ///
     /// It has to be: the tempo does not move until the fourth tap, so without this the
-    /// first three taps produce no feedback at all and feel ignored.
-    private func flash() {
+    /// first three taps produce no feedback at all and feel ignored. Beat detection
+    /// uses a longer one when it locks onto a new tempo, so a number that changed on
+    /// its own is seen to have changed.
+    func flash(duration: TimeInterval = 0.09) {
         isFlashing = true
         needsDisplay = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { [weak self] in
-            self?.isFlashing = false
-            self?.needsDisplay = true
+        flashGeneration += 1
+        let generation = flashGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            // A newer flash owns the light; let it end it.
+            guard let self, self.flashGeneration == generation else { return }
+            self.isFlashing = false
+            self.needsDisplay = true
         }
     }
+
+    /// Which flash is current, so an early one does not cut a later one short.
+    private var flashGeneration = 0
 
     // MARK: - Drawing
 

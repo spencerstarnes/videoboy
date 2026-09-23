@@ -1,0 +1,29 @@
+check:    phase-4/beat-detection
+verdict:  PASS
+when:     2026-09-23T07:51:59Z
+core:     0.3.0
+
+notes:
+  from Internal: checked = ["Internal Clock"]
+  from System: checked = ["System Audio — everything this Mac plays"]
+  from Input: checked = ["Audio Input — microphone or line in"]
+  from Music: checked = []
+  tap heard peak RMS 0.1454 over 21.1 s of audio
+
+assertions (16/16 passed):
+  PASS  from Internal: Internal is offered and enabled — Internal Clock | Detect the beat from | System Audio — everything this Mac plays | Audio Input — microphone or line in | Detect the beat from one app | Mail | Safari | Terminal
+  PASS  from Internal: no MIDI clock or Link choice — 10 items
+  PASS  from Internal: choosing Internal returns to Internal — handler received internalTransport
+  PASS  from System: Internal is offered and enabled — Internal Clock | Detect the beat from | System Audio — everything this Mac plays | Audio Input — microphone or line in | Detect the beat from one app | Mail | Safari | Terminal
+  PASS  from System: no MIDI clock or Link choice — 10 items
+  PASS  from System: choosing Internal returns to Internal — handler received internalTransport
+  PASS  from Input: Internal is offered and enabled — Internal Clock | Detect the beat from | System Audio — everything this Mac plays | Audio Input — microphone or line in | Detect the beat from one app | Mail | Safari | Terminal
+  PASS  from Input: no MIDI clock or Link choice — 10 items
+  PASS  from Input: choosing Internal returns to Internal — handler received internalTransport
+  PASS  from Music: Internal is offered and enabled — Internal Clock | Detect the beat from | System Audio — everything this Mac plays | Audio Input — microphone or line in | Detect the beat from one app | Mail | Safari | Terminal
+  PASS  from Music: no MIDI clock or Link choice — 10 items
+  PASS  from Music: choosing Internal returns to Internal — handler received internalTransport
+  PASS  clock and sync text changes move no control — 48 combinations, cluster frame (608.0, 5.0, 384.5, 42.0)
+  PASS  system audio tap starts — tap running
+  PASS  tracker locks on the system audio — locked after 5.9 s
+  PASS  locked tempo matches the loop — 123.96 BPM for a 124 BPM loop

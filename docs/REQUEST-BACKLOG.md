@@ -76,11 +76,12 @@ Shift-to-map currently reaches faders only. It should also reach CUT, FADE, FLIP
 FLOP — momentary actions, not continuous parameters, so the mapping stores a trigger
 rather than a value.
 
-### 9. Per-app audio beat detection
+### 9. Per-app audio beat detection — BUILT 2026-09-23
 A third clock source: beat detection from ONE application's audio (Apple Music), the
 way VDMX offers system hardware or a single app.
-**Already probed and viable** — Core Audio process taps work here (34 process objects
-enumerable, `AudioHardwareCreateProcessTap` returns `noErr`).
+**Built** on Core Audio process taps (`SystemAudioTap`): CLOCK ▸ System Audio, Audio
+Input, or any running app with audio open. The tracker was rewritten at the same time
+(`BeatTracker`) and the unbuilt MIDI clock / Link choices removed from CLOCK.
 
 ### 10. Now-playing overlay + Engine DJ
 Song title, album art, album title, progress bar, a few templates matching the app's

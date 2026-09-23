@@ -179,7 +179,8 @@ Suspected, each needing a runtime confirmation the audit could not make:
   architectural: one instance per channel, 20 full-frame passes instead of 10. Check
   the budget first — the per-channel benchmark already reads 21.08 ms plus 10.54 ms of
   bus chains against 33.4 ms, which is far tighter than the 11.4 ms in CLAUDE.md.
-- **Per-app audio beat detection** — probed and viable, never built.
+- ~~**Per-app audio beat detection**~~ — built 2026-09-23: CLOCK ▸ System Audio /
+  Audio Input / one app, on Core Audio process taps.
 - **Now-playing / Engine DJ** — blocked on an Automation permission granted at the
   keyboard, and on hardware.
 

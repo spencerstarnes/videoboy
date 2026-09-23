@@ -12,7 +12,9 @@
 //  Why not popups: a popup for four choices costs a click to open, a read, a click
 //  to choose, and it covers the thing it belongs to while open. A field that cycles
 //  on click costs one click and never occludes anything. Popups earn their place
-//  when a list is long enough to need scanning — these are not.
+//  when a list is long enough to need scanning — these are not. The exception is
+//  CLOCK, which now names whatever apps are running and so is a menu
+//  (ClockSourceMenu); it is still one click on the same field.
 //
 
 import AppKit
@@ -21,8 +23,8 @@ import VideoboyCore
 /// The recessed tempo and clock readout.
 final class TransportDisplayView: NSView {
 
-    /// Called when the clock source field is clicked, to advance it.
-    var onClockSourceCycled: (() -> Void)?
+    /// Called when the clock source field is clicked, to open its menu.
+    var onClockSourceClicked: (() -> Void)?
     /// Called when the subdivision field is clicked, to advance it.
     var onSubdivisionCycled: (() -> Void)?
     /// Called when the tempo is edited directly.
@@ -57,7 +59,12 @@ final class TransportDisplayView: NSView {
     /// against the thing it changes, and dragging it covers the case tapping cannot:
     /// setting an exact figure you already know.
     private let tempoField = VBTempoField()
-    private let clockField = CyclingField(caption: "CLOCK", value: "Internal")
+    /// Sized for the longest value it can show (an app name cut to ten characters),
+    /// so choosing Spotify does not widen the cluster and slide the tempo, the keys
+    /// and everything else in it sideways.
+    private let clockField = CyclingField(caption: "CLOCK", value: "Internal", valueWidthSample: "PRORES 422")
+    /// The clock field, for anchoring its menu.
+    var clockSourceAnchor: NSView { clockField }
     private let subdivisionField = CyclingField(caption: "DIV", value: "1/4")
     private let syncLabel = NSTextField(labelWithString: "STOPPED")
     private var beatLights: [NSView] = []
@@ -93,8 +100,17 @@ final class TransportDisplayView: NSView {
 
         syncLabel.font = Theme.Font.osd(size: 10)
         syncLabel.textColor = Theme.Color.displayDimText
+        syncLabel.lineBreakMode = .byClipping
+        // Fixed width, for the same reason as the clock field: this text changes
+        // several times a second while audio is locking, and a label that resized with
+        // it would shove the whole cluster about under the performer's hands.
+        let widest = SyncStatus.allTexts.map {
+            ($0 as NSString).size(withAttributes: [.font: syncLabel.font as Any]).width
+        }.max() ?? 60
+        syncLabel.translatesAutoresizingMaskIntoConstraints = false
+        syncLabel.widthAnchor.constraint(equalToConstant: ceil(widest) + 2).isActive = true
 
-        clockField.onClick = { [weak self] in self?.onClockSourceCycled?() }
+        clockField.onClick = { [weak self] in self?.onClockSourceClicked?() }
         subdivisionField.onClick = { [weak self] in self?.onSubdivisionCycled?() }
 
         let tempoColumn = Controls.column([
@@ -171,7 +187,24 @@ final class TransportDisplayView: NSView {
     }
 
     func setSyncStatus(_ text: String) {
-        syncLabel.stringValue = text.uppercased()
+        setSyncStatus(SyncStatus(text: text, tone: .dim))
+    }
+
+    func setSyncStatus(_ status: SyncStatus) {
+        let text = status.text.uppercased()
+        if syncLabel.stringValue != text { syncLabel.stringValue = text }
+        let colour: NSColor
+        switch status.tone {
+        case .dim: colour = Theme.Color.displayDimText
+        case .locked: colour = Theme.Color.displayLocked
+        case .warning: colour = Theme.Color.displayWarning
+        }
+        if syncLabel.textColor != colour { syncLabel.textColor = colour }
+    }
+
+    /// Lights the tempo readout to say the detected tempo just changed.
+    func flashDetectedTempo() {
+        tempoField.flash(duration: 0.6)
     }
 
     func setBeat(_ beatInBar: Int) {
@@ -182,6 +215,16 @@ final class TransportDisplayView: NSView {
                 : Theme.Color.displayDimText.withAlphaComponent(0.3).cgColor
         }
     }
+}
+
+/// What the sync readout says, and how loudly.
+struct SyncStatus: Equatable {
+    enum Tone { case dim, locked, warning }
+    let text: String
+    let tone: Tone
+
+    /// Every string the readout can show, longest-case, for sizing it once.
+    static let allTexts = ["STOPPED", "RUNNING", "LISTENING", "LOCKED 100%", "HOLDING", "NO SIGNAL"]
 }
 
 /// A caption above a value, where clicking the value advances it.
@@ -204,7 +247,9 @@ final class CyclingField: NSControl, AuditableControl {
     private var isHovering = false
     private var trackingArea: NSTrackingArea?
 
-    init(caption: String, value: String) {
+    /// - Parameter valueWidthSample: when set, the value label is held at this
+    ///   string's width, so changing the value never resizes the field.
+    init(caption: String, value: String, valueWidthSample: String? = nil) {
         self.value = value
         self.valueLabel = NSTextField(labelWithString: value.uppercased())
         super.init(frame: .zero)
@@ -223,6 +268,13 @@ final class CyclingField: NSControl, AuditableControl {
 
         valueLabel.font = Theme.Font.osd(size: 10)
         valueLabel.textColor = Theme.Color.displayText
+        if let valueWidthSample {
+            let width = (valueWidthSample.uppercased() as NSString)
+                .size(withAttributes: [.font: valueLabel.font as Any]).width
+            valueLabel.lineBreakMode = .byTruncatingTail
+            valueLabel.translatesAutoresizingMaskIntoConstraints = false
+            valueLabel.widthAnchor.constraint(equalToConstant: ceil(width) + 2).isActive = true
+        }
 
         let row = Controls.row([captionLabel, valueLabel], spacing: 6)
         row.translatesAutoresizingMaskIntoConstraints = false

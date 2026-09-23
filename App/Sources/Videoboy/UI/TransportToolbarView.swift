@@ -34,7 +34,6 @@ final class TransportToolbarView: NSView {
     private var isRunning = false
     /// The recessed cluster: tempo, clock and subdivision.
     let display = TransportDisplayView(frame: .zero)
-    private var clockSourceName = "Internal"
     private var subdivisionName = "1/4"
 
     /// The codec currently chosen, read off the cluster's format field.
@@ -91,9 +90,9 @@ final class TransportToolbarView: NSView {
     /// Called when record is pressed, with the new recording state.
     var onRecordToggled: ((Bool) -> Void)?
 
-    /// Called when the clock source changes. The app answers false if it could not
-    /// switch, and the popup snaps back.
-    var onClockSourceChanged: ((String) -> Bool)?
+    /// Called when the CLOCK field is clicked, with the view to anchor a menu on.
+    /// The app builds the menu: its choices (running apps) are only known there.
+    var onClockMenuRequested: ((NSView) -> Void)?
 
     /// Lights the Learn reminder while Shift is held, so the key and the highlighted
     /// controls are visibly the same thing.
@@ -143,7 +142,10 @@ final class TransportToolbarView: NSView {
         // The cluster is CENTRED, with panels on the left and record on the right.
         // Tempo and clock are what a performer glances at constantly, so they belong
         // in the middle of the window rather than tucked into a corner of a toolbar.
-        display.onClockSourceCycled = { [weak self] in self?.cycleClockSource() }
+        display.onClockSourceClicked = { [weak self] in
+            guard let self else { return }
+            self.onClockMenuRequested?(self.display.clockSourceAnchor)
+        }
         display.onSubdivisionCycled = { [weak self] in self?.cycleSubdivision() }
         display.onTap = { [weak self] in self?.onTap?() }
         display.translatesAutoresizingMaskIntoConstraints = false
@@ -193,15 +195,9 @@ final class TransportToolbarView: NSView {
         ])
     }
 
-    /// Advances the clock source, reporting back if the app refuses the change.
-    private func cycleClockSource() {
-        let sources = ["Internal", "Audio", "MIDI Clock", "Link"]
-        let currentIndex = sources.firstIndex(of: clockSourceName) ?? 0
-        let next = sources[(currentIndex + 1) % sources.count]
-        if onClockSourceChanged?(next) == true {
-            clockSourceName = next
-            display.setClockSource(next)
-        }
+    /// Shows the clock source the app settled on.
+    func setClockSource(_ name: String) {
+        display.setClockSource(name)
     }
 
     /// Advances the subdivision.
@@ -316,5 +312,14 @@ final class TransportToolbarView: NSView {
     /// Updates the sync readout with what the clock is actually doing.
     func setSyncStatus(_ text: String) {
         display.setSyncStatus(text)
+    }
+
+    func setSyncStatus(_ status: SyncStatus) {
+        display.setSyncStatus(status)
+    }
+
+    /// Acknowledges a tempo that beat detection just locked onto.
+    func flashDetectedTempo() {
+        display.flashDetectedTempo()
     }
 }

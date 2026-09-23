@@ -8,7 +8,8 @@
 //            estimate 120 — so "it moves" is not mistaken for "it is right".
 //  Inputs   : generated sample buffers; no audio device.
 //  Outputs  : assertions.
-//  Connects : AudioAnalyzer, AudioReactivityBus, TempoEstimator.
+//  Connects : AudioAnalyzer, AudioReactivityBus, TempoEstimator. BeatTracker has
+//             its own file, BeatTrackerTests.
 //
 
 import XCTest
@@ -128,15 +129,16 @@ final class AudioTests: XCTestCase {
         // A synthetic onset envelope: a spike every beat at exactly 120 BPM.
         let targetBPM = 120.0
         let windowsPerBeat = windowsPerSecond * 60.0 / targetBPM
-        for window in 0..<Int(windowsPerSecond * 4) {
+        for window in 0..<Int(windowsPerSecond * TempoEstimator.historySeconds) {
             let positionInBeat = Double(window).truncatingRemainder(dividingBy: windowsPerBeat)
             estimator.add(flux: positionInBeat < 1.0 ? 1.0 : 0.02)
         }
 
         let estimate = try! XCTUnwrap(estimator.estimate())
-        // Within a couple of BPM: the envelope is quantised to window boundaries, so
-        // exact recovery is not possible and not needed.
-        XCTAssertEqual(estimate.beatsPerMinute, targetBPM, accuracy: 4.0)
+        // The envelope is quantised to ~21 ms windows, which alone would only allow
+        // 117.2 or 122.3 here. The comb's interpolated harmonics must see through
+        // that: this used to be allowed ±4 BPM and flipped between the two.
+        XCTAssertEqual(estimate.beatsPerMinute, targetBPM, accuracy: 0.5)
         XCTAssertGreaterThan(estimate.confidence, 0.1, "a clean pulse train must be confident")
     }
 

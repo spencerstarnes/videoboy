@@ -37,15 +37,26 @@ enum ChannelSourceKind: Equatable {
 }
 
 /// Where the musical clock's tempo comes from (SPEC 4b).
-enum ClockSource: String {
+///
+/// MIDI clock and Ableton Link were once listed here as "coming later". They were
+/// removed rather than left as dead choices: the toolbar cycled through them, refused
+/// them as unbuilt, and so could never get past Audio back to Internal.
+enum ClockSource: Equatable {
     case internalTransport
-    case audio
+    /// Beat detection, listening to the given source.
+    case audio(AudioCaptureSource)
 
+    /// Short enough for the toolbar's CLOCK field.
     var displayName: String {
         switch self {
         case .internalTransport: "Internal"
-        case .audio: "Audio"
+        case .audio(let source): source.shortName
         }
+    }
+
+    var isAudio: Bool {
+        if case .audio = self { return true }
+        return false
     }
 }
 
@@ -129,8 +140,15 @@ final class Engine {
     /// Where the transport gets its tempo from.
     private(set) var clockSource: ClockSource = .internalTransport
 
-    /// The most recent tempo estimate from audio, for the toolbar's sync indicator.
-    private(set) var latestTempoEstimate: TempoEstimate?
+    /// The most recent beat tracker report, for the toolbar's sync indicator.
+    private(set) var latestBeatReport: BeatTrackerReport?
+
+    /// Called on the main thread with every beat tracker report (four a second while
+    /// audio is the clock), so the toolbar can show lock state and flash on a change.
+    var onBeatReport: ((BeatTrackerReport) -> Void)?
+
+    /// Why the last attempt to switch to an audio clock failed, for the notice.
+    private(set) var audioClockFailure: String?
 
     /// Called when the tempo changes from any source — a tap, beat detection, or by
     /// hand. Two of those three happen without the operator doing it directly, which
@@ -783,12 +801,15 @@ final class Engine {
     ///
     /// Every route to a tempo change goes through here — tap, detection, manual —
     /// so the announcement cannot be forgotten by one of them.
-    func setTempo(_ beatsPerMinute: Double) {
+    /// - Parameter announce: false for beat detection, which reports its own lock
+    ///   and relock events through `onBeatReport`; announcing its every smoothed
+    ///   step as well would flash the window for drift nobody asked about.
+    func setTempo(_ beatsPerMinute: Double, announce: Bool = true) {
         guard beatsPerMinute > 0 else { return }
         transport.beatsPerMinute = beatsPerMinute
-        // Announce only a real change: detection nudges by fractions constantly, and
+        // Announce only a real change: a drag moves by fractions constantly, and
         // flashing the window for each would be a strobe rather than a signal.
-        if abs(beatsPerMinute - lastAnnouncedTempo) > 0.4 {
+        if announce, abs(beatsPerMinute - lastAnnouncedTempo) > 0.4 {
             lastAnnouncedTempo = beatsPerMinute
             onTempoChanged?(beatsPerMinute)
         }
@@ -893,59 +914,103 @@ final class Engine {
 
     /// Switches the clock source, starting or stopping audio analysis as needed.
     ///
-    /// - Returns: false when audio was requested but could not be started, in which
-    ///   case the source stays internal and the UI should say so rather than
-    ///   silently showing "Audio" with nothing behind it.
+    /// - Returns: false when audio was requested but could not be started. The
+    ///   previous source is left running in that case — the new input is opened
+    ///   before the old one is closed — and `audioClockFailure` says why.
     @discardableResult
     func setClockSource(_ source: ClockSource) -> Bool {
         guard source != clockSource else { return true }
         switch source {
         case .internalTransport:
-            audioInput?.stop()
-            audioInput = nil
-            audioReactivity.isRunning = false
-            audioReactivity.reset()
+            stopAudioInput()
             clockSource = .internalTransport
+            latestBeatReport = nil
+            Log.info(.clock, "clock source: internal")
             return true
 
-        case .audio:
-            let input = AudioInput()
-            input.onFrame = { [weak self] frame in
-                guard let self else { return }
-                // Analysis arrives on the audio thread; parameter state and the UI
+        case .audio(let captureSource):
+            let input = AudioInput(source: captureSource)
+            input.onFrame = { [weak self, weak input] frame in
+                // Analysis arrives on its own queue; parameter state and the UI
                 // both live on the main thread.
                 DispatchQueue.main.async {
+                    guard let self, let input, self.audioInput === input else { return }
                     self.audioReactivity.update(with: frame, into: self.registry)
                 }
             }
-            input.onTempo = { [weak self] estimate in
+            input.onBeatReport = { [weak self, weak input] report, windowEndTime in
                 DispatchQueue.main.async {
-                    self?.applyDetectedTempo(estimate)
+                    guard let self, let input, self.audioInput === input else { return }
+                    self.applyBeatReport(report, windowEndTime: windowEndTime)
                 }
             }
             guard input.start() else {
-                Log.warn(.clock, "audio clock requested but unavailable; staying on the internal clock")
+                audioClockFailure = input.failureReason
+                Log.warn(.clock, "\(captureSource.longName) unavailable; keeping \(clockSource.displayName)")
                 return false
             }
+            audioClockFailure = nil
+            stopAudioInput()
             audioInput = input
             audioReactivity.isRunning = true
-            clockSource = .audio
+            clockSource = source
+            latestBeatReport = nil
+            Log.info(.clock, "clock source: audio from \(captureSource.longName)")
             return true
         }
     }
 
-    /// Takes a detected tempo, if it is confident enough to be worth taking.
+    private func stopAudioInput() {
+        audioInput?.stop()
+        audioInput = nil
+        audioReactivity.isRunning = false
+        audioReactivity.reset()
+    }
+
+    /// Applies a beat tracker report to the transport.
     ///
-    /// A low-confidence estimate is worse than none: it drags the transport around
-    /// on speech, drones and applause. The threshold is what keeps the clock steady
-    /// through a quiet passage rather than chasing noise.
-    private func applyDetectedTempo(_ estimate: TempoEstimate) {
-        latestTempoEstimate = estimate
-        guard clockSource == .audio, estimate.confidence > 0.25 else { return }
-        // Ignore tiny corrections: nudging the tempo every window would make
-        // everything locked to it jitter.
-        guard abs(estimate.beatsPerMinute - transport.beatsPerMinute) > 0.5 else { return }
-        setTempo(estimate.beatsPerMinute)
+    /// Only a LOCKED report moves anything. Listening, holding and silence leave the
+    /// clock running at the last good tempo — a breakdown or a gap between tracks is
+    /// exactly when the visuals should keep time on their own.
+    private func applyBeatReport(_ report: BeatTrackerReport, windowEndTime: Double) {
+        latestBeatReport = report
+        defer { onBeatReport?(report) }
+        guard clockSource.isAudio, report.state == .locked, let tempo = report.beatsPerMinute else {
+            return
+        }
+
+        // A lock or relock is a new tempo and a new beat: take both outright. In
+        // between, the tracker's own smoothing has already done the work, so the
+        // tempo is taken as given and the phase is only nudged.
+        let isNewLock: Bool
+        switch report.event {
+        case .locked, .relocked: isNewLock = true
+        default: isNewLock = false
+        }
+        if abs(tempo - transport.beatsPerMinute) > 0.01 {
+            setTempo(tempo, announce: false)
+        }
+        alignPhase(to: report, windowEndTime: windowEndTime, snap: isNewLock)
+    }
+
+    /// Pulls the transport's beat onto the music's beat.
+    ///
+    /// Tempo alone is not enough to look locked: at the right BPM but the wrong phase,
+    /// every beat-synced effect lands between the drums, forever. The tracker says
+    /// how long ago the music's last beat fell; the transport says where it was at
+    /// that moment; `BeatTracker.phaseCorrection` turns the difference into a nudge.
+    ///
+    /// Beat-level only: which beat is "one" of the bar is not attempted, and output
+    /// latency to the screen is not compensated here.
+    private func alignPhase(to report: BeatTrackerReport, windowEndTime: Double, snap: Bool) {
+        guard transport.isRunning, let sinceBeat = report.secondsSinceBeat else { return }
+        let now = CACurrentMediaTime()
+        let beatsNow = transport.beats(atHostTime: now)
+        let musicBeatTime = windowEndTime - sinceBeat
+        let clockBeatsAtMusicBeat = beatsNow - (now - musicBeatTime) / transport.secondsPerBeat
+        let correction = BeatTracker.phaseCorrection(
+            clockBeatsAtMusicBeat: clockBeatsAtMusicBeat, snap: snap)
+        if correction != 0 { transport.shiftPosition(byBeats: correction) }
     }
 
     /// Sets a bus's interchange codec, which decides what data effects it offers.

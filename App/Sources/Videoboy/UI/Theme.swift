@@ -449,6 +449,11 @@ enum Theme {
         static let displayText = NSColor(srgbRed: 0.85, green: 0.92, blue: 1.0, alpha: 1)
         static let displayDimText = NSColor(srgbRed: 0.85, green: 0.92, blue: 1.0, alpha: 0.45)
         static let displayHighlight = NSColor(white: 1.0, alpha: 0.10)
+        /// The sync readout when audio detection has locked: a phosphor green, the one
+        /// colour on the display that means "trust the number".
+        static let displayLocked = NSColor(srgbRed: 0.45, green: 0.95, blue: 0.55, alpha: 1)
+        /// The sync readout when audio is chosen but nothing usable is arriving.
+        static let displayWarning = NSColor(srgbRed: 1.0, green: 0.72, blue: 0.25, alpha: 1)
 
         /// The launch screen's backdrop — darker than the window, so it reads as
         /// something in front of the app rather than part of it.
