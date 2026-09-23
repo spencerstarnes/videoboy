@@ -85,6 +85,9 @@ final class VBStepButton: NSControl, AuditableControl {
         needsDisplay = true
     }
 
+    /// Acts on the first click into an inactive window, same as the keys beside it.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
         // Control-click is the same gesture as a right-click on this platform, and

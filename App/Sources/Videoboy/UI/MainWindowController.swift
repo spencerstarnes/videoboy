@@ -50,6 +50,30 @@ final class MainWindowController: NSWindowController {
         return NSSize(width: floor(width), height: floor(height))
     }
 
+    /// Fits a restored frame onto the screen it mostly sits on.
+    ///
+    /// The autosaved frame is whatever the LAST display arrangement allowed. After a
+    /// display is added, removed or rearranged it can come back mostly off-screen —
+    /// observed at y=753 with a 998-pt window on a 1080-pt display, title bar reachable
+    /// but the instrument below the edge. AppKit only guarantees a sliver stays visible.
+    static func keepOnScreen(_ window: NSWindow) {
+        let frame = window.frame
+        func overlap(_ screen: NSScreen) -> CGFloat {
+            let shared = screen.visibleFrame.intersection(frame)
+            return shared.isNull ? 0 : shared.width * shared.height
+        }
+        let best = NSScreen.screens.max { overlap($0) < overlap($1) }
+        guard let visible = (best ?? NSScreen.main)?.visibleFrame else { return }
+        guard !visible.contains(frame) else { return }
+        var fitted = frame
+        fitted.size.width = max(min(frame.width, visible.width), window.minSize.width)
+        fitted.size.height = max(min(frame.height, visible.height), window.minSize.height)
+        fitted.origin.x = min(max(frame.minX, visible.minX), visible.maxX - fitted.width)
+        fitted.origin.y = min(max(frame.minY, visible.minY), visible.maxY - fitted.height)
+        window.setFrame(fitted, display: false)
+        Log.info(.app, "restored window frame was off-screen; fitted to \(visible)")
+    }
+
     /// Builds the window at a size that shows the full wide layout on first run.
     init(preferences: PreferenceStore) {
         self.preferences = preferences
@@ -87,6 +111,7 @@ final class MainWindowController: NSWindowController {
         window.collectionBehavior.insert(.fullScreenNone)
         window.center()
         window.setFrameAutosaveName("VideoboyMainWindow")
+        Self.keepOnScreen(window)
 
         super.init(window: window)
         window.delegate = self

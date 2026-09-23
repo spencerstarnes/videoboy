@@ -190,6 +190,11 @@ final class VBOptionButton: NSControl {
 
     deinit { armingPulseTimer?.invalidate() }
 
+    /// A performance key must act on the first click even when the window is not
+    /// key — otherwise the click after switching from another app only activates
+    /// the window and CUT silently does nothing.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         // Command-option arms automation, the same gesture that marks a sweep on a
         // fader. A button has no range to mark, so one press is the whole gesture.
