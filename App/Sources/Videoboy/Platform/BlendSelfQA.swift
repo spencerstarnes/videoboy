@@ -40,9 +40,14 @@ enum BlendSelfQA {
         for slot in Engine.busEffectSlots {
             engine.registry.setValue(0, slot: slot, code: .wetDry)
         }
-        // Fader fully across so the blend result is what PRIMARY shows, and the mode
-        // is the only thing changing between frames.
-        engine.registry.setValue(1.0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+        // The MIDPOINT, not fully across. `composite_blend_fragment`'s own contract
+        // (MetalContext.swift) is that hard left is the base untouched and hard
+        // right is the blend layer untouched, WHATEVER THE MODE — a blend mode only
+        // has any effect at all in between, peaking exactly at 0.5. This check used
+        // to sit at 1.0, where every mode collapses to the same pure-B frame and
+        // "modes are distinct from normal" cannot ever pass — found while adding
+        // the Key mode and confirming it actually did something here.
+        engine.registry.setValue(0.5, slot: GraphTopology.subMixOne, code: .crossfadeAB)
         engine.registry.setValue(1.0, slot: GraphTopology.subMixOne, code: .layerOpacity)
         engine.registry.setValue(0.0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
         check.note("A = motion.dv (base), B = bars.dv (blend layer), through the engine's ONE bus")

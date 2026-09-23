@@ -1,12 +1,12 @@
 check:    phase-4/blend-modes
 verdict:  PASS
-when:     2026-09-16T11:41:11Z
+when:     2026-09-23T02:57:57Z
 core:     0.3.0
 
 notes:
   A = motion.dv (base), B = bars.dv (blend layer), through the engine's ONE bus
 
-assertions (16/16 passed):
+assertions (17/17 passed):
   PASS  dimensions — expected 720x480, got 720x480
   PASS  dimensions — expected 720x480, got 720x480
   PASS  dimensions — expected 720x480, got 720x480
@@ -20,6 +20,7 @@ assertions (16/16 passed):
   PASS  dimensions — expected 720x480, got 720x480
   PASS  dimensions — expected 720x480, got 720x480
   PASS  dimensions — expected 720x480, got 720x480
-  PASS  every blend mode rendered — 13 of 13
-  PASS  modes are distinct from normal — 12 of 12 differ from Normal
-  PASS  multiply darkens and screen lightens — multiply 56, normal 95, screen 166
+  PASS  dimensions — expected 720x480, got 720x480
+  PASS  every blend mode rendered — 14 of 14
+  PASS  modes are distinct from normal — 13 of 13 differ from Normal
+  PASS  multiply darkens and screen lightens — multiply 91, normal 111, screen 147

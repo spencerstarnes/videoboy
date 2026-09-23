@@ -41,14 +41,15 @@ final class BlendModeTests: XCTestCase {
         XCTAssertEqual(BlendMode.colorBurn.rawValue, 10)
         XCTAssertEqual(BlendMode.hardLight.rawValue, 11)
         XCTAssertEqual(BlendMode.softLight.rawValue, 12)
-        XCTAssertEqual(BlendMode.allCases.count, 13, "a new mode needs a shader branch too")
+        XCTAssertEqual(BlendMode.key.rawValue, 13)
+        XCTAssertEqual(BlendMode.allCases.count, 14, "a new mode needs a shader branch too")
     }
 
     func testAllCasesAreInRawValueOrder() {
         // `from(normalised:)` and `normalisedPosition` both index into `allCases`, so
         // a declaration order that did not match the raw values would make the fader
         // and the saved index disagree.
-        XCTAssertEqual(BlendMode.allCases.map(\.rawValue), Array(0...12))
+        XCTAssertEqual(BlendMode.allCases.map(\.rawValue), Array(0...13))
     }
 
     func testEveryModeIsCodableAsItsIndex() throws {
@@ -79,12 +80,12 @@ final class BlendModeTests: XCTestCase {
 
     func testTheEndsOfTheFaderAreTheEndsOfTheSet() {
         XCTAssertEqual(BlendMode.from(normalised: 0), .normal)
-        XCTAssertEqual(BlendMode.from(normalised: 1), .softLight)
+        XCTAssertEqual(BlendMode.from(normalised: 1), .key)
     }
 
     func testValuesOutsideTheRangeAreClampedRatherThanWrapping() {
         XCTAssertEqual(BlendMode.from(normalised: -5), .normal)
-        XCTAssertEqual(BlendMode.from(normalised: 42), .softLight)
+        XCTAssertEqual(BlendMode.from(normalised: 42), .key)
     }
 
     func testTheSweepIsMonotonic() {
@@ -104,6 +105,15 @@ final class BlendModeTests: XCTestCase {
             reached.insert(BlendMode.from(normalised: Double(step) / 1000.0))
         }
         XCTAssertEqual(reached.count, BlendMode.allCases.count)
+    }
+
+    // MARK: - Menu grouping
+
+    func testMenuGroupsContainEveryModeExactlyOnce() {
+        let flattened = BlendMode.menuGroups.flatMap { $0 }
+        XCTAssertEqual(Set(flattened), Set(BlendMode.allCases), "a mode missing from the menu is unpickable there")
+        XCTAssertEqual(flattened.count, BlendMode.allCases.count, "a mode listed twice would appear twice in the popup")
+        XCTAssertEqual(BlendMode.menuOrder, flattened)
     }
 
     // NOTE: `BlendMode.from(normalised:)` CRASHES on a non-finite input —

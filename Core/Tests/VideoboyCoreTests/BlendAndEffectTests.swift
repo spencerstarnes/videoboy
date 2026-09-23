@@ -33,7 +33,10 @@ final class BlendAndEffectTests: XCTestCase {
         blend: (UInt8, UInt8, UInt8),
         mode: BlendMode,
         position: Double = 0.5,
-        layerOpacity: Double = 1.0
+        layerOpacity: Double = 1.0,
+        keyColour: Double = 0,
+        keyThreshold: Double = 0.25,
+        keyEdge: Double = 0.2
     ) throws -> (r: Double, g: Double, b: Double) {
         guard let metal = MetalContext.shared, let renderer = OffscreenRenderer(context: metal) else {
             throw XCTSkip("no Metal device")
@@ -49,6 +52,9 @@ final class BlendAndEffectTests: XCTestCase {
         node.position = position
         node.blendMode = mode
         node.layerOpacity = layerOpacity
+        node.keyColourValue = keyColour
+        node.keyThreshold = keyThreshold
+        node.keyEdge = keyEdge
 
         let context = RenderContext(
             frameIndex: 0, presentationTime: 0, musicalPosition: nil, width: 32, height: 32)
@@ -109,6 +115,120 @@ final class BlendAndEffectTests: XCTestCase {
         // 50 - 200 clamps at zero, not wrapping to white. Midpoint: (50+0)/2.
         let subtracted = try composite(base: (50, 50, 50), blend: (200, 200, 200), mode: .subtract)
         XCTAssertEqual(subtracted.r, expectedAtMidpoint(base: 50, blendResult: 0), accuracy: 3)
+    }
+
+    // MARK: - Key colour mapping (pure Swift, no GPU needed)
+
+    /// Zero must be true black, not `ScalaColour.hue(0)`'s red — see the long
+    /// comment on `CrossfadeNode.keyRGB`. This is the whole reason a dedicated
+    /// mapping exists instead of reusing the hue-sweep helper other colour
+    /// controls in this app already have.
+    func testKeyColourZeroIsTrueBlack() {
+        let rgb = CrossfadeNode.keyRGB(0)
+        XCTAssertEqual(rgb.r, 0)
+        XCTAssertEqual(rgb.g, 0)
+        XCTAssertEqual(rgb.b, 0)
+    }
+
+    /// Just above zero it sweeps hue, same shape as `ScalaColour.hue` — red rising
+    /// out of the bottom of the fader's travel.
+    func testKeyColourAboveZeroSweepsHue() {
+        let justAbove = CrossfadeNode.keyRGB(0.01)
+        XCTAssertEqual(justAbove.r, 1, accuracy: 0.001)
+        XCTAssertEqual(justAbove.b, 0, accuracy: 0.001)
+
+        let green = CrossfadeNode.keyRGB(2.0 / 6.0)
+        XCTAssertEqual(green.g, 1, accuracy: 0.01)
+        XCTAssertEqual(green.r, 0, accuracy: 0.01)
+    }
+
+    func testKeyColourClampsOutOfRangeInput() {
+        XCTAssertEqual(CrossfadeNode.keyRGB(-1).r, 0)
+        XCTAssertEqual(CrossfadeNode.keyRGB(-1).g, 0)
+        XCTAssertEqual(CrossfadeNode.keyRGB(-1).b, 0)
+        let atOne = CrossfadeNode.keyRGB(1)
+        XCTAssertFalse(atOne.r.isNaN)
+        XCTAssertFalse(atOne.g.isNaN)
+        XCTAssertFalse(atOne.b.isNaN)
+    }
+
+    // MARK: - Key (genlock/chroma, SPEC 18.2)
+
+    /// A pixel exactly at the key colour must drop out completely — this is the
+    /// whole point: the emulated titler's black background disappearing to reveal
+    /// whatever is on the base layer. Position at the midpoint, where (as for every
+    /// mode here) the blend result is at full strength.
+    func testKeyDropsOutPixelsAtTheKeyColour() throws {
+        let result = try composite(
+            base: (180, 90, 40), blend: (0, 0, 0), mode: .key, position: 0.5, keyColour: 0)
+        XCTAssertEqual(result.r, 180, accuracy: 3, "the key colour should have vanished to base")
+        XCTAssertEqual(result.g, 90, accuracy: 3)
+        XCTAssertEqual(result.b, 40, accuracy: 3)
+    }
+
+    /// A pixel far from the key colour — the title's own ink, not its background —
+    /// must stay fully opaque, i.e. `keyComposite` returns the blend colour
+    /// UNCHANGED for it. Same midpoint dilution as every other mode here applies on
+    /// top of that (see `expectedAtMidpoint`), which is what this asserts against —
+    /// a bare `255` would be wrong for the same reason `testMultiplyDarkens` does
+    /// not expect a bare product.
+    func testKeyKeepsPixelsFarFromTheKeyColour() throws {
+        let result = try composite(
+            base: (180, 90, 40), blend: (255, 255, 255), mode: .key, position: 0.5, keyColour: 0)
+        XCTAssertEqual(result.r, expectedAtMidpoint(base: 180, blendResult: 255), accuracy: 3)
+        XCTAssertEqual(result.g, expectedAtMidpoint(base: 90, blendResult: 255), accuracy: 3)
+        XCTAssertEqual(result.b, expectedAtMidpoint(base: 40, blendResult: 255), accuracy: 3)
+    }
+
+    /// Raising the threshold widens what counts as "background" — a colour that
+    /// survived a low threshold gets keyed out once the threshold grows past its
+    /// distance from the key colour. Proves the threshold parameter (62E) actually
+    /// reaches the shader, not just that keying happens at all.
+    func testRaisingTheThresholdKeysOutMoreDistantColours() throws {
+        // A dark grey, some distance from pure black.
+        let nearBlack: (UInt8, UInt8, UInt8) = (40, 40, 40)
+        let tight = try composite(
+            base: (180, 90, 40), blend: nearBlack, mode: .key, position: 0.5,
+            keyColour: 0, keyThreshold: 0.02, keyEdge: 0.01)
+        XCTAssertEqual(
+            tight.r, expectedAtMidpoint(base: 180, blendResult: 40), accuracy: 5,
+            "a tight threshold should treat near-black as ink, not key")
+
+        let wide = try composite(
+            base: (180, 90, 40), blend: nearBlack, mode: .key, position: 0.5,
+            keyColour: 0, keyThreshold: 0.9, keyEdge: 0.05)
+        XCTAssertEqual(wide.r, 180, accuracy: 5, "a wide threshold should key the same colour out")
+    }
+
+    /// The edge width is a SOFT transition, not a binary cutoff — a colour sitting
+    /// inside the edge band must land strictly between "fully base" and "fully
+    /// blend", never snapping straight to one or the other. This is what keeps a
+    /// bitmap font's anti-aliased/NTSC-smeared edge from fringing (see the Metal
+    /// source's comment on `keyComposite`).
+    func testTheEdgeIsASoftTransitionNotAHardCutoff() throws {
+        // keyThreshold 0.1, keyEdge 0.3 (both *0.6 in the node): the transition band
+        // in raw RGB-distance units runs 0.06...0.24. A mid-grey blend sits inside it.
+        let midGrey: (UInt8, UInt8, UInt8) = (90, 90, 90)
+        let result = try composite(
+            base: (180, 90, 40), blend: midGrey, mode: .key, position: 0.5,
+            keyColour: 0, keyThreshold: 0.1, keyEdge: 0.3)
+        XCTAssertGreaterThan(result.r, 41, "should not have snapped fully to base")
+        XCTAssertLessThan(result.r, 179, "should not have snapped fully to the raw blend colour")
+    }
+
+    /// The fader-ends guarantee (`testFaderEndsAreAlwaysThePureSources` covers every
+    /// mode including Key already) plus a Key-specific sanity check: a solid
+    /// coloured backdrop far from the key colour should NOT quietly disappear —
+    /// regression guard for a keyComposite that accidentally used `base` distance
+    /// instead of `blend` distance, which would key on the wrong layer entirely.
+    func testKeyMeasuresDistanceOfTheBlendLayerNotTheBase() throws {
+        // base is near the key colour, blend is not — a key that mixed the two up
+        // would drop the blend layer out instead of the base.
+        let result = try composite(
+            base: (5, 5, 5), blend: (200, 100, 50), mode: .key, position: 0.5, keyColour: 0)
+        XCTAssertEqual(
+            result.r, expectedAtMidpoint(base: 5, blendResult: 200), accuracy: 3,
+            "the blend layer's own colour must decide the key, not the base's")
     }
 
     func testLightenAndDarkenPickPerChannel() throws {
@@ -211,7 +331,8 @@ final class BlendAndEffectTests: XCTestCase {
         XCTAssertEqual(BlendMode.multiply.rawValue, 1)
         XCTAssertEqual(BlendMode.screen.rawValue, 2)
         XCTAssertEqual(BlendMode.softLight.rawValue, 12)
-        XCTAssertEqual(BlendMode.allCases.count, 13)
+        XCTAssertEqual(BlendMode.key.rawValue, 13)
+        XCTAssertEqual(BlendMode.allCases.count, 14)
     }
 
     // MARK: - MX-1 effects

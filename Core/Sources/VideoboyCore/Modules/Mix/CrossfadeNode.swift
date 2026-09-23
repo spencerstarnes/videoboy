@@ -12,7 +12,9 @@
 //            the node does not change.
 //
 //  Parameters (SPEC 13): one of 61A / 62A / 63A depending on which bus this is,
-//  plus 65A blend mode and 66A layer opacity.
+//  plus 65A blend mode, 66A layer opacity, and 6xE (61E/62E/63E) for the key
+//  colour/threshold/edge — read and sent every frame like the others, but only
+//  acted on by the shader when blendMode is `.key`.
 //
 
 import Foundation
@@ -24,6 +26,11 @@ private struct BlendParams {
     var mixAmount: Float
     var opacity: Float
     var mode: Int32
+    var keyR: Float
+    var keyG: Float
+    var keyB: Float
+    var keyThreshold: Float
+    var keyEdge: Float
 }
 
 /// Mixes two inputs by a single position parameter.
@@ -42,7 +49,14 @@ public final class CrossfadeNode: Node {
             Parameter(code: positionCode, range: 0...1, defaultValue: 0.5),
             Parameter(code: .opacity, range: 0...1, defaultValue: 1),
             Parameter(code: .blendMode, range: 0...1, defaultValue: 0),
-            Parameter(code: .layerOpacity, range: 0...1, defaultValue: 1)
+            Parameter(code: .layerOpacity, range: 0...1, defaultValue: 1),
+            // Defaults key on black with a modest, usable threshold/edge out of the
+            // box — SPEC 18.2's "colour 0 = transparent" case — so switching a
+            // composite to Key mode does something reasonable before anyone has
+            // touched these three at all.
+            Parameter(code: .keyColour, range: 0...1, defaultValue: 0),
+            Parameter(code: .keyThreshold, range: 0...1, defaultValue: 0.25),
+            Parameter(code: .keyEdge, range: 0...1, defaultValue: 0.2)
         ]
     }
 
@@ -54,6 +68,45 @@ public final class CrossfadeNode: Node {
 
     /// Per-layer opacity of the upper layer.
     public var layerOpacity: Double = 1.0
+
+    /// Raw 0...1 key-colour parameter (6xE `.keyColour`). Converted to RGB by
+    /// `keyRGB` at render time, not stored as RGB directly, so it round-trips
+    /// through templates and MIDI mappings the same single-fader way every other
+    /// colour control in this app does.
+    public var keyColourValue: Double = 0
+    /// RGB distance below which a pixel counts as the key colour. Real units
+    /// (0...1 per channel, so 0...~1.73 is the full range of `length()` between two
+    /// RGB triples); the 0...1 param is scaled down in `render` because the useful
+    /// range for a key is a small fraction of that.
+    public var keyThreshold: Double = 0.25
+    /// Width of the soft edge past `keyThreshold`, same units and same scaling.
+    public var keyEdge: Double = 0.2
+
+    /// The key colour as RGB, from the raw 0...1 parameter.
+    ///
+    /// Zero is pinned to TRUE BLACK rather than fed through the hue sweep, which
+    /// would otherwise put red at the fader's rest position (`ScalaColour.hue(0)`
+    /// is red — see `Modules/Emu/ScalaLingo.swift`). Keying on red by default,
+    /// when "key out black" is the overwhelmingly common case (an Amiga's colour 0,
+    /// and most genlock hardware besides), would make every new Key composite
+    /// start by keying on the wrong colour until someone found and moved this
+    /// fader. Above zero it sweeps hue at full saturation, same as everywhere else
+    /// in this app a single fader stands in for a colour.
+    static func keyRGB(_ value: Double) -> (r: Double, g: Double, b: Double) {
+        guard value > 0 else { return (0, 0, 0) }
+        let hue = min(max(value, 0), 1) * 6
+        let sector = Int(hue) % 6
+        let rising = hue - Double(Int(hue))
+        let falling = 1 - rising
+        switch sector {
+        case 0: return (1, rising, 0)
+        case 1: return (falling, 1, 0)
+        case 2: return (0, 1, rising)
+        case 3: return (0, falling, 1)
+        case 4: return (rising, 0, 1)
+        default: return (1, 0, falling)
+        }
+    }
 
     private let context: MetalContext?
     private var target: MTLTexture?
@@ -96,10 +149,21 @@ public final class CrossfadeNode: Node {
         encoder.setRenderPipelineState(metal.blendPipeline)
         encoder.setFragmentTexture(sourceA, index: 0)
         encoder.setFragmentTexture(sourceB, index: 1)
+        let key = Self.keyRGB(keyColourValue)
+        // 0.6 is the scaling note from `keyThreshold`'s declaration: RGB distance
+        // tops out at sqrt(3) ≈ 1.73 for two fully opposite colours, and a useful
+        // key threshold lives in a small fraction of that — 0.6 gives the fader its
+        // whole 0...1 travel across the range that is actually useful rather than
+        // burying it in the bottom few percent.
         var params = BlendParams(
             mixAmount: Float(min(max(position, 0), 1)),
             opacity: Float(min(max(layerOpacity, 0), 1)),
-            mode: Int32(blendMode.rawValue)
+            mode: Int32(blendMode.rawValue),
+            keyR: Float(key.r),
+            keyG: Float(key.g),
+            keyB: Float(key.b),
+            keyThreshold: Float(min(max(keyThreshold, 0), 1) * 0.6),
+            keyEdge: Float(min(max(keyEdge, 0), 1) * 0.6)
         )
         encoder.setFragmentBytes(&params, length: MemoryLayout<BlendParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
@@ -119,6 +183,15 @@ public final class CrossfadeNode: Node {
         }
         if let value = registry.value(slot: identifier, code: .layerOpacity) {
             layerOpacity = value
+        }
+        if let value = registry.value(slot: identifier, code: .keyColour) {
+            keyColourValue = value
+        }
+        if let value = registry.value(slot: identifier, code: .keyThreshold) {
+            keyThreshold = value
+        }
+        if let value = registry.value(slot: identifier, code: .keyEdge) {
+            keyEdge = value
         }
     }
 }

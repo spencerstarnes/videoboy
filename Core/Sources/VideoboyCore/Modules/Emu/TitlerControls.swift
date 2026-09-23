@@ -542,9 +542,10 @@ public final class ScalaTitlerPanel {
             function: .textColour),
         TitlerControl(
             name: "BACK COL",
-            explanation: "Background colour, likewise. Black is the genlock key, so "
-                + "leaving it at the bottom of the fader is what makes the titler "
-                + "overlay rather than cover.",
+            explanation: "Background colour, likewise. To make the titler overlay video "
+                + "instead of covering it, put this source on a bus set to Key blend "
+                + "mode (6xE) and set that bus's key colour to match this one — black "
+                + "for both, the machine's own default, is the usual choice.",
             function: .backgroundColour),
         TitlerControl(
             name: "GFX SCALE",

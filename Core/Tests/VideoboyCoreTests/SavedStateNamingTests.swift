@@ -1,3 +1,12 @@
+//
+//  SavedStateNamingTests.swift — the emulator's save-state numbering (AmigaSaveState).
+//
+//  Purpose : Pins the naming scheme a saved state gets: numbered from 1, continuing
+//            from the highest number present rather than the count of files, and
+//            never reusing a number a deleted state left behind.
+//  Connects: AmigaSaveState.
+//
+
 import XCTest
 @testable import VideoboyCore
 

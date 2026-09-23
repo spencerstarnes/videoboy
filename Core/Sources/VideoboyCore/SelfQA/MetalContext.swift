@@ -665,9 +665,14 @@ enum ShaderSource {
     // ---------------------------------------------------------------------------
 
     struct BlendParams {
-        float mixAmount;  // the crossfader: 0 = pure base, 0.5 = full blend, 1 = pure blend layer
-        float opacity;    // retained for template compatibility; see the note below
-        int mode;         // which blend function
+        float mixAmount;    // the crossfader: 0 = pure base, 0.5 = full blend, 1 = pure blend layer
+        float opacity;      // retained for template compatibility; see the note below
+        int mode;           // which blend function
+        float keyR;         // key colour (6xE) — only read when mode is Key
+        float keyG;
+        float keyB;
+        float keyThreshold;  // RGB distance below which a pixel is "the background"
+        float keyEdge;       // width of the soft transition past that distance
     };
 
     static inline float3 blendChannelwise(int mode, float3 base, float3 blend) {
@@ -705,6 +710,27 @@ enum ShaderSource {
             }
             default: return blend;
         }
+    }
+
+    /* Genlock/chroma key (SPEC 18.2). Not a case in `blendChannelwise` — a key
+     * needs three extra parameters (colour, threshold, edge) that function's
+     * (mode, base, blend) shape has no room for, so it is a sibling function
+     * instead, called directly from `composite_blend_fragment`.
+     *
+     * `blend` is the upper/key layer (where the emulated titler or any other
+     * keyable source is expected to sit — see CrossfadeNode's header). Its
+     * distance from `keyColour` in RGB decides how much of `base` shows through:
+     * close to the key colour is background and drops out entirely, far from it
+     * is the title and stays fully opaque. `smoothstep` rather than a hard cutoff
+     * because the source has usually been through CompositeCodecNode's dot crawl
+     * and chroma bleed by the time it gets here — a bitmap font's edges are not
+     * clean pixels by then, and a binary key would fringe visibly on every one.
+     */
+    static inline float3 keyComposite(
+        float3 base, float3 blend, float3 keyColour, float threshold, float edge) {
+        float dist = length(blend - keyColour);
+        float alpha = smoothstep(threshold, threshold + max(edge, 0.0001), dist);
+        return mix(base, blend, alpha);
     }
 
     struct ScopeOverlayParams {
@@ -747,7 +773,13 @@ enum ShaderSource {
         float3 base = baseLayer.sample(linearSampler, in.uv).rgb;
         float3 blend = blendLayer.sample(linearSampler, in.uv).rgb;
 
-        float3 blended = clamp(blendChannelwise(p.mode, base, blend), 0.0, 1.0);
+        // Key (mode 13) is not a colour-combine function like the other twelve — it
+        // selects between the two layers per pixel — so it bypasses blendChannelwise
+        // entirely rather than being squeezed into its (mode, base, blend) shape.
+        float3 rawBlended = (p.mode == 13)
+            ? keyComposite(base, blend, float3(p.keyR, p.keyG, p.keyB), p.keyThreshold, p.keyEdge)
+            : blendChannelwise(p.mode, base, blend);
+        float3 blended = clamp(rawBlended, 0.0, 1.0);
         float t = clamp(p.mixAmount, 0.0, 1.0);
 
         // The fader IS the opacity. Two things have to be true at once:

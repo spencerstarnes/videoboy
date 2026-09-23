@@ -88,7 +88,31 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
       preset via CompositeCodec, NTSC-legal fill warning). NOT YET wired into the
       graph or the UI — no way to reach it from the window, no text-entry surface,
       no font/colour pickers. That wiring is the remaining half.
-- [ ] Emulated titler library — out-of-process GPL libretro host, save-state landing, genlock key (SPEC §18.2).
+- [~] Emulated titler library (SPEC §18.2). Running for real, not a stub: Amiberry
+      drives Scala MM400 on real Kickstart 3.1 (`docs/BLOCKED.md` has the full story),
+      all 19 titler controls are wired through the param-code registry and mappable,
+      save-state landing is opt-in (fixed 2026-09-19 — it used to silently restore and
+      pin whatever layout was captured), and a drag-to-place performance pad positions
+      text by pointing rather than fighting two faders. `EmulatedTitlerNode` is a real
+      graph source, drag-assignable to any channel exactly like a file or generator,
+      and reaches PROGRAM (`selfqa/out/phase-4/emu-capture`, 11/11 PASS). **Genlock key
+      added 2026-09-22**: a new `BlendMode.key` case (6xE param family — key colour/
+      threshold/edge) keys the emulator's background out per-pixel so live video shows
+      through and only the title sits on top, per SPEC's "colour 0 = transparent"
+      requirement — previously the only path was manually picking Screen/Add blend
+      mode, which had no threshold and only degraded gracefully on pure black.
+      Architecture note: this runs Amiberry as its own separate process talking over
+      an IPC control socket + captured framebuffer, not the SPEC's literal
+      "libretro host + shared memory" — same GPL-isolation outcome (the GPL binary is
+      never linked into Videoboy), different mechanism; worth reconciling the SPEC
+      text with what was actually built rather than reading this as a deviation.
+      Remaining before this is fully `[x]`: the key colour/threshold/edge params have
+      no visible fader yet (same status as `.layerOpacity` on the same node — registry/
+      MIDI/template-mappable, reachable by shift-to-detect once a fader exists, not
+      by one yet) — SPEC's "smack dab on the right screen" per-entry help file and
+      hotkey table are not surfaced in the UI; and the library is Scala MM400/MM300
+      only, not the platform→software→entry browsable menu SPEC describes (VICE/
+      hatariB/other platforms untouched, deliberately — see CLAUDE.md's MVP scope).
 - [ ] SVG/PS1 source (§17); IP in/out (§6, §15). **NTSC scopes (§19), discrete A/B/C/D
       recording (§15), the routing/send panel (§6) and the full four-channel mix
       (C/D→TWO, layer compositing) are done.**
@@ -97,6 +121,25 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)
 
+- **The genlock key's colour/threshold/edge (6xE) have no visible fader.** Added
+  2026-09-22 alongside `BlendMode.key` — see the Phase 4+ emulated-titler entry
+  above. They are real, registry-backed, mappable params (same shape as every other
+  parameter here), but the fixed crossfader-row layout (SPEC §14, normative) has no
+  free slot for three more sliders without a real layout change, which is out of
+  scope for a single feature. Precedent: `.layerOpacity` (66A) on the same
+  `CrossfadeNode` has been in exactly this state — real, mappable, no visible fader —
+  since before this session, so this is not a regression, just an existing gap this
+  widened by three params. Reachable today only via a saved template or by setting
+  the registry value directly (e.g. from a script); not reachable via shift-to-detect
+  MIDI-learn, which needs a fader to shift-click. Fixing this for real means either a
+  small popover off `VBBlendButton` (shown only when the chosen mode is Key) or
+  finding room in the FX panel for a bus-level "Key" card — a UI decision worth its
+  own look rather than a rushed addition to a crossfader row that already reads as
+  full.
+- **Per-entry help file and hotkey table for the emulated titler (SPEC §18.2).** Not
+  surfaced anywhere in the UI. The panel's own tooltips cover the app-side controls
+  reasonably well; the software-side keys (Scala's own F-keys, RETURN to commit,
+  etc.) are undocumented in-app.
 - **Colour Ctrl and Layer Mask effect cards.** Both were placeholder cards rendering
   disabled in the FX chains, and were removed from the window so the chains show only
   effects that do something. Kept here because both are still wanted:

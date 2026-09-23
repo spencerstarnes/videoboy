@@ -21,6 +21,9 @@
 //    4xC  — feedback
 //    5xA  — colour controls
 //    6xA  — mixer and transport
+//    6xE  — genlock/chroma key (6xA's nine slots are already spoken for; this
+//           extends the same mixer family rather than starting a new number range,
+//           because a key is a property of a composite exactly like blend mode is)
 //    7xA  — composite / NTSC emulation
 //    9xD  — character generator (SPEC 18.1)
 //
@@ -140,6 +143,31 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case cutTrigger = "68A"
     /// Fade to the other source on this bus, at the set rate.
     case fadeTrigger = "69A"
+
+    // MARK: Genlock/chroma key (6xE)
+    //
+    // A composite's key is a property of THAT composite, the same way blend mode and
+    // layer opacity are — so these live beside them rather than beside whatever
+    // happens to be plugged into the composite's blend-layer input. That is a
+    // deliberate choice: the emulated titler is the reason this exists (SPEC 18.2 —
+    // "provide luma/chroma key on the emulator source so the background drops out"),
+    // but the key itself knows nothing about the titler. Any two layers can use it.
+
+    /// The colour keyed out, swept around the hue circle exactly like
+    /// `emuTextColour`/`emuBackgroundColour` — except 0 is pinned to true black
+    /// rather than red, because "key out black" is the overwhelmingly common case
+    /// (colour 0 on an Amiga, and most genlock hardware) and a fader's rest
+    /// position should not silently key on red instead. See `CrossfadeNode.keyRGB`.
+    case keyColour = "61E"
+    /// How close a pixel must be to the key colour, in RGB distance, to be treated
+    /// as background at all. Too low and real content near the key colour survives
+    /// as a hole; too high and it eats the title's own anti-aliased edges.
+    case keyThreshold = "62E"
+    /// Width of the soft transition band just past the threshold. Zero would key on
+    /// a hard binary edge, which fringes visibly once the frame has been through
+    /// `CompositeCodecNode` — dot crawl and chroma bleed smear a bitmap font's edges
+    /// well past one pixel, so the key has to tolerate that instead of fighting it.
+    case keyEdge = "63E"
 
     // MARK: Composite emulation (7xA)
 
@@ -301,6 +329,9 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .mx1Amount: "MX-1 amount"
         case .blendMode: "blend mode"
         case .layerOpacity: "layer opacity"
+        case .keyColour: "key colour"
+        case .keyThreshold: "key threshold"
+        case .keyEdge: "key edge"
         case .compositeCrawl: "dot crawl"
         case .chromaBleed: "chroma bleed"
         case .tbcWobble: "TBC wobble"

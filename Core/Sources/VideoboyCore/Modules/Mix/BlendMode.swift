@@ -7,9 +7,14 @@
 //  Inputs  : a 0...1 parameter, or a name from a template.
 //  Outputs : a mode, and its shader index.
 //  Connects: CrossfadeNode, MetalContext.blendPipeline, the blend popup in the UI.
-//  Extend  : append a case AND add the matching branch to `blendChannelwise` in the
-//            Metal source. Never renumber an existing one — a saved template stores
-//            the index, and renumbering would silently change what old work looks like.
+//  Extend  : a plain colour-math mode is a case here plus a branch in
+//            `blendChannelwise` in the Metal source. A mode that needs its own
+//            parameters — as `.key` does, for a key colour/threshold/edge that do
+//            not fit `blendChannelwise`'s (mode, base, blend) shape — gets its own
+//            function instead, called from `composite_blend_fragment` ahead of
+//            `blendChannelwise`, keyed off the same `p.mode`. Never renumber an
+//            existing one — a saved template stores the index, and renumbering
+//            would silently change what old work looks like.
 //
 
 import Foundation
@@ -29,6 +34,12 @@ public enum BlendMode: Int, CaseIterable, Codable, Sendable {
     case colorBurn = 10
     case hardLight = 11
     case softLight = 12
+    /// Genlock/chroma key: the blend layer's pixels near `keyColour` (6xE) drop out
+    /// to reveal the base layer; everything else covers it. This is how the
+    /// emulated titler (SPEC 18.2) and any other keyable source overlay onto video
+    /// rather than replacing it. See `CrossfadeNode` and `keyComposite` in the
+    /// Metal source for the actual maths.
+    case key = 13
 
     /// Name shown in the blend popup and written into templates.
     public var displayName: String {
@@ -46,6 +57,7 @@ public enum BlendMode: Int, CaseIterable, Codable, Sendable {
         case .colorBurn: "Color Burn"
         case .hardLight: "Hard Light"
         case .softLight: "Soft Light"
+        case .key: "Key"
         }
     }
 
@@ -65,6 +77,10 @@ public enum BlendMode: Int, CaseIterable, Codable, Sendable {
     ///   3. Lighten family    — the result is never darker
     ///   4. Contrast family   — darkens the darks and lightens the lights
     ///   5. Comparative       — the difference between the two layers
+    ///   6. Keying            — not a Photoshop group; this app's own addition,
+    ///                          kept last and separate because a key does not
+    ///                          combine colours like the other five, it selects
+    ///                          between them per pixel
     ///
     /// THIS IS THE MENU'S ORDER ONLY. `allCases` keeps the declaration order because
     /// the raw values are the shader's mode IDs and go into saved templates, and
@@ -76,7 +92,8 @@ public enum BlendMode: Int, CaseIterable, Codable, Sendable {
         [.darken, .multiply, .colorBurn],
         [.lighten, .screen, .colorDodge, .add],
         [.overlay, .softLight, .hardLight],
-        [.difference, .subtract]
+        [.difference, .subtract],
+        [.key]
     ]
 
     /// Every mode in menu order, flattened.

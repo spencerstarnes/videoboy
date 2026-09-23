@@ -117,6 +117,6 @@ final class NonFiniteParameterTests: XCTestCase {
     func testNaNFallsBackToTheNeutralEndOfASweep() {
         XCTAssertEqual(BlendMode.from(normalised: .nan), .normal)
         XCTAssertEqual(BlendMode.from(normalised: -.infinity), .normal)
-        XCTAssertEqual(BlendMode.from(normalised: .infinity), .softLight)
+        XCTAssertEqual(BlendMode.from(normalised: .infinity), .key)
     }
 }
