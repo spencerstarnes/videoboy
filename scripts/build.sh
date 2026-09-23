@@ -39,6 +39,12 @@ log "embedding LGPL FFmpeg"
 cp -a "$VENDOR_FFMPEG"/lib/*.dylib "$APP_BUNDLE/Contents/Frameworks/"
 cp "$REPO_ROOT/docs/THIRD-PARTY.md" "$APP_BUNDLE/Contents/Resources/THIRD-PARTY.md"
 
+# The built-in ISF modules (SPEC 8) — the default effects, as plain .fs files.
+# ISFLibrary.builtinFolder looks for them at Contents/Resources/ISF/Builtin.
+log "copying built-in ISF modules"
+mkdir -p "$APP_BUNDLE/Contents/Resources/ISF"
+cp -R "$REPO_ROOT/App/Resources/ISF/Builtin" "$APP_BUNDLE/Contents/Resources/ISF/"
+
 # The app icon, drawn rather than checked in — see scripts/make-icon.swift. Generated
 # every build so editing the numbers in that file is all it takes to change the icon.
 log "drawing the app icon"

@@ -28,6 +28,8 @@ public enum Subsystem: String, Sendable {
     case template
     case param
     case titler
+    /// ISF shader modules: parsing, conversion to Metal, compiling (SPEC 8).
+    case isf
 }
 
 /// Severity. Deliberately only three levels.
