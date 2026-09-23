@@ -1,6 +1,6 @@
 check:    isf/parity
 verdict:  PASS
-when:     2026-09-23T23:12:25Z
+when:     2026-09-23T23:17:30Z
 core:     0.3.0
 
 notes:
@@ -34,6 +34,6 @@ assertions (30/30 passed):
   PASS  echo long trail frame 5 matches native — mean 0.000, max 0 (limits 0.5 / 2)
   PASS  echo long trail frame 6 matches native — mean 0.000, max 0 (limits 0.5 / 2)
   PASS  echo long trail frame 7 matches native — mean 0.000, max 0 (limits 0.5 / 2)
-  PASS  Colour ISF costs no more than native — native 0.234 ms, ISF 0.251 ms per fenced frame (+8%) at 720x480, best of 3
-  PASS  Transform ISF costs no more than native — native 0.233 ms, ISF 0.230 ms per fenced frame (-1%) at 720x480, best of 3
-  PASS  Echo ISF costs no more than native — native 0.200 ms, ISF 0.248 ms per fenced frame (+24%) at 720x480, best of 3
+  PASS  Colour ISF costs no more than native — native 0.266 ms, ISF 0.263 ms per fenced frame (-1%) at 720x480, best of 3
+  PASS  Transform ISF costs no more than native — native 0.248 ms, ISF 0.272 ms per fenced frame (+9%) at 720x480, best of 3
+  PASS  Echo ISF costs no more than native — native 0.265 ms, ISF 0.265 ms per fenced frame (-0%) at 720x480, best of 3
