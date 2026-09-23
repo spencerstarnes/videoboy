@@ -364,7 +364,15 @@ final class LibraryItemView: NSView {
     static var onDragStartedForChecks: ((URL) -> Void)?
 
     private func beginDrag(url: URL, from event: NSEvent) {
-        Self.onDragStartedForChecks?(url)
+        if let observer = Self.onDragStartedForChecks {
+            // Under the self-QA: record the drag and stop there. A real session
+            // waits for a PHYSICAL mouse-up, and with nobody at the machine it never
+            // comes — unattended `selfqa ui` runs hung for hours inside AppKit's drag
+            // manager. What the check needs to know is that the drag STARTS; what it
+            // carries is checked separately, off the pasteboard.
+            observer(url)
+            return
+        }
         let dragItem = NSDraggingItem(
             pasteboardWriter: Self.pasteboardItem(for: url, range: thumbnail.markedRange))
         dragItem.setDraggingFrame(thumbnail.frame, contents: thumbnailSnapshot())

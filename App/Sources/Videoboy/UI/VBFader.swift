@@ -581,6 +581,13 @@ final class VBFader: NSControl {
     /// Faders are keyboard-reachable like any other control.
     override var acceptsFirstResponder: Bool { isEnabled }
 
+    /// A fader is a performance control, so it acts on the first click even when the
+    /// window is not key — the same rule as the transport and step keys. Without it,
+    /// the first grab after touching the output window or Preferences only activated
+    /// the main window and the fader did not move. Found by `selfqa mosh`, which
+    /// clicks through a window that is not key.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func keyDown(with event: NSEvent) {
         guard isEnabled else { return super.keyDown(with: event) }
         // A fine step, so arrow keys are useful for trimming rather than jumping.
