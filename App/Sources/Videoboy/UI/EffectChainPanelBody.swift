@@ -57,6 +57,9 @@ struct EffectCardModel {
     /// card reach either channel rather than the card being hardwired to whichever
     /// channel got there first.
     var channelOptions: [String] = []
+    /// Where the selector starts: an index into `channelOptions`, or one past the
+    /// end for BOTH. Must match what the controller routes to at launch.
+    var initialChannelIndex = 0
 }
 
 /// Where a parameter's movement can come from, other than a hand on the fader.
@@ -193,6 +196,9 @@ final class EffectChainPanelBody: NSView {
 
     init(effects: [EffectCardModel]) {
         self.effects = effects
+        for effect in effects where effect.initialChannelIndex != 0 {
+            cardChannelSelection[effect.name] = effect.initialChannelIndex
+        }
         super.init(frame: .zero)
 
         stack.orientation = .vertical

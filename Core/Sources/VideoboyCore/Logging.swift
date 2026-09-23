@@ -28,6 +28,8 @@ public enum Subsystem: String, Sendable {
     case template
     case param
     case titler
+    /// The live H.264 datamosh: encode, frame surgery, decode.
+    case mosh
 }
 
 /// Severity. Deliberately only three levels.

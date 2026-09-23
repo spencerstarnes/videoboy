@@ -16,6 +16,7 @@
 #           output      — the borderless output window on the HDMI card (needs hardware)
 #           loopback    — capture the DVC100 and write metrics.json (needs hardware)
 #           stress      — real window, live display link, all 4 channels + every effect
+#           mosh        — the Datamosh card, clicked for real; a cut moshed on the A/B bus
 #           calibrate   — measure the physical feedback round trip (needs hardware)
 #           all         — every check that can run here
 # Outputs : selfqa/out/<check>/{*.png,metrics.json,result.txt}
@@ -69,6 +70,9 @@ case "$CHECK" in
   # Opens a real window on the main display and runs the live display link under full
   # load for ~10 s. Needs a logged-in GUI session, so it is opt-in, not part of `all`.
   stress)    run_app_check stress ;;
+  # The Datamosh card driven through real clicks on a real window; needs a GUI
+  # session like stress, so it is opt-in too.
+  mosh)      run_app_check mosh ;;
   # Opt-in, like loopback: it launches another application and needs Screen Recording.
   # Deliberately NOT in `all` or in verify.sh — a check that fails on a machine with no
   # emulator installed is a check that stops being read.
@@ -87,5 +91,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, stress, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, stress, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

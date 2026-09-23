@@ -82,6 +82,10 @@ Detail: SPEC §9 (composite/NTSC), §10 (capture + feedback), §11 (CRT features
 Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 - [x] Generators + transport LFO (SPEC §6A) and audio-reactivity bus (§4c, §13).
 - [ ] ISF host (parser → Metal) + FFGL (SPEC §8); CI/AU passthrough. **MX-1 effect set is done.**
+- [x] **Live H.264 datamosh** (owner request, 2026-09-23; `docs/DATAMOSH.md`). Real
+      I-frame removal and P-frame bloom on a live VideoToolbox H.264 stream, decoded by
+      libavcodec: the "Datamosh · H.264" card on both FX panels (A / B / BOTH), codes
+      35B–38B. Runs on every channel and both buses inside the stress budget.
 - [~] Clean Core Text character generator + period preset (SPEC §18.1). Core node done
       and pixel-tested (fill, outline, shadow, kerning/tracking/leading, alignment,
       position/anchor, scale, title-safe clamp, roll/crawl clock-synced, period
@@ -189,8 +193,10 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   composite path has only been exercised from ONE.
 - **Density pass on the FX panels.** Effect names truncate in the outer columns at
   narrow widths (SPEC 14.4 defers density tuning, so this is expected, not a defect).
-- **Macroblock-level MPEG editing.** The MPEG corruptor (frame-drop, motion-vector,
-  reference-hold) is built and tested, but it edits BYTES. libavcodec conceals errors
+- **Macroblock-level MPEG editing.** (The classic datamosh look now exists through
+  the live H.264 route — frame-level, `docs/DATAMOSH.md`. This note is about editing
+  vectors AS vectors, which that route does not do.) The MPEG corruptor (frame-drop,
+  motion-vector, reference-hold) is built and tested, but it edits BYTES. libavcodec conceals errors
   well, so the result is a valid picture that is not the right one rather than the
   blocky sliding look of datamoshing. Producing that reliably means parsing
   macroblocks and editing motion vectors as vectors — variable-length codes, a layout

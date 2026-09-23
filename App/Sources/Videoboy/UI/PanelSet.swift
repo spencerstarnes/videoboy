@@ -249,6 +249,9 @@ final class PanelSet {
     /// form. Nothing is deleted: the node, its shader, its parameters and its tests
     /// are all intact behind `FeatureFlag.bitstreamCorruptor`, and setting
     /// `VIDEOBOY_FLAGS=bitstreamCorruptor` brings the card back for one launch.
+    /// The live H.264 datamosh card. Named once: the controller routes by card name.
+    static let datamoshCardName = "Datamosh · H.264"
+
     static func chain(for channels: [String]) -> [EffectCardModel] {
         var cards: [EffectCardModel] = [
             EffectCardModel(
@@ -368,6 +371,29 @@ final class PanelSet {
                     EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
                                          value: 0.5, enabled: true)
                 ]
+            ),
+            // LAST in the list so adding it moved no existing card (a performer's
+            // hands are on those). In the SIGNAL it runs first — see Engine.buildGraph.
+            EffectCardModel(
+                name: PanelSet.datamoshCardName,
+                // Off, like every effect but the grade. Switching the card on does
+                // nothing visible until mosh or bloom moves: at zero it holds no
+                // encoder and costs nothing.
+                isEnabled: false,
+                isImplemented: true,
+                parameters: [
+                    EffectParameterModel(name: "mosh", code: ParamCode.moshAmount.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "bloom", code: ParamCode.moshBloom.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "heal", code: ParamCode.moshHeal.rawValue,
+                                         value: 0.0, enabled: true),
+                    EffectParameterModel(name: "blocks", code: ParamCode.moshBlocks.rawValue,
+                                         value: 0.5, enabled: true)
+                ],
+                channelOptions: channels,
+                // BOTH: the bus copy, matching ShellController.cardChannelIndex.
+                initialChannelIndex: channels.count
             )
         ]
 

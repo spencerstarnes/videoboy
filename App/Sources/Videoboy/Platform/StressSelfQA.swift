@@ -55,11 +55,18 @@ enum StressSelfQA {
         for letter in ["A", "B", "C", "D"] {
             engine.registry.setValue(1, slot: Engine.slot(forChannel: letter), code: .wetDry)
             engine.registry.setValue(0.6, slot: Engine.slot(forChannel: letter), code: .corruptAmount)
-            for effect in ["transform", "colour", "composite", "echo", "feedback", "mx1"] {
+            for effect in ["mosh", "transform", "colour", "composite", "echo", "feedback", "mx1"] {
                 engine.registry.setValue(1, slot: Engine.channelSlot(letter, effect), code: .wetDry)
             }
+            // Datamosh is free at zero, so it needs a real amount to be under load:
+            // a live H.264 encode + decode on every channel.
+            engine.registry.setValue(0.5, slot: Engine.channelSlot(letter, "mosh"), code: .moshAmount)
             engine.registry.setValue(1.3, slot: Engine.channelSlot(letter, "colour"), code: .contrast)
             engine.registry.setValue(1.2, slot: Engine.channelSlot(letter, "transform"), code: .scale)
+        }
+        // ...and on both buses, so six H.264 round trips run at once.
+        for slot in [Engine.moshOneSlot, Engine.moshTwoSlot] {
+            engine.registry.setValue(0.5, slot: slot, code: .moshAmount)
         }
         engine.setTransportRunning(true)
 
@@ -79,6 +86,19 @@ enum StressSelfQA {
         engine.nodeCostsForChecks = nil
         let drops = engine.droppedFrames - dropsBefore
         engine.setTransportRunning(false)
+
+        // The mosh really ran, everywhere — a node that never started would make the
+        // numbers above look better than the real load.
+        let moshNodes = engine.graph.nodes.values.compactMap { $0 as? DatamoshNode }
+            .sorted { $0.identifier < $1.identifier }
+        for node in moshNodes {
+            check.note("  \(node.identifier): \(node.statistics)")
+        }
+        let moshing = moshNodes.filter { $0.isRunning && $0.statistics.emitted > 30 }
+        check.record(AssertionResult(
+            name: "every datamosh node is encoding and decoding under load",
+            passed: moshNodes.count == 6 && moshing.count == 6,
+            detail: "\(moshing.count) of \(moshNodes.count) running with frames flowing"))
 
         guard costs.count > 10 else {
             window.orderOut(nil)

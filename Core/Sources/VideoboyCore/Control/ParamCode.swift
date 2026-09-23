@@ -74,6 +74,15 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     case corruptRate = "33B"
     /// The corruptor's random seed, so a performance is repeatable.
     case corruptSeed = "34B"
+    /// Datamosh: 0 clean; above 0, keyframes and cut frames never reach the decoder,
+    /// so new motion smears the old picture. Towards 1, P-frames drop too.
+    case moshAmount = "35B"
+    /// Datamosh bloom: 0 off; above 0, the last 1–8 P-frames replay in a loop.
+    case moshBloom = "36B"
+    /// Datamosh heal: crossing halfway lets one clean keyframe through.
+    case moshHeal = "37B"
+    /// Datamosh blocks: the encoder's bitrate. Low is starved and blocky.
+    case moshBlocks = "38B"
 
     // MARK: Feedback (4xC)
 
@@ -315,6 +324,10 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
         case .corruptMode: "corrupt mode"
         case .corruptRate: "corrupt rate"
         case .corruptSeed: "corrupt seed"
+        case .moshAmount: "mosh"
+        case .moshBloom: "bloom"
+        case .moshHeal: "heal"
+        case .moshBlocks: "blocks"
         case .feedbackGain: "feedback gain"
         case .feedbackDelayFrames: "feedback delay"
         case .contrast: "contrast"

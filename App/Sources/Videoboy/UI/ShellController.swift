@@ -1366,7 +1366,11 @@ final class ShellController {
         .feedbackRotate: Engine.feedbackSlot,
         .feedbackThreshold: Engine.feedbackSlot,
         .mx1Effect: Engine.mx1OneSlot,
-        .mx1Amount: Engine.mx1OneSlot
+        .mx1Amount: Engine.mx1OneSlot,
+        .moshAmount: Engine.moshOneSlot,
+        .moshBloom: Engine.moshOneSlot,
+        .moshHeal: Engine.moshOneSlot,
+        .moshBlocks: Engine.moshOneSlot
     ]
 
     /// Which slot each param code in the Sub Mix 2 chain belongs to.
@@ -1402,7 +1406,11 @@ final class ShellController {
         .feedbackRotate: Engine.feedbackTwoSlot,
         .feedbackThreshold: Engine.feedbackTwoSlot,
         .mx1Effect: Engine.mx1TwoSlot,
-        .mx1Amount: Engine.mx1TwoSlot
+        .mx1Amount: Engine.mx1TwoSlot,
+        .moshAmount: Engine.moshTwoSlot,
+        .moshBloom: Engine.moshTwoSlot,
+        .moshHeal: Engine.moshTwoSlot,
+        .moshBlocks: Engine.moshTwoSlot
     ]
 
     /// Effect card names to the slot they bypass, per bus.
@@ -1412,7 +1420,8 @@ final class ShellController {
         "Composite · NTSC": (Engine.compositeSlot, Engine.compositeTwoSlot),
         "Echo / Trails": (Engine.echoSlot, Engine.echoTwoSlot),
         "Feedback": (Engine.feedbackSlot, Engine.feedbackTwoSlot),
-        "MX-1": (Engine.mx1OneSlot, Engine.mx1TwoSlot)
+        "MX-1": (Engine.mx1OneSlot, Engine.mx1TwoSlot),
+        PanelSet.datamoshCardName: (Engine.moshOneSlot, Engine.moshTwoSlot)
     ]
 
     private func wireEffectChains() {
@@ -1546,7 +1555,8 @@ final class ShellController {
         "Composite · NTSC": "composite",
         "Echo / Trails": "echo",
         "Feedback": "feedback",
-        "MX-1": "mx1"
+        "MX-1": "mx1",
+        PanelSet.datamoshCardName: "mosh"
     ]
 
     private func slot(forEffect name: String, bus: Bus) -> String? {
@@ -1585,7 +1595,10 @@ final class ShellController {
     /// across the whole bus rather than on one channel, and the BUS copy is the one
     /// declared live at launch — so starting anywhere else would mean the card's
     /// switch and the engine disagreed on the first frame.
-    private var cardChannelIndex: [String: Int] = ["Colour": 2]
+    ///
+    /// Datamosh starts on BOTH too: the bus copy is where cutting A↔B moshes one
+    /// channel's motion onto the other's picture, which is the move people reach for.
+    private var cardChannelIndex: [String: Int] = ["Colour": 2, PanelSet.datamoshCardName: 2]
 
     /// Every copy of an effect on a bus — both channels AND the bus copy — for the
     /// operations that must not leave one of them running.
@@ -1634,6 +1647,8 @@ final class ShellController {
             return "Feedback"
         case .mx1Effect, .mx1Amount:
             return "MX-1"
+        case .moshAmount, .moshBloom, .moshHeal, .moshBlocks:
+            return PanelSet.datamoshCardName
         default:
             return nil
         }

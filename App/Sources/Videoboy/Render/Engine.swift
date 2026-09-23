@@ -109,6 +109,10 @@ final class Engine {
     private(set) var compositeProgram: CompositeCodecNode!
     private(set) var mx1One: MX1EffectNode!
     private(set) var mx1Two: MX1EffectNode!
+    /// Live H.264 datamosh at the head of each bus chain, straight after the mix, so
+    /// a cut between the bus's two channels is what gets moshed.
+    private(set) var moshOne: DatamoshNode!
+    private(set) var moshTwo: DatamoshNode!
 
     /// Configured sources (SPEC 6, SPEC 10) — cameras, captured windows, IP cameras,
     /// DV decks — by `ConfiguredSource.id`. One `CaptureSourceNode` per entry, created
@@ -233,6 +237,11 @@ final class Engine {
             let source = Engine.slot(forChannel: letter)
             var upstream = source
 
+            // Datamosh FIRST: it re-encodes whatever the source is, and every later
+            // effect then works on the moshed picture — the order a hardware chain
+            // with a codec in it would have.
+            let mosh = DatamoshNode(
+                identifier: Engine.channelSlot(letter, "mosh"), context: metal)
             let transform = TransformNode(
                 identifier: Engine.channelSlot(letter, "transform"), context: metal)
             let colour = ColourControlNode(
@@ -246,12 +255,12 @@ final class Engine {
             let mx1Node = MX1EffectNode(
                 identifier: Engine.channelSlot(letter, "mx1"), context: metal)
 
-            for node in [transform, colour, composite, echo, feedbackNode, mx1Node] as [Node] {
+            for node in [mosh, transform, colour, composite, echo, feedbackNode, mx1Node] as [Node] {
                 graph.add(node)
                 graph.connect(from: upstream, to: node.identifier, inputIndex: 0)
                 upstream = node.identifier
             }
-            channelEffects[letter] = [transform, colour, composite, echo, feedbackNode, mx1Node]
+            channelEffects[letter] = [mosh, transform, colour, composite, echo, feedbackNode, mx1Node]
             graph.connect(from: upstream, to: subMix, inputIndex: index)
         }
         // Bus FX on ONE, in order: composite codec, then echo, then feedback. The
@@ -273,7 +282,12 @@ final class Engine {
         graph.add(echo)
         graph.add(feedback)
 
-        graph.connect(from: GraphTopology.subMixOne, to: Engine.transformSlot, inputIndex: 0)
+        // Datamosh at the head of the bus chain: cutting A↔B while it is held moshes
+        // one channel's motion onto the other's picture.
+        moshOne = DatamoshNode(identifier: Engine.moshOneSlot, context: metal)
+        graph.add(moshOne)
+        graph.connect(from: GraphTopology.subMixOne, to: Engine.moshOneSlot, inputIndex: 0)
+        graph.connect(from: Engine.moshOneSlot, to: Engine.transformSlot, inputIndex: 0)
         graph.connect(from: Engine.transformSlot, to: Engine.colourSlot, inputIndex: 0)
         graph.connect(from: Engine.colourSlot, to: Engine.compositeSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeSlot, to: Engine.echoSlot, inputIndex: 0)
@@ -312,7 +326,10 @@ final class Engine {
         graph.add(echoTwo)
         graph.add(feedbackTwo)
 
-        graph.connect(from: GraphTopology.subMixTwo, to: Engine.transformTwoSlot, inputIndex: 0)
+        moshTwo = DatamoshNode(identifier: Engine.moshTwoSlot, context: metal)
+        graph.add(moshTwo)
+        graph.connect(from: GraphTopology.subMixTwo, to: Engine.moshTwoSlot, inputIndex: 0)
+        graph.connect(from: Engine.moshTwoSlot, to: Engine.transformTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.transformTwoSlot, to: Engine.colourTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.colourTwoSlot, to: Engine.compositeTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeTwoSlot, to: Engine.echoTwoSlot, inputIndex: 0)
@@ -443,6 +460,8 @@ final class Engine {
     static let compositeProgramSlot = "fx.program.composite"
     static let mx1OneSlot = "fx.one.mx1"
     static let mx1TwoSlot = "fx.two.mx1"
+    static let moshOneSlot = "fx.one.mosh"
+    static let moshTwoSlot = "fx.two.mosh"
 
     /// The scope overlay, last of all — see `scopeOverlaySlot`.
     static let scopeOverlaySlot = "out.scopeoverlay"
@@ -500,8 +519,8 @@ final class Engine {
     /// and nothing on screen said so. A node left off here is invisible until someone
     /// notices the output looks wrong.
     static let busEffectSlots = [
-        transformSlot, colourSlot, compositeSlot, echoSlot, feedbackSlot, mx1OneSlot,
-        transformTwoSlot, colourTwoSlot, compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot,
+        moshOneSlot, transformSlot, colourSlot, compositeSlot, echoSlot, feedbackSlot, mx1OneSlot,
+        moshTwoSlot, transformTwoSlot, colourTwoSlot, compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot,
         compositeProgramSlot, busCodecProgramSlot
     ]
 
@@ -735,6 +754,7 @@ final class Engine {
                 case let n as EchoNode: n.applyParameters(from: registry)
                 case let n as FeedbackNode: n.applyParameters(from: registry)
                 case let n as MX1EffectNode: n.applyParameters(from: registry)
+                case let n as DatamoshNode: n.applyParameters(from: registry)
                 default: break
                 }
             }
@@ -747,6 +767,8 @@ final class Engine {
         compositeProgram.applyParameters(from: registry)
         mx1One.applyParameters(from: registry)
         mx1Two.applyParameters(from: registry)
+        moshOne.applyParameters(from: registry)
+        moshTwo.applyParameters(from: registry)
         compositeCodecTwo.applyParameters(from: registry)
         colourTwo.applyParameters(from: registry)
         echoTwo.applyParameters(from: registry)
