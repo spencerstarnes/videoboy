@@ -43,6 +43,52 @@ final class ParamAndTemplateTests: XCTestCase {
         }
     }
 
+    // MARK: - Runtime codes (ISF-PLAN M2)
+
+    func testAModuleInputWithNoCodeGetsAStableRuntimeCode() {
+        let code = ParamCode.isolated(inputName: "amount")
+        XCTAssertEqual(code.rawValue, "x:amount")
+        XCTAssertTrue(code.isRuntime)
+        XCTAssertFalse(ParamCode.wetDry.isRuntime)
+        XCTAssertEqual(code.displayName, "amount")
+        XCTAssertEqual(ParamCode(rawValue: "x:amount"), code, "it round-trips through its raw value")
+        XCTAssertEqual(code, ParamCode.isolated(inputName: "amount"),
+                       "two modules with an `amount` input share the code, so a mapping survives the swap")
+    }
+
+    func testOnlyTableAndRuntimeCodesAreAccepted() {
+        XCTAssertEqual(ParamCode(rawValue: "53A"), .brightness)
+        XCTAssertNil(ParamCode(rawValue: "53Z"), "a typo in a template must not mint a parameter")
+        XCTAssertNil(ParamCode(rawValue: "x:"), "a runtime code needs a name")
+        XCTAssertNil(ParamCode(rawValue: ""))
+    }
+
+    func testCodesEncodeAsBareStringsLikeTheEnumDid() throws {
+        let data = try JSONEncoder().encode([ParamCode.scale, ParamCode.isolated(inputName: "glow")])
+        XCTAssertEqual(String(data: data, encoding: .utf8), #"["11A","x:glow"]"#)
+        let back = try JSONDecoder().decode([ParamCode].self, from: data)
+        XCTAssertEqual(back, [.scale, .isolated(inputName: "glow")])
+    }
+
+    func testARuntimeCodeRoundTripsThroughATemplate() throws {
+        let code = ParamCode.isolated(inputName: "noise")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("runtime-code-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let document = TemplateDocument(
+            name: "t",
+            nodes: [TemplateNode(identifier: "fx.one.isf-badtv", moduleType: "ISFNode",
+                                 parameters: [code.rawValue: 0.7])],
+            mappings: [TemplateMapping(source: .midiControlChange(channel: 1, controller: 20),
+                                       slot: "fx.one.isf-badtv", code: code.rawValue)])
+        try document.write(to: url)
+
+        let restored = ParamRegistry()
+        restored.register(slot: "fx.one.isf-badtv", parameters: [Parameter(code: code, range: 0...1, defaultValue: 0)])
+        _ = try TemplateDocument.read(from: url).apply(to: restored)
+        XCTAssertEqual(restored.value(slot: "fx.one.isf-badtv", code: code) ?? -1, 0.7, accuracy: 1e-9)
+        XCTAssertTrue(restored.bindings.contains { $0.code == code }, "the MIDI mapping to the runtime code is live")
+    }
+
     func testParameterDenormalisesIntoItsOwnRange() {
         let parameter = Parameter(code: .playbackSpeed, range: -2...2, defaultValue: 1)
         XCTAssertEqual(parameter.denormalise(0), -2, accuracy: 1e-9)

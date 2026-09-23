@@ -9,9 +9,16 @@
 //  Outputs : `ParamCode` values used by the registry, the UI, and templates.
 //  Connects: ParamRegistry (resolution), templates (serialisation), the FX panels
 //            (which print the code next to each parameter).
-//  Extend  : add a case with a NEW code. Never reuse or renumber an existing one —
-//            an old template holding that code would silently bind to the wrong
-//            parameter. Codes are permanent once shipped.
+//  Extend  : add a `static let` with a NEW code (and its display name and an
+//            `allCases` entry). Never reuse or renumber an existing one — an old
+//            template holding that code would silently bind to the wrong parameter.
+//            Codes are permanent once shipped. Retired codes (91A/92A, MX-1) are
+//            listed in the header below so they are never reissued.
+//
+//  OPEN, not closed (ISF-PLAN M2): a module loaded at runtime — an ISF file — has
+//  inputs nobody listed here. An input that declares `VIDEOBOY_CODE` uses that code;
+//  any other gets `x:<input name>` (`isolated(inputName:)`). This used to be an enum;
+//  it is a struct with the same names, so `.wetDry` still reads the same everywhere.
 //
 //  Numbering scheme, so new codes are allocated consistently:
 //    0xA  — universal per-node parameters (opacity, enable, wet/dry)
@@ -32,34 +39,85 @@ import Foundation
 
 /// A stable parameter address. The raw value is what appears in templates and in
 /// the FX panel next to the parameter's name.
-public enum ParamCode: String, CaseIterable, Codable, Sendable {
+public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomStringConvertible {
+
+    /// The code as written in templates and beside each fader: "53A", or "x:amount".
+    public let rawValue: String
+
+    /// A code from the fixed table, or a runtime code (`x:<name>`, see `isolated`).
+    /// Anything else is refused, so a typo in a template cannot mint a parameter.
+    public init?(rawValue: String) {
+        let isKnown = ParamCode.table[rawValue] != nil
+        let isRuntime = rawValue.hasPrefix(ParamCode.runtimePrefix)
+            && rawValue.count > ParamCode.runtimePrefix.count
+        guard isKnown || isRuntime else { return nil }
+        self.rawValue = rawValue
+    }
+
+    /// Table entries only; the fixed codes below are the one place these are minted.
+    private init(known rawValue: String) { self.rawValue = rawValue }
+
+    public var description: String { rawValue }
+
+    // MARK: Runtime codes (ISF inputs, SPEC 13 / ISF-PLAN 3.4)
+
+    /// The prefix that marks a code minted at runtime rather than listed here.
+    public static let runtimePrefix = "x:"
+
+    /// The code for a module input that declares none: `x:<input name>`. Stable while
+    /// the input keeps its name, and shared by every module with an input of that
+    /// name — so swapping one ISF effect for another that also has `amount` keeps the
+    /// mapping, which is SPEC 13's intent.
+    public static func isolated(inputName: String) -> ParamCode {
+        ParamCode(known: runtimePrefix + inputName)
+    }
+
+    /// Whether this code was minted at runtime (an ISF input) rather than listed here.
+    public var isRuntime: Bool { rawValue.hasPrefix(ParamCode.runtimePrefix) }
+
+    // MARK: Codable — a bare string, exactly as the enum was written
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        guard let code = ParamCode(rawValue: raw) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "unknown param code '\(raw)'")
+        }
+        self = code
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
 
     // MARK: Universal (0xA)
 
     /// Layer opacity, 0...1. Present on every node that composites.
-    case opacity = "01A"
+    public static let opacity = ParamCode(known: "01A")
     /// Effect wet/dry mix, 0...1.
-    case wetDry = "02A"
+    public static let wetDry = ParamCode(known: "02A")
     /// Node enable, 0 or 1.
-    case enabled = "03A"
+    public static let enabled = ParamCode(known: "03A")
 
     // MARK: Geometry (1xA)
 
-    case scale = "11A"
-    case positionX = "12A"
-    case positionY = "13A"
-    case rotation = "14A"
+    public static let scale = ParamCode(known: "11A")
+    public static let positionX = ParamCode(known: "12A")
+    public static let positionY = ParamCode(known: "13A")
+    public static let rotation = ParamCode(known: "14A")
     /// Mirror left-to-right, above the halfway point.
-    case flipHorizontal = "15A"
+    public static let flipHorizontal = ParamCode(known: "15A")
     /// Mirror top-to-bottom, above the halfway point.
-    case flipVertical = "16A"
+    public static let flipVertical = ParamCode(known: "16A")
 
     // MARK: Time-domain effects (2xA)
 
-    case echoDecay = "21A"
-    case trailLength = "22A"
+    public static let echoDecay = ParamCode(known: "21A")
+    public static let trailLength = ParamCode(known: "22A")
     /// Luma threshold above which a pixel is echoed at all.
-    case echoThreshold = "23A"
+    public static let echoThreshold = ParamCode(known: "23A")
 
     // MARK: The bitstream wedge (3xB)
     //
@@ -67,78 +125,78 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     // compressed packets before decode (SPEC 5).
 
     /// How much corruption to apply, 0...1.
-    case corruptAmount = "31B"
+    public static let corruptAmount = ParamCode(known: "31B")
     /// Which corruption transform is selected, quantised from 0...1.
-    case corruptMode = "32B"
+    public static let corruptMode = ParamCode(known: "32B")
     /// How often corruption is re-rolled, as a beat subdivision.
-    case corruptRate = "33B"
+    public static let corruptRate = ParamCode(known: "33B")
     /// The corruptor's random seed, so a performance is repeatable.
-    case corruptSeed = "34B"
+    public static let corruptSeed = ParamCode(known: "34B")
     /// Datamosh: 0 clean; above 0, keyframes and cut frames never reach the decoder,
     /// so new motion smears the old picture. Towards 1, P-frames drop too.
-    case moshAmount = "35B"
+    public static let moshAmount = ParamCode(known: "35B")
     /// Datamosh bloom: 0 off; above 0, the last 1–8 P-frames replay in a loop.
-    case moshBloom = "36B"
+    public static let moshBloom = ParamCode(known: "36B")
     /// Datamosh heal: crossing halfway lets one clean keyframe through.
-    case moshHeal = "37B"
+    public static let moshHeal = ParamCode(known: "37B")
     /// Datamosh blocks: the encoder's bitrate. Low is starved and blocky.
-    case moshBlocks = "38B"
+    public static let moshBlocks = ParamCode(known: "38B")
 
     // MARK: Feedback (4xC)
 
-    case feedbackGain = "43C"
-    case feedbackDelayFrames = "44C"
+    public static let feedbackGain = ParamCode(known: "43C")
+    public static let feedbackDelayFrames = ParamCode(known: "44C")
     /// Zoom applied inside the feedback loop — the classic infinite tunnel.
-    case feedbackZoom = "45C"
+    public static let feedbackZoom = ParamCode(known: "45C")
     /// Rotation applied inside the feedback loop, in turns.
-    case feedbackRotate = "46C"
+    public static let feedbackRotate = ParamCode(known: "46C")
     /// Luma key threshold for what re-enters the loop.
-    case feedbackThreshold = "47C"
+    public static let feedbackThreshold = ParamCode(known: "47C")
 
     // MARK: Colour (5xA)
 
-    case contrast = "51A"
-    case saturation = "52A"
-    case brightness = "53A"
+    public static let contrast = ParamCode(known: "51A")
+    public static let saturation = ParamCode(known: "52A")
+    public static let brightness = ParamCode(known: "53A")
     /// Lifts or crushes the dark end without moving the highlights.
-    case shadow = "54A"
+    public static let shadow = ParamCode(known: "54A")
     /// Rolls off or lifts the bright end without moving the shadows.
-    case highlight = "55A"
+    public static let highlight = ParamCode(known: "55A")
     /// Input black point: what level is remapped to 0. Raising it crushes.
-    case blackLevel = "56A"
+    public static let blackLevel = ParamCode(known: "56A")
     /// Input white point: what level is remapped to full. Lowering it clips.
-    case whiteLevel = "57A"
+    public static let whiteLevel = ParamCode(known: "57A")
     /// Midtone gamma. 1.0 is unchanged; below 1 brightens the middle.
-    case gamma = "58A"
+    public static let gamma = ParamCode(known: "58A")
 
     // MARK: Mixer and transport (6xA)
 
     /// The A/B crossfader position, 0...1.
-    case crossfadeAB = "61A"
+    public static let crossfadeAB = ParamCode(known: "61A")
     /// The C/D crossfader position, 0...1.
-    case crossfadeCD = "62A"
+    public static let crossfadeCD = ParamCode(known: "62A")
     /// The ONE/TWO crossfader position, 0...1.
-    case crossfadeOneTwo = "63A"
+    public static let crossfadeOneTwo = ParamCode(known: "63A")
     /// Playback speed of a source, where 1.0 is nominal.
-    case playbackSpeed = "64A"
+    public static let playbackSpeed = ParamCode(known: "64A")
     /// Layer blend mode of a composite (SPEC 12).
-    case blendMode = "65A"
+    public static let blendMode = ParamCode(known: "65A")
     /// Per-layer opacity of the blend layer in a composite.
-    case layerOpacity = "66A"
+    public static let layerOpacity = ParamCode(known: "66A")
     /// Which MX-1 effect is applied, as a 0...1 sweep across the set.
     ///
     /// A sweep rather than a menu because that is what makes it playable: a fader or
     /// a knob can run through the whole set mid-phrase, which is the entire reason
     /// the MX-1 is worth emulating.
-    case mx1Effect = "91A"
+    public static let mx1Effect = ParamCode(known: "91A")
     /// Strength of the MX-1 effect, where the meaning depends on which one.
-    case mx1Amount = "92A"
+    public static let mx1Amount = ParamCode(known: "92A")
 
     /// Playhead position within a clip, 0...1 — what the shuttle scrubs.
     ///
     /// Separate from `playbackSpeed`: speed is how fast the clip runs, position is
     /// where it is. A jog wheel wants the second one.
-    case scrubPosition = "67A"
+    public static let scrubPosition = ParamCode(known: "67A")
 
     // MARK: Momentary actions
     //
@@ -149,16 +207,16 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     // extension point applies to control as well as to nodes).
 
     /// Cut to the other source on this bus.
-    case cutTrigger = "68A"
+    public static let cutTrigger = ParamCode(known: "68A")
     /// Fade to the other source on this bus, at the set rate.
-    case fadeTrigger = "69A"
+    public static let fadeTrigger = ParamCode(known: "69A")
     /// Cut straight to this bus's LEFT source (e.g. A, C, or ONE) — what the left
     /// bus key does. Unlike `cutTrigger`, this names a direction rather than
     /// toggling to whichever end is not already up.
-    case cutToLeftTrigger = "6AA"
+    public static let cutToLeftTrigger = ParamCode(known: "6AA")
     /// Cut straight to this bus's RIGHT source (e.g. B, D, or TWO) — what the
     /// right bus key does.
-    case cutToRightTrigger = "6BA"
+    public static let cutToRightTrigger = ParamCode(known: "6BA")
 
     // MARK: Genlock/chroma key (6xE)
     //
@@ -174,32 +232,32 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     /// rather than red, because "key out black" is the overwhelmingly common case
     /// (colour 0 on an Amiga, and most genlock hardware) and a fader's rest
     /// position should not silently key on red instead. See `CrossfadeNode.keyRGB`.
-    case keyColour = "61E"
+    public static let keyColour = ParamCode(known: "61E")
     /// How close a pixel must be to the key colour, in RGB distance, to be treated
     /// as background at all. Too low and real content near the key colour survives
     /// as a hole; too high and it eats the title's own anti-aliased edges.
-    case keyThreshold = "62E"
+    public static let keyThreshold = ParamCode(known: "62E")
     /// Width of the soft transition band just past the threshold. Zero would key on
     /// a hard binary edge, which fringes visibly once the frame has been through
     /// `CompositeCodecNode` — dot crawl and chroma bleed smear a bitmap font's edges
     /// well past one pixel, so the key has to tolerate that instead of fighting it.
-    case keyEdge = "63E"
+    public static let keyEdge = ParamCode(known: "63E")
 
     // MARK: Composite emulation (7xA)
 
-    case compositeCrawl = "71A"
-    case chromaBleed = "72A"
-    case tbcWobble = "73A"
+    public static let compositeCrawl = ParamCode(known: "71A")
+    public static let chromaBleed = ParamCode(known: "72A")
+    public static let tbcWobble = ParamCode(known: "73A")
     /// Signal path: composite (cross-colour artefacts) vs S-Video (clean Y/C).
-    case compositePath = "74A"
+    public static let compositePath = ParamCode(known: "74A")
     /// How many times the codec runs — Nth-generation dubbing feel.
-    case compositeGeneration = "75A"
+    public static let compositeGeneration = ParamCode(known: "75A")
     /// Luma bandwidth limit, which controls ringing and softness.
-    case lumaBandwidth = "76A"
+    public static let lumaBandwidth = ParamCode(known: "76A")
     /// Chroma subsampling: 4:4:4 / 4:2:2 / 4:1:1.
-    case chromaSubsampling = "77A"
+    public static let chromaSubsampling = ParamCode(known: "77A")
     /// Head-switching noise band at the bottom of the frame.
-    case headSwitchingNoise = "78A"
+    public static let headSwitchingNoise = ParamCode(known: "78A")
 
     // MARK: Character generator (9xD, SPEC 18.1)
     //
@@ -210,55 +268,55 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     // new code.
 
     /// Point size of the type.
-    case cgFontSize = "91D"
+    public static let cgFontSize = ParamCode(known: "91D")
     /// Which weight bucket, swept 0...1 across regular/medium/semibold/bold/heavy —
     /// the same "sweep selects from a small set" pattern as `mx1Effect`.
-    case cgFontWeight = "92D"
+    public static let cgFontWeight = ParamCode(known: "92D")
     /// Paragraph alignment, swept 0...1 across left/center/right/justified.
-    case cgAlignment = "93D"
+    public static let cgAlignment = ParamCode(known: "93D")
     /// Native font pair-kerning, on above the halfway point. A font either has this
     /// or it does not, so a continuous fader is still a threshold in practice — but
     /// it stays a fader rather than a switch so it can be detect-mapped and
     /// audio-reactive like everything else here.
-    case cgKerningEnabled = "94D"
+    public static let cgKerningEnabled = ParamCode(known: "94D")
     /// Uniform letter-spacing added on top of the font's own metrics, in points.
     /// Negative tightens, positive opens up — separate from kerning, which only
     /// toggles the font's own built-in pair adjustments.
-    case cgTracking = "95D"
+    public static let cgTracking = ParamCode(known: "95D")
     /// Extra space between lines, in points, added to the font's natural leading.
-    case cgLeading = "96D"
+    public static let cgLeading = ParamCode(known: "96D")
     /// Stroke width around each glyph, in points. Zero is no outline.
-    case cgOutlineWidth = "97D"
+    public static let cgOutlineWidth = ParamCode(known: "97D")
     /// Drop shadow horizontal offset, in points.
-    case cgShadowOffsetX = "98D"
+    public static let cgShadowOffsetX = ParamCode(known: "98D")
     /// Drop shadow vertical offset, in points.
-    case cgShadowOffsetY = "99D"
+    public static let cgShadowOffsetY = ParamCode(known: "99D")
     /// Drop shadow blur radius, in points.
-    case cgShadowBlur = "9AD"
+    public static let cgShadowBlur = ParamCode(known: "9AD")
     /// Drop shadow opacity, 0...1, independent of the text's own opacity.
-    case cgShadowOpacity = "9BD"
+    public static let cgShadowOpacity = ParamCode(known: "9BD")
     /// Roll/crawl/reveal mode, swept 0...1 across off/roll/crawl/reveal.
-    case cgRollMode = "9CD"
+    public static let cgRollMode = ParamCode(known: "9CD")
     /// How fast a roll or crawl moves, in screen-heights (or -widths, for crawl) per
     /// bar — clock-synced per SPEC 18.1, so this is a musical rate, not seconds.
-    case cgRollRate = "9DD"
+    public static let cgRollRate = ParamCode(known: "9DD")
     /// The mid-90s budget-titler style preset, routed through the CompositeCodec.
     /// Off is the clean, native rendering the SPEC calls the "basic" mode.
-    case cgPeriodPreset = "9ED"
+    public static let cgPeriodPreset = ParamCode(known: "9ED")
     /// Constrains placement inside the title-safe rectangle rather than the full
     /// frame, so text cannot be positioned somewhere a CRT would cut off.
-    case cgSafeZoneClamp = "9FD"
+    public static let cgSafeZoneClamp = ParamCode(known: "9FD")
 
     // MARK: CRT target (8xA)
 
     /// Safe-zone overlay on previews.
-    case safeZone = "81A"
+    public static let safeZone = ParamCode(known: "81A")
     /// Overscan amount applied to output.
-    case overscan = "82A"
+    public static let overscan = ParamCode(known: "82A")
     /// Black-frame insertion, clock-timed.
-    case blackFrameInsertion = "83A"
+    public static let blackFrameInsertion = ParamCode(known: "83A")
     /// Grid/crosshatch overlay, for seeding feedback.
-    case gridOverlay = "84A"
+    public static let gridOverlay = ParamCode(known: "84A")
 
     // MARK: Emulated titler (Axx)
     //
@@ -268,142 +326,251 @@ public enum ParamCode: String, CaseIterable, Codable, Sendable {
     // thing it reaches does not get a code.
 
     /// Which of the titler's transitions takes the page.
-    case emuWipe = "A1A"
+    public static let emuWipe = ParamCode(known: "A1A")
     /// The direction that transition travels.
-    case emuWipeDirection = "A2A"
+    public static let emuWipeDirection = ParamCode(known: "A2A")
     /// How long it takes.
-    case emuWipeSpeed = "A3A"
+    public static let emuWipeSpeed = ParamCode(known: "A3A")
     /// How text arrives on a page already shown.
-    case emuTextWipe = "A4A"
+    public static let emuTextWipe = ParamCode(known: "A4A")
     /// The typeface.
-    case emuFontFace = "A5A"
+    public static let emuFontFace = ParamCode(known: "A5A")
     /// Type size — the titler's only text scale.
-    case emuFontSize = "A6A"
+    public static let emuFontSize = ParamCode(known: "A6A")
     /// Text colour, through the screen palette.
-    case emuTextColour = "A7A"
+    public static let emuTextColour = ParamCode(known: "A7A")
     /// Background colour, likewise.
-    case emuBackgroundColour = "A8A"
+    public static let emuBackgroundColour = ParamCode(known: "A8A")
     /// How large a placed graphic is drawn.
-    case emuBrushScale = "A9A"
+    public static let emuBrushScale = ParamCode(known: "A9A")
     /// Where the text sits across the screen.
-    case emuTextX = "AAA"
+    public static let emuTextX = ParamCode(known: "AAA")
     /// And down it.
-    case emuTextY = "ABA"
+    public static let emuTextY = ParamCode(known: "ABA")
     /// Left, centre or right.
-    case emuAlignment = "ACA"
+    public static let emuAlignment = ParamCode(known: "ACA")
     /// Colour cycling, on or off.
-    case emuColourCycle = "ADA"
+    public static let emuColourCycle = ParamCode(known: "ADA")
     /// How long a page holds.
-    case emuHold = "AEA"
+    public static let emuHold = ParamCode(known: "AEA")
     /// Jump to a named page.
-    case emuPage = "AFA"
+    public static let emuPage = ParamCode(known: "AFA")
     /// Text decoration: shadow, edge, bevel.
-    case emuDecoration = "B1A"
+    public static let emuDecoration = ParamCode(known: "B1A")
     /// Italics, on or off.
-    case emuItalic = "B2A"
+    public static let emuItalic = ParamCode(known: "B2A")
     /// Which background picture is behind the text.
-    case emuBackdrop = "B3A"
+    public static let emuBackdrop = ParamCode(known: "B3A")
     /// A filled bar behind the text, for a lower third.
-    case emuBox = "B4A"
+    public static let emuBox = ParamCode(known: "B4A")
 
-    /// Human-readable name, used in the UI and in template comments.
+    /// Human-readable name, used in the UI and in template comments. A runtime code
+    /// reads as its input's name.
     public var displayName: String {
-        switch self {
-        case .opacity: "opacity"
-        case .wetDry: "wet/dry"
-        case .enabled: "enabled"
-        case .scale: "scale"
-        case .positionX: "x"
-        case .positionY: "y"
-        case .rotation: "rotate"
-        case .flipHorizontal: "flip H"
-        case .flipVertical: "flip V"
-        case .echoDecay: "echo decay"
-        case .trailLength: "trail length"
-        case .corruptAmount: "corrupt amount"
-        case .corruptMode: "corrupt mode"
-        case .corruptRate: "corrupt rate"
-        case .corruptSeed: "corrupt seed"
-        case .moshAmount: "mosh"
-        case .moshBloom: "bloom"
-        case .moshHeal: "heal"
-        case .moshBlocks: "blocks"
-        case .feedbackGain: "feedback gain"
-        case .feedbackDelayFrames: "feedback delay"
-        case .contrast: "contrast"
-        case .saturation: "saturation"
-        case .brightness: "brightness"
-        case .shadow: "shadow"
-        case .highlight: "highlight"
-        case .blackLevel: "black level"
-        case .whiteLevel: "white level"
-        case .gamma: "gamma"
-        case .crossfadeAB: "A/B crossfade"
-        case .crossfadeCD: "C/D crossfade"
-        case .crossfadeOneTwo: "ONE/TWO crossfade"
-        case .playbackSpeed: "speed"
-        case .scrubPosition: "position"
-        case .cutTrigger: "cut"
-        case .fadeTrigger: "fade"
-        case .cutToLeftTrigger: "cut to left"
-        case .cutToRightTrigger: "cut to right"
-        case .mx1Effect: "MX-1 effect"
-        case .mx1Amount: "MX-1 amount"
-        case .blendMode: "blend mode"
-        case .layerOpacity: "layer opacity"
-        case .keyColour: "key colour"
-        case .keyThreshold: "key threshold"
-        case .keyEdge: "key edge"
-        case .compositeCrawl: "dot crawl"
-        case .chromaBleed: "chroma bleed"
-        case .tbcWobble: "TBC wobble"
-        case .compositePath: "signal path"
-        case .compositeGeneration: "generation"
-        case .lumaBandwidth: "luma bandwidth"
-        case .chromaSubsampling: "chroma subsampling"
-        case .headSwitchingNoise: "head switching"
-        case .echoThreshold: "echo threshold"
-        case .feedbackZoom: "feedback zoom"
-        case .feedbackRotate: "feedback rotate"
-        case .feedbackThreshold: "feedback threshold"
-        case .emuWipe: "emu wipe"
-        case .emuWipeDirection: "emu wipe direction"
-        case .emuWipeSpeed: "emu wipe speed"
-        case .emuTextWipe: "emu text wipe"
-        case .emuFontFace: "emu font"
-        case .emuFontSize: "emu type size"
-        case .emuTextColour: "emu text colour"
-        case .emuBackgroundColour: "emu background"
-        case .emuBrushScale: "emu graphic scale"
-        case .emuTextX: "emu text x"
-        case .emuTextY: "emu text y"
-        case .emuAlignment: "emu alignment"
-        case .emuColourCycle: "emu colour cycle"
-        case .emuHold: "emu hold"
-        case .emuPage: "emu page"
-        case .emuDecoration: "emu decoration"
-        case .emuItalic: "emu italic"
-        case .emuBackdrop: "emu backdrop"
-        case .emuBox: "emu box"
-        case .safeZone: "safe zones"
-        case .overscan: "overscan"
-        case .blackFrameInsertion: "black frame insertion"
-        case .gridOverlay: "grid overlay"
-        case .cgFontSize: "font size"
-        case .cgFontWeight: "font weight"
-        case .cgAlignment: "alignment"
-        case .cgKerningEnabled: "kerning"
-        case .cgTracking: "tracking"
-        case .cgLeading: "leading"
-        case .cgOutlineWidth: "outline width"
-        case .cgShadowOffsetX: "shadow x"
-        case .cgShadowOffsetY: "shadow y"
-        case .cgShadowBlur: "shadow blur"
-        case .cgShadowOpacity: "shadow opacity"
-        case .cgRollMode: "roll mode"
-        case .cgRollRate: "roll rate"
-        case .cgPeriodPreset: "period preset"
-        case .cgSafeZoneClamp: "safe-zone clamp"
-        }
+        if let name = ParamCode.displayNames[rawValue] { return name }
+        return isRuntime ? String(rawValue.dropFirst(ParamCode.runtimePrefix.count)) : rawValue
     }
+
+    private static let displayNames: [String: String] = [
+        "01A": "opacity",
+        "02A": "wet/dry",
+        "03A": "enabled",
+        "11A": "scale",
+        "12A": "x",
+        "13A": "y",
+        "14A": "rotate",
+        "15A": "flip H",
+        "16A": "flip V",
+        "21A": "echo decay",
+        "22A": "trail length",
+        "31B": "corrupt amount",
+        "32B": "corrupt mode",
+        "33B": "corrupt rate",
+        "34B": "corrupt seed",
+        "35B": "mosh",
+        "36B": "bloom",
+        "37B": "heal",
+        "38B": "blocks",
+        "43C": "feedback gain",
+        "44C": "feedback delay",
+        "51A": "contrast",
+        "52A": "saturation",
+        "53A": "brightness",
+        "54A": "shadow",
+        "55A": "highlight",
+        "56A": "black level",
+        "57A": "white level",
+        "58A": "gamma",
+        "61A": "A/B crossfade",
+        "62A": "C/D crossfade",
+        "63A": "ONE/TWO crossfade",
+        "64A": "speed",
+        "67A": "position",
+        "68A": "cut",
+        "69A": "fade",
+        "6AA": "cut to left",
+        "6BA": "cut to right",
+        "91A": "MX-1 effect",
+        "92A": "MX-1 amount",
+        "65A": "blend mode",
+        "66A": "layer opacity",
+        "61E": "key colour",
+        "62E": "key threshold",
+        "63E": "key edge",
+        "71A": "dot crawl",
+        "72A": "chroma bleed",
+        "73A": "TBC wobble",
+        "74A": "signal path",
+        "75A": "generation",
+        "76A": "luma bandwidth",
+        "77A": "chroma subsampling",
+        "78A": "head switching",
+        "23A": "echo threshold",
+        "45C": "feedback zoom",
+        "46C": "feedback rotate",
+        "47C": "feedback threshold",
+        "A1A": "emu wipe",
+        "A2A": "emu wipe direction",
+        "A3A": "emu wipe speed",
+        "A4A": "emu text wipe",
+        "A5A": "emu font",
+        "A6A": "emu type size",
+        "A7A": "emu text colour",
+        "A8A": "emu background",
+        "A9A": "emu graphic scale",
+        "AAA": "emu text x",
+        "ABA": "emu text y",
+        "ACA": "emu alignment",
+        "ADA": "emu colour cycle",
+        "AEA": "emu hold",
+        "AFA": "emu page",
+        "B1A": "emu decoration",
+        "B2A": "emu italic",
+        "B3A": "emu backdrop",
+        "B4A": "emu box",
+        "81A": "safe zones",
+        "82A": "overscan",
+        "83A": "black frame insertion",
+        "84A": "grid overlay",
+        "91D": "font size",
+        "92D": "font weight",
+        "93D": "alignment",
+        "94D": "kerning",
+        "95D": "tracking",
+        "96D": "leading",
+        "97D": "outline width",
+        "98D": "shadow x",
+        "99D": "shadow y",
+        "9AD": "shadow blur",
+        "9BD": "shadow opacity",
+        "9CD": "roll mode",
+        "9DD": "roll rate",
+        "9ED": "period preset",
+        "9FD": "safe-zone clamp"
+    ]
+
+    /// Every code in the fixed table, in declaration order (what `CaseIterable` gave
+    /// the enum). Runtime codes are not listed: they are only known once a module is
+    /// loaded.
+    public static let allCases: [ParamCode] = [
+        .opacity,
+        .wetDry,
+        .enabled,
+        .scale,
+        .positionX,
+        .positionY,
+        .rotation,
+        .flipHorizontal,
+        .flipVertical,
+        .echoDecay,
+        .trailLength,
+        .echoThreshold,
+        .corruptAmount,
+        .corruptMode,
+        .corruptRate,
+        .corruptSeed,
+        .moshAmount,
+        .moshBloom,
+        .moshHeal,
+        .moshBlocks,
+        .feedbackGain,
+        .feedbackDelayFrames,
+        .feedbackZoom,
+        .feedbackRotate,
+        .feedbackThreshold,
+        .contrast,
+        .saturation,
+        .brightness,
+        .shadow,
+        .highlight,
+        .blackLevel,
+        .whiteLevel,
+        .gamma,
+        .crossfadeAB,
+        .crossfadeCD,
+        .crossfadeOneTwo,
+        .playbackSpeed,
+        .blendMode,
+        .layerOpacity,
+        .mx1Effect,
+        .mx1Amount,
+        .scrubPosition,
+        .cutTrigger,
+        .fadeTrigger,
+        .cutToLeftTrigger,
+        .cutToRightTrigger,
+        .keyColour,
+        .keyThreshold,
+        .keyEdge,
+        .compositeCrawl,
+        .chromaBleed,
+        .tbcWobble,
+        .compositePath,
+        .compositeGeneration,
+        .lumaBandwidth,
+        .chromaSubsampling,
+        .headSwitchingNoise,
+        .cgFontSize,
+        .cgFontWeight,
+        .cgAlignment,
+        .cgKerningEnabled,
+        .cgTracking,
+        .cgLeading,
+        .cgOutlineWidth,
+        .cgShadowOffsetX,
+        .cgShadowOffsetY,
+        .cgShadowBlur,
+        .cgShadowOpacity,
+        .cgRollMode,
+        .cgRollRate,
+        .cgPeriodPreset,
+        .cgSafeZoneClamp,
+        .safeZone,
+        .overscan,
+        .blackFrameInsertion,
+        .gridOverlay,
+        .emuWipe,
+        .emuWipeDirection,
+        .emuWipeSpeed,
+        .emuTextWipe,
+        .emuFontFace,
+        .emuFontSize,
+        .emuTextColour,
+        .emuBackgroundColour,
+        .emuBrushScale,
+        .emuTextX,
+        .emuTextY,
+        .emuAlignment,
+        .emuColourCycle,
+        .emuHold,
+        .emuPage,
+        .emuDecoration,
+        .emuItalic,
+        .emuBackdrop,
+        .emuBox
+    ]
+
+    /// The fixed table by raw value, for validation.
+    private static let table: [String: ParamCode] = Dictionary(
+        uniqueKeysWithValues: allCases.map { ($0.rawValue, $0) })
 }
