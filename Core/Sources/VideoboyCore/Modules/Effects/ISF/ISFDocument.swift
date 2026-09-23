@@ -157,8 +157,13 @@ public struct ISFDocument: Equatable, Sendable {
     ///
     /// - Throws: `ISFParseError` naming what is wrong. Never crashes on bad input — a
     ///   broken file must show up greyed with a reason, not take the app down.
-    public init(source: String, name: String) throws {
+    public init(source rawSource: String, name: String) throws {
         self.name = name
+        // One line-ending convention from here on. Files from Windows-era VDMX packs
+        // use CRLF, and some old Mac ones bare CR; Metal counts any of them as a line
+        // break, so everything downstream must agree on what a line is or error lines
+        // stop mapping back to the file. The author's editor numbers lines the same way.
+        let source = ISFDocument.normalisingLineEndings(rawSource)
 
         // The header is the FIRST block comment and must open with `{`. Leading
         // whitespace is tolerated; anything else before it is not ISF.
@@ -188,7 +193,7 @@ public struct ISFDocument: Equatable, Sendable {
         }
 
         let headerText = source[source.startIndex..<close.upperBound]
-        fragmentStartLine = headerText.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
+        fragmentStartLine = GLSLTokenizer.lineBreakCount(headerText) + 1
         fragmentSource = String(source[close.upperBound...])
 
         summary = root["DESCRIPTION"] as? String ?? ""
@@ -245,6 +250,13 @@ public struct ISFDocument: Equatable, Sendable {
     }
 
     // MARK: - Header helpers
+
+    /// CRLF and bare CR become LF.
+    static func normalisingLineEndings(_ text: String) -> String {
+        guard text.unicodeScalars.contains("\r") else { return text }
+        return text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+    }
 
     private static func parseInput(_ raw: [String: Any]) throws -> ISFInput {
         guard let name = raw["NAME"] as? String, !name.isEmpty else {

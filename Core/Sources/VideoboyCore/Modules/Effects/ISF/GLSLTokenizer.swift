@@ -47,7 +47,7 @@ public struct GLSLToken: Equatable, Sendable {
     public var isTrivia: Bool { kind == .whitespace || kind == .comment }
 
     /// Number of line breaks inside this token.
-    public var newlineCount: Int { text.reduce(0) { $1 == "\n" ? $0 + 1 : $0 } }
+    public var newlineCount: Int { GLSLTokenizer.lineBreakCount(text) }
 }
 
 /// Turns GLSL text into tokens.
@@ -152,6 +152,17 @@ public enum GLSLTokenizer {
             tokens.append(GLSLToken(.symbol, text(start, index)))
         }
         return tokens
+    }
+
+    /// Number of `\n` line breaks in `text`, counted by Unicode scalar.
+    ///
+    /// NOT by `Character`: Swift treats `\r\n` as ONE character that is not equal to
+    /// "\n", so a Character count finds no lines at all in a Windows-style file —
+    /// which is exactly how compiler errors in CRLF shaders came back as "generated
+    /// line …" instead of the author's line. Every line count in the ISF host goes
+    /// through here.
+    public static func lineBreakCount<S: StringProtocol>(_ text: S) -> Int {
+        text.unicodeScalars.reduce(0) { $1 == "\n" ? $0 + 1 : $0 }
     }
 
     /// Joins tokens back into text. The inverse of `tokenize`.
