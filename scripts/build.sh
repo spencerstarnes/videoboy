@@ -22,7 +22,11 @@ swift build -c "$CONFIGURATION" --arch "$VIDEOBOY_ARCH" "${FFMPEG_FLAGS[@]}"
 
 log "building App ($CONFIGURATION, $VIDEOBOY_ARCH)"
 cd "$REPO_ROOT/App"
-swift build -c "$CONFIGURATION" --arch "$VIDEOBOY_ARCH" "${FFMPEG_FLAGS[@]}"
+# --disable-build-manifest-caching: App compiles Core as a path dependency, and the
+# cached manifest does NOT notice a new file added to Core — the App build then fails
+# with "cannot find 'NewType' in scope" while Core itself builds fine. Re-planning
+# costs about a second; a new node silently missing from the app costs far more.
+swift build -c "$CONFIGURATION" --arch "$VIDEOBOY_ARCH" "${FFMPEG_FLAGS[@]}" --disable-build-manifest-caching
 BINARY="$(swift build -c "$CONFIGURATION" --arch "$VIDEOBOY_ARCH" "${FFMPEG_FLAGS[@]}" --show-bin-path)/$APP_NAME"
 [ -x "$BINARY" ] || fail "expected an executable at $BINARY"
 
