@@ -40,7 +40,7 @@ final class PreferencesWindowController: NSWindowController {
             case .save: "Save"
             case .defaults: "Defaults"
             case .outputs: "Outputs"
-            case .inputs: "Inputs"
+            case .inputs: "Sources"
             case .hotKeys: "Hot Keys"
             case .midiMapping: "MIDI Mapping"
             case .emu: "EMU"
@@ -67,7 +67,8 @@ final class PreferencesWindowController: NSWindowController {
             case .save: "Where your work goes, and how often it gets there by itself."
             case .defaults: "What a new source, bus and session start out as."
             case .outputs: "Where PROGRAM and the buses can be sent."
-            case .inputs: "What is plugged in right now."
+            case .inputs: "MIDI, and every camera, window, IP camera or deck available "
+                + "to a channel."
             case .hotKeys: "Keys for the things you reach for mid-set."
             case .midiMapping: "Every control currently bound to a controller."
             case .emu: "Emulated machines, and the cores, ROMs and discs they need."
@@ -84,13 +85,11 @@ final class PreferencesWindowController: NSWindowController {
     var savedPathLabel: NSTextField?
     var reminderCountLabel: NSTextField?
     var destinationList: DestinationListView?
+    var sourceList: SourceListView?
 
     /// Called when the picture fill changes, so open previews follow immediately
     /// rather than at the next relaunch.
     var onPreviewFillChanged: ((PreviewFill) -> Void)?
-
-    /// Called when the camera choice changes, so the engine can open it.
-    var onCaptureDeviceChanged: ((String?) -> Void)?
 
     private var selected: Pane = .save
     private var tabButtons: [Pane: NSButton] = [:]

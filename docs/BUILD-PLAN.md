@@ -116,6 +116,33 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
 - [ ] SVG/PS1 source (§17); IP in/out (§6, §15). **NTSC scopes (§19), discrete A/B/C/D
       recording (§15), the routing/send panel (§6) and the full four-channel mix
       (C/D→TWO, layer compositing) are done.**
+- [x] Configured sources (§6, §10) — added 2026-09-22. Settings > Sources is a real
+      +/− list (`ConfiguredSource`, `SourceListView`), not the single
+      `captureDeviceName` string it replaced. **Camera** (AVFoundation — webcams,
+      Continuity Camera, a UVC grabber like the DVC100) and **Window Capture**
+      (ScreenCaptureKit, picked from what is actually on screen — same picker macOS
+      itself uses) are both real and continuous: `LiveAVFoundationCapture` /
+      `WindowCaptureSession` feed a `CaptureSourceNode` per configured source, and
+      `ChannelSourceKind.capture(id)` (opened up from a single fixed `.capture` case
+      that could not even be routed to a channel — see `Engine.setChannelSource`'s
+      prior history) makes any of them assignable to A/B/C/D the same way a clip is:
+      double-click the tile in the Asset Browser's **Sources** tab. Sources and Clips
+      were one undifferentiated tab before this — clips showed up mixed in with
+      hardware placeholders, which is the bug this was written to fix.
+
+      **IP Camera** and **DV Deck** can be added and named (saved, shown greyed in
+      Sources with why) but are deliberately NOT live:
+      - IP camera decode is real protocol work (RTSP/ONVIF/etc.) and a runtime-network
+        decision CLAUDE.md scopes as its own explicit phase — out of scope here.
+      - DV deck is a genuinely open hardware question, written down rather than
+        guessed at: this is the literal FireWire/IIDC path, NOT the DVC100 (which is
+        UVC and goes through Camera above). Whether modern Apple Silicon + current
+        macOS has any native FireWire DV capture route at all, without extra
+        hardware, is unconfirmed. Settle that before building against it.
+
+      607 tests (597 + 10 new — `ConfiguredSource` round-trip/lenient-decode,
+      `CaptureSourceNode.isLive`). `scripts/verify.sh` exits 0, including the full
+      self-QA suite with a live app launch.
 - [ ] Optional: expose PRIMARY (and the wedge sources) over Syphon so the app can also feed VDMX/TouchDesigner rigs.
 
 ## Backlog notes / deferred ideas

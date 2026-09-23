@@ -100,12 +100,14 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// How a picture is placed when its shape and its window's disagree.
     public var previewFill: PreviewFill = .fit
 
-    /// The camera chosen as the live input, by its localised name.
+    /// Every live source the person has added in Settings — cameras, captured
+    /// windows, IP cameras, DV decks. See `ConfiguredSource`.
     ///
-    /// By NAME rather than by unique ID: a USB grabber gets a different unique ID on
-    /// a different port, and someone who picked "PC-LM1E Camera" means that camera
-    /// wherever it is plugged in. Nil means no camera has been chosen.
-    public var captureDeviceName: String?
+    /// Replaces what used to be a single `captureDeviceName: String?`. That shape
+    /// could remember at most one camera and nothing else; this remembers any number
+    /// of sources of any kind, each with the stable `id` that `Engine` needs to route
+    /// a channel at it and that `LibraryPanelBody`'s Sources tab needs to show it.
+    public var configuredSources: [ConfiguredSource] = []
 
     /// The disc image the emulated machine is built from, by path.
     ///
@@ -160,8 +162,15 @@ public struct Preferences: Codable, Equatable, Sendable {
         defaultBlendMode = decode(.defaultBlendMode, BlendMode.normal)
         playOnLoad = decode(.playOnLoad, true)
         previewFill = decode(.previewFill, PreviewFill.fit)
-        captureDeviceName = try? container.decodeIfPresent(String.self, forKey: .captureDeviceName)
         emulatorDiscPath = try? container.decodeIfPresent(String.self, forKey: .emulatorDiscPath)
+        // Element by element, same reasoning as `destinations` below: one source of a
+        // kind a future build removes must not take its siblings down with it. A
+        // preferences file written before this type existed simply has no key here,
+        // which decodes to the default empty list rather than failing.
+        if let raw = try? container.decodeIfPresent(
+            [FailableConfiguredSource].self, forKey: .configuredSources) {
+            configuredSources = raw.compactMap(\.value)
+        }
         suppressedReminders = decode(.suppressedReminders, Set<ReminderKind>())
         // Element by element, so one destination of a kind this build no longer has
         // does not take the whole list down with it. Capture cards were offered as
@@ -184,6 +193,15 @@ private struct FailableDestination: Decodable {
 
     init(from decoder: Decoder) throws {
         value = try? OutputDestination(from: decoder)
+    }
+}
+
+/// Decodes a configured source, or nothing, without failing its neighbours.
+private struct FailableConfiguredSource: Decodable {
+    let value: ConfiguredSource?
+
+    init(from decoder: Decoder) throws {
+        value = try? ConfiguredSource(from: decoder)
     }
 }
 

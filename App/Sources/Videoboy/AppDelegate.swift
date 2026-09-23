@@ -219,9 +219,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             preferencesController = PreferencesWindowController(
                 store: preferences, engine: engine)
         }
-        preferencesController?.onCaptureDeviceChanged = { [weak self] name in
-            self?.mainWindowController?.shellController?.setCaptureDevice(name)
-        }
+        // No capture-device callback wired here any more — adding, renaming or
+        // removing a source writes straight through `PreferenceStore`, and
+        // `ShellController` picked that up itself via `preferences.onChange` the
+        // moment it wired the libraries (`refreshConfiguredSources`).
         preferencesController?.onPreviewFillChanged = { [weak self] fill in
             self?.mainWindowController?.shellController?.setPreviewFill(fill)
         }

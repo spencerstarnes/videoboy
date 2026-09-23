@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-19T15:17:58Z
+when:     2026-09-23T03:35:52Z
 core:     0.3.0
 
 notes:
@@ -12,36 +12,36 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
   adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 11.26 ms, p95 11.91 ms, worst 13.09 ms, budget 33.37 ms
+  frame time with everything on: mean 11.12 ms, p95 12.33 ms, worst 12.91 ms, budget 33.37 ms
 
 assertions (99/99 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 834.0
+  PASS  wide is not blank — luminance variance 806.2
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 800.2
+  PASS  compact is not blank — luminance variance 757.3
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 974.4
-  PASS  collapsed-left is not blank — luminance variance 731.6
-  PASS  collapsed-both-edges is not blank — luminance variance 631.3
-  PASS  collapsed-sources-only is not blank — luminance variance 853.6
-  PASS  collapsed-effects-only is not blank — luminance variance 620.4
+  PASS  narrow is not blank — luminance variance 911.5
+  PASS  collapsed-left is not blank — luminance variance 707.1
+  PASS  collapsed-both-edges is not blank — luminance variance 610.5
+  PASS  collapsed-sources-only is not blank — luminance variance 822.2
+  PASS  collapsed-effects-only is not blank — luminance variance 596.2
   PASS  holding Shift lights the mappable faders — 81 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
   PASS  a driven fader's bar follows the value driving it — 8 distinct bar positions over eight LFO steps
   PASS  removing the driver clears the mark — 0 faders still marked
-  PASS  preferences save has content — luminance variance 166.3
-  PASS  preferences defaults has content — luminance variance 322.5
-  PASS  preferences outputs has content — luminance variance 255.4
-  PASS  preferences inputs has content — luminance variance 175.3
-  PASS  preferences hotKeys has content — luminance variance 171.8
-  PASS  preferences midiMapping has content — luminance variance 145.8
-  PASS  preferences emu has content — luminance variance 331.3
-  PASS  preferences macros has content — luminance variance 262.7
+  PASS  preferences save has content — luminance variance 166.9
+  PASS  preferences defaults has content — luminance variance 323.2
+  PASS  preferences outputs has content — luminance variance 256.1
+  PASS  preferences inputs has content — luminance variance 176.7
+  PASS  preferences hotKeys has content — luminance variance 172.5
+  PASS  preferences midiMapping has content — luminance variance 146.4
+  PASS  preferences emu has content — luminance variance 331.9
+  PASS  preferences macros has content — luminance variance 263.3
   PASS  double-click fills a pair then comes back round — channels offered: A, B, A
   PASS  switching pair starts at that pair's first channel — offered C after switching to C/D
-  PASS  library thumbnails decode real frames — 12 of 42 thumbnails have a picture
+  PASS  library thumbnails decode real frames — 12 of 24 thumbnails have a picture
   PASS  ntsc emulation popover has content — 300x147
   PASS  dv emulation popover has content — 300x180
   PASS  a stream destination with a target is offered as available — OBS with a target is available
@@ -49,9 +49,9 @@ assertions (99/99 passed):
   PASS  the display Videoboy is running on is not offered as an output — correctly withheld
   PASS  each source keeps its own quadrant in the four-up — top-left r=220, top-right g=220, bottom-left b=220
   PASS  an empty channel leaves its quadrant black rather than moving the others — bottom-right is (0, 0, 0)
-  PASS  a press on a library item reaches the view that starts the drag — 42 items, all reachable
+  PASS  a press on a library item reaches the view that starts the drag — 24 items, all reachable
   PASS  dropping a clip on a source loads it — entered copy, accepted true, channel B holds motion.dv
-  PASS  a drop on the library grid adds the clip — landed on LibraryDropView, entered copy, accepted true, 10 items before, 11 after
+  PASS  a drop on the library grid adds the clip — landed on LibraryPanelBody, entered copy, accepted true, 4 items before, 5 after
   PASS  a press then a drag on a thumbnail starts a drag — pressed HoverScrubView, dragged bars.dv
   PASS  a drop target can read what the library writes — read motion.dv
   PASS  source A accepts dropped files — public.file-url
@@ -79,17 +79,17 @@ assertions (99/99 passed):
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
   PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 13.09 ms against a 33.37 ms budget (mean 11.26, p95 11.91)
+  PASS  no frame misses the budget with every effect running — worst frame 12.91 ms against a 33.37 ms budget (mean 11.12, p95 12.33)
   PASS  frame time is even, not just fast on average — worst is 1.2x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there
   PASS  a crossfader accepts sweep marks — 0.19...0.81
-  PASS  an armed crossfader is actually driven, not just marked — 11 distinct values written
+  PASS  an armed crossfader is actually driven, not just marked — 12 distinct values written
   PASS  CUT and FADE carry a mapping address — 2 learnable action keys on the A/B fader: cut, fade
   PASS  shift-clicking CUT arms it for learning rather than cutting — mix.one · 68A
-  PASS  library search actually filters — 10 items, 0 after searching for something absent
-  PASS  clearing the search brings everything back — 10 of 10 restored
-  PASS  an item moved into a bin is still in the library — bins: Set One, 10 items still shown
+  PASS  library search actually filters — 4 items, 0 after searching for something absent
+  PASS  clearing the search brings everything back — 4 of 4 restored
+  PASS  an item moved into a bin is still in the library — bins: Set One, 4 items still shown
   PASS  a single click on a source picture does NOT toggle playback — single clicks left the transport alone
   PASS  double-clicking a source picture plays or pauses it — 1 toggle(s) from one double click
   PASS  a click on a colour fader actually lands on that fader — hit test returns the fader

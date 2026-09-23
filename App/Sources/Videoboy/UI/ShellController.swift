@@ -19,6 +19,11 @@ final class ShellController {
     private let shell: ShellView
     private let engine: Engine
     private let preferences: PreferenceStore
+    /// Live sessions for whatever configured sources (SPEC 6, SPEC 10) are actually
+    /// running right now — a subset of `preferences.preferences.configuredSources`,
+    /// since a source exists the moment it is added in Settings but its session only
+    /// starts when a channel is actually pointed at it.
+    private let sourceSessions = SourceSessionManager()
     private var outputWindow: OutputWindowController?
     /// Everything leaving the app beyond the PROGRAM output window.
     private lazy var router = OutputRouter(store: preferences, metal: MetalContext.shared)
@@ -45,7 +50,9 @@ final class ShellController {
         refreshPlaylists()
         wireRouting()
         setPreviewFill(preferences.preferences.previewFill)
-        setCaptureDevice(preferences.preferences.captureDeviceName)
+        // No single default camera to start here any more — a configured source's
+        // session starts when a channel is actually pointed at it (`assignSource`),
+        // the same as a file only starts decoding once it is loaded into one.
         wireDetect()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
@@ -164,15 +171,6 @@ final class ShellController {
 
     /// Wires the libraries: double-click loads into the pair's next channel.
     /// Applies a picture fill to every preview in the window.
-    /// Points the capture source at a named camera, or at nothing.
-    ///
-    /// By name, matching how the preference is stored: a grabber gets a different
-    /// unique ID on a different USB port, and someone who chose a camera means that
-    /// camera wherever it is plugged in.
-    func setCaptureDevice(_ name: String?) {
-        engine.setCaptureDeviceName(name)
-        Log.info(.output, "capture device set to \(name ?? "none")")
-    }
 
     func setPreviewFill(_ fill: PreviewFill) {
         let panels = shell.grid.panels
@@ -318,16 +316,39 @@ final class ShellController {
                 self.refreshPlaylists()
             }
             library.onItemOpened = { [weak self] item, channel, range in
+                guard let self else { return }
+                if let sourceID = item.configuredSourceID {
+                    self.assignSource(sourceID, toChannel: channel)
+                    return
+                }
                 guard let url = item.url else {
-                    self?.presentNotice(
+                    self.presentNotice(
                         "\(item.name) is not a file",
                         "Generators and the other source kinds are loaded from their own "
                             + "panels, not from the library.")
                     return
                 }
-                self?.loadClip(url, into: channel, range: range)
+                self.loadClip(url, into: channel, range: range)
             }
         }
+
+        refreshConfiguredSources()
+        preferences.onChange = { [weak self] _ in self?.refreshConfiguredSources() }
+    }
+
+    /// Rebuilds the Asset Browser's Sources tab from `Preferences.configuredSources`.
+    ///
+    /// Called once at launch and again on every change — adding, renaming or removing
+    /// a source in Settings > Sources goes through `PreferenceStore.onChange`, which
+    /// this is now the one subscriber to.
+    private func refreshConfiguredSources() {
+        shell.grid.panels.assetBrowserBody.configuredSourceItems =
+            preferences.preferences.configuredSources.map { source in
+                LibraryItem(
+                    name: source.name, badge: source.kind.badge,
+                    isAvailable: source.kind.isImplemented,
+                    configuredSourceID: source.id)
+            }
     }
 
     // MARK: - Recording
@@ -866,6 +887,9 @@ final class ShellController {
             body.setMediaName("Amiga")
         case .generator:
             body.setMediaName(engine.generators[letter]?.generator.displayName ?? "Generator")
+        case .capture(let id):
+            let name = preferences.preferences.configuredSources.first { $0.id == id }?.name
+            body.setMediaName(name ?? "Source")
         case .file:
             body.setMediaName(node.mediaURL.map {
                 range == nil ? $0.lastPathComponent : "\($0.lastPathComponent) [trimmed]"
@@ -889,6 +913,7 @@ final class ShellController {
     func shutdown() {
         Log.info(.app, "shutting down: closing outputs and stopping the render clock")
         router.closeAll()
+        sourceSessions.stopAll()
         engine.stop()
     }
 
@@ -943,21 +968,40 @@ final class ShellController {
         shell.grid.panels.emuBrowser.refresh()
     }
 
-    /// Points a channel at the camera.
+    /// Points a channel at a configured source (SPEC 6, SPEC 10) by id, starting its
+    /// live session if it is not already running.
     ///
-    /// The picker in Settings records WHICH camera; this is what asks for its picture.
-    /// A live capture session is not built yet, so this reports plainly rather than
-    /// switching the channel to a node that produces nothing — which would look
-    /// exactly like a broken camera.
-    private func assignCamera(toChannel letter: String) {
-        let device = engine.captureDeviceName
-        guard let device, !device.isEmpty else {
-            Log.warn(.app, "channel \(letter) asked for the camera, but none is chosen — "
-                + "pick one in Settings > Inputs")
+    /// The one path every route to a source goes through — a double-click on its tile
+    /// in the Sources tab, or the per-channel "Camera" button below — so a channel and
+    /// its preview always agree about what actually fed the graph edge.
+    private func assignSource(_ id: String, toChannel letter: String) {
+        guard let source = preferences.preferences.configuredSources.first(where: { $0.id == id })
+        else { return }
+        guard source.kind.isImplemented else {
+            presentNotice(
+                "\(source.name) is not connectable yet",
+                source.kind.unimplementedReason ?? "This source kind is not built yet.")
             return
         }
-        Log.warn(.app, "channel \(letter) asked for \(device); a live capture session is "
-            + "not built yet, so the channel is unchanged")
+        sourceSessions.start(source, engine: engine)
+        engine.setChannelSource(.capture(id), channel: letter)
+    }
+
+    /// The per-channel "Camera" button's fallback when there is no Sources-tab tile
+    /// at hand. With exactly one configured, connectable source, that is obviously
+    /// the one meant; with zero or several, guessing would be wrong more often than
+    /// right, so this points at where the real choice lives instead.
+    private func assignCamera(toChannel letter: String) {
+        let candidates = preferences.preferences.configuredSources.filter { $0.kind.isImplemented }
+        guard candidates.count == 1, let only = candidates.first else {
+            presentNotice(
+                candidates.isEmpty ? "No source configured" : "More than one source is configured",
+                candidates.isEmpty
+                    ? "Add a camera or a captured window in Settings > Sources."
+                    : "Pick one from the Sources tab in the Asset Browser.")
+            return
+        }
+        assignSource(only.id, toChannel: letter)
     }
 
     private func togglePlayback(channel letter: String) {
