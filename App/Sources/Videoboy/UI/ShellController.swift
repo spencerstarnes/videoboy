@@ -1862,13 +1862,16 @@ final class ShellController {
             (shell.grid.panels.faderOneTwoBody, GraphTopology.primary)
         ]
         for bus in buses {
-            for code in [ParamCode.cutTrigger, .fadeTrigger] {
+            for code in [ParamCode.cutTrigger, .fadeTrigger, .cutToLeftTrigger, .cutToRightTrigger] {
                 guard let value = engine.registry.value(slot: bus.slot, code: code),
                       value > 0.5 else { continue }
                 engine.registry.setValue(0, slot: bus.slot, code: code)
                 switch code {
                 case .cutTrigger: bus.body.onCutRequested?()
-                default: bus.body.onFade?(bus.body.currentRate)
+                case .fadeTrigger: bus.body.onFade?(bus.body.currentRate)
+                case .cutToLeftTrigger: bus.body.triggerLeftKey()
+                case .cutToRightTrigger: bus.body.triggerRightKey()
+                default: break
                 }
                 Log.info(.midi, "\(code.displayName) fired on \(bus.slot) from a mapping")
             }
@@ -1878,6 +1881,14 @@ final class ShellController {
     /// Drives the sweeps once, for checks that step the graph by hand rather than
     /// through the display link.
     func driveSweepsForChecks() { driveSweeps(from: engine) }
+
+    /// Polls the action-trigger codes once, for checks that need to prove a
+    /// MIDI-mapped CUT/FADE/bus-key actually fires rather than just arming.
+    func fireActionTriggersForChecks() { fireActionTriggers(from: engine) }
+
+    /// Flips automated buttons once, for checks that step the beat by hand rather
+    /// than through the display link.
+    func flipAutomatedButtonsForChecks() { flipAutomatedButtons(from: engine) }
 
     /// Flips every automated button on its beat.
     ///

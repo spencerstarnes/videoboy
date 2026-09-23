@@ -21,6 +21,7 @@
 //
 
 import AppKit
+import VideoboyCore
 
 /// A big, square, lit-when-live source button.
 final class VBBusButton: NSControl {
@@ -55,6 +56,29 @@ final class VBBusButton: NSControl {
     private var isHovering = false
     private var isPressed = false
     private var trackingArea: NSTrackingArea?
+
+    // MARK: Detect
+    //
+    // A bus key can be learned to a MIDI button exactly as CUT and FADE can — the
+    // same Shift-click gesture DetectSession offers every mappable control. It is a
+    // button, not a knob: on a busy controller a knob you brush on the way to the
+    // pad must not steal the mapping, so this always asks for `.notesOnly`.
+
+    /// The slot and code this key stands for, when it can be learned. Both are set
+    /// after construction, once the panel knows which bus it belongs to.
+    var mappingSlot: String?
+    var mappingCode: ParamCode?
+
+    /// Called when the key is shift-clicked while detect is available.
+    var onDetectRequested: ((String, ParamCode) -> Void)?
+
+    /// Lit while Shift is held and this key can be learned.
+    var isDetectHighlighted = false {
+        didSet {
+            guard isDetectHighlighted != oldValue else { return }
+            needsDisplay = true
+        }
+    }
 
     init(label: String, busTint: NSColor) {
         self.label = label
@@ -92,6 +116,11 @@ final class VBBusButton: NSControl {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.shift),
+           let slot = mappingSlot, let code = mappingCode {
+            onDetectRequested?(slot, code)
+            return
+        }
         guard isEnabled else { return }
         isPressed = true
         needsDisplay = true
@@ -159,6 +188,18 @@ final class VBBusButton: NSControl {
         Theme.Color.panelBorder.setStroke()
         path.lineWidth = Theme.Metrics.hairline
         path.stroke()
+
+        // The same ring a fader draws while Shift is held (SPEC 7), so one gesture
+        // produces one look across the whole window rather than a different hint
+        // per kind of control.
+        if isDetectHighlighted {
+            Theme.Color.detectHighlight.setStroke()
+            let highlight = NSBezierPath(
+                roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+                xRadius: Theme.BusButton.cornerRadius, yRadius: Theme.BusButton.cornerRadius)
+            highlight.lineWidth = 1.5
+            highlight.stroke()
+        }
 
         // The letter, as large as the box will carry — and never larger. A label
         // that overflows draws outside the key and onto its neighbour, which is what

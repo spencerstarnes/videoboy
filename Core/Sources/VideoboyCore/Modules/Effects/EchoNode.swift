@@ -112,13 +112,7 @@ public final class EchoNode: Node {
         encoder.setFragmentBytes(&params, length: MemoryLayout<EchoParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-
-        if let error = commandBuffer.error {
-            Log.error(.render, "\(identifier) echo pass failed: \(error)")
-            return input
-        }
+        metal.submit(commandBuffer, label: identifier)
 
         // Swap so next frame reads what was just written.
         writeIndex = 1 - writeIndex

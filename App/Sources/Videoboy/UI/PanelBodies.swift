@@ -882,6 +882,15 @@ final class FaderPanelBody: NSView {
     private weak var sweepRateKey: VBStepButton?
     private weak var sweepCancelButton: NSButton?
 
+    /// One tap-rate key per button that can be armed to flip on the beat — CUT and
+    /// FADE turn a transition into a strobe; BEAT flips whether the *next* one waits.
+    /// Hidden until its button is armed, same as `sweepRateKey` is until the fader
+    /// carries marks: an unarmed control showing a rate nobody set is a dial with
+    /// nothing to say.
+    private weak var cutRateKey: VBStepButton?
+    private weak var fadeRateKey: VBStepButton?
+    private weak var beatRateKey: VBStepButton?
+
     /// Everything that would fight an automated fader, so it can be greyed while one
     /// is running.
     private var manualControls: [NSControl] {
@@ -902,10 +911,40 @@ final class FaderPanelBody: NSView {
         fader.isEnabled = true   // the fader itself stays live so the marks can be re-aimed
     }
 
+    /// Shows or hides a button's tap-rate key to match whether it is armed.
+    ///
+    /// Unlike the fader's sweep, a button has no separate pair of marks — its
+    /// `flipRate` IS the armed state, so the rate key drives that directly rather
+    /// than a parallel flag. Walking the key down to STEP therefore disarms the
+    /// button, exactly as Option-Command-clicking it a second time would; the two
+    /// paths are kept in the same currency (`flipRate == nil`) rather than one using
+    /// `.continuous` and the other `nil` for what reads as the same "off".
+    private func wireButtonTapRate(_ button: VBOptionButton, rateKey: VBStepButton) {
+        rateKey.onTimingChanged = { [weak button] timing in
+            if case .continuous = timing { button?.flipRate = nil } else { button?.flipRate = timing }
+        }
+        button.onFlipRateChanged = { [weak self, weak button, weak rateKey] in
+            guard let self, let button, let rateKey else { return }
+            rateKey.isHidden = !button.isAutomated
+            if let rate = button.flipRate { rateKey.setTiming(rate) }
+            self.onButtonAutomationChanged?()
+        }
+    }
+
+    /// The CUT/FADE/BEAT tap-rate keys, for checks that need to see whether arming a
+    /// button revealed the right one without walking the view tree by type — there
+    /// are four `VBStepButton`s on this panel (these three plus the fader's own
+    /// `sweepRateKey`) and only the identity, not the type, says which is which.
+    var tapRateKeysForChecks: (cut: VBStepButton?, fade: VBStepButton?, beat: VBStepButton?) {
+        (cutRateKey, fadeRateKey, beatRateKey)
+    }
+
     /// Tells the action keys which slot they belong to, so they can be learned.
     func setMappingSlot(_ slot: String) {
         cutButton?.mappingSlot = slot
         fadeButton?.mappingSlot = slot
+        leftKey?.mappingSlot = slot
+        rightKey?.mappingSlot = slot
     }
 
     /// Called when this bus's blend mode changes.
@@ -965,10 +1004,14 @@ final class FaderPanelBody: NSView {
             label: leftKeyLabel ?? leftLabel.uppercased(), busTint: leftColor)
         leftKey.target = self
         leftKey.action = #selector(leftKeyPressed)
+        leftKey.mappingCode = .cutToLeftTrigger
+        leftKey.toolTip = "Cut to \(leftLabel). Shift-click to learn a MIDI button."
         let rightKey = VBBusButton(
             label: rightKeyLabel ?? rightLabel.uppercased(), busTint: rightColor)
         rightKey.target = self
         rightKey.action = #selector(rightKeyPressed)
+        rightKey.mappingCode = .cutToRightTrigger
+        rightKey.toolTip = "Cut to \(rightLabel). Shift-click to learn a MIDI button."
         self.leftKey = leftKey
         self.rightKey = rightKey
         buttons.append(leftKey)
@@ -987,6 +1030,23 @@ final class FaderPanelBody: NSView {
         self.cutButton = cutButton
         buttons.append(cutButton)
 
+        // Option-Command arms CUT to tap on the beat instead of once — the same
+        // gesture that marks a fader sweep, turned into a strobe cut since a button
+        // has no span to travel between. The rate key that appears is the
+        // crossfader's `sweepKey` again, on the SAME ladder: click for faster,
+        // right-click (or Control-click) for slower.
+        let cutRateKey = VBStepButton()
+        cutRateKey.isHidden = true
+        cutRateKey.toolTip = "How often CUT taps while armed. "
+            + "Option-Command-click CUT to arm or disarm it."
+        self.cutRateKey = cutRateKey
+        // FLOATS above CUT rather than sitting in the row at all — positioned with
+        // its own constraints (see below), not appended to `buttons`. The row's
+        // height must not depend on whether a button happens to be armed: a
+        // performer's hand is on these keys, and a row that grows and pushes
+        // everything below it down the instant one arms would move CUT/FADE/BEAT
+        // out from under the fingers that were just about to hit them.
+
         // Fade and Beat are instrument keys now, not bezelled push buttons. They sat
         // next to the flat bus keys looking like controls from a settings dialogue,
         // and at .small they were the smallest things in a row you hit by feel.
@@ -1000,6 +1060,14 @@ final class FaderPanelBody: NSView {
         self.fadeButton = fadeButton
         buttons.append(fadeButton)
 
+        // Same gesture on FADE — a fade that repeats on the beat rather than firing
+        // once.
+        let fadeRateKey = VBStepButton()
+        fadeRateKey.isHidden = true
+        fadeRateKey.toolTip = "How often FADE taps while armed. "
+            + "Option-Command-click FADE to arm or disarm it."
+        self.fadeRateKey = fadeRateKey
+
         // Cut-on-beat. With this on, a cut waits for the next subdivision and is
         // taken early by the graph's latency so the picture changes ON the beat.
         let beatToggle = VBOptionButton(title: "BEAT")
@@ -1010,9 +1078,19 @@ final class FaderPanelBody: NSView {
         beatToggle.toolTip = "Hold the next cut or fade until the beat. "
             + "Which beat is set by DIV in the transport readout."
         beatToggle.isTall = true
-        beatToggle.onFlipRateChanged = { [weak self] in self?.onButtonAutomationChanged?() }
         self.beatCutButton = beatToggle
         buttons.append(beatToggle)
+
+        // And on BEAT itself — flips whether the next cut/fade waits, on the beat.
+        let beatRateKey = VBStepButton()
+        beatRateKey.isHidden = true
+        beatRateKey.toolTip = "How often BEAT taps while armed. "
+            + "Option-Command-click BEAT to arm or disarm it."
+        self.beatRateKey = beatRateKey
+
+        wireButtonTapRate(cutButton, rateKey: cutRateKey)
+        wireButtonTapRate(fadeButton, rateKey: fadeRateKey)
+        wireButtonTapRate(beatToggle, rateKey: beatRateKey)
 
         // The rate control: three positions, turtle to rabbit. A performance wants
         // "slow" without choosing a number, and the exact seconds matter far less
@@ -1106,9 +1184,13 @@ final class FaderPanelBody: NSView {
         let transportCluster = Controls.row(buttons + [rateControl], spacing: 4)
         transportCluster.translatesAutoresizingMaskIntoConstraints = false
 
-        // BLEND and the sweep keys are settings, not performance keys, so they sit out
-        // at the trailing edge rather than inside the cluster. The sweep pair is
-        // hidden until a sweep is armed, so most of the time this is BLEND alone.
+        // BLEND and the fader's OWN sweep keys are settings, not performance keys, so
+        // they sit out at the trailing edge rather than inside the cluster — there is
+        // exactly one fader per panel, so "off in the corner" still reads as
+        // belonging to it. The three button tap-rate keys do NOT join them: CUT,
+        // FADE and BEAT can each be armed independently, and a rate key stranded
+        // here with two others would not say which button it belongs to. Each lives
+        // in `buttons`, right beside its own key, instead (see above).
         let optionsRow = Controls.row([blend, sweepKey, sweepCancel], spacing: 4)
         optionsRow.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1182,6 +1264,18 @@ final class FaderPanelBody: NSView {
             fader.heightAnchor.constraint(equalToConstant: Theme.Fader.crossfaderHeight),
             fader.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -padding)
         ])
+
+        // The tap-rate keys float over their buttons, outside every stack view, so
+        // showing one never changes the row's size or moves a key under a finger.
+        for (rateKey, button) in [(cutRateKey, cutButton), (fadeRateKey, fadeButton),
+                                  (beatRateKey, beatToggle)] as [(VBStepButton, NSView)] {
+            rateKey.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(rateKey)
+            NSLayoutConstraint.activate([
+                rateKey.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+                rateKey.bottomAnchor.constraint(equalTo: button.topAnchor, constant: -2)
+            ])
+        }
     }
 
     @available(*, unavailable)
@@ -1227,6 +1321,11 @@ final class FaderPanelBody: NSView {
 
     @objc private func leftKeyPressed() { cut(to: 0) }
     @objc private func rightKeyPressed() { cut(to: 1) }
+
+    /// Fires as if the left/right bus key were pressed — used when a MIDI-mapped
+    /// button pushes `cutToLeftTrigger`/`cutToRightTrigger` to 1 (SPEC 7).
+    func triggerLeftKey() { cut(to: 0) }
+    func triggerRightKey() { cut(to: 1) }
 
     /// Takes a source to air.
     ///

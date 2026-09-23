@@ -15,6 +15,7 @@
 #           displays    — what displays exist and what mode they offer
 #           output      — the borderless output window on the HDMI card (needs hardware)
 #           loopback    — capture the DVC100 and write metrics.json (needs hardware)
+#           stress      — real window, live display link, all 4 channels + every effect
 #           calibrate   — measure the physical feedback round trip (needs hardware)
 #           all         — every check that can run here
 # Outputs : selfqa/out/<check>/{*.png,metrics.json,result.txt}
@@ -65,6 +66,9 @@ case "$CHECK" in
   stream)    run_app_check stream ;;
   record)    run_app_check record ;;
   audit)     run_app_check audit ;;
+  # Opens a real window on the main display and runs the live display link under full
+  # load for ~10 s. Needs a logged-in GUI session, so it is opt-in, not part of `all`.
+  stress)    run_app_check stress ;;
   # Opt-in, like loopback: it launches another application and needs Screen Recording.
   # Deliberately NOT in `all` or in verify.sh — a check that fails on a machine with no
   # emulator installed is a check that stops being read.
@@ -83,5 +87,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, stress, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

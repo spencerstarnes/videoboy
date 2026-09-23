@@ -105,8 +105,7 @@ public final class MX1EffectNode: Node {
               let blit = commandBuffer.makeBlitCommandEncoder() else { return nil }
         blit.copy(from: source, to: destination)
         blit.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
+        metal.submit(commandBuffer, label: identifier)
         return destination
     }
 
@@ -163,13 +162,7 @@ public final class MX1EffectNode: Node {
         encoder.setFragmentBytes(&params, length: MemoryLayout<MX1Params>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-
-        if let error = commandBuffer.error {
-            Log.error(.render, "\(identifier) MX-1 pass failed: \(error)")
-            return input
-        }
+        metal.submit(commandBuffer, label: identifier)
 
         guard wetDry < 0.999 else { return target }
         if blendTarget == nil || blendTarget?.width != width || blendTarget?.height != height {

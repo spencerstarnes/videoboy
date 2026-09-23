@@ -157,6 +157,44 @@ final class VBOptionButton: NSControl {
         }
     }
 
+    /// Whether the mark-a-sweep gesture (⌘⌥ held) is currently offered on this key.
+    /// Same pulsing outline `VBFader` shows while a sweep can be marked, so the ONE
+    /// gesture reads the same everywhere it works rather than a button just sitting
+    /// there with no sign it is about to do something different than a plain click.
+    var isSweepArming = false {
+        didSet {
+            guard isSweepArming != oldValue else { return }
+            if isSweepArming { startArmingPulse() } else { stopArmingPulse() }
+            needsDisplay = true
+        }
+    }
+
+    private var armingPulseTimer: Timer?
+    private var armingPhase: Double = 0
+
+    private func startArmingPulse() {
+        armingPulseTimer?.invalidate()
+        armingPhase = 0
+        armingPulseTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) {
+            [weak self] _ in
+            guard let self else { return }
+            self.armingPhase += 1.0 / 20.0
+            self.needsDisplay = true
+        }
+    }
+
+    private func stopArmingPulse() {
+        armingPulseTimer?.invalidate()
+        armingPulseTimer = nil
+    }
+
+    deinit { armingPulseTimer?.invalidate() }
+
+    /// A performance key must act on the first click even when the window is not
+    /// key — otherwise the click after switching from another app only activates
+    /// the window and CUT silently does nothing.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         // Command-option arms automation, the same gesture that marks a sweep on a
         // fader. A button has no range to mark, so one press is the whole gesture.
@@ -234,6 +272,32 @@ final class VBOptionButton: NSControl {
                 yRadius: Theme.OptionButton.cornerRadius)
             outline.lineWidth = 1.5
             outline.stroke()
+        }
+
+        // The arming outline, pulsing, exactly as a fader's sweep-arm does — drawn
+        // BEFORE the detect highlight so holding both modifiers still reads as
+        // detect, the gesture with the narrower meaning (same rule VBFader follows).
+        if isSweepArming {
+            let pulse = 0.45 + 0.55 * (0.5 - 0.5 * cos(2 * Double.pi * armingPhase))
+            Theme.Color.sweepArming.withAlphaComponent(pulse).setStroke()
+            let outline = NSBezierPath(
+                roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+                xRadius: Theme.OptionButton.cornerRadius, yRadius: Theme.OptionButton.cornerRadius)
+            outline.lineWidth = 1.5
+            outline.stroke()
+        }
+
+        // The same ring a fader draws while Shift is held (SPEC 7). Without this the
+        // key still LEARNS a Shift-click — `mouseDown` never checked this flag — but
+        // gives no visible sign it is one of the controls Shift is offering, which
+        // looks exactly like "buttons cannot be mapped" from the performer's chair.
+        if isDetectHighlighted {
+            Theme.Color.detectHighlight.setStroke()
+            let highlight = NSBezierPath(
+                roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+                xRadius: Theme.OptionButton.cornerRadius, yRadius: Theme.OptionButton.cornerRadius)
+            highlight.lineWidth = 1.5
+            highlight.stroke()
         }
 
         let attributes: [NSAttributedString.Key: Any] = [

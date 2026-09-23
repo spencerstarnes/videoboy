@@ -114,11 +114,16 @@ final class LibraryModel {
 
     /// Adds clips, skipping ones already present.
     ///
-    /// By NAME, because dropping the same folder twice should leave the library as it
-    /// was rather than doubled.
+    /// By FILE PATH, so dropping the same folder twice leaves the library as it was.
+    /// It was by NAME, which silently discarded `Reel B/CLIP0001.dv` because
+    /// `Reel A/CLIP0001.dv` was already in — the normal case for camera cards, and
+    /// exactly what a recursive folder drop produces. Name only for URL-less items.
     func add(_ newItems: [LibraryItem]) {
-        let existing = Set(items.map(\.name))
-        let fresh = newItems.filter { !existing.contains($0.name) }
+        func key(_ item: LibraryItem) -> String {
+            item.url.map { "path:" + $0.standardizedFileURL.path } ?? "name:" + item.name
+        }
+        var existing = Set(items.map(key))
+        let fresh = newItems.filter { existing.insert(key($0)).inserted }
         guard !fresh.isEmpty else { return }
         items.append(contentsOf: fresh)
         notify()
@@ -182,13 +187,17 @@ final class LibraryModel {
         sortedBy sortField: LibrarySortField = .name,
         ascending: Bool = true
     ) -> [LibraryItem] {
-        let trimmed = search.trimmingCharacters(in: .whitespaces).lowercased()
-        let matched = trimmed.isEmpty ? items : items.filter {
-            $0.name.lowercased().contains(trimmed)
-                || $0.badge.lowercased().contains(trimmed)
-                || ($0.bin?.lowercased().contains(trimmed) ?? false)
-        }
+        let matched = items.filter { Self.matches($0, search: search) }
         return sorted(matched, by: sortField, ascending: ascending)
+    }
+
+    /// The one search rule, shared by every tab so they cannot disagree about it.
+    static func matches(_ item: LibraryItem, search: String) -> Bool {
+        let trimmed = search.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !trimmed.isEmpty else { return true }
+        return item.name.lowercased().contains(trimmed)
+            || item.badge.lowercased().contains(trimmed)
+            || (item.bin?.lowercased().contains(trimmed) ?? false)
     }
 
     func sorted(

@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-23T03:35:52Z
+when:     2026-09-23T07:49:15Z
 core:     0.3.0
 
 notes:
@@ -12,15 +12,15 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
   adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 11.12 ms, p95 12.33 ms, worst 12.91 ms, budget 33.37 ms
+  frame time with everything on: mean 5.41 ms, p95 5.65 ms, worst 5.78 ms, budget 33.37 ms
 
-assertions (99/99 passed):
+assertions (116/116 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
   PASS  wide is not blank — luminance variance 806.2
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 757.3
+  PASS  compact is not blank — luminance variance 756.8
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 911.5
+  PASS  narrow is not blank — luminance variance 918.1
   PASS  collapsed-left is not blank — luminance variance 707.1
   PASS  collapsed-both-edges is not blank — luminance variance 610.5
   PASS  collapsed-sources-only is not blank — luminance variance 822.2
@@ -79,16 +79,33 @@ assertions (99/99 passed):
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
   PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 12.91 ms against a 33.37 ms budget (mean 11.12, p95 12.33)
-  PASS  frame time is even, not just fast on average — worst is 1.2x the mean
+  PASS  no frame misses the budget with every effect running — worst frame 5.78 ms against a 33.37 ms budget (mean 5.41, p95 5.65)
+  PASS  frame time is even, not just fast on average — worst is 1.1x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there
   PASS  a crossfader accepts sweep marks — 0.19...0.81
   PASS  an armed crossfader is actually driven, not just marked — 12 distinct values written
+  PASS  CUT and its tap-rate key exist on the A/B fader — CUT found: true, rate key found: true
+  PASS  the tap-rate key is hidden until CUT is armed — hidden=true, isAutomated=false
+  PASS  Option-Command-clicking CUT arms it and reveals the tap-rate key — isAutomated=true, hidden=false, rate=1/1
+  PASS  arming starts at the same rung Option-Command-click always used — rate reads 1/1
+  PASS  clicking the tap-rate key walks CUT's own rate forward — rate reads 1/2, CUT's flipRate matches: true
+  PASS  right-clicking the tap-rate key back to STEP disarms CUT — isAutomated=false, flipRate is nil: true, hidden=true
+  PASS  an armed CUT actually taps on the beat, not just arms — 4 cuts fired while armed
+  PASS  holding ⌘⌥ pulses exactly the keys that can tap on the beat — pulsing: CUT, FADE, BEAT
+  PASS  an ⌥⌘ click at CUT's centre lands on CUT and arms it — hit VBOptionButton, armed=true, rate key shown=true
+  PASS  arming CUT moves no key and not the fader — all 4 frames identical
+  PASS  the rate key sits above CUT, centred on it, and nothing clips it — key (302.8703703703704, 553.896657633243, 52.0, 17.0), CUT (310.8703703703704, 521.896657633243, 36.0, 30.0), clipped by nothing
   PASS  CUT and FADE carry a mapping address — 2 learnable action keys on the A/B fader: cut, fade
   PASS  shift-clicking CUT arms it for learning rather than cutting — mix.one · 68A
+  PASS  A and B bus keys carry a mapping address — 2 learnable bus keys on the A/B fader: cut to left, cut to right
+  PASS  shift-clicking the A key arms it for learning rather than cutting — mix.one · 6AA
+  PASS  a bus key asks DetectSession for notes only, never a fader or knob — notesOnly
+  PASS  a mapped A key actually cuts the A/B fader, not just arms — crossfadeAB = 0.0
+  PASS  the trigger falls back to 0 so the next press is a fresh edge — cutToLeftTrigger = 0.0
   PASS  library search actually filters — 4 items, 0 after searching for something absent
   PASS  clearing the search brings everything back — 4 of 4 restored
+  PASS  same-named clips from two folders are both kept, a re-drop is not doubled — 2 items (expected 2)
   PASS  an item moved into a bin is still in the library — bins: Set One, 4 items still shown
   PASS  a single click on a source picture does NOT toggle playback — single clicks left the transport alone
   PASS  double-clicking a source picture plays or pauses it — 1 toggle(s) from one double click

@@ -25,7 +25,11 @@ import AppKit
 import VideoboyCore
 
 /// A compact two-layer icon that pops out the blend menu.
-final class VBBlendButton: NSControl {
+final class VBBlendButton: NSControl, AuditableControl {
+
+    /// Driven by `onModeChosen`, not target/action, so it answers the audit itself.
+    var isWiredForAudit: Bool { onModeChosen != nil }
+
 
     /// The two layers this bus combines, as the bus's own letters.
     ///

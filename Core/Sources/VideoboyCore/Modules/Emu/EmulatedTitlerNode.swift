@@ -30,6 +30,8 @@ public final class EmulatedTitlerNode: Node {
 
     private let context: MetalContext?
     private var texture: MTLTexture?
+    /// Reused, double-buffered upload target — no allocation per frame.
+    private var uploader: TextureUploader?
     /// The host's frame counter at the moment `texture` was uploaded, so an emulator
     /// running slower than the render loop does not cost an upload per render for a
     /// picture that has not changed.
@@ -155,7 +157,8 @@ public final class EmulatedTitlerNode: Node {
 
         let generation = host.frameGeneration
         if let texture, uploadedGeneration == generation { return texture }
-        texture = metal.makeTexture(from: frame, label: identifier)
+        if uploader == nil { uploader = TextureUploader(context: metal, label: identifier) }
+        texture = uploader?.upload(frame) ?? texture
         uploadedGeneration = generation
         return texture
     }

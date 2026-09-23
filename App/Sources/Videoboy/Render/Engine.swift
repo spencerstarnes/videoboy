@@ -2,7 +2,7 @@
 //  Engine.swift — everything the app owns at runtime, wired together.
 //
 //  Purpose : Builds the fixed graph (SPEC 2), owns the clocks, the param registry and
-//            MIDI, and drives one frame of work per display refresh. The UI talks to
+//            MIDI, and drives one frame of work per 29.97 content frame (see `contentFrameDue`). The UI talks to
 //            this and nothing else, so no view ever reaches into the graph directly.
 //  Inputs  : user actions from the UI, MIDI, and the display link.
 //  Outputs : textures into the previews and the output window; status for the bars.
@@ -564,25 +564,112 @@ final class Engine {
 
     // MARK: - Run loop
 
+    /// The view whose window decides which screen clocks the engine.
+    private weak var clockView: NSView?
+    private var screenObserver: NSObjectProtocol?
+    /// Keeps App Nap from throttling the render clock while the app is in the back.
+    private var liveActivity: NSObjectProtocol?
+
     /// Starts the render clock, driven by the display the window is on.
+    ///
+    /// A SCREEN display link, not the view's. A view's link stops when its window is
+    /// not on screen, and this loop also feeds the OUTPUT window — so hiding or
+    /// minimising the main window mid-show froze the analog output (measured: zero
+    /// frames in 4 s hidden; a 954 ms stall while merely covered). The screen link
+    /// keeps firing whatever the window is doing, and is re-attached when the window
+    /// moves to another screen so the clock still follows it (SPEC 4a).
     func start(drivenBy view: NSView) {
         guard displayLink == nil else { return }
-        let link = view.displayLink(target: self, selector: #selector(tick))
-        link.add(to: .main, forMode: .common)
-        displayLink = link
+        clockView = view
+        attachDisplayLink()
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeScreenNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, let window = note.object as? NSWindow,
+                  window === self.clockView?.window else { return }
+            self.attachDisplayLink()
+        }
+        liveActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+            reason: "live video render loop")
         midi.start()
         Log.info(.render, "render clock started")
+    }
+
+    /// (Re)creates the display link on the screen the clock view's window is on.
+    private func attachDisplayLink() {
+        guard let screen = clockView?.window?.screen ?? NSScreen.main else {
+            Log.error(.render, "no screen to clock the render loop from")
+            return
+        }
+        displayLink?.invalidate()
+        let link = screen.displayLink(target: self, selector: #selector(tick))
+        // PACED AT THE CONTENT RATE, not the display's. Unpaced, the graph ran at 60 Hz
+        // (120 on ProMotion) for 29.97 material — re-rendering identical frames — and
+        // echo/feedback, which step once per render, decayed 2–4× too fast depending
+        // on the monitor. Revert with VIDEOBOY_RENDER_AT_DISPLAY_RATE=1.
+        if ProcessInfo.processInfo.environment["VIDEOBOY_RENDER_AT_DISPLAY_RATE"] != "1" {
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: 30, preferred: 30)
+        }
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+        Log.info(.render, "render clock on '\(screen.localizedName)'")
     }
 
     func stop() {
         displayLink?.invalidate()
         displayLink = nil
+        if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+        screenObserver = nil
+        if let liveActivity { ProcessInfo.processInfo.endActivity(liveActivity) }
+        liveActivity = nil
         audioInput?.stop()
         audioInput = nil
     }
 
     /// One frame: advance the clocks, apply parameters, evaluate the graph.
+    /// Whole-tick costs in milliseconds (graph + everything `onFrame` does), recorded
+    /// only while a check sets this non-nil. Nil in normal use: no cost, no growth.
+    var tickCostsForChecks: [Double]?
+    /// The graph evaluation's share of each tick, recorded alongside.
+    var graphCostsForChecks: [Double]?
+    /// Total milliseconds spent in each node's `render`, while a check profiles.
+    var nodeCostsForChecks: [String: Double]?
+
+    /// The interval the display link is actually firing at, in seconds.
+    private(set) var refreshInterval: Double = 0
+
+    /// When the next 29.97 content frame is due, on the display link's clock.
+    private var nextFrameDue: CFTimeInterval = 0
+
+    /// Whether a content frame is due at `now`, advancing the content clock if so.
+    ///
+    /// THE GRAPH IS FRAME-CLOCKED: a clip advances one frame per render, echo and
+    /// feedback step once per render. So it must render once per CONTENT frame, not
+    /// once per display refresh — unpaced on a 60 Hz screen every clip played at 2×
+    /// speed and trails decayed 2× too fast (4× on 120 Hz ProMotion). The link is
+    /// already asked for 30 Hz; this gate makes it exact on any display (50, 144 Hz,
+    /// or the display-rate fallback) and absorbs 30-vs-29.97 by holding one refresh
+    /// every ~33 s.
+    private func contentFrameDue(at now: CFTimeInterval, refresh: CFTimeInterval) -> Bool {
+        let interval = 1.0 / StandardDefinition.frameRate
+        if nextFrameDue == 0 { nextFrameDue = now }
+        // Half a refresh of slack, so timestamp jitter never skips a due frame.
+        guard now + refresh * 0.5 >= nextFrameDue else { return false }
+        nextFrameDue += interval
+        // After a stall, resync rather than rendering a burst of catch-up frames.
+        if now - nextFrameDue > interval * 2 { nextFrameDue = now + interval }
+        return true
+    }
+
     @objc private func tick(_ link: CADisplayLink) {
+        let tickStart = CACurrentMediaTime()
+        var rendered = false
+        defer {
+            if rendered, tickCostsForChecks != nil {
+                tickCostsForChecks?.append((CACurrentMediaTime() - tickStart) * 1000)
+            }
+        }
         let now = link.timestamp
 
         // Measure the real rate for the status bar, and notice a skipped refresh.
@@ -590,6 +677,7 @@ final class Engine {
             let delta = now - lastTickTime
             if delta > 0 { measuredFramesPerSecond = 1.0 / delta }
             let expected = link.targetTimestamp - link.timestamp
+            if expected > 0 { refreshInterval = expected }
             if expected > 0, delta > expected * 1.8 { droppedFrames += 1 }
         }
         lastTickTime = now
@@ -609,12 +697,19 @@ final class Engine {
         // 24 per-channel effects — twice every frame for one set of values. The LFO
         // update above still happens first, so nothing about the ordering changes.
 
+        guard contentFrameDue(at: now, refresh: link.targetTimestamp - link.timestamp) else { return }
+        rendered = true
+
         let context = RenderContext(
             frameIndex: frameIndex,
             presentationTime: link.targetTimestamp,
             musicalPosition: transport.isRunning ? transport.position(atHostTime: now) : nil
         )
+        let graphStart = CACurrentMediaTime()
         evaluate(context: context)
+        if graphCostsForChecks != nil {
+            graphCostsForChecks?.append((CACurrentMediaTime() - graphStart) * 1000)
+        }
         frameIndex += 1
         onFrame?(self)
     }
@@ -674,13 +769,21 @@ final class Engine {
         // being overwritten as this frame is built.
         if !feedbackSends.isEmpty { applyFeedbackSends() }
         var produced: [String: MTLTexture] = [:]
+        let profiling = nodeCostsForChecks != nil
         for identifier in graph.evaluationOrder(from: Engine.outputSlot) {
             guard let node = graph.nodes[identifier] else { continue }
             let inputs = graph.inputs(of: identifier).compactMap { produced[$0] }
+            let start = profiling ? CACurrentMediaTime() : 0
             if let texture = node.render(inputs: inputs, context: context) {
                 produced[identifier] = texture
             }
+            if profiling {
+                nodeCostsForChecks?[identifier, default: 0] += (CACurrentMediaTime() - start) * 1000
+            }
         }
+        // ONE wait per frame, not one per pass (see `MetalContext.submit`): every
+        // texture in `produced` is finished by the time anything reads it.
+        metal?.waitForIdle()
         return produced
     }
 

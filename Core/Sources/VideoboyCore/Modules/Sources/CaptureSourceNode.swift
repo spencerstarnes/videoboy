@@ -60,6 +60,8 @@ public final class CaptureSourceNode: Node {
     private let lock = NSLock()
     private var pendingImage: ImageBuffer?
     private var texture: MTLTexture?
+    /// Reused, double-buffered upload target — no allocation per frame.
+    private var uploader: TextureUploader?
     /// Frames handed over since this node started, for the debug overlay.
     private(set) public var receivedFrameCount = 0
 
@@ -103,7 +105,8 @@ public final class CaptureSourceNode: Node {
         // Nothing new this frame: keep showing the last one rather than flashing black.
         guard let image else { return texture }
 
-        texture = metal.makeTexture(from: image, label: "\(identifier)-capture")
+        if uploader == nil { uploader = TextureUploader(context: metal, label: "\(identifier)-capture") }
+        texture = uploader?.upload(image) ?? texture
         return texture
     }
 }

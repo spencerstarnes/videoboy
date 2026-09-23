@@ -104,6 +104,8 @@ public final class BusCodecNode: Node, DataEffectProvider {
     /// The previous encoded frame, which `holdSequences` needs.
     private var previousEncodedFrame: [UInt8]?
     private var readbackRenderer: OffscreenRenderer?
+    /// Reused, double-buffered upload target — no allocation per frame.
+    private var uploader: TextureUploader?
 
     public init(
         identifier: String,
@@ -174,7 +176,8 @@ public final class BusCodecNode: Node, DataEffectProvider {
             image = decoded
         }
 
-        return metal.makeTexture(from: image, label: "\(identifier)-interchange")
+        if uploader == nil { uploader = TextureUploader(context: metal, label: "\(identifier)-interchange") }
+        return uploader?.upload(image) ?? input
     }
 
     /// Re-rolls the corruption seed, so bus damage can change on the beat too.

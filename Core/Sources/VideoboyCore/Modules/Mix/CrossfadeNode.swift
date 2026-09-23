@@ -56,7 +56,16 @@ public final class CrossfadeNode: Node {
             // touched these three at all.
             Parameter(code: .keyColour, range: 0...1, defaultValue: 0),
             Parameter(code: .keyThreshold, range: 0...1, defaultValue: 0.25),
-            Parameter(code: .keyEdge, range: 0...1, defaultValue: 0.2)
+            Parameter(code: .keyEdge, range: 0...1, defaultValue: 0.2),
+            // Momentary triggers (SPEC 7): a MIDI button writes 1, ShellController
+            // reads it once and puts it back to 0. They have to be registered here
+            // like any other parameter or `ParamRegistry.deliver` has nowhere to
+            // land the value — a learned button would show "mapped" in the log and
+            // then never actually fire.
+            Parameter(code: .cutTrigger, range: 0...1, defaultValue: 0),
+            Parameter(code: .fadeTrigger, range: 0...1, defaultValue: 0),
+            Parameter(code: .cutToLeftTrigger, range: 0...1, defaultValue: 0),
+            Parameter(code: .cutToRightTrigger, range: 0...1, defaultValue: 0)
         ]
     }
 

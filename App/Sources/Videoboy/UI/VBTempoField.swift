@@ -27,7 +27,11 @@ import AppKit
 import VideoboyCore
 
 /// The tempo readout: tap to set by feel, drag to set by number.
-final class VBTempoField: NSControl {
+final class VBTempoField: NSControl, AuditableControl {
+
+    /// Driven by closures, not target/action, so it answers the audit itself.
+    var isWiredForAudit: Bool { onTap != nil || onTempoDragged != nil }
+
 
     /// Called once per tap, for the tap-tempo averager.
     var onTap: (() -> Void)?

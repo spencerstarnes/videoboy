@@ -38,7 +38,7 @@ final class OutputWindowController: NSWindowController {
     /// discrepancy is logged, never guessed at (SPEC 3).
     init(display: DisplayInfo, requestedMode: TargetMode, caption: String = "PRIMARY") {
         self.display = display
-        self.outputView = MetalPreviewView(caption: "")
+        self.outputView = MetalPreviewView(caption: "", syncsToDisplay: true)
 
         DisplayRouter.logAvailableModes(for: display, requested: requestedMode)
         var workingDisplay = display

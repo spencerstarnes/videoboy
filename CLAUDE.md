@@ -6,26 +6,28 @@ Auto-loaded every session. Keep this short. Operational detail lives in `@docs/B
 **Videoboy** — a native macOS app for live analog-style video mixing (product/bundle name: Videoboy). The competitive core ("the wedge") is **musical, playable manipulation of compressed video bitstreams** (DV / MPEG-family) output cleanly to SD (480i) for an analog chain. Everything else is supporting cast. This is NOT a general VJ tool and must not grow into one.
 
 ## Current focus
-Run **autonomously** through `@docs/BUILD-PLAN.md` Phases 0–2 and produce a **launchable, clickable macOS app** before the human engages. The human's first experience must be a running app they can click and play with — bugs and missing features are fine; a non-launching or headless-only result is not. You verify your own work with the self-QA harness (see below) — do not wait for the human to test. Stay in MVP scope (the bitstream wedge + clean SD output); later phases (generators, ISF host, titler, scopes, IP, SVG) stay untouched. When unsure whether something is in scope, it isn't.
+The clickable-app milestone is done and the human is actively performing with and testing the app. Work on what they ask, verify it yourself with the self-QA harness before reporting, and keep the scope guard: the bitstream wedge + clean SD output come first. When unsure whether something is in scope, it isn't. (Autonomous build-plan runs still follow the workflow rules below.)
 
 Do **not** pursue Apple Developer Program, notarization, or distribution signing. Run the app **locally, unsigned** (ad-hoc `codesign --sign -` is fine). The app is a proper `.app` bundle with `NSCameraUsageDescription` set (required or camera access crashes).
 
 ## Environment (Mac Studio, Apple Silicon)
 - Target arm64 only. Do not add x86 assumptions or Rosetta steps.
-- Detect, don't hardcode: run `sw_vers`, `xcodebuild -version`, `swift --version` and target what's installed. Metal is the render backend.
+- Detect, don't hardcode: run `sw_vers`, `swift --version` and target what's installed. Metal is the render backend.
+- `xcode-select` points at the Command Line Tools, which lack Metal and mismatch the SDK. The scripts set `DEVELOPER_DIR` to Xcode.app — **always build through them.** A bare `swift build`/`swift script.swift` fails; prefix `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Editor (SourceKit) errors like "SDK is not supported by the compiler" are this, not real.
 - Third-party deps: SwiftPM only. Any vendored binary (FFmpeg xcframework, libretro cores) must contain an arm64 slice.
 
 ## Architecture (keep this shape)
 - `Core/` — a SwiftPM package holding all non-UI logic: bitstream engine, clock/scheduler, param-code registry, template read/write, render-graph model. **Must build and pass `swift test` headlessly.** This is where the wedge lives and where most work happens.
-- `App/` — a thin AppKit + Metal target that links `Core`, owns windows/output/UI. Built with `xcodebuild`.
+- `App/` — a thin AppKit + Metal target that links `Core`, owns windows/output/UI. A SwiftPM package (not an .xcodeproj — see `docs/ENVIRONMENT.md`), built by `scripts/build.sh`.
 - `UI/` — the canonical window shell from SPEC §14 (normative). Build the full 5×5 panel grid with real AppKit controls; unfinished features render disabled, never omitted. All radii/padding/gutters live in one `Theme` token file.
 - One extension point only: the render-graph `Node` protocol (see `docs/SPEC.md` §2, §1.5). Adding a source/effect/output = implement it + drop a manifest. No parallel plugin systems.
 
 ## Commands (create these scripts in Phase 0, then always use them)
 - `scripts/test.sh` → `swift test` on `Core` (fast loop; run after every change to Core).
-- `scripts/build.sh` → build `Core` then `xcodebuild` the app, arm64, into `build/`.
-- `scripts/run.sh` → launch the built `.app`.
+- `scripts/build.sh [debug|release]` → build `Core`, then the app, arm64, into `build/`. Default **release**; a debug build is ~10× slower on the frame path and must never be left in `build/` for the human, nor used for any timing.
+- `scripts/run.sh` → launch the built `.app` (logs to the terminal).
 - `scripts/verify.sh` → build + test + lint; must exit 0 before any phase is "done."
+- `scripts/selfqa.sh ui` → window shell + interaction checks. `scripts/selfqa.sh stress` → **the load test of record**: real window, live display link, all four channels, every effect on (release build).
 
 ## Self-QA — how you see your own output (build this first, in Phase 0)
 Full spec: `docs/SELF-QA-HARNESS.md`. You have three ways to verify without the human:
@@ -56,25 +58,37 @@ ships behind a switch that is off.
 
 The rules that follow from that:
 
-- **Measure the WORST frame, not the mean.** A chain averaging 8 ms that spikes to 40
-  every twentieth frame drops a frame every twentieth frame. `scripts/selfqa.sh ui`
-  asserts both the worst frame and the spread, with every effect switched on — a
-  bypassed chain measures nothing.
-- **Budget is 33.4 ms at 29.97.** Current worst case with all four channel chains,
-  both bus chains, corruption and two DV decodes running: **11.4 ms** (mean 10.3,
-  p95 11.1). That headroom is the safety margin, not spare capacity to spend.
+- **Measure the WORST frame, not the mean, on the live loop.** `scripts/selfqa.sh stress`
+  times the whole display-link tick (graph + UI) under full load on a release build.
+  The graph-only check in `selfqa ui` cannot see UI or presentation stalls — it missed a
+  halved frame rate. Never time a debug build.
+- **Budget is 33.4 ms at 29.97.** Measured 2026-09-23, full load (4 channels incl. two
+  DV decodes + MPEG-2 + MOV, every channel and bus effect, corruption): **29.97 fps,
+  0 dropped, mean 6.2 ms, worst ~19–25 ms** (the worst is a main-thread decode spike —
+  `docs/AUDIT-2026-09-23.md` P5). Headroom is the safety margin, not spare capacity.
 - **Nothing expensive on the render path.** No allocation per frame where a cached
   buffer will do, no CPU pixel loops (`ImageBuffer(width:height:r:g:b:)`, not
   `setPixel` in a loop), no synchronous file or network I/O, ever.
 - **Effects must early-return when bypassed or neutral.** Every node here does; keep
   it that way. It is what makes a long chain cost nothing when it is not in use.
 
-**The known structural risk, written down so it is not rediscovered:** every effect
-node calls `commandBuffer.waitUntilCompleted()`, which stalls the CPU until the GPU
-finishes — once per node, per frame. It is measurably fine today and is not worth
-refactoring while it is. It is also the FIRST thing to attack if jitter ever appears,
-because the cost scales with the number of active nodes and the per-channel chains
-multiplied that count. Do not add a new hard sync without measuring.
+**Invariants of the frame path — break one and the app stutters or plays wrong:**
+- **The graph is FRAME-clocked.** A clip advances one frame per render; echo/feedback
+  step once per render. So the engine renders once per 29.97 content frame
+  (`Engine.contentFrameDue`), never per display refresh — unpaced, a 60 Hz screen played
+  every clip at 2× and a 120 Hz one at 4×.
+- **Passes submit, they do not wait.** Use `metal.submit(commandBuffer, label:)`, never
+  `waitUntilCompleted()` in a node: one queue orders everything, and the engine fences
+  ONCE per frame (`waitForIdle`). Only a CPU readback waits (on its own buffer). Per-pass
+  waits cost ~11 ms/frame. Fallback switch: `VIDEOBOY_SYNC_EVERY_PASS=1`.
+- **Per-frame CPU pictures go through `TextureUploader`** (reused, double-buffered,
+  SIMD swizzle), never `makeTexture(from:)`, which allocates — 165 MB/s at full load.
+- **In-window previews never wait for vsync** (`displaySyncEnabled = false`) and skip
+  presenting while their window isn't visible; a blocked `nextDrawable()` stalls the
+  whole tick. Only the output window syncs to its display.
+- **The render clock is a SCREEN display link, never a view's.** A view's link stops
+  when its window is hidden — and the same loop feeds the output, so hiding the main
+  window froze the analog signal. `selfqa stress` asserts the hidden-window case.
 
 ## Code standards (from SPEC §1.5 — non-negotiable)
 - Clarity over cleverness. Boring, obvious, repairable code. A little bloat is fine if it aids stability or legibility.
@@ -83,6 +97,9 @@ multiplied that count. Do not add a new hard sync without measuring.
 - Fail visibly: no swallowed errors; log with subsystem tags (`[dv]`, `[clock]`, `[midi]`). Missing file/device/dep degrades to a labeled, greyed state — never a crash.
 - Feature-flag in-progress subsystems so half-built work ships disabled.
 - Unit-test the fragile bones: clock/scheduler + latency compensation, param-code resolution, template round-trip.
+
+## Verifying UI
+`selfqa ui` calls `mouseDown` directly: it skips hit-testing, first-click activation and real modifier delivery. For anything the human clicks, also check the real app (`scripts/run.sh`) — route checks through `hitTest`, and assert that new UI never moves existing controls (a performer's hands are on them).
 
 ## Layout is fixed
 SPEC §14 is normative and `docs/mockups/layout-v6.html` is the visual source of truth — open it before writing any UI code. Do not redesign the arrangement, do not substitute a simpler shell, do not use floating/movable windows. Use real AppKit controls (NSPopUpButton, NSSegmentedControl, NSSwitch, NSSlider, NSCollectionView); don't hand-roll replacements.
@@ -95,7 +112,7 @@ SPEC §14 is normative and `docs/mockups/layout-v6.html` is the visual source of
 - Don't add scope. If a change isn't in the current phase, note it in `docs/BUILD-PLAN.md` backlog and move on.
 
 ## Local model delegation
-`qwen "<prompt>"` is available (files can be piped in: `cat file.swift | qwen "..."`). It runs Qwen3-Coder-30B locally via MLX.
+`qwen` runs Qwen3-Coder-30B locally. Invoke it as the global instructions say — `qwen -1 'instruction' </dev/null`, or `cat file | qwen -1 'instruction'`. The bare `qwen "<prompt>"` form blocks forever on inherited stdin.
 
 Delegate to it: doc comments, commit messages, mechanical renames, summarizing long logs, first-pass summaries of unfamiliar files, test scaffolding, localization strings.
 
@@ -103,7 +120,7 @@ Never delegate: architecture, Swift concurrency, retain cycles, anything spannin
 
 The model's Swift knowledge is weak and outdated. Always include the relevant existing code in the prompt rather than relying on its recall.
 
-Never apply a delegated patch without running `xcodebuild` first.
+Never apply a delegated patch without running `scripts/build.sh` first.
 
 ## Repo hygiene
 - `.claudeignore`: exclude `build/`, vendored binaries, any user media/ROMs.

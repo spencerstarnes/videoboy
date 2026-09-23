@@ -183,13 +183,7 @@ public final class FeedbackNode: Node {
         encoder.setFragmentBytes(&params, length: MemoryLayout<FeedbackParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-
-        if let error = commandBuffer.error {
-            Log.error(.render, "\(identifier) feedback pass failed: \(error)")
-            return input
-        }
+        metal.submit(commandBuffer, label: identifier)
 
         ringPosition = (ringPosition + 1) % ringSize
         guard wetDry < 0.999 else { return target }
