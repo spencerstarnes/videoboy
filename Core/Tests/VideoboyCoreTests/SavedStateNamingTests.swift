@@ -1,3 +1,11 @@
+//
+//  SavedStateNamingTests.swift — the emulator's save states number themselves.
+//
+//  Covers the naming rule `EmulatorController` uses when it captures a save state:
+//  the first one in an empty directory is 1, and each later one is the next free
+//  number rather than something that can collide with what is already there.
+//
+
 import XCTest
 @testable import VideoboyCore
 

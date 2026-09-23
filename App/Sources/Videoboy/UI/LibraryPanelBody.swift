@@ -34,6 +34,11 @@ struct LibraryItem {
     /// kinds that are advertised but not built.
     let url: URL?
 
+    /// The `ConfiguredSource.id` this item represents, for a Sources-tab tile.
+    /// Nil for every other kind of item — a clip, a generator, the emulator's own
+    /// stale placeholder before this type existed.
+    var configuredSourceID: String?
+
     /// Which bin this item sits in. Nil means the ungrouped set at the top.
     ///
     /// A plain string rather than a bin object: bins here are a way of arranging a
@@ -62,6 +67,7 @@ struct LibraryItem {
         case "SCR": "Screen capture"
         case "IP": "Network feed"
         case "CAP": "Capture device"
+        case "FW": "DV deck"
         case "EMU": "Emulator"
         case "IMG": "Still image"
         default: badge
@@ -77,7 +83,8 @@ struct LibraryItem {
 
     init(
         name: String, badge: String, isAvailable: Bool,
-        url: URL? = nil, bin: String? = nil, duration: Double? = nil
+        url: URL? = nil, bin: String? = nil, duration: Double? = nil,
+        configuredSourceID: String? = nil
     ) {
         self.name = name
         self.badge = badge
@@ -85,6 +92,7 @@ struct LibraryItem {
         self.url = url
         self.bin = bin
         self.duration = duration
+        self.configuredSourceID = configuredSourceID
     }
 }
 
@@ -653,10 +661,10 @@ enum AssetTab: String, CaseIterable {
     /// blank rectangle the user has to guess about.
     var emptyMessage: String {
         switch self {
-        case .sources: "No media in samples/. Drop files there and re-run scripts/make-fixtures.sh."
+        case .sources: "No sources configured. Add one in Settings > Sources."
         case .generators: "No generators available."
         case .graphics: "SVG and vector sources are not built yet (SPEC §17)."
-        case .clips: "Clip bins are not built yet."
+        case .clips: "No media in samples/. Drop files there and re-run scripts/make-fixtures.sh."
         case .images: "Still-image sources are not built yet."
         case .emu: "No emulated machines are set up."
         }
@@ -680,6 +688,23 @@ final class LibraryPanelBody: NSView {
     private var sourceItems: [LibraryItem] {
         get { model.items }
         set { model.setItems(newValue) }
+    }
+
+    /// The Sources tab's actual contents — every `ConfiguredSource` the person has
+    /// added in Settings, as tiles.
+    ///
+    /// Deliberately NOT held in `LibraryModel`. That model is "the one library, shown
+    /// three times" — real media, searchable and binnable, shared identically across
+    /// the two sub-mix panels and the asset browser. A configured source is a
+    /// different kind of thing: there is exactly one list of them for the whole app
+    /// (not one per bus), it is not a clip, and it should never show up mixed into a
+    /// clip search. Set from outside (`ShellController`, watching
+    /// `PreferenceStore.onChange`) whenever the configured list changes.
+    var configuredSourceItems: [LibraryItem] = [] {
+        didSet {
+            guard currentTab == .sources || gridsByTab[.sources] != nil else { return }
+            rebuildGrid(for: .sources)
+        }
     }
 
     /// How THIS browser is drawing the shared library.
@@ -708,7 +733,7 @@ final class LibraryPanelBody: NSView {
     /// The scrolling document, so a rebuilt grid goes back in the same place.
     private var documentView: LibraryDropView?
     private var emptyLabelsByTab: [AssetTab: NSTextField] = [:]
-    private var currentTab: AssetTab = .sources
+    private var currentTab: AssetTab = .clips
 
     /// How many thumbnails fit across, recomputed from the panel's actual width.
     ///
@@ -970,7 +995,12 @@ final class LibraryPanelBody: NSView {
 
         // Build every tab's grid up front and show one. The sets are small and this
         // makes switching instant, which is what a tab strip implies.
-        let tabs: [AssetTab] = showsTabs ? AssetTab.allCases : [.sources]
+        // A non-tabbed panel (the two sub-mix libraries) shows exactly one thing:
+        // the searchable, bin-aware clip grid — that is what someone loading A/B/C/D
+        // is actually browsing. It used to be pinned to `.sources` as a naming
+        // leftover from when "sources" meant "things you can load", before configured
+        // hardware sources existed as their own concept.
+        let tabs: [AssetTab] = showsTabs ? AssetTab.allCases : [.clips]
         for tab in tabs {
             // EMU is the one tab that is not a grid of thumbnails. A machine has state
             // and controls; a thumbnail has neither, so this tab gets its own view
@@ -1059,16 +1089,25 @@ final class LibraryPanelBody: NSView {
     private var documentHeight: NSLayoutConstraint?
 
     /// What each tab contains.
+    ///
+    /// `sources:` is the clip list — named for the parameter's original meaning,
+    /// back when this tab set had no separate concept of a configured hardware
+    /// source. `.clips` reads it directly; `.sources` does NOT — see
+    /// `configuredSourceItems`.
     private func contents(of tab: AssetTab, sources: [LibraryItem]) -> [LibraryItem] {
         switch tab {
         case .sources:
+            // Exactly what is configured in Settings > Sources — never a clip. See
+            // `configuredSourceItems`'s header for why this cannot come from `model`.
+            return configuredSourceItems
+        case .clips:
             return sources
         case .generators:
             // Every generator is real and assignable, so they are all available.
             return GeneratorKind.allCases.map {
                 LibraryItem(name: $0.displayName, badge: "GEN", isAvailable: true)
             }
-        case .graphics, .clips, .images:
+        case .graphics, .images:
             // Empty on purpose; the tab says why rather than showing a blank box.
             return []
         case .emu:
@@ -1217,7 +1256,7 @@ final class LibraryPanelBody: NSView {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.rebuildScheduled = false
-            self.rebuildSourcesGrid()
+            self.rebuildClipsGrid()
         }
     }
 
@@ -1337,14 +1376,14 @@ final class LibraryPanelBody: NSView {
         rebuildGrid(for: currentTab)
     }
 
-    private func rebuildSourcesGrid() {
+    private func rebuildClipsGrid() {
         applyViewStyle()
         guard viewStyle != .list else { return }
-        rebuildGrid(for: .sources)
+        rebuildGrid(for: .clips)
         // The tab on screen too, when it is a different one — a resize changes the
-        // column count for EVERY grid, and rebuilding only Sources left whichever tab
+        // column count for EVERY grid, and rebuilding only Clips left whichever tab
         // you were looking at at the old width.
-        if currentTab != .sources { rebuildGrid(for: currentTab) }
+        if currentTab != .clips { rebuildGrid(for: currentTab) }
     }
 
     /// Rebuilds one tab's grid in place.
@@ -1356,7 +1395,7 @@ final class LibraryPanelBody: NSView {
 
         gridsByTab[tab]?.removeFromSuperview()
 
-        var items = tab == .sources ? matching() : contents(of: tab, sources: sourceItems)
+        var items = tab == .clips ? matching() : contents(of: tab, sources: sourceItems)
         // In column view the grid shows one bin at a time — that IS the column view.
         if viewStyle == .column, let focusedBin {
             items = items.filter { $0.bin == focusedBin }
@@ -1420,7 +1459,7 @@ final class LibraryPanelBody: NSView {
     /// ago, and this is that.
     @objc private func newBinPressed() {
         let name = model.addBin()
-        rebuildSourcesGrid()
+        rebuildClipsGrid()
         Log.info(.app, "created bin '\(name)'")
 
         // After the rebuild, because the heading it selects does not exist until then.

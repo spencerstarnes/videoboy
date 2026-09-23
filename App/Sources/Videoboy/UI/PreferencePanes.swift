@@ -210,7 +210,7 @@ extension PreferencesWindowController {
         ], spacing: 8)
     }
 
-    // MARK: - Inputs
+    // MARK: - Inputs / Sources
 
     func makeInputsPane() -> NSView {
         // What is connected NOW, not a setting. Read from the engine each time the
@@ -221,39 +221,22 @@ extension PreferencesWindowController {
         var rows: [NSView] = [header(.inputs), spacer(14)]
         rows.append(field("MIDI sources", Controls.column(
             midi.map { Controls.label($0, color: Theme.Color.textSecondary) }, spacing: 2)))
-
-        // CHOOSABLE, not merely listed. This pane used to print the camera names as
-        // labels, which told you the app could see your webcam and gave you no way to
-        // use it — the gap was never discovery, it was that nothing let you pick one.
-        let captureNames = AVFoundationCaptureSource().enumerateDeviceNames()
-        if captureNames.isEmpty {
-            rows.append(field("Camera", Controls.label(
-                "None found", color: Theme.Color.textTertiary)))
-        } else {
-            let picker = Controls.popUp(
-                ["None"] + captureNames, target: self, action: #selector(captureDeviceChanged(_:)))
-            let chosen = store.preferences.captureDeviceName
-            picker.selectItem(at: chosen.flatMap { captureNames.firstIndex(of: $0).map { $0 + 1 } } ?? 0)
-            picker.toolTip = "The camera used as a live input"
-            rows.append(field("Camera", picker))
-        }
-
         rows.append(spacer(10))
         rows.append(Controls.note(
             "Audio input is chosen by the system. Videoboy uses the default input device.",
             width: Self.noteWidth))
+        rows.append(spacer(14))
+
+        // Every source the Asset Browser's Sources tab shows comes from here — see
+        // `SourceListView`'s header for why + opens a menu rather than a blank row.
+        rows.append(Controls.label("Sources", color: Theme.Color.textSecondary))
+        let list = SourceListView(store: store, engine: engine)
+        sourceList = list
+        list.translatesAutoresizingMaskIntoConstraints = false
+        list.heightAnchor.constraint(equalToConstant: 220).isActive = true
+        rows.append(list)
 
         return Controls.column(rows, spacing: 8)
-    }
-
-    @objc func captureDeviceChanged(_ sender: NSPopUpButton) {
-        // Item 0 is "None".
-        let names = AVFoundationCaptureSource().enumerateDeviceNames()
-        let index = sender.indexOfSelectedItem - 1
-        let chosen = names.indices.contains(index) ? names[index] : nil
-        store.preferences.captureDeviceName = chosen
-        onCaptureDeviceChanged?(chosen)
-        Log.info(.output, "camera set to \(chosen ?? "none")")
     }
 
     // MARK: - Hot keys

@@ -17,7 +17,7 @@ import Metal
 import VideoboyCore
 
 /// What a channel is currently playing.
-enum ChannelSourceKind {
+enum ChannelSourceKind: Equatable {
     case file
     case generator
     /// The emulated machine — ONE node, shared.
@@ -26,6 +26,14 @@ enum ChannelSourceKind {
     /// channels at it gives both the same picture, which is what a real machine with
     /// one video output does, and what makes a cut between them meaningful.
     case emulator
+    /// A configured source (SPEC 6, SPEC 10), by its `ConfiguredSource.id`.
+    ///
+    /// Was a fixed one-node `case capture` before this — a single global camera slot
+    /// that nothing could even route a channel to (see `Engine.setChannelSource`'s
+    /// history). Any number of cameras, captured windows, IP cameras and DV decks can
+    /// exist now, so the case needs to say WHICH one — an id rather than a kind,
+    /// because two cameras of the same kind are still two different sources.
+    case capture(String)
 }
 
 /// Where the musical clock's tempo comes from (SPEC 4b).
@@ -91,9 +99,13 @@ final class Engine {
     private(set) var mx1One: MX1EffectNode!
     private(set) var mx1Two: MX1EffectNode!
 
-    /// Live capture, available as a source (SPEC 10). Fed by the App's capture
-    /// session; nothing until then, which renders as the panel's empty state.
-    private(set) var capture: CaptureSourceNode!
+    /// Configured sources (SPEC 6, SPEC 10) — cameras, captured windows, IP cameras,
+    /// DV decks — by `ConfiguredSource.id`. One `CaptureSourceNode` per entry, created
+    /// the first time it is actually needed (`ensureCaptureNode`) rather than one
+    /// fixed instance up front, because the LIST is open-ended: any number can exist,
+    /// added and removed at runtime from Settings, unlike the four channels or the one
+    /// emulator that `buildGraph` can simply enumerate in advance.
+    private(set) var captureNodes: [String: CaptureSourceNode] = [:]
 
     /// Test pattern, routable as a source and straight to an output (SPEC 11).
     private(set) var testPattern: TestPatternSourceNode!
@@ -345,9 +357,10 @@ final class Engine {
         }
 
         // Sources that exist but are not wired into a channel until asked for.
-        capture = CaptureSourceNode(identifier: Engine.captureSlot, context: metal)
+        // Configured sources (cameras, captured windows...) are NOT created here —
+        // there can be any number of them and the list changes at runtime from
+        // Settings, so each gets its node lazily, in `ensureCaptureNode`.
         testPattern = TestPatternSourceNode(identifier: Engine.testPatternSlot, context: metal)
-        graph.add(capture)
         graph.add(testPattern)
 
         graph.registerParameters(into: registry)
@@ -435,22 +448,29 @@ final class Engine {
     /// and climb until the whole instrument was white. Scopes read what goes out
     /// BEFORE the instrument is drawn over it.
     static var scopeSourceSlot: String { busCodecProgramSlot }
-    /// The camera chosen as the live input, by name.
-    ///
-    /// Stored here so the choice survives and anything opening a capture session asks
-    /// one place which device to open. Setting it does NOT itself start a feed —
-    /// `AVFoundationCaptureSource` currently captures a finite sequence for the
-    /// loopback check rather than running continuously, and a live camera source is a
-    /// separate piece of work. Recorded rather than implied.
-    private(set) var captureDeviceName: String?
 
-    func setCaptureDeviceName(_ name: String?) {
-        captureDeviceName = name
-        capture.setPreferredDeviceName(name)
-    }
+    /// The graph slot for one configured source, by its `ConfiguredSource.id`.
+    static func captureSlot(for id: String) -> String { "source.capture.\(id)" }
 
-    static let captureSlot = "source.capture"
     static let testPatternSlot = "source.testpattern"
+
+    /// The node for a configured source, creating and registering it the first time
+    /// it is asked for.
+    ///
+    /// Called when a channel is pointed at the source, or when a live capture session
+    /// (AVFoundation, ScreenCaptureKit) is about to start feeding it — whichever
+    /// happens first. Idempotent: asking twice for the same id returns the same node,
+    /// the same way `load(url:)` re-registers a `ClipSourceNode`'s parameters without
+    /// creating a second one.
+    @discardableResult
+    func ensureCaptureNode(id: String) -> CaptureSourceNode {
+        if let existing = captureNodes[id] { return existing }
+        let node = CaptureSourceNode(identifier: Engine.captureSlot(for: id), context: metal)
+        captureNodes[id] = node
+        graph.add(node)
+        registry.register(slot: node.identifier, parameters: node.parameters)
+        return node
+    }
 
     /// Every bus-effect slot, both chains.
     /// Every effect that must boot BYPASSED.
@@ -786,7 +806,10 @@ final class Engine {
     /// it must be scheduled that much earlier or they play late.
     func applyMeasuredFeedbackLatency(_ latency: FeedbackLatency) {
         measuredFeedbackLatency = latency
-        capture.measuredLatencyFrames = latency.frames
+        // Every configured source, not one fixed capture node — the round trip is a
+        // property of the physical chain (HDMI card, cable, DVC100), not of which
+        // particular camera or window happens to be assigned right now.
+        for node in captureNodes.values { node.measuredLatencyFrames = latency.frames }
         Log.info(.render, "feedback round trip \(latency.frames) frames (\(String(format: "%.1f", latency.seconds * 1000)) ms); scheduling now compensates for it")
     }
 
@@ -814,10 +837,16 @@ final class Engine {
         case .file: Engine.slot(forChannel: letter)
         case .generator: Engine.generatorSlot(forChannel: letter)
         case .emulator: Engine.emulatorSlot
+        case .capture(let id): Engine.captureSlot(for: id)
         }
     }
 
     func setChannelSource(_ kind: ChannelSourceKind, channel letter: String) {
+        // A configured source's node is created lazily — see `ensureCaptureNode` — so
+        // it must exist before the edge below can name it. Every other kind's node was
+        // already added in `buildGraph`.
+        if case .capture(let id) = kind { ensureCaptureNode(id: id) }
+
         let subMix = GraphTopology.subMix(forChannel: Engine.slot(forChannel: letter))
         // A and C are the lower layer of their bus; B and D the upper.
         let inputIndex = (letter == "A" || letter == "C") ? 0 : 1
@@ -857,6 +886,7 @@ final class Engine {
         case .file: description = "a file"
         case .generator: description = "a generator"
         case .emulator: description = "the emulator"
+        case .capture(let id): description = "configured source \(id)"
         }
         Log.info(.graph, "channel \(letter) now sourced from \(description)")
     }
@@ -1018,10 +1048,12 @@ final class Engine {
 
     /// The data-effect family a channel's loaded media offers.
     func dataEffectFamily(forChannel letter: String) -> DataEffectFamily {
-        // A channel showing a generator has no bitstream, whatever file may also be
-        // loaded behind it.
-        if channelSourceKinds[letter] == .generator { return .none }
-        return sources[letter]?.dataEffectFamily ?? .none
+        // A channel showing a generator or a live configured source has no bitstream,
+        // whatever file may also be loaded behind it.
+        switch channelSourceKinds[letter] {
+        case .generator, .capture: return .none
+        default: return sources[letter]?.dataEffectFamily ?? .none
+        }
     }
 
     /// Whether the program bus carries the test pattern instead of the live mix.

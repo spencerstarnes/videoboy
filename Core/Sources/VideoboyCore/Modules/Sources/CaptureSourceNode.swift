@@ -63,6 +63,11 @@ public final class CaptureSourceNode: Node {
     /// Frames handed over since this node started, for the debug overlay.
     private(set) public var receivedFrameCount = 0
 
+    /// Whether a live session has actually delivered a frame — the Sources tab's
+    /// greyed/live state. A configured source can exist (chosen in Settings) without
+    /// ever being connected, e.g. a camera that was unplugged since it was added.
+    public var isLive: Bool { receivedFrameCount > 0 }
+
     public init(identifier: String, context: MetalContext? = MetalContext.shared) {
         self.identifier = identifier
         self.context = context

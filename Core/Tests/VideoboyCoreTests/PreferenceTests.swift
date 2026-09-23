@@ -110,6 +110,82 @@ final class PreferenceTests: XCTestCase {
         XCTAssertEqual(reopened.preferences.destinations.first?.kind, .obs)
         XCTAssertEqual(reopened.preferences.destinations.last?.target, "mix.one")
     }
+
+    /// Same shape, same reasoning as `testDestinationsRoundTrip` — a configured
+    /// source is what replaced the single `captureDeviceName: String?` this session,
+    /// so it needs the same proof: every field survives a save and a reload, for
+    /// every kind, including the ones that carry `windowOwnerName`.
+    func testConfiguredSourcesRoundTrip() {
+        let store = PreferenceStore(fileURL: fileURL)
+        store.preferences.configuredSources = [
+            ConfiguredSource(kind: .avfoundation, name: "DVC100", target: "DVC100"),
+            ConfiguredSource(
+                kind: .windowCapture, name: "OBS Studio", target: "Main Window",
+                windowOwnerName: "OBS"),
+            ConfiguredSource(kind: .ipCamera, name: "Porch Cam", target: "rtsp://10.0.0.4/live"),
+            ConfiguredSource(kind: .dvDeck, name: "GL2 deck")
+        ]
+        let reopened = PreferenceStore(fileURL: fileURL)
+        XCTAssertEqual(reopened.preferences.configuredSources.count, 4)
+        XCTAssertEqual(reopened.preferences.configuredSources[0].kind, .avfoundation)
+        XCTAssertEqual(reopened.preferences.configuredSources[1].windowOwnerName, "OBS")
+        XCTAssertEqual(reopened.preferences.configuredSources[2].target, "rtsp://10.0.0.4/live")
+        XCTAssertEqual(reopened.preferences.configuredSources[3].kind, .dvDeck)
+    }
+
+    /// A preferences file saved before this type existed has no `configuredSources`
+    /// key at all — must load to the empty list, not fail the whole file.
+    func testAFileWithNoConfiguredSourcesKeyLoadsEmpty() throws {
+        let old = """
+        { "defaultTempo": 90 }
+        """
+        try old.write(to: fileURL, atomically: true, encoding: .utf8)
+        let store = PreferenceStore(fileURL: fileURL)
+        XCTAssertTrue(store.preferences.configuredSources.isEmpty)
+    }
+
+    /// Same "one bad element must not sink the list" rule `destinations` already
+    /// proves, applied to sources — a kind this build has retired should not cost
+    /// someone every camera they configured.
+    func testAnUnknownSourceKindIsSkippedRatherThanLosingTheList() throws {
+        let withRetiredKind = """
+        {
+          "configuredSources": [
+            {"id": "a", "kind": "avfoundation", "name": "Webcam", "target": "Webcam"},
+            {"id": "b", "kind": "firewireDeck", "name": "Old Deck", "target": ""},
+            {"id": "c", "kind": "ipCamera", "name": "Cam", "target": "rtsp://x"}
+          ]
+        }
+        """
+        try withRetiredKind.write(to: fileURL, atomically: true, encoding: .utf8)
+        let store = PreferenceStore(fileURL: fileURL)
+        XCTAssertEqual(store.preferences.configuredSources.map(\.id), ["a", "c"])
+    }
+}
+
+final class ConfiguredSourceKindTests: XCTestCase {
+
+    /// The DV-deck badge must never collide with the "DV" badge a decoded .dv file
+    /// clip already uses — that collision would make a deck entry look like a
+    /// playable clip in the Sources tab, which is a real bug, not a cosmetic one.
+    func testDVDeckBadgeDoesNotCollideWithTheClipBadge() {
+        XCTAssertNotEqual(ConfiguredSourceKind.dvDeck.badge, "DV")
+    }
+
+    func testOnlyAVFoundationAndWindowCaptureAreImplemented() {
+        XCTAssertTrue(ConfiguredSourceKind.avfoundation.isImplemented)
+        XCTAssertTrue(ConfiguredSourceKind.windowCapture.isImplemented)
+        XCTAssertFalse(ConfiguredSourceKind.ipCamera.isImplemented)
+        XCTAssertFalse(ConfiguredSourceKind.dvDeck.isImplemented)
+    }
+
+    /// Every badge must be one the app's existing kind-name lookup already knows
+    /// (`LibraryItem.kind`), or a Sources tile would show a raw three-letter code
+    /// where every other tab's tile shows a real name.
+    func testEveryBadgeIsUnique() {
+        let badges = ConfiguredSourceKind.allCases.map(\.badge)
+        XCTAssertEqual(badges.count, Set(badges).count, "two source kinds share a badge")
+    }
 }
 
 extension PreferenceTests {

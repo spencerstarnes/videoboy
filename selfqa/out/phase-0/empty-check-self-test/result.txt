@@ -1,6 +1,6 @@
 check:    phase-0/empty-check-self-test
 verdict:  FAIL
-when:     2026-09-19T15:18:43Z
+when:     2026-09-23T03:34:56Z
 core:     0.3.0
 
 notes:
@@ -9,33 +9,33 @@ notes:
 assertions (0/0 passed):
 
 recent log:
-  1789831119.550 INFO [app] reminder 'setSaveLocation' suppressed
-  1789831119.550 INFO [app] reminder 'noOutputsSelected' suppressed
-  1789831119.550 INFO [app] reminder 'saveOnQuit' suppressed
-  1789831119.550 INFO [app] reminder 'midiWithNoDevice' suppressed
-  1789831119.551 INFO [app] reminder 'audioMappingWithoutAudioClock' suppressed
-  1789831119.551 INFO [app] all reminders restored
-  1789831119.551 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-FD396AD6-E986-43F1-A357-BF1B46AC2C90/preferences.json; using defaults
-  1789831119.553 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-A2D3EF31-8DC9-4FFB-A4C0-E64517E10AEC/preferences.json; using defaults
-  1789831119.554 INFO [app] reminder 'saveOnQuit' suppressed
-  1789831122.463 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/scopes/send/before.png
-  1789831122.465 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/scopes/send/after-lower-third.png
-  1789831122.467 INFO [selfqa] wrote 480x360 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/scopes/send/scope.png
-  1789831123.477 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/00-source.png
-  1789831123.518 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/waveform.png
-  1789831123.518 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789831123.534 INFO [selfqa] phase-5/scopes: PASS  Waveform draws a trace — variance 437
-  1789831123.573 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/parade.png
-  1789831123.573 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789831123.589 INFO [selfqa] phase-5/scopes: PASS  RGB Parade draws a trace — variance 432
-  1789831123.614 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/histogram.png
-  1789831123.614 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789831123.630 INFO [selfqa] phase-5/scopes: PASS  Histogram draws a trace — variance 409
-  1789831123.714 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/vectorscope.png
-  1789831123.714 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1789831123.730 INFO [selfqa] phase-5/scopes: PASS  Vectorscope draws a trace — variance 185
-  1789831123.963 INFO [selfqa] wrote 640x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/quad.png
-  1789831123.984 INFO [selfqa] phase-5/scopes: colour bars read: 12.5% crushed
-  1789831123.985 INFO [selfqa] phase-5/scopes: PASS -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/result.txt
-  1789831123.986 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
-  1789831123.987 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-0/blocked-check-self-test/result.txt
+  1790134495.708 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0173.png
+  1790134495.709 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0174.png
+  1790134495.709 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0175.png
+  1790134495.709 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0176.png
+  1790134495.709 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0177.png
+  1790134495.710 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0178.png
+  1790134495.710 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0179.png
+  1790134495.710 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0180.png
+  1790134495.710 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0181.png
+  1790134495.711 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0182.png
+  1790134495.711 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0183.png
+  1790134495.711 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0184.png
+  1790134495.711 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0185.png
+  1790134495.712 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0186.png
+  1790134495.712 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0187.png
+  1790134495.712 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0188.png
+  1790134495.713 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0189.png
+  1790134495.713 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0190.png
+  1790134495.713 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0191.png
+  1790134495.713 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0192.png
+  1790134495.714 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0193.png
+  1790134495.714 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0194.png
+  1790134495.714 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0195.png
+  1790134495.715 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0196.png
+  1790134495.715 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0197.png
+  1790134495.715 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0198.png
+  1790134495.715 INFO [selfqa] wrote 64x48 PNG -> /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/seq-62680899-CF6F-4D58-9F30-E4868395E101/f0199.png
+  1790134495.721 INFO [dv] image sequence seq-62680899-CF6F-4D58-9F30-E4868395E101: 200 frames at 30fps
+  1790134496.009 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1790134496.011 INFO [selfqa] phase-0/blocked-check-self-test: BLOCKED -> /Users/spencerstarnes/dev/videoboy/.claude/worktrees/agent-a8cf1ea37970f35b7/selfqa/out/phase-0/blocked-check-self-test/result.txt

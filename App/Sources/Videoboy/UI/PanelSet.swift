@@ -168,7 +168,7 @@ final class PanelSet {
         // CONTENTS must be identical. They were separate copies before, which meant a
         // folder dropped on the left never appeared on the right.
         let library = LibraryModel()
-        library.setItems(PanelSet.sampleLibraryItems() + PanelSet.futureSourceKinds())
+        library.setItems(PanelSet.sampleLibraryItems())
         self.library = library
 
         libraryOneBody = LibraryPanelBody(
@@ -229,19 +229,6 @@ final class PanelSet {
                 url: RepoPaths.samples.appendingPathComponent(file),
                 duration: duration)
         }
-    }
-
-    /// Source kinds the browser advertises but cannot load yet. Shown greyed so the
-    /// intended scope is visible without pretending they work.
-    private static func futureSourceKinds() -> [LibraryItem] {
-        [
-            LibraryItem(name: "plasma", badge: "GEN", isAvailable: false),
-            LibraryItem(name: "logo.svg", badge: "SVG", isAvailable: false),
-            LibraryItem(name: "screencap", badge: "SCR", isAvailable: false),
-            LibraryItem(name: "cam2", badge: "IP", isAvailable: false),
-            LibraryItem(name: "DVC100", badge: "CAP", isAvailable: false),
-            LibraryItem(name: "amiga titler", badge: "EMU", isAvailable: false)
-        ]
     }
 
     /// One channel-effects chain, for a pair of channels.
