@@ -52,8 +52,10 @@ enum SelfQARunner {
             verdict = StreamSelfQA.run()
         case "audit":
             verdict = ControlAuditSelfQA.run()
+        case "stress":
+            verdict = StressSelfQA.run()
         default:
-            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend, stream, record, audit)")
+            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend, stream, record, audit, stress)")
             return 2
         }
         // Blocked is not a failure: absent hardware must never fail a build.

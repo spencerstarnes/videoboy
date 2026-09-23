@@ -907,6 +907,54 @@ public final class MetalContext {
         Log.info(.render, "Metal ready on \(device.name)")
     }
 
+    // MARK: - Submitting passes
+    //
+    // WHY PASSES NO LONGER WAIT. Every node used to `commit()` then
+    // `waitUntilCompleted()` — a full CPU↔GPU round trip, ~0.3–0.6 ms each, for
+    // shader work that takes microseconds on a 720×480 frame. With four channels and
+    // every effect on that was ~11 ms of a 19 ms frame spent waiting, and the app fell
+    // to half the display rate (measured by `selfqa.sh stress`).
+    //
+    // All passes share ONE command queue, and Metal runs a queue's command buffers in
+    // commit order with hazard tracking, so a later pass always sees an earlier pass's
+    // writes without the CPU stopping in between. The engine then waits ONCE per frame
+    // (`waitForIdle`), which keeps the invariant everything else relies on: when the
+    // graph returns, every texture it produced is finished. CPU readers mid-graph
+    // (`OffscreenRenderer.readback`) wait on their own buffer, which on one queue
+    // implies everything before it is done.
+
+    /// Restores the old wait-after-every-pass behaviour. An instant fallback if a
+    /// picture ever looks wrong: launch with `VIDEOBOY_SYNC_EVERY_PASS=1`.
+    public nonisolated(unsafe) static var syncsEveryPass =
+        ProcessInfo.processInfo.environment["VIDEOBOY_SYNC_EVERY_PASS"] == "1"
+
+    /// Commits a pass. Returns immediately unless `syncsEveryPass` is set; a GPU
+    /// failure is still logged, from the completion handler instead of inline.
+    public func submit(_ commandBuffer: MTLCommandBuffer, label: String) {
+        if Self.syncsEveryPass {
+            commandBuffer.commit()
+            commandBuffer.waitUntilCompleted()
+            if let error = commandBuffer.error {
+                Log.error(.render, "\(label) GPU pass failed: \(error)")
+            }
+            return
+        }
+        commandBuffer.addCompletedHandler { buffer in
+            if let error = buffer.error {
+                Log.error(.render, "\(label) GPU pass failed: \(error)")
+            }
+        }
+        commandBuffer.commit()
+    }
+
+    /// Blocks until every pass submitted so far has finished. Called once per frame.
+    public func waitForIdle() {
+        guard let buffer = commandQueue.makeCommandBuffer() else { return }
+        buffer.label = "frame-fence"
+        buffer.commit()
+        buffer.waitUntilCompleted()
+    }
+
     /// Creates a texture suitable for both sampling and rendering into.
     public func makeRenderTarget(width: Int, height: Int, label: String) -> MTLTexture? {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
@@ -949,8 +997,7 @@ public final class MetalContext {
             return
         }
         encoder.endEncoding()
-        buffer.commit()
-        buffer.waitUntilCompleted()
+        submit(buffer, label: "clear '\(texture.label ?? "target")'")
     }
 
     /// Blends a processed texture back over the original by a wet/dry amount.
@@ -985,13 +1032,7 @@ public final class MetalContext {
         encoder.setFragmentBytes(&mix, length: MemoryLayout<Float>.size, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-
-        if let error = commandBuffer.error {
-            Log.error(.render, "\(label) wet/dry blend failed: \(error)")
-            return false
-        }
+        submit(commandBuffer, label: "\(label) wet/dry blend")
         return true
     }
 
@@ -1041,13 +1082,7 @@ public final class MetalContext {
         }
 
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-
-        if let error = commandBuffer.error {
-            Log.error(.render, "\(label) tiled view failed: \(error)")
-            return false
-        }
+        submit(commandBuffer, label: "\(label) tiled view")
         return true
     }
 

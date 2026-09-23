@@ -296,13 +296,7 @@ public final class CompositeCodecNode: Node {
         encoder.setFragmentBytes(&params, length: MemoryLayout<CompositeParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-
-        if let error = commandBuffer.error {
-            Log.error(.render, "\(identifier) composite pass failed: \(error)")
-            return false
-        }
+        metal.submit(commandBuffer, label: identifier)
         return true
     }
 

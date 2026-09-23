@@ -186,13 +186,7 @@ public final class ColourControlNode: Node {
         encoder.setFragmentBytes(&params, length: MemoryLayout<ColourParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-
-        if let error = commandBuffer.error {
-            Log.error(.render, "\(identifier) colour pass failed: \(error)")
-            return input
-        }
+        metal.submit(commandBuffer, label: identifier)
 
         guard wetDry < 0.999 else { return target }
         if blendTarget == nil || blendTarget?.width != width || blendTarget?.height != height {

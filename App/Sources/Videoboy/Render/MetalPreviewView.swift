@@ -80,9 +80,15 @@ final class MetalPreviewView: NSView {
     /// the sub-mixes and programme, which have nothing to load a clip into.
     private let showsAutoPlay: Bool
 
+    /// - Parameter syncsToDisplay: true only for the OUTPUT window. An in-window
+    ///   preview is composited by the window server at vsync anyway, so waiting for
+    ///   vsync here too made every preview's `nextDrawable()` block the render tick
+    ///   until the display freed a drawable — measured as ~7.5 ms per tick with seven
+    ///   previews, enough to halve the frame rate. The output feeds the analog chain
+    ///   directly and keeps vsync.
     init(
         caption: String, recordLabel: String? = nil, showsAutoPlay: Bool = false,
-        showsRoutingOverlay: Bool = true
+        showsRoutingOverlay: Bool = true, syncsToDisplay: Bool = false
     ) {
         self.showsAutoPlay = showsAutoPlay
         self.showsRoutingOverlay = showsRoutingOverlay
@@ -99,6 +105,7 @@ final class MetalPreviewView: NSView {
             metalLayer.device = context.device
             metalLayer.pixelFormat = MetalContext.pixelFormat
             metalLayer.framebufferOnly = true
+            metalLayer.displaySyncEnabled = syncsToDisplay
             // Standard-definition video is not HiDPI. Forcing scale 1 keeps the
             // pixel mapping exact and avoids resampling a 720x480 picture twice.
             metalLayer.contentsScale = 1.0
@@ -442,6 +449,15 @@ final class MetalPreviewView: NSView {
         emptyLabel.isHidden = texture != nil
 
         guard let context = MetalContext.shared, let metalLayer else { return }
+
+        // A preview nobody can see is skipped: an uncomposited layer stops releasing
+        // drawables, and `nextDrawable()` then blocks the render tick for up to 1 s —
+        // which also freezes the output. The output window is exempt; it is the show.
+        if !metalLayer.displaySyncEnabled,
+           isHiddenOrHasHiddenAncestor
+            || !(window?.occlusionState.contains(.visible) ?? false) {
+            return
+        }
 
         if texture == nil {
             clearLayer(context: context, layer: metalLayer)

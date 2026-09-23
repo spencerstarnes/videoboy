@@ -123,8 +123,7 @@ public final class ScopeOverlayNode: Node {
             &params, length: MemoryLayout<ScopeOverlayParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
+        metal.submit(commandBuffer, label: identifier)
 
         return target
     }

@@ -183,12 +183,7 @@ public final class GeneratorSourceNode: Node {
         encoder.setFragmentBytes(&params, length: MemoryLayout<GeneratorParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-
-        if let error = commandBuffer.error {
-            Log.error(.render, "\(identifier) generator pass failed: \(error)")
-        }
+        metal.submit(commandBuffer, label: identifier)
         return target
     }
 

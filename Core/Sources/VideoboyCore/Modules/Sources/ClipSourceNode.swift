@@ -259,6 +259,8 @@ public final class ClipSourceNode: Node, DataEffectProvider {
 
     private let context: MetalContext?
     private var texture: MTLTexture?
+    /// Reused, double-buffered upload target — no allocation per frame.
+    private var uploader: TextureUploader?
     /// Frame index the current texture was produced from; avoids redundant decodes.
     private var textureFrameIndex = -1
     /// The last corruption settings the texture was produced with, for the same reason.
@@ -659,7 +661,8 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         }
 
         lastImage = image
-        texture = metal.makeTexture(from: image, label: "\(identifier)-frame-\(frameIndex)")
+        if uploader == nil { uploader = TextureUploader(context: metal, label: identifier) }
+        texture = uploader?.upload(image) ?? texture
         textureFrameIndex = frameIndex
         textureCorruption = damage
         return texture
