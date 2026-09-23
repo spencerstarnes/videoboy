@@ -275,3 +275,20 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   `/tmp/amiberry.sock` and the binary carries "Default socket in use, using instance",
   so a second Amiberry takes a different path. Anything built on this has to discover
   which socket belongs to the instance we launched rather than assuming.
+
+- **`scripts/selfqa.sh ui` can hang indefinitely on the library-drag check.** Found
+  2026-09-23 while verifying an unrelated MIDI-mapping change. The check "a press
+  then a drag on a thumbnail starts a drag" in `UISelfQA.swift` drives
+  `HoverScrubView`'s real `NSView` drag session with a synthetic `NSEvent`, which
+  goes through `NSCoreDragManager _dragUntilMouseUp:` — a blocking loop that waits
+  for a genuine system-level mouse-up (`_BlockUntilNextEventMatchingListInModeWithFilter`),
+  not an app-level synthetic one. It happened to complete once in an interactive
+  foreground run and hung every other time (backgrounded, or after a prior run left
+  stray mouse state), for 5+ minutes with 0% CPU, confirmed on unmodified `main` too
+  — not a regression from any specific change. `scripts/verify.sh` calls
+  `selfqa.sh ui` directly, so it inherits the same risk. Needs either a fake drag
+  path that does not touch `NSCoreDragManager`, or dropping down to
+  `draggingSession(with:event:source:)`'s testable seams instead of a synthetic
+  `mouseDown`. Until fixed, re-run `scripts/selfqa.sh ui` in an interactive
+  foreground terminal if it stalls, or `kill -9` the `Videoboy --selfqa` process and
+  retry.
