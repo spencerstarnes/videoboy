@@ -12,6 +12,7 @@
 #           playback    — the live graph: playback, fader, the wedge (no hardware)
 #           analog      — the composite codec, echo and feedback chain (no hardware)
 #           blend       — every layer blend mode over real pictures (no hardware)
+#           transitions — every crossfader wipe/slide/iris pattern, plus the UI key (no hardware)
 #           displays    — what displays exist and what mode they offer
 #           output      — the borderless output window on the HDMI card (needs hardware)
 #           loopback    — capture the DVC100 and write metrics.json (needs hardware)
@@ -65,6 +66,7 @@ case "$CHECK" in
   displays)  run_app_check displays ;;
   analog)    run_app_check analog ;;
   blend)     run_app_check blend ;;
+  transitions) run_app_check transitions ;;
   calibrate) run_app_check calibrate ;;
   stream)    run_app_check stream ;;
   record)    run_app_check record ;;
@@ -89,6 +91,7 @@ case "$CHECK" in
     run_app_check playback
     run_app_check analog
     run_app_check blend
+    run_app_check transitions
     run_app_check stream
     run_app_check record
     run_app_check audit
@@ -97,5 +100,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, shaders, isf, stress, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, stream, record, audit, shaders, isf, stress, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

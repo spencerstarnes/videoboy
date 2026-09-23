@@ -611,6 +611,7 @@ enum ShaderSource {
         float keyB;
         float keyThreshold;  // RGB distance below which a pixel is "the background"
         float keyEdge;       // width of the soft transition past that distance
+        int transition;      // which pattern the fader's move follows — see Transition.swift
     };
 
     static inline float3 blendChannelwise(int mode, float3 base, float3 blend) {
@@ -703,11 +704,116 @@ enum ShaderSource {
         return float4(clamp(lit, 0.0, 1.0), 1.0);
     }
 
+    /* Transition patterns (Transition.swift). Mode numbers must match that enum.
+     *
+     * Every pattern answers three questions for one pixel at fader position t:
+     *   - is the incoming (right) source here yet?      → `inside`, 0 or 1
+     *   - where in the right source should it be read?  → `blendUV`
+     *   - where in the left source should it be read?   → `baseUV`
+     * Only slide and push move a picture, so for the rest both UVs stay put.
+     *
+     * The contract that makes these safe to put on a crossfader: at t = 0 no pixel
+     * is inside, at t = 1 every pixel is, and at t = 1 `blendUV` is `uv` — so both
+     * ends of the fader are the two sources untouched, exactly as with a dissolve.
+     * Hard edges on purpose: that is what an MX-1 wipe looks like, and a soft edge
+     * would blur the interlace patterns into a dissolve.
+     */
+    struct TransitionSample {
+        float inside;
+        float2 baseUV;
+        float2 blendUV;
+    };
+
+    // The interlace-vertical band width, in output pixels. One pixel columns would
+    // turn to chroma mush through the composite codec; 16 is wide enough to survive
+    // it and narrow enough to still read as a comb at 720 across. (Interlace
+    // horizontal uses single scan lines on purpose — that is the field shimmer.)
+    constant float kInterlaceBandPixels = 16.0;
+
+    static inline TransitionSample transitionMask(
+        int pattern, float t, float2 uv, float2 pixel, float aspect) {
+        TransitionSample s;
+        s.inside = 0.0;
+        s.baseUV = uv;
+        s.blendUV = uv;
+        switch (pattern) {
+            case 1:  // wipe horizontal — edge travels left to right
+                s.inside = uv.x < t ? 1.0 : 0.0;
+                break;
+            case 2:  // wipe vertical — edge travels top to bottom
+                s.inside = uv.y < t ? 1.0 : 0.0;
+                break;
+            case 3:  // slide horizontal — right source enters from the left, over A
+                s.inside = uv.x < t ? 1.0 : 0.0;
+                s.blendUV = float2(uv.x - t + 1.0, uv.y);
+                break;
+            case 4:  // slide vertical — enters from the top
+                s.inside = uv.y < t ? 1.0 : 0.0;
+                s.blendUV = float2(uv.x, uv.y - t + 1.0);
+                break;
+            case 5:  // push horizontal — as slide, and A is shoved out to the right
+                s.inside = uv.x < t ? 1.0 : 0.0;
+                s.blendUV = float2(uv.x - t + 1.0, uv.y);
+                if (s.inside < 0.5) { s.baseUV = float2(uv.x - t, uv.y); }
+                break;
+            case 6:  // push vertical
+                s.inside = uv.y < t ? 1.0 : 0.0;
+                s.blendUV = float2(uv.x, uv.y - t + 1.0);
+                if (s.inside < 0.5) { s.baseUV = float2(uv.x, uv.y - t); }
+                break;
+            case 7: {  // iris — a true circle on the output, reaching the corners at t = 1
+                float2 d = (uv - 0.5) * float2(aspect, 1.0);
+                float cornerRadius = length(float2(aspect, 1.0) * 0.5);
+                s.inside = length(d) < t * cornerRadius ? 1.0 : 0.0;
+                break;
+            }
+            case 8:  // split horizontal — doors part from a vertical centre line
+                s.inside = abs(uv.x - 0.5) < t * 0.5 ? 1.0 : 0.0;
+                break;
+            case 9:  // split vertical — doors part from a horizontal centre line
+                s.inside = abs(uv.y - 0.5) < t * 0.5 ? 1.0 : 0.0;
+                break;
+            case 10: {  // interlace horizontal — even lines L→R, odd lines R→L
+                bool odd = (int(floor(pixel.y)) & 1) == 1;
+                s.inside = (odd ? uv.x > 1.0 - t : uv.x < t) ? 1.0 : 0.0;
+                break;
+            }
+            case 11: {  // interlace vertical — even bands down, odd bands up
+                bool odd = (int(floor(pixel.x / kInterlaceBandPixels)) & 1) == 1;
+                s.inside = (odd ? uv.y > 1.0 - t : uv.y < t) ? 1.0 : 0.0;
+                break;
+            }
+            default:
+                break;
+        }
+        return s;
+    }
+
     fragment float4 composite_blend_fragment(VertexOut in [[stage_in]],
                                              texture2d<float> baseLayer [[texture(0)]],
                                              texture2d<float> blendLayer [[texture(1)]],
                                              constant BlendParams &p [[buffer(0)]]) {
         constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+        float t = clamp(p.mixAmount, 0.0, 1.0);
+
+        // Anything but a dissolve: the pattern decides per pixel whether the right
+        // source has arrived, and the blend mode colours what has arrived by the
+        // same mid-travel triangle the dissolve uses below — so Normal is a clean
+        // wipe and both fader ends are still the two sources untouched.
+        if (p.transition != 0) {
+            float aspect = float(baseLayer.get_width()) / max(float(baseLayer.get_height()), 1.0);
+            TransitionSample s = transitionMask(p.transition, t, in.uv, in.position.xy, aspect);
+            float3 base = baseLayer.sample(linearSampler, s.baseUV).rgb;
+            if (s.inside < 0.5) { return float4(base, 1.0); }
+            float3 blend = blendLayer.sample(linearSampler, s.blendUV).rgb;
+            float3 raw = (p.mode == 13)
+                ? keyComposite(base, blend, float3(p.keyR, p.keyG, p.keyB), p.keyThreshold, p.keyEdge)
+                : blendChannelwise(p.mode, base, blend);
+            float weight = 1.0 - abs(2.0 * t - 1.0);
+            float3 arrived = mix(blend, clamp(raw, 0.0, 1.0), weight);
+            return float4(clamp(arrived, 0.0, 1.0), 1.0);
+        }
+
         float3 base = baseLayer.sample(linearSampler, in.uv).rgb;
         float3 blend = blendLayer.sample(linearSampler, in.uv).rgb;
 
@@ -718,7 +824,6 @@ enum ShaderSource {
             ? keyComposite(base, blend, float3(p.keyR, p.keyG, p.keyB), p.keyThreshold, p.keyEdge)
             : blendChannelwise(p.mode, base, blend);
         float3 blended = clamp(rawBlended, 0.0, 1.0);
-        float t = clamp(p.mixAmount, 0.0, 1.0);
 
         // The fader IS the opacity. Two things have to be true at once:
         //

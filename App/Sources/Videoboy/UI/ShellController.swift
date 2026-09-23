@@ -1223,6 +1223,13 @@ final class ShellController {
                 self?.engine.registry.setValue(
                     mode.normalisedPosition, slot: bus.slot, code: .blendMode)
             }
+            // The transition pattern, beside it: the same composite reads both, so
+            // a wipe follows every fader move whether it came from a hand, FADE,
+            // CUT, a sweep or MIDI.
+            bus.body.onTransitionChanged = { [weak self] transition in
+                self?.engine.registry.setValue(
+                    transition.normalisedPosition, slot: bus.slot, code: .transition)
+            }
             bus.body.onFade = { [weak self] rate in
                 guard let self else { return }
                 // Fade always fades. Beat only decides when it starts.

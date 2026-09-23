@@ -147,6 +147,21 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
       607 tests (597 + 10 new — `ConfiguredSource` round-trip/lenient-decode,
       `CaptureSourceNode.isLive`). `scripts/verify.sh` exits 0, including the full
       self-QA suite with a live app launch.
+- [x] Crossfader transitions (MX-1 style) — added 2026-09-23. A pattern key on the
+      LEFT of each fader's transport cluster (`VBTransitionButton`, the partner of the
+      blend key on the right) picks what shape the move takes: Dissolve (default,
+      unchanged), Wipe, Slide, Push, Split (barn door), Interlace (horizontal and
+      vertical of each), and Iris. 12 patterns, `Transition` enum, param `61F` (new
+      6xF family), one branch in the existing blend shader — still ONE draw per bus,
+      no new pass and no new `waitUntilCompleted`. The fader position is the
+      transition's progress, so FADE/CUT/bus keys/sweeps/MIDI all drive a wipe
+      unchanged; both fader ends stay the pure sources for every pattern, and the
+      blend mode colours the arrived area by the same mid-travel triangle as the
+      dissolve. Evidence: `TransitionTests` (11) and `scripts/selfqa.sh transitions`
+      (`selfqa/out/phase-4/transitions/`: contact sheet at 25/50/75%, UI key driven
+      through its own menu item and the picture read back, key fits at all three
+      breakpoints). Not yet: soft-edge/border width on wipes, and no registry→key sync
+      when `61F` is moved by MIDI (the blend key has the same gap).
 - [ ] Optional: expose PRIMARY (and the wedge sources) over Syphon so the app can also feed VDMX/TouchDesigner rigs.
 
 ## Backlog notes / deferred ideas

@@ -44,6 +44,8 @@ enum SelfQARunner {
             verdict = CalibrationSelfQA.run()
         case "blend":
             verdict = BlendSelfQA.run()
+        case "transitions":
+            verdict = TransitionSelfQA.run()
         case "emu":
             verdict = EmuSelfQA.run()
         case "emu-probe":
@@ -63,7 +65,7 @@ enum SelfQARunner {
         case "isf":
             verdict = ISFSelfQA.run()
         default:
-            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend, stream, record, audit, shaders, isf, stress, mosh)")
+            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend, transitions, stream, record, audit, shaders, isf, stress, mosh)")
             return 2
         }
         // Blocked is not a failure: absent hardware must never fail a build.

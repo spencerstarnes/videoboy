@@ -9,10 +9,11 @@
 //  Connects: MetalContext's crossfade pipeline — the same one the self-QA harness
 //            uses, so an offscreen check and the live output cannot diverge.
 //  Extend  : a new blend mode is a case in `BlendMode` plus a branch in the shader;
-//            the node does not change.
+//            a new wipe is a case in `Transition` plus a branch in `transitionMask`.
+//            Either way the node does not change, and it is still ONE draw.
 //
 //  Parameters (SPEC 13): one of 61A / 62A / 63A depending on which bus this is,
-//  plus 65A blend mode, 66A layer opacity, and 6xE (61E/62E/63E) for the key
+//  plus 65A blend mode, 66A layer opacity, 61F transition pattern, and 6xE (61E/62E/63E) for the key
 //  colour/threshold/edge — read and sent every frame like the others, but only
 //  acted on by the shader when blendMode is `.key`.
 //
@@ -31,6 +32,7 @@ private struct BlendParams {
     var keyB: Float
     var keyThreshold: Float
     var keyEdge: Float
+    var transition: Int32
 }
 
 /// Mixes two inputs by a single position parameter.
@@ -65,7 +67,8 @@ public final class CrossfadeNode: Node {
             Parameter(code: .cutTrigger, range: 0...1, defaultValue: 0),
             Parameter(code: .fadeTrigger, range: 0...1, defaultValue: 0),
             Parameter(code: .cutToLeftTrigger, range: 0...1, defaultValue: 0),
-            Parameter(code: .cutToRightTrigger, range: 0...1, defaultValue: 0)
+            Parameter(code: .cutToRightTrigger, range: 0...1, defaultValue: 0),
+            Parameter(code: .transition, range: 0...1, defaultValue: 0)
         ]
     }
 
@@ -74,6 +77,9 @@ public final class CrossfadeNode: Node {
 
     /// How the upper layer combines with the lower one.
     public var blendMode: BlendMode = .normal
+
+    /// Which pattern the fader's travel follows. Dissolve is what it always did.
+    public var transition: Transition = .dissolve
 
     /// Per-layer opacity of the upper layer.
     public var layerOpacity: Double = 1.0
@@ -172,7 +178,8 @@ public final class CrossfadeNode: Node {
             keyG: Float(key.g),
             keyB: Float(key.b),
             keyThreshold: Float(min(max(keyThreshold, 0), 1) * 0.6),
-            keyEdge: Float(min(max(keyEdge, 0), 1) * 0.6)
+            keyEdge: Float(min(max(keyEdge, 0), 1) * 0.6),
+            transition: Int32(transition.rawValue)
         )
         encoder.setFragmentBytes(&params, length: MemoryLayout<BlendParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
@@ -189,6 +196,9 @@ public final class CrossfadeNode: Node {
         }
         if let value = registry.value(slot: identifier, code: .blendMode) {
             blendMode = BlendMode.from(normalised: value)
+        }
+        if let value = registry.value(slot: identifier, code: .transition) {
+            transition = Transition.from(normalised: value)
         }
         if let value = registry.value(slot: identifier, code: .layerOpacity) {
             layerOpacity = value

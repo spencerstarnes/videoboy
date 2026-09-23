@@ -27,6 +27,7 @@ selfqa/out/**/*.raw
 !selfqa/out/phase-3/analog-chain/*.png
 !selfqa/out/phase-3/feedback-latency/*.png
 !selfqa/out/phase-4/blend-modes/*.png
+!selfqa/out/phase-4/transitions/*.png
 !selfqa/out/phase-4/generators/*.png
 !selfqa/out/phase-5/scopes/*.png
 

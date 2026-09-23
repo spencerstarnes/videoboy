@@ -28,6 +28,8 @@
 //    4xC  — feedback
 //    5xA  — colour controls
 //    6xA  — mixer and transport
+//    6xF  — crossfader transition pattern (wipes, slides, pushes, iris — same
+//           mixer family, same reason as 6xE)
 //    6xE  — genlock/chroma key (6xA's nine slots are already spoken for; this
 //           extends the same mixer family rather than starting a new number range,
 //           because a key is a property of a composite exactly like blend mode is)
@@ -241,6 +243,16 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     /// well past one pixel, so the key has to tolerate that instead of fighting it.
     public static let keyEdge = ParamCode(known: "63E")
 
+    // MARK: Transition pattern (6xF)
+    //
+    // Like blend mode and the key, a transition is a property of ONE composite, so
+    // it lives in the mixer family. It is a sweep rather than a menu-only setting so
+    // a knob can run through the patterns mid-phrase.
+
+    /// Which pattern the crossfader's move follows — dissolve, wipe, slide, push,
+    /// iris, split, interlace — as a 0...1 sweep across `Transition.allCases`.
+    public static let transition = ParamCode(known: "61F")
+
     // MARK: Composite emulation (7xA)
 
     public static let compositeCrawl = ParamCode(known: "71A")
@@ -413,6 +425,7 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "61E": "key colour",
         "62E": "key threshold",
         "63E": "key edge",
+        "61F": "transition",
         "71A": "dot crawl",
         "72A": "chroma bleed",
         "73A": "TBC wobble",
@@ -518,6 +531,7 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .keyColour,
         .keyThreshold,
         .keyEdge,
+        .transition,
         .compositeCrawl,
         .chromaBleed,
         .tbcWobble,

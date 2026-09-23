@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-23T18:21:35Z
+when:     2026-09-23T23:13:16Z
 core:     0.3.0
 
 notes:
@@ -12,20 +12,20 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
   adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 5.43 ms, p95 5.67 ms, worst 5.93 ms, budget 33.37 ms
+  frame time with everything on: mean 5.82 ms, p95 6.20 ms, worst 6.22 ms, budget 33.37 ms
 
 assertions (117/117 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
-  PASS  wide is not blank — luminance variance 806.9
+  PASS  wide is not blank — luminance variance 612.9
   PASS  dimensions — expected 1000x760, got 1000x760
-  PASS  compact is not blank — luminance variance 758.3
+  PASS  compact is not blank — luminance variance 800.6
   PASS  dimensions — expected 760x640, got 760x640
-  PASS  narrow is not blank — luminance variance 913.5
-  PASS  collapsed-left is not blank — luminance variance 707.5
-  PASS  collapsed-both-edges is not blank — luminance variance 610.7
-  PASS  collapsed-sources-only is not blank — luminance variance 823.2
-  PASS  collapsed-effects-only is not blank — luminance variance 596.7
-  PASS  holding Shift lights the mappable faders — 89 faders highlighted
+  PASS  narrow is not blank — luminance variance 980.3
+  PASS  collapsed-left is not blank — luminance variance 617.2
+  PASS  collapsed-both-edges is not blank — luminance variance 625.0
+  PASS  collapsed-sources-only is not blank — luminance variance 540.7
+  PASS  collapsed-effects-only is not blank — luminance variance 610.3
+  PASS  holding Shift lights the mappable faders — 87 faders highlighted
   PASS  releasing Shift clears the highlights — 0 faders still highlighted
   PASS  nothing is marked as driven before anything is assigned — 0 faders marked
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
@@ -72,7 +72,7 @@ assertions (117/117 passed):
   PASS  the output bar survives 4:3 previews at compact — bar is 37pt tall at y=644
   PASS  previews are never squatter than 4:3, and all three match, at narrow — all three within 4:3 (1.333)
   PASS  the output bar survives 4:3 previews at narrow — bar is 37pt tall at y=524
-  PASS  dragging a card down moves it later in the chain — Transform → Composite · NTSC → Colour → Echo / Trails → Feedback → MX-1 → Datamosh · H.264 became Composite · NTSC → Transform → Colour → Echo / Trails → Feedback → MX-1 → Datamosh · H.264
+  PASS  dragging a card down moves it later in the chain — Freeze → Feedback → Echo / Trails → Composite · NTSC → Colour → Transform → Datamosh · H.264 became Feedback → Echo / Trails → Freeze → Composite · NTSC → Colour → Transform → Datamosh · H.264
   PASS  reordering keeps every effect — 7 cards, was 7
   PASS  the bitstream card is absent while its flag is off — omitted from both chains, as the flag says
   PASS  hovering a clip gives it a scrub position to mark against — 0.50
@@ -80,7 +80,7 @@ assertions (117/117 passed):
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
   PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 5.93 ms against a 33.37 ms budget (mean 5.43, p95 5.67)
+  PASS  no frame misses the budget with every effect running — worst frame 6.22 ms against a 33.37 ms budget (mean 5.82, p95 6.20)
   PASS  frame time is even, not just fast on average — worst is 1.1x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there
@@ -96,7 +96,7 @@ assertions (117/117 passed):
   PASS  holding ⌘⌥ pulses exactly the keys that can tap on the beat — pulsing: CUT, FADE, BEAT
   PASS  an ⌥⌘ click at CUT's centre lands on CUT and arms it — hit VBOptionButton, armed=true, rate key shown=true
   PASS  arming CUT moves no key and not the fader — all 4 frames identical
-  PASS  the rate key sits above CUT, centred on it, and nothing clips it — key (302.8703703703704, 553.896657633243, 52.0, 17.0), CUT (310.8703703703704, 521.896657633243, 36.0, 30.0), clipped by nothing
+  PASS  the rate key sits above CUT, centred on it, and nothing clips it — key (319.3703703703704, 553.896657633243, 52.0, 17.0), CUT (327.3703703703704, 521.896657633243, 36.0, 30.0), clipped by nothing
   PASS  CUT and FADE carry a mapping address — 2 learnable action keys on the A/B fader: cut, fade
   PASS  shift-clicking CUT arms it for learning rather than cutting — mix.one · 68A
   PASS  A and B bus keys carry a mapping address — 2 learnable bus keys on the A/B fader: cut to left, cut to right
@@ -118,7 +118,7 @@ assertions (117/117 passed):
   PASS  a third click starts a new pair rather than sticking — back to one mark
   PASS  plain shift still arms detect rather than marking a sweep — detect armed, no mark set
   PASS  every enabled effect switch actually reaches the engine — 14 switches moved a wet/dry in the graph
-  PASS  every enabled effect fader actually reaches the engine — 70 faders moved a value in the registry
+  PASS  every enabled effect fader actually reaches the engine — 68 faders moved a value in the registry
   PASS  the EMU tab has controls on it — 6 faders, 9 menus, 2 switches, 2 wells
   PASS  every control is drawn as the KIND it says it is — 19 controls, each with the widget it asked for
   PASS  no menu is both empty and clickable — every enabled menu has choices in it

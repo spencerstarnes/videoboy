@@ -987,6 +987,18 @@ final class FaderPanelBody: NSView {
     func setBlendMode(_ mode: BlendMode) {
         blendButton?.mode = mode
     }
+
+    /// Called when this bus's transition pattern changes.
+    var onTransitionChanged: ((Transition) -> Void)?
+
+    /// The pattern key on the LEFT of the transport cluster — the partner of the
+    /// blend key on the right. Readable so self-QA can drive it the way a click does.
+    private(set) var transitionButton: VBTransitionButton?
+
+    /// Points the pattern key at a transition without firing its action.
+    func setTransition(_ transition: Transition) {
+        transitionButton?.transition = transition
+    }
     private var leftName = ""
     private var rightName = ""
 
@@ -1174,6 +1186,18 @@ final class FaderPanelBody: NSView {
         }
         self.blendButton = blend
 
+        // TRANSITION, the left-hand partner of BLEND: blend says how the layers
+        // combine, this says what shape the move takes. It sits opposite the blend
+        // key, out at the leading edge, because it is a setting like blend and not a
+        // performance key — but a setting you change between moves, so the pictogram
+        // on the key shows which pattern is armed without opening anything.
+        let transitionKey = VBTransitionButton()
+        transitionKey.onTransitionChosen = { [weak self] transition in
+            Log.info(.graph, "transition set to \(transition.displayName)")
+            self?.onTransitionChanged?(transition)
+        }
+        self.transitionButton = transitionKey
+
         // The crossfader's own sweep controls, exactly as an FX row has them — this
         // panel had the gesture and the yellow bar but no way to set the rate or to
         // stop it, which made an armed crossfader a thing you could start and not
@@ -1231,6 +1255,7 @@ final class FaderPanelBody: NSView {
         let buttonRow = NSView()
         buttonRow.addSubview(transportCluster)
         buttonRow.addSubview(optionsRow)
+        buttonRow.addSubview(transitionKey)
 
         let centring = transportCluster.centerXAnchor.constraint(
             equalTo: buttonRow.centerXAnchor)
@@ -1239,13 +1264,16 @@ final class FaderPanelBody: NSView {
             transportCluster.topAnchor.constraint(equalTo: buttonRow.topAnchor),
             transportCluster.bottomAnchor.constraint(equalTo: buttonRow.bottomAnchor),
             transportCluster.leadingAnchor.constraint(
-                greaterThanOrEqualTo: buttonRow.leadingAnchor),
+                greaterThanOrEqualTo: transitionKey.trailingAnchor, constant: 8),
             transportCluster.trailingAnchor.constraint(
                 lessThanOrEqualTo: optionsRow.leadingAnchor, constant: -8),
             centring,
 
             optionsRow.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
             optionsRow.trailingAnchor.constraint(equalTo: buttonRow.trailingAnchor),
+
+            transitionKey.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
+            transitionKey.leadingAnchor.constraint(equalTo: buttonRow.leadingAnchor),
             buttonRow.heightAnchor.constraint(equalTo: transportCluster.heightAnchor)
         ])
 
