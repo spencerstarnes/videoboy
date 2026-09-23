@@ -1365,8 +1365,7 @@ final class ShellController {
         .feedbackZoom: Engine.feedbackSlot,
         .feedbackRotate: Engine.feedbackSlot,
         .feedbackThreshold: Engine.feedbackSlot,
-        .mx1Effect: Engine.mx1OneSlot,
-        .mx1Amount: Engine.mx1OneSlot,
+        .freezeHold: Engine.freezeOneSlot,
         .moshAmount: Engine.moshOneSlot,
         .moshBloom: Engine.moshOneSlot,
         .moshHeal: Engine.moshOneSlot,
@@ -1405,8 +1404,7 @@ final class ShellController {
         .feedbackZoom: Engine.feedbackTwoSlot,
         .feedbackRotate: Engine.feedbackTwoSlot,
         .feedbackThreshold: Engine.feedbackTwoSlot,
-        .mx1Effect: Engine.mx1TwoSlot,
-        .mx1Amount: Engine.mx1TwoSlot,
+        .freezeHold: Engine.freezeTwoSlot,
         .moshAmount: Engine.moshTwoSlot,
         .moshBloom: Engine.moshTwoSlot,
         .moshHeal: Engine.moshTwoSlot,
@@ -1420,7 +1418,7 @@ final class ShellController {
         "Composite · NTSC": (Engine.compositeSlot, Engine.compositeTwoSlot),
         "Echo / Trails": (Engine.echoSlot, Engine.echoTwoSlot),
         "Feedback": (Engine.feedbackSlot, Engine.feedbackTwoSlot),
-        "MX-1": (Engine.mx1OneSlot, Engine.mx1TwoSlot),
+        "Freeze": (Engine.freezeOneSlot, Engine.freezeTwoSlot),
         PanelSet.datamoshCardName: (Engine.moshOneSlot, Engine.moshTwoSlot)
     ]
 
@@ -1555,7 +1553,7 @@ final class ShellController {
         "Composite · NTSC": "composite",
         "Echo / Trails": "echo",
         "Feedback": "feedback",
-        "MX-1": "mx1",
+        "Freeze": "freeze",
         PanelSet.datamoshCardName: "mosh"
     ]
 
@@ -1645,8 +1643,8 @@ final class ShellController {
         case .feedbackGain, .feedbackDelayFrames, .feedbackZoom,
              .feedbackRotate, .feedbackThreshold:
             return "Feedback"
-        case .mx1Effect, .mx1Amount:
-            return "MX-1"
+        case .freezeHold:
+            return "Freeze"
         case .moshAmount, .moshBloom, .moshHeal, .moshBlocks:
             return PanelSet.datamoshCardName
         default:

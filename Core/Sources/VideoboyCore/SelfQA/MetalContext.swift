@@ -591,68 +591,6 @@ enum ShaderSource {
     }
 
     // ---------------------------------------------------------------------------
-    // The MX-1 effect set (SPEC 9).
-    //
-    // SPEC 9 is blunt that these are "trivial shaders" and not where the analog
-    // magic lives — that is the composite path. They are here because a video mixer
-    // is expected to have them, and because they are cheap. Nothing subtle is
-    // happening in this function and nothing should be added to it that is.
-    // ---------------------------------------------------------------------------
-
-    struct MX1Params {
-        int mode;
-        float amount;   // 0..1, meaning depends on the mode
-        float width;
-        float height;
-    };
-
-    fragment float4 mx1_fragment(VertexOut in [[stage_in]],
-                                 texture2d<float> source [[texture(0)]],
-                                 constant MX1Params &p [[buffer(0)]]) {
-        constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
-        constexpr sampler pointSampler(filter::nearest, address::clamp_to_edge);
-
-        float2 uv = in.uv;
-
-        // Geometry modes change where the sample comes from.
-        switch (p.mode) {
-            case 4: uv.x = 1.0 - uv.x; break;                       // mirror (flip X)
-            case 5: uv.y = 1.0 - uv.y; break;                       // flip (flip Y)
-            case 6: uv = float2(1.0 - uv.x, 1.0 - uv.y); break;     // rotate 180
-            case 2: {                                                // mosaic
-                // Block size grows with amount. One pixel at zero means "off".
-                float blocks = mix(float(p.width), 4.0, clamp(p.amount, 0.0, 1.0));
-                float2 cell = float2(max(blocks, 1.0), max(blocks * p.height / p.width, 1.0));
-                uv = (floor(uv * cell) + 0.5) / cell;
-                break;
-            }
-            default: break;
-        }
-
-        float3 c = (p.mode == 2 ? source.sample(pointSampler, uv)
-                                : source.sample(linearSampler, uv)).rgb;
-
-        // Colour modes change the sampled value.
-        switch (p.mode) {
-            case 0: c = 1.0 - c; break;                              // negative
-            case 1: {                                                // black and white
-                float y = dot(c, float3(0.299, 0.587, 0.114));
-                c = mix(c, float3(y), clamp(p.amount, 0.0, 1.0));
-                break;
-            }
-            case 3: {                                                // posterize / paint
-                // Two levels at full amount, 32 at none.
-                float levels = mix(32.0, 2.0, clamp(p.amount, 0.0, 1.0));
-                c = floor(c * levels + 0.5) / levels;
-                break;
-            }
-            default: break;
-        }
-
-        return float4(clamp(c, 0.0, 1.0), 1.0);
-    }
-
-    // ---------------------------------------------------------------------------
     // Layer compositing (SPEC 12).
     //
     // ONE is A over B, TWO is C over D, PRIMARY is ONE over TWO. Each composite has
@@ -829,8 +767,6 @@ public final class MetalContext {
     public let blendPipeline: MTLRenderPipelineState
     /// A scope screened over the picture, in a chosen rectangle.
     public let scopeOverlayPipeline: MTLRenderPipelineState
-    /// The MX-1 effect set: negative, B&W, mosaic, posterize, flip/mirror.
-    public let mx1Pipeline: MTLRenderPipelineState
     /// Synthetic generators: solids, gradients, patterns and noise fields.
     public let generatorPipeline: MTLRenderPipelineState
     /// Echo/trails: blends a frame with the decaying history behind it.
@@ -881,7 +817,6 @@ public final class MetalContext {
               let blend = makePipeline(vertex: "fullscreen_vertex", fragment: "composite_blend_fragment"),
               let scopeOverlay = makePipeline(
                 vertex: "fullscreen_vertex", fragment: "scope_overlay_fragment"),
-              let mx1 = makePipeline(vertex: "fullscreen_vertex", fragment: "mx1_fragment"),
               let generator = makePipeline(vertex: "fullscreen_vertex", fragment: "generator_fragment"),
               let echo = makePipeline(vertex: "fullscreen_vertex", fragment: "echo_fragment"),
               let colour = makePipeline(vertex: "fullscreen_vertex", fragment: "colour_fragment"),
@@ -898,7 +833,6 @@ public final class MetalContext {
         self.compositePipeline = composite
         self.blendPipeline = blend
         self.scopeOverlayPipeline = scopeOverlay
-        self.mx1Pipeline = mx1
         self.generatorPipeline = generator
         self.echoPipeline = echo
         self.colourPipeline = colour

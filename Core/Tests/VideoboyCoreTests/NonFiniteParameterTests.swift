@@ -96,7 +96,6 @@ final class NonFiniteParameterTests: XCTestCase {
     func testEveryFaderSelectedEnumSurvivesNonFiniteInput() {
         for value in nonFinite {
             _ = BlendMode.from(normalised: value)
-            _ = MX1Effect.from(normalised: value)
             _ = CorruptionMode.from(normalised: value)
             _ = MPEGCorruptionMode.from(normalised: value)
             _ = GeneratorKind.from(normalised: value)

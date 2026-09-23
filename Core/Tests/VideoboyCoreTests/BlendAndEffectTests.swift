@@ -1,5 +1,5 @@
 //
-//  BlendAndEffectTests.swift — layer blend modes and the MX-1 effect set.
+//  BlendAndEffectTests.swift — layer blend modes, and freeze.
 //
 //  Purpose : Blend modes are easy to get subtly wrong and impossible to notice by
 //            eye, so each is checked against the arithmetic it is supposed to
@@ -7,7 +7,7 @@
 //            by hand.
 //  Inputs   : flat test patterns.
 //  Outputs  : assertions, plus a contact sheet under selfqa/out/phase-4/.
-//  Connects : BlendMode, CrossfadeNode, MX1EffectNode, MetalContext.
+//  Connects : BlendMode, CrossfadeNode, FreezeNode, MetalContext.
 //
 
 import XCTest
@@ -335,91 +335,9 @@ final class BlendAndEffectTests: XCTestCase {
         XCTAssertEqual(BlendMode.allCases.count, 14)
     }
 
-    // MARK: - MX-1 effects
+    // MARK: - Freeze (kept from the MX-1 set, ISF-PLAN §4.1)
 
-    private func applyMX1(
-        _ effect: MX1Effect, to image: ImageBuffer, amount: Double = 1.0
-    ) throws -> ImageBuffer {
-        guard let metal = MetalContext.shared, let renderer = OffscreenRenderer(context: metal) else {
-            throw XCTSkip("no Metal device")
-        }
-        guard let texture = metal.makeTexture(from: image, label: "mx1-input") else {
-            throw XCTSkip("could not upload the test image")
-        }
-        let node = MX1EffectNode(identifier: "test.mx1", context: metal)
-        node.effect = effect
-        node.amount = amount
-        let context = RenderContext(
-            frameIndex: 0, presentationTime: 0, musicalPosition: nil,
-            width: image.width, height: image.height)
-        guard let output = node.render(inputs: [texture], context: context),
-              let result = renderer.readback(output) else {
-            throw XCTSkip("the effect produced nothing")
-        }
-        return result
-    }
-
-    func testNegativeInverts() throws {
-        let source = TestPattern.solid(width: 32, height: 32, r: 200, g: 100, b: 0)
-        let result = try applyMX1(.negative, to: source)
-        let mean = FrameAssertions.meanColor(result)
-        XCTAssertEqual(mean.r, 55, accuracy: 3)
-        XCTAssertEqual(mean.g, 155, accuracy: 3)
-        XCTAssertEqual(mean.b, 255, accuracy: 3)
-    }
-
-    func testBlackAndWhiteRemovesColour() throws {
-        let source = TestPattern.solid(width: 32, height: 32, r: 255, g: 0, b: 0)
-        let result = try applyMX1(.blackAndWhite, to: source)
-        let mean = FrameAssertions.meanColor(result)
-        // Rec.601 luma of pure red is 0.299, about 76.
-        XCTAssertEqual(mean.r, 76, accuracy: 5)
-        XCTAssertEqual(mean.r, mean.g, accuracy: 2, "a greyscale result must have equal channels")
-        XCTAssertEqual(mean.g, mean.b, accuracy: 2)
-    }
-
-    func testMirrorAndFlipMoveThePicture() throws {
-        // A picture that is not symmetric, so a flip is detectable.
-        var source = TestPattern.solid(width: 32, height: 32, r: 0, g: 0, b: 0)
-        for y in 0..<8 {
-            for x in 0..<8 {
-                source.setPixel(x: x, y: y, r: 255, g: 255, b: 255)
-            }
-        }
-        // The bright corner starts top-left.
-        let mirrored = try applyMX1(.mirror, to: source)
-        XCTAssertGreaterThan(
-            FrameAssertions.meanColor(mirrored, region: (x: 24, y: 0, width: 8, height: 8)).r, 200,
-            "mirror must move the bright corner to the right")
-
-        let flipped = try applyMX1(.flip, to: source)
-        XCTAssertGreaterThan(
-            FrameAssertions.meanColor(flipped, region: (x: 0, y: 24, width: 8, height: 8)).r, 200,
-            "flip must move the bright corner to the bottom")
-    }
-
-    func testPosterizeReducesDetail() throws {
-        let ramp = TestPattern.grayscaleRamp(width: 256, height: 32)
-        let posterized = try applyMX1(.posterize, to: ramp, amount: 1.0)
-        // A smooth ramp reduced to two levels must have far fewer distinct values,
-        // which shows up as large flat areas separated by hard steps.
-        let distinctSource = Set((0..<256).map { ramp.pixel(x: $0, y: 16).r }).count
-        let distinctResult = Set((0..<256).map { posterized.pixel(x: $0, y: 16).r }).count
-        XCTAssertLessThan(distinctResult, distinctSource / 4,
-                          "posterize must collapse the ramp to a few levels")
-    }
-
-    func testMosaicBlocksThePicture() throws {
-        let bars = TestPattern.colorBars(width: 128, height: 128)
-        let mosaic = try applyMX1(.mosaic, to: bars, amount: 1.0)
-        // Blocking removes fine horizontal detail at the bar edges.
-        XCTAssertLessThan(
-            FrameAssertions.horizontalDetail(mosaic),
-            FrameAssertions.horizontalDetail(bars),
-            "mosaic must reduce horizontal detail")
-    }
-
-    func testFreezeHoldsTheFrameAndReleasesOnBypass() throws {
+    func testFreezeHoldsTheFrameAndLetsGoWhenReleased() throws {
         guard let metal = MetalContext.shared, let renderer = OffscreenRenderer(context: metal) else {
             throw XCTSkip("no Metal device")
         }
@@ -429,37 +347,36 @@ final class BlendAndEffectTests: XCTestCase {
               let blueTexture = metal.makeTexture(from: blue, label: "blue") else {
             throw XCTSkip("could not upload test images")
         }
-
-        let node = MX1EffectNode(identifier: "test.freeze", context: metal)
-        node.effect = .freeze
+        let node = FreezeNode(identifier: "test.freeze", context: metal)
         let context = RenderContext(
             frameIndex: 0, presentationTime: 0, musicalPosition: nil, width: 32, height: 32)
 
+        // Hold down: not holding, the input passes straight through (no pass at all).
+        XCTAssertTrue(node.render(inputs: [redTexture], context: context) === redTexture)
+
+        node.hold = 1
         _ = node.render(inputs: [redTexture], context: context)
-        // The second frame is blue, but freeze must still show the held red one.
+        // The next frame is blue, but the held red one is shown.
         guard let held = node.render(inputs: [blueTexture], context: context),
               let heldImage = renderer.readback(held) else {
             throw XCTSkip("freeze produced nothing")
         }
+        XCTAssertTrue(node.isHolding)
         XCTAssertEqual(FrameAssertions.meanColor(heldImage).r, 255, accuracy: 3)
 
-        // Bypassing must let go, so re-enabling grabs what is on screen then rather
-        // than something from minutes ago.
-        node.wetDry = 0
-        _ = node.render(inputs: [blueTexture], context: context)
-        node.wetDry = 1
+        // Released: live again at once, and the next hold grabs what is on screen then.
+        node.hold = 0
+        XCTAssertTrue(node.render(inputs: [blueTexture], context: context) === blueTexture)
+        node.hold = 1
         guard let regrabbed = node.render(inputs: [blueTexture], context: context),
               let regrabbedImage = renderer.readback(regrabbed) else {
             throw XCTSkip("freeze produced nothing")
         }
         XCTAssertEqual(FrameAssertions.meanColor(regrabbedImage).b, 255, accuracy: 3)
-    }
 
-    func testEveryMX1EffectHasANameAndRoundTrips() {
-        for effect in MX1Effect.allCases {
-            XCTAssertFalse(effect.displayName.isEmpty)
-        }
-        XCTAssertEqual(MX1Effect.from(normalised: 0), .negative)
-        XCTAssertEqual(MX1Effect.from(normalised: 1), MX1Effect.allCases.last)
+        // The card's switch off bypasses whatever hold says.
+        node.wetDry = 0
+        XCTAssertTrue(node.render(inputs: [redTexture], context: context) === redTexture)
+        XCTAssertFalse(node.isHolding)
     }
 }

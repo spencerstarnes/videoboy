@@ -362,15 +362,14 @@ final class PanelSet {
                 channelOptions: channels
             ),
             EffectCardModel(
-                name: "MX-1",
+                name: "Freeze",
                 isEnabled: false,
                 isImplemented: true,
                 parameters: [
-                    EffectParameterModel(name: "effect", code: ParamCode.mx1Effect.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "amount", code: ParamCode.mx1Amount.rawValue,
-                                         value: 0.5, enabled: true)
-                ]
+                    EffectParameterModel(name: "hold", code: ParamCode.freezeHold.rawValue,
+                                         value: 0.0, enabled: true)
+                ],
+                channelOptions: channels
             ),
             // LAST in the list so adding it moved no existing card (a performer's
             // hands are on those). In the SIGNAL it runs first — see Engine.buildGraph.

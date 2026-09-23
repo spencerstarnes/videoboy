@@ -39,14 +39,14 @@ final class PerChannelCostBenchmark: XCTestCase {
         let composite = CompositeCodecNode(identifier: "b.composite", context: metal)
         let echo = EchoNode(identifier: "b.echo", context: metal)
         let feedback = FeedbackNode(identifier: "b.feedback", context: metal)
-        let mx1 = MX1EffectNode(identifier: "b.mx1", context: metal)
-        mx1.amount = 0.8
+        let freeze = FreezeNode(identifier: "b.freeze", context: metal)
+        freeze.hold = 1
 
         let total = time("colour", colour)
             + time("composite", composite)
             + time("echo", echo)
             + time("feedback", feedback)
-            + time("mx1", mx1)
+            + time("freeze", freeze)
 
         print(String(
             format: "one bus chain: %.2f ms — two buses %.2f ms — per-channel (4x) %.2f ms of a 33.4 ms budget",

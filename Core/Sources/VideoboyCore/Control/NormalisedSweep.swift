@@ -2,13 +2,13 @@
 //  NormalisedSweep.swift — turning a 0...1 parameter into a choice from a small set.
 //
 //  Purpose : A dozen enums in this app are selected by sweeping a fader across them:
-//            blend mode, MX-1 effect, corrupt mode, alignment, roll mode, generator
+//            blend mode, corrupt mode, alignment, roll mode, generator
 //            kind, LFO shape, chroma subsampling. Every one of them wrote the same
 //            three lines, and every one of them had the same crash in it.
 //  Inputs  : a parameter value, nominally 0...1 but in practice whatever a modulation
 //            source produced.
 //  Outputs : a clamped value, or an index into a set.
-//  Connects: BlendMode, MX1Effect, DIFCorruptor, MPEGCorruptor, GeneratorKind,
+//  Connects: BlendMode, DIFCorruptor, MPEGCorruptor, GeneratorKind,
 //            TitlerAlignment, TitlerWeight, TitlerRollMode, LFOShape, CompositePath,
 //            ChromaSubsampling, BlackFrameInsertion — the `from(normalised:)` on each.
 //  Extend  : if a new sweep needs different rounding, add a parameter here rather

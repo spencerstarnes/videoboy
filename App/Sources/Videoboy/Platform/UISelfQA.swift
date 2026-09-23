@@ -1304,7 +1304,7 @@ enum UISelfQA {
             for letter in ["A", "B", "C", "D"] {
                 engine.registry.setValue(1, slot: Engine.slot(forChannel: letter), code: .wetDry)
                 engine.registry.setValue(0.6, slot: Engine.slot(forChannel: letter), code: .corruptAmount)
-                for effect in ["transform", "colour", "composite", "echo", "feedback", "mx1"] {
+                for effect in ["transform", "colour", "composite", "echo", "feedback", "freeze"] {
                     engine.registry.setValue(
                         1, slot: Engine.channelSlot(letter, effect), code: .wetDry)
                 }

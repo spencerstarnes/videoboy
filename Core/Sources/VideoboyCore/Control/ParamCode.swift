@@ -118,6 +118,8 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     public static let trailLength = ParamCode(known: "22A")
     /// Luma threshold above which a pixel is echoed at all.
     public static let echoThreshold = ParamCode(known: "23A")
+    /// Freeze: above 0.5 the picture is held (the Freeze card, kept from MX-1).
+    public static let freezeHold = ParamCode(known: "24A")
 
     // MARK: The bitstream wedge (3xB)
     //
@@ -183,14 +185,10 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     public static let blendMode = ParamCode(known: "65A")
     /// Per-layer opacity of the blend layer in a composite.
     public static let layerOpacity = ParamCode(known: "66A")
-    /// Which MX-1 effect is applied, as a 0...1 sweep across the set.
-    ///
-    /// A sweep rather than a menu because that is what makes it playable: a fader or
-    /// a knob can run through the whole set mid-phrase, which is the entire reason
-    /// the MX-1 is worth emulating.
-    public static let mx1Effect = ParamCode(known: "91A")
-    /// Strength of the MX-1 effect, where the meaning depends on which one.
-    public static let mx1Amount = ParamCode(known: "92A")
+    // 91A and 92A were the MX-1 effect and amount. MX-1 was removed (2026-09-23,
+    // ISF-PLAN §4.1); the codes are RETIRED and must never be reissued — an old
+    // template holding them would bind to whatever took their place. They load as
+    // unknown codes: kept in the file, not applied.
 
     /// Playhead position within a clip, 0...1 — what the shuttle scrubs.
     ///
@@ -270,7 +268,7 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     /// Point size of the type.
     public static let cgFontSize = ParamCode(known: "91D")
     /// Which weight bucket, swept 0...1 across regular/medium/semibold/bold/heavy —
-    /// the same "sweep selects from a small set" pattern as `mx1Effect`.
+    /// the same "sweep selects from a small set" pattern as `blendMode`.
     public static let cgFontWeight = ParamCode(known: "92D")
     /// Paragraph alignment, swept 0...1 across left/center/right/justified.
     public static let cgAlignment = ParamCode(known: "93D")
@@ -410,8 +408,6 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "69A": "fade",
         "6AA": "cut to left",
         "6BA": "cut to right",
-        "91A": "MX-1 effect",
-        "92A": "MX-1 amount",
         "65A": "blend mode",
         "66A": "layer opacity",
         "61E": "key colour",
@@ -426,6 +422,7 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "77A": "chroma subsampling",
         "78A": "head switching",
         "23A": "echo threshold",
+        "24A": "hold",
         "45C": "feedback zoom",
         "46C": "feedback rotate",
         "47C": "feedback threshold",
@@ -485,6 +482,7 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .echoDecay,
         .trailLength,
         .echoThreshold,
+        .freezeHold,
         .corruptAmount,
         .corruptMode,
         .corruptRate,
@@ -512,8 +510,6 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .playbackSpeed,
         .blendMode,
         .layerOpacity,
-        .mx1Effect,
-        .mx1Amount,
         .scrubPosition,
         .cutTrigger,
         .fadeTrigger,

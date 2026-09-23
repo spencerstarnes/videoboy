@@ -201,7 +201,7 @@ No-input producers that emit a texture on the clock, selectable anywhere A/B/C/D
 - **FFGL** as secondary for effects needing non-shader logic. Load `.bundle` plugins from `~/Library/Graphics/FreeFrame Plug-Ins/`. Lower priority than ISF; implement after ISF works.
 - **Native modules** for things that are not shaders: the DV/MPEG bitstream corruptors (§5), capture/feedback (§10), scopes (§19), title gen (§18). These share the same parameter/addressing/mapping infrastructure as ISF modules so the UI treats them uniformly.
 
-Do **not** build a large modern-looking effect library. Effects are: analog-behavior emulation (§9), a small MX-1-style set, echo/trails, the AU/CI passthrough filters, and whatever ISF files the user drops in.
+Do **not** build a large modern-looking effect library. Effects are: analog-behavior emulation (§9), freeze (the MX-1 set was removed — see §9's owner note), echo/trails, the AU/CI passthrough filters, and whatever ISF files the user drops in.
 
 ---
 
@@ -217,7 +217,8 @@ The "not obvious to most" analog character does **not** come from the MX-1's nam
 
 Other required effects:
 - **Echo/tone trails** (VDMX-style feedback echo): frame-history buffer, feedback gain, decay, key/luma-threshold. Clock-syncable.
-- **MX-1 effect set:** freeze, negative, B&W, mosaic, posterize/paint, flip/mirror — as ISF or simple Metal shaders.
+- ~~**MX-1 effect set:** freeze, negative, B&W, mosaic, posterize/paint, flip/mirror — as ISF or simple Metal shaders.~~
+  **Owner note, 2026-09-23:** the MX-1 set is removed, not ported (ISF-PLAN §4.1). **Freeze** is kept as its own native card (a performance gesture, not a look; code 24A). The others can come back as ISF files if anyone misses them. Codes 91A/92A are retired, never reused.
 - **AU/Core Image passthrough:** expose the useful CI filters (saturation, exposure, hue, `CIAffineTransform` for scale/skew/flip/rotate, sharpen, etc.) as mappable modules. Enumerate available CI filters and whitelist the sensible video-rate ones.
 - Overscan / CRT-target features live in §11.
 

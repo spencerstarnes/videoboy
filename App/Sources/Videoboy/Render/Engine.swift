@@ -107,8 +107,9 @@ final class Engine {
     private(set) var busCodecTwo: BusCodecNode!
     private(set) var busCodecProgram: BusCodecNode!
     private(set) var compositeProgram: CompositeCodecNode!
-    private(set) var mx1One: MX1EffectNode!
-    private(set) var mx1Two: MX1EffectNode!
+    /// Freeze at the end of each bus chain: the whole-frame hold gesture.
+    private(set) var freezeOne: FreezeNode!
+    private(set) var freezeTwo: FreezeNode!
     /// Live H.264 datamosh at the head of each bus chain, straight after the mix, so
     /// a cut between the bus's two channels is what gets moshed.
     private(set) var moshOne: DatamoshNode!
@@ -252,15 +253,15 @@ final class Engine {
                 identifier: Engine.channelSlot(letter, "echo"), context: metal)
             let feedbackNode = FeedbackNode(
                 identifier: Engine.channelSlot(letter, "feedback"), context: metal)
-            let mx1Node = MX1EffectNode(
-                identifier: Engine.channelSlot(letter, "mx1"), context: metal)
+            let freezeNode = FreezeNode(
+                identifier: Engine.channelSlot(letter, "freeze"), context: metal)
 
-            for node in [mosh, transform, colour, composite, echo, feedbackNode, mx1Node] as [Node] {
+            for node in [mosh, transform, colour, composite, echo, feedbackNode, freezeNode] as [Node] {
                 graph.add(node)
                 graph.connect(from: upstream, to: node.identifier, inputIndex: 0)
                 upstream = node.identifier
             }
-            channelEffects[letter] = [mosh, transform, colour, composite, echo, feedbackNode, mx1Node]
+            channelEffects[letter] = [mosh, transform, colour, composite, echo, feedbackNode, freezeNode]
             graph.connect(from: upstream, to: subMix, inputIndex: index)
         }
         // Bus FX on ONE, in order: composite codec, then echo, then feedback. The
@@ -293,12 +294,11 @@ final class Engine {
         graph.connect(from: Engine.compositeSlot, to: Engine.echoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoSlot, to: Engine.feedbackSlot, inputIndex: 0)
 
-        // The MX-1 set sits at the end of the picture chain, after feedback: these
-        // are the whole-frame gestures — negative, mirror, freeze — and they read as
-        // something done TO the bus rather than as another layer inside it.
-        mx1One = MX1EffectNode(identifier: Engine.mx1OneSlot, context: metal)
-        graph.add(mx1One)
-        graph.connect(from: Engine.feedbackSlot, to: Engine.mx1OneSlot, inputIndex: 0)
+        // Freeze sits at the end of the picture chain, after feedback: holding the
+        // frame is something done TO the bus rather than another layer inside it.
+        freezeOne = FreezeNode(identifier: Engine.freezeOneSlot, context: metal)
+        graph.add(freezeOne)
+        graph.connect(from: Engine.feedbackSlot, to: Engine.freezeOneSlot, inputIndex: 0)
         // The bus data stage sits at the END of each chain, just before the mix:
         // it re-encodes whatever the chain produced, so it damages the finished bus
         // rather than something half-processed.
@@ -309,7 +309,7 @@ final class Engine {
         graph.add(busCodecTwo)
         graph.add(busCodecProgram)
 
-        graph.connect(from: Engine.mx1OneSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
+        graph.connect(from: Engine.freezeOneSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
         graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
 
         // The same chain on TWO. Separate instances rather than a shared one: the two
@@ -334,10 +334,10 @@ final class Engine {
         graph.connect(from: Engine.colourTwoSlot, to: Engine.compositeTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.compositeTwoSlot, to: Engine.echoTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.echoTwoSlot, to: Engine.feedbackTwoSlot, inputIndex: 0)
-        mx1Two = MX1EffectNode(identifier: Engine.mx1TwoSlot, context: metal)
-        graph.add(mx1Two)
-        graph.connect(from: Engine.feedbackTwoSlot, to: Engine.mx1TwoSlot, inputIndex: 0)
-        graph.connect(from: Engine.mx1TwoSlot, to: Engine.busCodecTwoSlot, inputIndex: 0)
+        freezeTwo = FreezeNode(identifier: Engine.freezeTwoSlot, context: metal)
+        graph.add(freezeTwo)
+        graph.connect(from: Engine.feedbackTwoSlot, to: Engine.freezeTwoSlot, inputIndex: 0)
+        graph.connect(from: Engine.freezeTwoSlot, to: Engine.busCodecTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.busCodecTwoSlot, to: GraphTopology.primary, inputIndex: 1)
 
         // PROGRAM's own data stage, after the ONE/TWO mix. It was created and added
@@ -440,7 +440,7 @@ final class Engine {
     /// Slot names for the bus effects and the extra sources, so mappings and
     /// templates can address them by a stable name.
     static let compositeSlot = "fx.one.composite"
-    /// A per-channel effect's slot name: `fx.a.colour`, `fx.d.mx1`.
+    /// A per-channel effect's slot name: `fx.a.colour`, `fx.d.freeze`.
     static func channelSlot(_ letter: String, _ effect: String) -> String {
         "fx.\(letter.lowercased()).\(effect)"
     }
@@ -458,8 +458,8 @@ final class Engine {
     static let busCodecTwoSlot = "data.two"
     static let busCodecProgramSlot = "data.program"
     static let compositeProgramSlot = "fx.program.composite"
-    static let mx1OneSlot = "fx.one.mx1"
-    static let mx1TwoSlot = "fx.two.mx1"
+    static let freezeOneSlot = "fx.one.freeze"
+    static let freezeTwoSlot = "fx.two.freeze"
     static let moshOneSlot = "fx.one.mosh"
     static let moshTwoSlot = "fx.two.mosh"
 
@@ -519,8 +519,8 @@ final class Engine {
     /// and nothing on screen said so. A node left off here is invisible until someone
     /// notices the output looks wrong.
     static let busEffectSlots = [
-        moshOneSlot, transformSlot, colourSlot, compositeSlot, echoSlot, feedbackSlot, mx1OneSlot,
-        moshTwoSlot, transformTwoSlot, colourTwoSlot, compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, mx1TwoSlot,
+        moshOneSlot, transformSlot, colourSlot, compositeSlot, echoSlot, feedbackSlot, freezeOneSlot,
+        moshTwoSlot, transformTwoSlot, colourTwoSlot, compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, freezeTwoSlot,
         compositeProgramSlot, busCodecProgramSlot
     ]
 
@@ -753,7 +753,7 @@ final class Engine {
                 case let n as CompositeCodecNode: n.applyParameters(from: registry)
                 case let n as EchoNode: n.applyParameters(from: registry)
                 case let n as FeedbackNode: n.applyParameters(from: registry)
-                case let n as MX1EffectNode: n.applyParameters(from: registry)
+                case let n as FreezeNode: n.applyParameters(from: registry)
                 case let n as DatamoshNode: n.applyParameters(from: registry)
                 default: break
                 }
@@ -765,8 +765,8 @@ final class Engine {
         echo.applyParameters(from: registry)
         feedback.applyParameters(from: registry)
         compositeProgram.applyParameters(from: registry)
-        mx1One.applyParameters(from: registry)
-        mx1Two.applyParameters(from: registry)
+        freezeOne.applyParameters(from: registry)
+        freezeTwo.applyParameters(from: registry)
         moshOne.applyParameters(from: registry)
         moshTwo.applyParameters(from: registry)
         compositeCodecTwo.applyParameters(from: registry)
@@ -1002,7 +1002,7 @@ final class Engine {
         //
         // Connecting the new source directly to `subMix` replaces the edge that the
         // chain's LAST node owns, which lifts the whole per-channel chain — transform,
-        // grade, composite, echo, feedback, MX-1 — out of the signal path. Switching
+        // grade, composite, echo, feedback, freeze — out of the signal path. Switching
         // once was enough to do it, and switching back to the file did not put it
         // back: it simply pointed the file at the sub-mix too. Every per-channel
         // effect on that channel then did nothing, with its card still lit and its

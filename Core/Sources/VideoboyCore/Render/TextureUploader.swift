@@ -9,7 +9,7 @@
 //            with Accelerate (SIMD) into a reused buffer.
 //  Inputs  : an RGBA `ImageBuffer` per call.
 //  Outputs : a BGRA texture, the same format and usage `makeTexture` produces, so
-//            blits (MX-1 freeze, readback) keep working unchanged.
+//            blits (freeze, readback) keep working unchanged.
 //  Connects: ClipSourceNode, CaptureSourceNode, BusCodecNode, EmulatedTitlerNode.
 //  Extend  : one uploader per producing node; never share one between nodes.
 //

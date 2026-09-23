@@ -55,7 +55,7 @@ enum StressSelfQA {
         for letter in ["A", "B", "C", "D"] {
             engine.registry.setValue(1, slot: Engine.slot(forChannel: letter), code: .wetDry)
             engine.registry.setValue(0.6, slot: Engine.slot(forChannel: letter), code: .corruptAmount)
-            for effect in ["mosh", "transform", "colour", "composite", "echo", "feedback", "mx1"] {
+            for effect in ["mosh", "transform", "colour", "composite", "echo", "feedback", "freeze"] {
                 engine.registry.setValue(1, slot: Engine.channelSlot(letter, effect), code: .wetDry)
             }
             // Datamosh is free at zero, so it needs a real amount to be under load:
