@@ -37,11 +37,29 @@ struct EffectParameterModel {
     let value: Double
     /// False for parameters whose feature is not built yet.
     let enabled: Bool
+    /// What the readout says for a fader position (0...1): "on", a choice's label, a
+    /// number in the parameter's own units. Nil shows the position itself.
+    var valueText: ((Double) -> String)? = nil
+
+    /// The readout for a fader position.
+    func text(for value: Double) -> String {
+        valueText?(value) ?? String(format: "%.2f", value)
+    }
 }
 
 /// One effect card in a chain.
 struct EffectCardModel {
+    /// The card's title, unique within its panel ("Bad TV", "Bad TV 2"). Controls on
+    /// the card are identified by it.
     let name: String
+    /// The chain instance behind the card (`EffectChain`), or the name when the card
+    /// is not a chain instance.
+    var id: String = ""
+    /// Where the module came from, shown small on the card: "built-in", "ISF".
+    var badge: String? = nil
+    /// A line under the header when the module is not simply running: "compiling…",
+    /// "⚠ line 14: …", "⚠ module missing".
+    var status: String? = nil
     let isEnabled: Bool
     /// False when the effect's implementation is not built yet.
     let isImplemented: Bool
@@ -125,7 +143,7 @@ final class EffectChainPanelBody: NSView {
     /// Which graph slot a param code belongs to, so a Shift-click on a parameter's
     /// fader can arm a mapping without the panel knowing anything about MIDI.
     /// Set by the shell, which owns the slot tables.
-    var mappingSlotForCode: ((ParamCode) -> String?)? {
+    var mappingSlotForParameter: ((String, ParamCode) -> String?)? {
         // The rows are built in init, before the shell has anything to resolve with,
         // so setting the resolver has to reach back and address the faders that
         // already exist. Without this every FX fader stays dark under Shift, which
@@ -140,10 +158,11 @@ final class EffectChainPanelBody: NSView {
 
     private func refreshMappingAddresses(in view: NSView) {
         if let fader = view as? VBFader,
+           let card = fader.ownerCard,
            let raw = fader.identifier?.rawValue,
            let code = ParamCode(rawValue: raw) {
             fader.mappingCode = code
-            fader.mappingSlot = mappingSlotForCode?(code)
+            fader.mappingSlot = mappingSlotForParameter?(card, code)
         }
         for subview in view.subviews { refreshMappingAddresses(in: subview) }
     }
@@ -151,8 +170,8 @@ final class EffectChainPanelBody: NSView {
     /// Called after the card views are rebuilt, so their state can be restored.
     var onChainRebuilt: (() -> Void)?
 
-    /// Called when a parameter fader moves: (param code, new 0...1 value).
-    var onParameterChanged: ((String, Double) -> Void)?
+    /// Called when a parameter fader moves: (card name, param code, new 0...1 value).
+    var onParameterChanged: ((String, String, Double) -> Void)?
 
     /// Called when a parameter's reset key is pressed, with its param code.
     ///
@@ -160,7 +179,7 @@ final class EffectChainPanelBody: NSView {
     /// to the node that declares the parameter (`Parameter.defaultValue`), and the one
     /// in the card model is a display literal written out by hand in thirty-two places
     /// — resetting to that would slowly drift away from what the node actually does.
-    var onParameterReset: ((String) -> Void)?
+    var onParameterReset: ((String, String) -> Void)?
 
     /// A modulation badge on an effect header was clicked: (effect name, source,
     /// the badge view to hang a menu from).
@@ -183,11 +202,35 @@ final class EffectChainPanelBody: NSView {
     /// Called when an effect's ✕ is pressed.
     var onEffectRemoved: ((String) -> Void)?
 
-    /// Called when an effect is added back from the Add popup.
+    /// Called when a module is chosen from the Add menu, with its module ID.
     var onEffectAdded: ((String) -> Void)?
 
-    /// Effects taken out of the chain, kept so they can be put back.
-    private var removedEffects: [EffectCardModel] = []
+    /// One entry in the Add menu.
+    struct AddMenuItem {
+        let moduleID: String
+        let title: String
+        let isEnabled: Bool
+        /// Why it cannot be added, for a greyed item.
+        let tooltip: String?
+    }
+
+    /// A heading in the Add menu and what is under it.
+    struct AddMenuGroup {
+        let title: String
+        let items: [AddMenuItem]
+    }
+
+    /// What the Add menu offers, grouped: Built-in, then each ISF category, then
+    /// anything that failed to load, greyed with its reason. Set by the controller
+    /// from the module catalogue; setting it rebuilds only the menu.
+    var addMenuGroups: [AddMenuGroup] = [] {
+        didSet { if let addPopUp { populateAddMenu(addPopUp) } }
+    }
+
+    private weak var addPopUp: NSPopUpButton?
+
+    /// Each card's readout text per param code, from its parameters.
+    private var valueTexts: [String: [String: EffectParameterModel]] = [:]
 
     /// Which channel each channel-selecting card is currently pointed at, by effect
     /// name. Kept here rather than in `EffectCardModel` so a rebuild (reordering,
@@ -273,10 +316,11 @@ final class EffectChainPanelBody: NSView {
         // Add / Save row at the top, above the layer stack. The Add popup lists what
         // has been removed, so ✕ is reversible rather than a one-way door.
         let addPopUp = Controls.popUp(
-            ["Add effect…"] + removedEffects.map(\.name),
-            enabled: !removedEffects.isEmpty,
-            target: self, action: #selector(addEffectChosen(_:))
-        )
+            [], target: self, action: #selector(addEffectChosen(_:)))
+        addPopUp.setAccessibilityIdentifier("fx-add")
+        addPopUp.toolTip = "Add an effect to this chain — built-in, or any ISF file you have imported"
+        self.addPopUp = addPopUp
+        populateAddMenu(addPopUp)
         let loadRow = Controls.row([
             addPopUp,
             Controls.button("Save", enabled: false)
@@ -285,6 +329,10 @@ final class EffectChainPanelBody: NSView {
         cardViews.append(loadRow)
         loadRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -8).isActive = true
 
+        valueTexts = [:]
+        for effect in effects {
+            valueTexts[effect.name] = Dictionary(effect.parameters.map { ($0.code, $0) }, uniquingKeysWith: { first, _ in first })
+        }
         for (index, effect) in effects.enumerated() {
             let card = makeCard(effect, index: index)
             stack.addArrangedSubview(card)
@@ -429,14 +477,33 @@ final class EffectChainPanelBody: NSView {
                 badges.append(button)
             }
             badges.append(Controls.spacer())
+            // Where the module came from, at the far end of the row it shares with
+            // the badges — the header has no room left, and the name must not be what
+            // gets cut.
+            if let badge = effect.badge {
+                let origin = Controls.label(badge, font: Theme.Font.tinyLabel,
+                                            color: Theme.Color.textTertiary, holdsWidth: true)
+                origin.identifier = NSUserInterfaceItemIdentifier("origin|\(effect.name)")
+                badges.append(origin)
+            }
             modulationRow = Controls.row(badges, spacing: 3)
         }
+
+        // ---- Status: compiling, or why it is not running ----
+        let status = Controls.label(effect.status ?? "", font: Theme.Font.tinyLabel,
+                                    color: Theme.Color.moduleProblem)
+        status.identifier = NSUserInterfaceItemIdentifier("status|\(effect.name)")
+        status.lineBreakMode = .byTruncatingTail
+        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        status.toolTip = effect.status
+        status.isHidden = effect.status == nil
 
         // ---- Parameters: two lines each ----
         var rows: [NSView] = [header]
         if let modulationRow { rows.append(modulationRow) }
+        rows.append(status)
         for parameter in effect.parameters {
-            rows.append(contentsOf: makeParameterRows(parameter))
+            rows.append(contentsOf: makeParameterRows(parameter, card: effect.name))
         }
 
         // Collapsing hides everything below the header. The header stays because it
@@ -445,6 +512,7 @@ final class EffectChainPanelBody: NSView {
         if collapsedEffects.contains(effect.name) {
             for row in rows.dropFirst() { row.isHidden = true }
         }
+        if !collapsedEffects.contains(effect.name) { status.isHidden = effect.status == nil }
 
         let column = Controls.column(rows, spacing: 3)
         column.translatesAutoresizingMaskIntoConstraints = false
@@ -463,7 +531,7 @@ final class EffectChainPanelBody: NSView {
     }
 
     /// The two lines for one parameter: badges/name/value, then a full-width fader.
-    private func makeParameterRows(_ parameter: EffectParameterModel) -> [NSView] {
+    private func makeParameterRows(_ parameter: EffectParameterModel, card: String) -> [NSView] {
         // Line 1 — name with its param code, and the current value. No badge column:
         // it said the same three things on every row of every card, and Shift-click
         // maps a parameter without needing a control of its own.
@@ -473,7 +541,7 @@ final class EffectChainPanelBody: NSView {
         )
         // Fixed width, so the row does not twitch as the digits change under a drag,
         // and so the readout is never what gets truncated when the column is narrow.
-        let value = Controls.monoLabel(String(format: "%.2f", parameter.value))
+        let value = Controls.monoLabel(parameter.text(for: parameter.value))
         value.alignment = .right
         value.translatesAutoresizingMaskIntoConstraints = false
         value.widthAnchor.constraint(
@@ -507,7 +575,7 @@ final class EffectChainPanelBody: NSView {
             "↺", enabled: parameter.enabled,
             tooltip: "Reset \(parameter.name) to its default",
             target: self, action: #selector(parameterResetPressed(_:)))
-        resetKey.identifier = NSUserInterfaceItemIdentifier("reset|\(parameter.code)")
+        resetKey.identifier = NSUserInterfaceItemIdentifier("reset|\(parameter.code)|\(card)")
 
         let topLine = Controls.row(
             [label, resetKey, Controls.spacer(), sweepKey, sweepCancel, value], spacing: 5)
@@ -518,9 +586,10 @@ final class EffectChainPanelBody: NSView {
             target: self, action: #selector(faderMoved(_:))
         )
         fader.identifier = NSUserInterfaceItemIdentifier(parameter.code)
+        fader.ownerCard = card
         if let code = ParamCode(rawValue: parameter.code) {
             fader.mappingCode = code
-            fader.mappingSlot = mappingSlotForCode?(code)
+            fader.mappingSlot = mappingSlotForParameter?(card, code)
         }
 
         // The key drives the fader's rate; the fader's marks decide whether the key
@@ -792,14 +861,17 @@ final class EffectChainPanelBody: NSView {
     // MARK: - Actions
 
     @objc private func faderMoved(_ sender: VBFader) {
-        guard let code = sender.identifier?.rawValue else { return }
-        // Update the readout on the line above.
-        let identifier = NSUserInterfaceItemIdentifier("value|\(code)")
-        for case let field as NSTextField in allSubviews(of: stack)
-        where field.identifier == identifier {
-            field.stringValue = String(format: "%.2f", sender.value)
+        guard let code = sender.identifier?.rawValue, let card = sender.ownerCard else { return }
+        // Update the readout on the line above — on THIS card: another card can use
+        // the same code.
+        if let index = effects.firstIndex(where: { $0.name == card }), cardViews.indices.contains(index + 1) {
+            let identifier = NSUserInterfaceItemIdentifier("value|\(code)")
+            for case let field as NSTextField in allSubviews(of: cardViews[index + 1])
+            where field.identifier == identifier {
+                field.stringValue = valueTexts[card]?[code]?.text(for: sender.value) ?? String(format: "%.2f", sender.value)
+            }
         }
-        onParameterChanged?(code, sender.value)
+        onParameterChanged?(card, code, sender.value)
     }
 
     /// A badge on an effect's header. Reports the effect name and the source's
@@ -813,9 +885,10 @@ final class EffectChainPanelBody: NSView {
 
     /// Sends a parameter back to the default its node declares.
     @objc private func parameterResetPressed(_ sender: NSButton) {
-        guard let identifier = sender.identifier?.rawValue,
-              identifier.hasPrefix("reset|") else { return }
-        onParameterReset?(String(identifier.dropFirst("reset|".count)))
+        guard let identifier = sender.identifier?.rawValue else { return }
+        let parts = identifier.split(separator: "|", maxSplits: 2).map(String.init)
+        guard parts.count == 3, parts[0] == "reset" else { return }
+        onParameterReset?(parts[2], parts[1])
     }
 
     /// Folds an effect down to its header, or opens it again.
@@ -949,7 +1022,7 @@ final class EffectChainPanelBody: NSView {
             }
             for case let label as NSTextField in allSubviews(of: card)
             where label.identifier?.rawValue == "value|\(code)" {
-                label.stringValue = String(format: "%.2f", value)
+                label.stringValue = valueTexts[effectName]?[code]?.text(for: value) ?? String(format: "%.2f", value)
             }
         }
     }
@@ -973,28 +1046,61 @@ final class EffectChainPanelBody: NSView {
     }
 
     @objc private func addEffectChosen(_ sender: NSPopUpButton) {
-        // Item 0 is the prompt, not a choice.
-        guard sender.indexOfSelectedItem > 0 else { return }
-        let name = sender.titleOfSelectedItem ?? ""
-        onEffectAdded?(name)
+        // Item 0 is the prompt; headings carry no module.
+        guard let moduleID = sender.selectedItem?.representedObject as? String else { return }
+        sender.selectItem(at: 0)
+        onEffectAdded?(moduleID)
     }
 
-    /// Takes an effect's card out of the chain, remembering it for the Add popup.
-    func removeEffect(named name: String) {
-        guard let index = effects.firstIndex(where: { $0.name == name }) else { return }
-        removedEffects.append(effects.remove(at: index))
+    /// Fills the Add menu: a prompt, then each group's heading and its modules.
+    private func populateAddMenu(_ popUp: NSPopUpButton) {
+        popUp.removeAllItems()
+        popUp.addItem(withTitle: "Add effect…")
+        popUp.menu?.autoenablesItems = false
+        for group in addMenuGroups where !group.items.isEmpty {
+            popUp.menu?.addItem(.separator())
+            let heading = NSMenuItem(title: group.title, action: nil, keyEquivalent: "")
+            heading.isEnabled = false
+            popUp.menu?.addItem(heading)
+            for item in group.items {
+                let entry = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
+                entry.representedObject = item.moduleID
+                entry.isEnabled = item.isEnabled
+                entry.indentationLevel = 1
+                entry.toolTip = item.tooltip
+                popUp.menu?.addItem(entry)
+            }
+        }
+        popUp.isEnabled = addMenuGroups.contains { $0.items.contains(where: \.isEnabled) }
+        popUp.selectItem(at: 0)
+    }
+
+    /// Replaces the cards, keeping each card's fold and channel choice by name.
+    /// For when the chain itself changed — an effect added or removed.
+    func setEffects(_ newEffects: [EffectCardModel]) {
+        effects = newEffects
+        for effect in newEffects { cardChannelSelection[effect.name] = effect.initialChannelIndex }
+        let names = Set(newEffects.map(\.name))
+        collapsedEffects = collapsedEffects.filter { names.contains($0) }
         rebuild()
     }
 
-    /// Puts a removed effect back at the end of the chain, bypassed.
-    func restoreEffect(named name: String) {
-        guard let index = removedEffects.firstIndex(where: { $0.name == name }) else { return }
-        var restored = removedEffects.remove(at: index)
-        restored = EffectCardModel(
-            name: restored.name, isEnabled: false,
-            isImplemented: restored.isImplemented, parameters: restored.parameters)
-        effects.append(restored)
-        rebuild()
+    /// Updates one card's status line in place ("compiling…" → nothing), without a
+    /// rebuild, which would reset scrolling and a drag in progress.
+    func setStatus(effectName: String, status: String?) {
+        guard let index = effects.firstIndex(where: { $0.name == effectName }),
+              cardViews.indices.contains(index + 1) else { return }
+        let current = effects[index]
+        guard current.status != status else { return }
+        var updated = current
+        updated.status = status
+        effects[index] = updated
+        let identifier = NSUserInterfaceItemIdentifier("status|\(effectName)")
+        for case let label as NSTextField in allSubviews(of: cardViews[index + 1]) where label.identifier == identifier {
+            label.stringValue = status ?? ""
+            label.toolTip = status
+            label.isHidden = status == nil || collapsedEffects.contains(effectName)
+        }
     }
 
     /// Repaints an effect's badge to show whether that source is driving it.

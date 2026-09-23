@@ -966,9 +966,9 @@ enum UISelfQA {
             // the card's own onParameterChanged closure, with the selector pointed at
             // each channel in turn.
             click(selectorOne, segment: 0) // A
-            shell.grid.panels.effectsOneBody.onParameterChanged?(ParamCode.corruptAmount.rawValue, 0.9)
+            shell.grid.panels.effectsOneBody.onParameterChanged?(corruptorName, ParamCode.corruptAmount.rawValue, 0.9)
             click(selectorOne, segment: 1) // B
-            shell.grid.panels.effectsOneBody.onParameterChanged?(ParamCode.corruptAmount.rawValue, 0.3)
+            shell.grid.panels.effectsOneBody.onParameterChanged?(corruptorName, ParamCode.corruptAmount.rawValue, 0.3)
 
             let amountA = engine.registry.value(slot: GraphTopology.sourceA, code: .corruptAmount)
             let amountB = engine.registry.value(slot: GraphTopology.sourceB, code: .corruptAmount)
@@ -1055,10 +1055,10 @@ enum UISelfQA {
                 enable.state = .on
                 _ = enable.target?.perform(enable.action, with: enable)
             }
-            shell.grid.panels.effectsTwoBody.onParameterChanged?(ParamCode.corruptAmount.rawValue, 0)
+            shell.grid.panels.effectsTwoBody.onParameterChanged?(corruptorName, ParamCode.corruptAmount.rawValue, 0)
             let clean = renderProgram(frameIndex: 50)
 
-            shell.grid.panels.effectsTwoBody.onParameterChanged?(ParamCode.corruptAmount.rawValue, 0.9)
+            shell.grid.panels.effectsTwoBody.onParameterChanged?(corruptorName, ParamCode.corruptAmount.rawValue, 0.9)
             let damaged = renderProgram(frameIndex: 50)
 
             if let clean, let damaged {
@@ -2233,11 +2233,11 @@ enum UISelfQA {
             var livingFaders = 0
             for (busName, panel) in panels {
                 for fader in VBFader.all(in: panel) where fader.isEnabled {
-                    guard let code = fader.mappingCode else { continue }
+                    guard let code = fader.mappingCode, let card = fader.ownerCard else { continue }
                     let before = snapshotEveryValue()
                     // Through the panel's own closure, which is what a drag calls.
                     let moved = fader.value < 0.5 ? 0.9 : 0.1
-                    panel.onParameterChanged?(code.rawValue, moved)
+                    panel.onParameterChanged?(card, code.rawValue, moved)
                     if snapshotEveryValue() == before {
                         deadFaders.append("\(busName) · \(code.rawValue) \(code.displayName)")
                     } else {

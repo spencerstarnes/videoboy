@@ -148,14 +148,11 @@ final class PanelSet {
 
         // MARK: Effect chains
         //
-        // The DV DIF corruptor is the one effect that is real in this phase — it is
-        // the wedge. Everything else is present and disabled so the chain's shape is
-        // visible from the first run.
-        effectsOneBody = EffectChainPanelBody(effects: PanelSet.chain(for: ["A", "B"]))
-
-        // Sub Mix TWO's chain: the same effects, on its own instances, so the two
-        // buses can carry different looks at once.
-        effectsTwoBody = EffectChainPanelBody(effects: PanelSet.chain(for: ["C", "D"]))
+        // Empty here: the cards ARE the engine's chains (EffectChain), built from the
+        // module catalogue by ShellController — every card the same way, whatever the
+        // module is (ISF-PLAN M7). A shell with no controller has no chains to show.
+        effectsOneBody = EffectChainPanelBody(effects: [])
+        effectsTwoBody = EffectChainPanelBody(effects: [])
 
         effectsOne = PanelView(title: "A/B FX", bus: .one, body: effectsOneBody)
         effectsTwo = PanelView(title: "C/D FX", bus: .two, body: effectsTwoBody)
@@ -231,175 +228,25 @@ final class PanelSet {
         }
     }
 
-    /// One channel-effects chain, for a pair of channels.
-    ///
-    /// Built by a function rather than written out twice. The two chains were
-    /// near-identical literals differing only in their channel letters, which is
-    /// exactly the duplication that drifts - a card added to one and not the other is
-    /// invisible until someone looks at both panels side by side.
-    ///
-    /// WHY THE BITSTREAM CARD IS OMITTED AND NOT GREYED. The house rule is that
-    /// unfinished work renders DISABLED rather than absent, so the shape of the chain
-    /// is visible from the first run. This is the opposite case: that effect is
-    /// FINISHED, and it is out because it cannot currently be judged - there is no DV
-    /// hardware here to see it on an analog chain, and an effect whose whole point is
-    /// what it does to a real signal cannot be tuned by looking at a preview.
-    ///
-    /// A greyed card would advertise something that is not coming back in its current
-    /// form. Nothing is deleted: the node, its shader, its parameters and its tests
-    /// are all intact behind `FeatureFlag.bitstreamCorruptor`, and setting
-    /// `VIDEOBOY_FLAGS=bitstreamCorruptor` brings the card back for one launch.
-    /// The live H.264 datamosh card. Named once: the controller routes by card name.
+    /// The live H.264 datamosh card's title (the catalogue's name for the module).
     static let datamoshCardName = "Datamosh · H.264"
 
-    static func chain(for channels: [String]) -> [EffectCardModel] {
-        var cards: [EffectCardModel] = [
-            EffectCardModel(
-                name: "Transform",
-                isEnabled: false,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "scale", code: ParamCode.scale.rawValue,
-                                         value: 0.231, enabled: true),
-                    // Position before rotation: moving the picture is the thing most
-                    // reached for, and a card reads top to bottom in the order a hand
-                    // uses it. 0.5 is centred, which is why these open mid-fader.
-                    EffectParameterModel(name: "pos X", code: ParamCode.positionX.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "pos Y", code: ParamCode.positionY.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "rotate", code: ParamCode.rotation.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "flip H", code: ParamCode.flipHorizontal.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "flip V", code: ParamCode.flipVertical.rawValue,
-                                         value: 0.0, enabled: true)
-                ],
-                channelOptions: channels
-            ),
-            EffectCardModel(
-                name: "Composite · NTSC",
-                isEnabled: false,
-                isImplemented: FeatureFlag.compositeCodec.isOn,
-                parameters: [
-                    EffectParameterModel(name: "path", code: ParamCode.compositePath.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "crawl", code: ParamCode.compositeCrawl.rawValue,
-                                         value: 0.6, enabled: true),
-                    EffectParameterModel(name: "bleed", code: ParamCode.chromaBleed.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "luma bw", code: ParamCode.lumaBandwidth.rawValue,
-                                         value: 0.7, enabled: true),
-                    EffectParameterModel(name: "wobble", code: ParamCode.tbcWobble.rawValue,
-                                         value: 0.2, enabled: true),
-                    EffectParameterModel(name: "head sw", code: ParamCode.headSwitchingNoise.rawValue,
-                                         value: 0.3, enabled: true),
-                    EffectParameterModel(name: "chroma", code: ParamCode.chromaSubsampling.rawValue,
-                                         value: 1.0, enabled: true),
-                    EffectParameterModel(name: "gen", code: ParamCode.compositeGeneration.rawValue,
-                                         value: 0.0, enabled: true)
-                ],
-                channelOptions: channels
-            ),
-            EffectCardModel(
-                name: "Colour",
-                // ON by default, unlike every other effect here. A grade at its
-                // neutral settings changes nothing and costs nothing — the node skips
-                // its render pass entirely when it is neutral — so there is no reason
-                // to make someone switch it on before they can touch a fader. Every
-                // other card in this chain alters the picture the moment it is armed,
-                // which is why they all start off.
-                isEnabled: true,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "bright", code: ParamCode.brightness.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "contrast", code: ParamCode.contrast.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "sat", code: ParamCode.saturation.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "shadow", code: ParamCode.shadow.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "highlt", code: ParamCode.highlight.rawValue,
-                                         value: 0.5, enabled: true),
-                    EffectParameterModel(name: "black", code: ParamCode.blackLevel.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "white", code: ParamCode.whiteLevel.rawValue,
-                                         value: 1.0, enabled: true),
-                    EffectParameterModel(name: "gamma", code: ParamCode.gamma.rawValue,
-                                         value: 0.231, enabled: true)
-                ],
-                channelOptions: channels
-            ),
-            EffectCardModel(
-                name: "Echo / Trails",
-                isEnabled: false,
-                isImplemented: FeatureFlag.feedback.isOn,
-                parameters: [
-                    EffectParameterModel(name: "decay", code: ParamCode.echoDecay.rawValue,
-                                         value: 0.8, enabled: true),
-                    EffectParameterModel(name: "length", code: ParamCode.trailLength.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "thresh", code: ParamCode.echoThreshold.rawValue,
-                                         value: 0.15, enabled: true)
-                ],
-                channelOptions: channels
-            ),
-            EffectCardModel(
-                name: "Feedback",
-                isEnabled: false,
-                isImplemented: FeatureFlag.feedback.isOn,
-                parameters: [
-                    EffectParameterModel(name: "gain", code: ParamCode.feedbackGain.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "delay", code: ParamCode.feedbackDelayFrames.rawValue,
-                                         value: 0.02, enabled: true),
-                    EffectParameterModel(name: "zoom", code: ParamCode.feedbackZoom.rawValue,
-                                         value: 0.52, enabled: true),
-                    EffectParameterModel(name: "rotate", code: ParamCode.feedbackRotate.rawValue,
-                                         value: 0.5, enabled: true)
-                ],
-                channelOptions: channels
-            ),
-            EffectCardModel(
-                name: "Freeze",
-                isEnabled: false,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "hold", code: ParamCode.freezeHold.rawValue,
-                                         value: 0.0, enabled: true)
-                ],
-                channelOptions: channels
-            ),
-            // LAST in the list so adding it moved no existing card (a performer's
-            // hands are on those). In the SIGNAL it runs first — see Engine.buildGraph.
-            EffectCardModel(
-                name: PanelSet.datamoshCardName,
-                // Off, like every effect but the grade. Switching the card on does
-                // nothing visible until mosh or bloom moves: at zero it holds no
-                // encoder and costs nothing.
-                isEnabled: false,
-                isImplemented: true,
-                parameters: [
-                    EffectParameterModel(name: "mosh", code: ParamCode.moshAmount.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "bloom", code: ParamCode.moshBloom.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "heal", code: ParamCode.moshHeal.rawValue,
-                                         value: 0.0, enabled: true),
-                    EffectParameterModel(name: "blocks", code: ParamCode.moshBlocks.rawValue,
-                                         value: 0.5, enabled: true)
-                ],
-                channelOptions: channels,
-                // BOTH: the bus copy, matching ShellController.cardChannelIndex.
-                initialChannelIndex: channels.count
-            )
-        ]
+    /// The DV DIF corruptor's card — the one card that is not a chain module.
+    ///
+    /// It is a FIXED stage, not a layer: it rewrites the bitstream before decode, on the
+    /// source itself, so it cannot move in the chain and has no bus copy (ISF-PLAN §4).
+    ///
+    /// WHY IT IS OMITTED AND NOT GREYED. The house rule is that unfinished work renders
+    /// DISABLED rather than absent. This is the opposite case: the effect is FINISHED,
+    /// and it is out because it cannot currently be judged — there is no DV hardware
+    /// here to see it on an analog chain. Nothing is deleted: node, shader, parameters
+    /// and tests are intact behind `FeatureFlag.bitstreamCorruptor`, and
+    /// `VIDEOBOY_FLAGS=bitstreamCorruptor` brings the card back for one launch.
+    static let corruptorCardName = "DV · DIF corruptor"
 
-        if FeatureFlag.bitstreamCorruptor.isOn {
-            // Second in the chain, before the composite stage: it damages the
-            // bitstream, and everything after it works on what comes out.
-            cards.insert(
+    static func corruptorCard(channels: [String]) -> EffectCardModel? {
+        guard FeatureFlag.bitstreamCorruptor.isOn else { return nil }
+        return
             EffectCardModel(
                 name: "DV · DIF corruptor",
                 // OFF, like every effect except the grade. The wedge is the loudest
@@ -420,10 +267,7 @@ final class PanelSet {
                 // rather than being hardwired to A the way it was before this could
                 // be switched at all.
                 channelOptions: channels
-            ),
-                at: min(1, cards.count))
-        }
-        return cards
+            )
     }
 
 }

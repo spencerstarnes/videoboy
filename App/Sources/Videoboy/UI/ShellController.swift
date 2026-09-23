@@ -618,8 +618,8 @@ final class ShellController {
 
         // The effect chains answer per code, because a code names a different slot
         // on each bus.
-        panels.effectsOneBody.mappingSlotForCode = { [weak self] code in self?.slot(forParameter: code, bus: .one) }
-        panels.effectsTwoBody.mappingSlotForCode = { [weak self] code in self?.slot(forParameter: code, bus: .two) }
+        // (The FX panels' mapping resolver is set in `wireEffectChains`: a fader's
+        // slot comes from its card's chain entry.)
         // Adding, removing or reordering an effect builds new fader views, which
         // start unmarked. Without this the pulse would quietly disappear from a
         // parameter that is still very much being driven.
@@ -841,10 +841,10 @@ final class ShellController {
     /// Writes through `registry.setValue`, the same door a drag, a MIDI knob and an LFO
     /// all come through, so a reset cannot end up meaning something subtly different
     /// from setting the fader there by hand.
-    private func resetParameter(_ code: String, bus: Bus) {
+    private func resetParameter(card: String, code: String, bus: Bus) {
         guard let parameter = ParamCode(rawValue: code) else { return }
-        guard let slot = slot(forParameter: parameter, bus: bus) else {
-            Log.warn(.param, "no slot is registered for param code \(code); cannot reset it")
+        guard let slot = slot(forEffect: card, bus: bus) else {
+            Log.warn(.param, "no slot for \(card)/\(code); cannot reset it")
             return
         }
         guard let declared = engine.graph.nodes[slot]?.parameters
@@ -856,16 +856,8 @@ final class ShellController {
         // is the panel catching up, and without it the control sits where it was
         // dragged while the engine is somewhere else — which reads as the key not
         // working.
-        let panel = bus == .one
-            ? shell.grid.panels.effectsOneBody
-            : shell.grid.panels.effectsTwoBody
-        if let effect = panel.effects.first(where: { card in
-            card.parameters.contains { $0.code == code }
-        }) {
-            panel.setDisplayedParameterValues(
-                effectName: effect.name,
-                values: [code: declared.normalise(declared.defaultValue)])
-        }
+        panel(bus).setDisplayedParameterValues(
+            effectName: card, values: [code: declared.normalise(declared.defaultValue)])
         Log.info(.param, "reset \(slot)/\(code) to its default of \(declared.defaultValue)")
     }
 
@@ -1327,173 +1319,229 @@ final class ShellController {
         panels.programBody.preview.onAirLevel = 0
     }
 
-    /// Which slot each param code in the Sub Mix 1 chain belongs to.
-    ///
-    /// The chain shows effects from several nodes in one list, so a code alone is not
-    /// enough to know where a slider's value should land. This table is that mapping,
-    /// written out rather than inferred so adding an effect is a one-line change.
-    private static let subMixOneSlots: [ParamCode: String] = [
-        .scale: Engine.transformSlot,
-        .rotation: Engine.transformSlot,
-        .flipHorizontal: Engine.transformSlot,
-        .flipVertical: Engine.transformSlot,
-        .brightness: Engine.colourSlot,
-        .contrast: Engine.colourSlot,
-        .saturation: Engine.colourSlot,
-        .shadow: Engine.colourSlot,
-        .highlight: Engine.colourSlot,
-        .blackLevel: Engine.colourSlot,
-        .whiteLevel: Engine.colourSlot,
-        .gamma: Engine.colourSlot,
-        // The wedge's codes are NOT here: they live on whichever channel the
-        // corruptor card's selector currently points at, resolved dynamically by
-        // `slot(forParameter:bus:)` below rather than fixed to one channel.
-        // The composite codec and the time-domain effects are bus FX.
-        .compositePath: Engine.compositeSlot,
-        .compositeCrawl: Engine.compositeSlot,
-        .chromaBleed: Engine.compositeSlot,
-        .lumaBandwidth: Engine.compositeSlot,
-        .tbcWobble: Engine.compositeSlot,
-        .headSwitchingNoise: Engine.compositeSlot,
-        .chromaSubsampling: Engine.compositeSlot,
-        .compositeGeneration: Engine.compositeSlot,
-        .echoDecay: Engine.echoSlot,
-        .trailLength: Engine.echoSlot,
-        .echoThreshold: Engine.echoSlot,
-        .feedbackGain: Engine.feedbackSlot,
-        .feedbackDelayFrames: Engine.feedbackSlot,
-        .feedbackZoom: Engine.feedbackSlot,
-        .feedbackRotate: Engine.feedbackSlot,
-        .feedbackThreshold: Engine.feedbackSlot,
-        .freezeHold: Engine.freezeOneSlot,
-        .moshAmount: Engine.moshOneSlot,
-        .moshBloom: Engine.moshOneSlot,
-        .moshHeal: Engine.moshOneSlot,
-        .moshBlocks: Engine.moshOneSlot
-    ]
+    // MARK: - Effect chains (ISF-PLAN M5 / M7)
+    //
+    // The FX panels show the engine's chains (EffectChain). Every card is built the
+    // same way, from the module catalogue: its title, badge and faders come from the
+    // module; its values from the registry, at whichever copy its selector targets.
+    // There are no name tables: a card resolves to its chain entry, and the entry to
+    // its slots. Adding, removing and reordering edit the chain and the engine
+    // rewires the graph from it.
 
-    /// Which slot each param code in the Sub Mix 2 chain belongs to.
-    private static let subMixTwoSlots: [ParamCode: String] = [
-        .scale: Engine.transformTwoSlot,
-        .rotation: Engine.transformTwoSlot,
-        .flipHorizontal: Engine.transformTwoSlot,
-        .flipVertical: Engine.transformTwoSlot,
-        .brightness: Engine.colourTwoSlot,
-        .contrast: Engine.colourTwoSlot,
-        .saturation: Engine.colourTwoSlot,
-        .shadow: Engine.colourTwoSlot,
-        .highlight: Engine.colourTwoSlot,
-        .blackLevel: Engine.colourTwoSlot,
-        .whiteLevel: Engine.colourTwoSlot,
-        .gamma: Engine.colourTwoSlot,
-        // See the note on subMixOneSlots — the wedge's codes are resolved
-        // dynamically now, not fixed to channel C.
-        .compositePath: Engine.compositeTwoSlot,
-        .compositeCrawl: Engine.compositeTwoSlot,
-        .chromaBleed: Engine.compositeTwoSlot,
-        .lumaBandwidth: Engine.compositeTwoSlot,
-        .tbcWobble: Engine.compositeTwoSlot,
-        .headSwitchingNoise: Engine.compositeTwoSlot,
-        .chromaSubsampling: Engine.compositeTwoSlot,
-        .compositeGeneration: Engine.compositeTwoSlot,
-        .echoDecay: Engine.echoTwoSlot,
-        .trailLength: Engine.echoTwoSlot,
-        .echoThreshold: Engine.echoTwoSlot,
-        .feedbackGain: Engine.feedbackTwoSlot,
-        .feedbackDelayFrames: Engine.feedbackTwoSlot,
-        .feedbackZoom: Engine.feedbackTwoSlot,
-        .feedbackRotate: Engine.feedbackTwoSlot,
-        .feedbackThreshold: Engine.feedbackTwoSlot,
-        .freezeHold: Engine.freezeTwoSlot,
-        .moshAmount: Engine.moshTwoSlot,
-        .moshBloom: Engine.moshTwoSlot,
-        .moshHeal: Engine.moshTwoSlot,
-        .moshBlocks: Engine.moshTwoSlot
-    ]
+    /// The chain a panel shows.
+    private func chainBus(_ bus: Bus) -> ChainBus { bus == .one ? .one : .two }
 
-    /// Effect card names to the slot they bypass, per bus.
-    private static let effectNameToSlot: [String: (one: String, two: String)] = [
-        "Transform": (Engine.transformSlot, Engine.transformTwoSlot),
-        "Colour": (Engine.colourSlot, Engine.colourTwoSlot),
-        "Composite · NTSC": (Engine.compositeSlot, Engine.compositeTwoSlot),
-        "Echo / Trails": (Engine.echoSlot, Engine.echoTwoSlot),
-        "Feedback": (Engine.feedbackSlot, Engine.feedbackTwoSlot),
-        "Freeze": (Engine.freezeOneSlot, Engine.freezeTwoSlot),
-        PanelSet.datamoshCardName: (Engine.moshOneSlot, Engine.moshTwoSlot)
-    ]
+    /// The panel that shows a bus's chain.
+    private func panel(_ bus: Bus) -> EffectChainPanelBody {
+        bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
+    }
+
+    /// Card title → chain instance, per bus, as the cards were last built.
+    private var cardInstances: [Bus: [String: String]] = [:]
+
+    /// Whether the (flag-gated) corruptor card has been taken out, per bus.
+    private var corruptorRemoved: Set<Bus> = []
+
+    /// The Add menu's ID for the corruptor card, which is not a catalogue module.
+    private static let corruptorModuleID = "fixed.corruptor"
+
+    /// Polls ISF cards for "compiling…" / "⚠" while they settle.
+    private var statusTimer: Timer?
+
+    /// The chain entry behind a card.
+    private func entry(forCard name: String, bus: Bus) -> ChainEntry? {
+        guard let id = cardInstances[bus]?[name] else { return nil }
+        return engine.chains[chainBus(bus)]?.entry(id)
+    }
+
+    /// The slot a card's controls currently edit — the copy its selector points at.
+    private func slot(forEffect name: String, bus: Bus) -> String? {
+        if name == PanelSet.corruptorCardName { return corruptorSlot(bus: bus) }
+        guard let entry = entry(forCard: name, bus: bus) else { return nil }
+        return EffectChain.targetedSlot(of: entry, bus: chainBus(bus))
+    }
+
+    /// Every copy of a card: each channel's and the bus's.
+    private func allSlots(forEffect name: String, bus: Bus) -> [String] {
+        if name == PanelSet.corruptorCardName {
+            return chainBus(bus).channels.map(Engine.slot(forChannel:))
+        }
+        guard let entry = entry(forCard: name, bus: bus) else { return [] }
+        return EffectChain.slots(instanceID: entry.instanceID, bus: chainBus(bus))
+    }
+
+    /// What a card's status line says about its node, if anything.
+    private func status(of node: Node?) -> String? {
+        switch node {
+        case let isf as ISFNode:
+            switch isf.state {
+            case .compiling: return "compiling…"
+            case .failed(let reason): return "⚠ \(reason)"
+            case .ready: return nil
+            }
+        case let missing as MissingModuleNode:
+            return "⚠ \(missing.reason)"
+        default:
+            return nil
+        }
+    }
+
+    /// Builds a panel's cards from its chain, top card first.
+    private func makeCards(_ bus: Bus) -> [EffectCardModel] {
+        let chainBus = chainBus(bus)
+        guard let chain = engine.chains[chainBus] else { return [] }
+        var cards: [EffectCardModel] = []
+        var instances: [String: String] = [:]
+        var used: Set<String> = []
+
+        for entry in chain.displayOrder {
+            let module = engine.catalog.module(entry.moduleID)
+            // Titles are unique within a panel, because the card's controls are
+            // identified by it: a second instance is "Bad TV 2".
+            let base = module?.name ?? entry.moduleID
+            var name = base
+            var number = 2
+            while used.contains(name) {
+                name = "\(base) \(number)"
+                number += 1
+            }
+            used.insert(name)
+            instances[name] = entry.instanceID
+
+            let slot = EffectChain.targetedSlot(of: entry, bus: chainBus)
+            let node = engine.chainNode(slot)
+            let declared = node?.parameters ?? []
+            let available = module?.isAvailable ?? false
+            let parameters: [EffectParameterModel] = (module?.controls ?? []).compactMap { control in
+                guard let parameter = declared.first(where: { $0.code == control.code }) else { return nil }
+                let value = engine.registry.value(slot: slot, code: control.code) ?? parameter.defaultValue
+                return EffectParameterModel(
+                    name: control.label, code: control.code.rawValue,
+                    value: parameter.normalise(value), enabled: available,
+                    valueText: { control.valueText(parameter.denormalise($0)) })
+            }
+            cards.append(EffectCardModel(
+                name: name, id: entry.instanceID,
+                badge: module?.origin.badge ?? "missing",
+                status: status(of: node),
+                isEnabled: (engine.registry.value(slot: slot, code: .wetDry) ?? 0) > 0.5,
+                isImplemented: available,
+                parameters: parameters,
+                channelOptions: chainBus.channels,
+                initialChannelIndex: entry.target))
+        }
+
+        // The corruptor is a fixed stage on the sources, not a chain module; its card
+        // sits second from the top, where it always has.
+        if !corruptorRemoved.contains(bus), let corruptor = PanelSet.corruptorCard(channels: chainBus.channels) {
+            cards.insert(corruptor, at: min(1, cards.count))
+        }
+        cardInstances[bus] = instances
+        return cards
+    }
+
+    /// The Add menu: Built-in, then each ISF category, then what failed to load.
+    private func addMenuGroups(_ bus: Bus) -> [EffectChainPanelBody.AddMenuGroup] {
+        var byGroup: [String: [EffectChainPanelBody.AddMenuItem]] = [:]
+        for module in engine.catalog.modules {
+            byGroup[module.group, default: []].append(EffectChainPanelBody.AddMenuItem(
+                moduleID: module.id, title: module.name, isEnabled: module.isAvailable,
+                tooltip: module.problem ?? "\(module.origin.badge) · \(module.controls.count) controls"))
+        }
+        if corruptorRemoved.contains(bus), FeatureFlag.bitstreamCorruptor.isOn {
+            byGroup["Built-in", default: []].insert(EffectChainPanelBody.AddMenuItem(
+                moduleID: Self.corruptorModuleID, title: PanelSet.corruptorCardName,
+                isEnabled: true, tooltip: nil), at: 0)
+        }
+        var groups: [EffectChainPanelBody.AddMenuGroup] = []
+        if let builtIn = byGroup.removeValue(forKey: "Built-in") {
+            groups.append(.init(title: "Built-in", items: builtIn))
+        }
+        for title in byGroup.keys.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }) {
+            groups.append(.init(title: title, items: byGroup[title] ?? []))
+        }
+        let failed = engine.catalog.unavailable
+        if !failed.isEmpty {
+            groups.append(.init(title: "Failed to load (\(failed.count))", items: failed.map {
+                EffectChainPanelBody.AddMenuItem(moduleID: $0.id, title: $0.name, isEnabled: false, tooltip: $0.problem)
+            }))
+        }
+        return groups
+    }
+
+    /// Rebuilds a panel's cards and Add menu from the chain and the catalogue.
+    private func refreshCards(_ bus: Bus) {
+        let panel = panel(bus)
+        panel.setEffects(makeCards(bus))
+        panel.addMenuGroups = addMenuGroups(bus)
+        panel.refreshMappingAddresses()
+        refreshArmedSweeps()
+    }
+
+    /// Both panels — after the catalogue changed (an ISF file added, fixed, removed).
+    func refreshEffectPanels() {
+        refreshCards(.one)
+        refreshCards(.two)
+    }
+
+    /// Updates each card's status line from its node, without rebuilding anything.
+    private func refreshCardStatuses() {
+        for bus in [Bus.one, .two] {
+            for (name, instanceID) in cardInstances[bus] ?? [:] {
+                guard let entry = engine.chains[chainBus(bus)]?.entry(instanceID) else { continue }
+                let node = engine.chainNode(EffectChain.targetedSlot(of: entry, bus: chainBus(bus)))
+                panel(bus).setStatus(effectName: name, status: status(of: node))
+            }
+        }
+    }
 
     private func wireEffectChains() {
-        shell.grid.panels.effectsOneBody.onParameterChanged = { [weak self] code, value in
-            guard let self, let parameter = ParamCode(rawValue: code) else { return }
-            guard let slot = self.slot(forParameter: parameter, bus: .one) else {
-                Log.warn(.param, "no slot is registered for param code \(code); ignoring the change")
-                return
+        for bus in [Bus.one, .two] {
+            let panel = panel(bus)
+            panel.mappingSlotForParameter = { [weak self] card, _ in self?.slot(forEffect: card, bus: bus) }
+            panel.onParameterChanged = { [weak self] card, code, value in
+                self?.parameterChanged(card: card, code: code, value: value, bus: bus)
             }
-            // The slider is 0...1; the registry scales it into the parameter's range.
-            guard let declared = self.engine.graph.nodes[slot]?.parameters
-                .first(where: { $0.code == parameter }) else { return }
-            self.engine.registry.setValue(declared.denormalise(value), slot: slot, code: parameter)
-        }
-
-        shell.grid.panels.effectsOneBody.onParameterReset = { [weak self] code in
-            self?.resetParameter(code, bus: .one)
-        }
-        shell.grid.panels.effectsTwoBody.onParameterReset = { [weak self] code in
-            self?.resetParameter(code, bus: .two)
-        }
-
-        shell.grid.panels.effectsOneBody.onEffectModulationRequested = { [weak self] name, source, view in
-            self?.presentModulationMenu(effect: name, source: source, from: view, bus: .one)
-        }
-        shell.grid.panels.effectsTwoBody.onEffectModulationRequested = { [weak self] name, source, view in
-            self?.presentModulationMenu(effect: name, source: source, from: view, bus: .two)
-        }
-
-        shell.grid.panels.effectsOneBody.onEffectRemoved = { [weak self] name in
-            self?.removeEffect(name, bus: .one)
-        }
-        shell.grid.panels.effectsTwoBody.onEffectRemoved = { [weak self] name in
-            self?.removeEffect(name, bus: .two)
-        }
-        shell.grid.panels.effectsOneBody.onEffectAdded = { [weak self] name in
-            self?.addEffect(name, bus: .one)
-        }
-        shell.grid.panels.effectsTwoBody.onEffectAdded = { [weak self] name in
-            self?.addEffect(name, bus: .two)
-        }
-
-        shell.grid.panels.effectsOneBody.onEffectToggled = { [weak self] name, isOn in
-            // Bypassing is expressed as wet/dry, so there is one mechanism rather
-            // than a separate enable flag threaded through every node.
-            self?.setEffectEnabled(name, isOn, bus: .one)
-        }
-        shell.grid.panels.effectsOneBody.onSweepsChanged = { [weak self] in
-            self?.refreshArmedSweeps()
-        }
-        shell.grid.panels.effectsTwoBody.onSweepsChanged = { [weak self] in
-            self?.refreshArmedSweeps()
-        }
-        shell.grid.panels.effectsOneBody.onCardChannelChanged = { [weak self] name, index in
-            self?.cardChannelChanged(name, index, bus: .one)
-        }
-        shell.grid.panels.effectsTwoBody.onCardChannelChanged = { [weak self] name, index in
-            self?.cardChannelChanged(name, index, bus: .two)
-        }
-
-        // The same chain on TWO, driving its own node instances.
-        shell.grid.panels.effectsTwoBody.onParameterChanged = { [weak self] code, value in
-            guard let self, let parameter = ParamCode(rawValue: code) else { return }
-            guard let slot = self.slot(forParameter: parameter, bus: .two) else {
-                Log.warn(.param, "no slot is registered for param code \(code) on bus TWO; ignoring")
-                return
+            panel.onParameterReset = { [weak self] card, code in
+                self?.resetParameter(card: card, code: code, bus: bus)
             }
-            guard let declared = self.engine.graph.nodes[slot]?.parameters
-                .first(where: { $0.code == parameter }) else { return }
-            self.engine.registry.setValue(declared.denormalise(value), slot: slot, code: parameter)
+            panel.onEffectModulationRequested = { [weak self] name, source, view in
+                self?.presentModulationMenu(effect: name, source: source, from: view, bus: bus)
+            }
+            panel.onEffectRemoved = { [weak self] name in self?.removeEffect(name, bus: bus) }
+            panel.onEffectAdded = { [weak self] moduleID in self?.addEffect(moduleID, bus: bus) }
+            // Bypassing is expressed as wet/dry, so there is one mechanism rather than
+            // a separate enable flag threaded through every node.
+            panel.onEffectToggled = { [weak self] name, isOn in self?.setEffectEnabled(name, isOn, bus: bus) }
+            panel.onSweepsChanged = { [weak self] in self?.refreshArmedSweeps() }
+            panel.onCardChannelChanged = { [weak self] name, index in self?.cardChannelChanged(name, index, bus: bus) }
+            // ORDER IS PROCESSING ORDER: a drag rewires the graph (it used to move
+            // pictures of cards and nothing else).
+            panel.onReordered = { [weak self] names in self?.chainReordered(names, bus: bus) }
+            refreshCards(bus)
         }
-        shell.grid.panels.effectsTwoBody.onEffectToggled = { [weak self] name, isOn in
-            self?.setEffectEnabled(name, isOn, bus: .two)
+        // ISF modules compile off the render path; a card says "compiling…" until its
+        // program arrives, and why, if it never does.
+        statusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.refreshCardStatuses()
         }
+    }
+
+    /// A fader on a card moved: write it to the copy the card targets.
+    private func parameterChanged(card: String, code: String, value: Double, bus: Bus) {
+        guard let parameter = ParamCode(rawValue: code), let slot = slot(forEffect: card, bus: bus) else {
+            Log.warn(.param, "no slot for \(card)/\(code); ignoring the change")
+            return
+        }
+        // The fader is 0...1; the registry scales it into the parameter's range.
+        guard let declared = engine.graph.nodes[slot]?.parameters.first(where: { $0.code == parameter }) else { return }
+        engine.registry.setValue(declared.denormalise(value), slot: slot, code: parameter)
+    }
+
+    /// The panel's cards were dragged into a new order.
+    private func chainReordered(_ names: [String], bus: Bus) {
+        let ids = names.compactMap { cardInstances[bus]?[$0] }
+        engine.reorderChain(chainBus(bus), displayOrder: ids)
     }
 
     /// Every preview's record indicator, by the label it shows.
@@ -1503,19 +1551,16 @@ final class ShellController {
 
     // MARK: - Per-channel FX (chFX, SPEC 2)
     //
-    // A and B each carry their own bitstream wedge, and so do C and D — the graph
-    // has always had four independent corruptors, one per ClipSourceNode. What was
-    // missing was a way to REACH three of the four: the UI had one corruptor card
-    // per bus and it was wired to a single fixed channel (A, and nothing at all for
-    // TWO). The card now carries a channel selector, and everything that used to
-    // resolve straight to "the" channel resolves through here instead.
+    // Every card reaches three copies — each channel's (upstream of the mix) and the
+    // bus's (after it) — through its selector, which is the chain entry's `target`.
+    // The DV corruptor is the exception: it lives on the source nodes themselves.
 
     /// Which channel each bus's corruptor card currently targets. 0 is this bus's
     /// first channel letter (A or C), 1 is its second (B or D).
     private var corruptorChannelIndex: [Bus: Int] = [:]
 
     private func corruptorChannel(bus: Bus) -> String {
-        let letters = bus == .one ? ["A", "B"] : ["C", "D"]
+        let letters = chainBus(bus).channels
         let index = corruptorChannelIndex[bus] ?? 0
         return letters[min(max(index, 0), letters.count - 1)]
     }
@@ -1524,150 +1569,20 @@ final class ShellController {
         Engine.slot(forChannel: corruptorChannel(bus: bus))
     }
 
-    /// Resolves a param code to its slot, for the codes that move depending on which
-    /// channel a card's selector points at. Every other code keeps using the static
-    /// per-bus tables, which never move.
-    private func slot(forParameter code: ParamCode, bus: Bus) -> String? {
-        switch code {
-        case .corruptAmount, .corruptMode, .corruptRate, .corruptSeed:
-            return slots(forEffect: "DV · DIF corruptor", bus: bus).first
-        default:
-            // A code owned by a card with a channel selector follows that selector,
-            // so a fader writes to whichever copy of the effect the card points at.
-            // Only when no card claims it does this fall back to the fixed bus table.
-            if let owner = Self.cardOwning(code) {
-                return slots(forEffect: owner, bus: bus).first
-            }
-            return bus == .one ? Self.subMixOneSlots[code] : Self.subMixTwoSlots[code]
-        }
-    }
-
-    /// Resolves an EFFECT's own slot (what its wet/dry, and so its enable switch and
-    /// modulation badges, actually address). The corruptor is the one card whose
-    /// slot depends on the channel selector; everything else is the static table.
-    /// Which effect a card's name refers to, as the suffix used in per-channel slot
-    /// names. Nil for the corruptor, which lives on the source node itself.
-    private static let effectNameToChannelSuffix: [String: String] = [
-        "Transform": "transform",
-        "Colour": "colour",
-        "Composite · NTSC": "composite",
-        "Echo / Trails": "echo",
-        "Feedback": "feedback",
-        "Freeze": "freeze",
-        PanelSet.datamoshCardName: "mosh"
-    ]
-
-    private func slot(forEffect name: String, bus: Bus) -> String? {
-        slots(forEffect: name, bus: bus).first
-    }
-
-    /// Every slot a card currently addresses, which depends on where its A / B / BOTH
-    /// selector points.
-    ///
-    /// A and B address that CHANNEL's own copy of the effect, upstream of the mix.
-    /// BOTH addresses the BUS copy, downstream of it — which is genuinely both,
-    /// rather than two copies set to the same value, and costs one pass instead of
-    /// two. The corruptor is the exception: it lives on the source node itself, so
-    /// there is no bus copy and BOTH writes to both channels.
-    private func slots(forEffect name: String, bus: Bus) -> [String] {
-        let letters = bus == .one ? ["A", "B"] : ["C", "D"]
-        let index = cardChannelIndex[name] ?? 0
-        let isBoth = index >= letters.count
-
-        if name == "DV · DIF corruptor" {
-            return isBoth
-                ? letters.map(Engine.slot(forChannel:))
-                : [Engine.slot(forChannel: letters[min(index, letters.count - 1)])]
-        }
-        guard let suffix = Self.effectNameToChannelSuffix[name] else { return [] }
-        if isBoth {
-            guard let slots = Self.effectNameToSlot[name] else { return [] }
-            return [bus == .one ? slots.one : slots.two]
-        }
-        return [Engine.channelSlot(letters[min(index, letters.count - 1)], suffix)]
-    }
-
-    /// Where each card's selector currently points, by card name.
-    ///
-    /// Colour starts on BOTH (index 2). A grade is nearly always something you want
-    /// across the whole bus rather than on one channel, and the BUS copy is the one
-    /// declared live at launch — so starting anywhere else would mean the card's
-    /// switch and the engine disagreed on the first frame.
-    ///
-    /// Datamosh starts on BOTH too: the bus copy is where cutting A↔B moshes one
-    /// channel's motion onto the other's picture, which is the move people reach for.
-    private var cardChannelIndex: [String: Int] = ["Colour": 2, PanelSet.datamoshCardName: 2]
-
-    /// Every copy of an effect on a bus — both channels AND the bus copy — for the
-    /// operations that must not leave one of them running.
-    private func allSlots(forEffect name: String, bus: Bus) -> [String] {
-        let letters = bus == .one ? ["A", "B"] : ["C", "D"]
-        if name == "DV · DIF corruptor" {
-            return letters.map(Engine.slot(forChannel:))
-        }
-        guard let suffix = Self.effectNameToChannelSuffix[name] else { return [] }
-        var all = letters.map { Engine.channelSlot($0, suffix) }
-        if let slots = Self.effectNameToSlot[name] {
-            all.append(bus == .one ? slots.one : slots.two)
-        }
-        return all
-    }
-
-    /// Which card owns a param code, so a fader can follow that card's selector.
-    ///
-    /// Derived from the nodes themselves rather than written out by hand: a list kept
-    /// in parallel with the effects is a list that goes stale, and a code missing from
-    /// it is a fader that silently writes to the wrong copy.
-    private static func cardOwning(_ code: ParamCode) -> String? {
-        switch code {
-        case .scale, .rotation, .flipHorizontal, .flipVertical, .positionX, .positionY:
-            // `.positionX`/`.positionY` are also what a GENERATOR's position uses, and
-            // that is not a clash: a code is a label and the SLOT is the address, which
-            // is the same reason every effect in the app shares `.wetDry`. The generator
-            // reaches its own node through the generator slot and never comes through
-            // this resolver, which only answers for faders on an FX card.
-            //
-            // Leaving them unclaimed here is what made the two new Transform faders
-            // enabled-and-dead: unowned codes fall through to a fixed bus table that has
-            // no entry for them, so the resolver returned nil and the fader wrote
-            // nowhere. Caught by the self-QA rather than by review.
-            return "Transform"
-        case .brightness, .contrast, .saturation, .shadow,
-             .highlight, .blackLevel, .whiteLevel, .gamma:
-            return "Colour"
-        case .compositePath, .compositeCrawl, .chromaBleed, .lumaBandwidth,
-             .tbcWobble, .headSwitchingNoise, .chromaSubsampling, .compositeGeneration:
-            return "Composite · NTSC"
-        case .echoDecay, .trailLength, .echoThreshold:
-            return "Echo / Trails"
-        case .feedbackGain, .feedbackDelayFrames, .feedbackZoom,
-             .feedbackRotate, .feedbackThreshold:
-            return "Feedback"
-        case .freezeHold:
-            return "Freeze"
-        case .moshAmount, .moshBloom, .moshHeal, .moshBlocks:
-            return PanelSet.datamoshCardName
-        default:
-            return nil
-        }
-    }
-
     /// The card's selector changed. Three things have to follow it, or the toggle
     /// would move the underlying data without changing what the screen shows: the
     /// Shift-detect address on every fader in the card, the enable switch (each
-    /// channel's own bypass, not a single shared one), and the fader/readout values
-    /// themselves.
+    /// copy's own bypass, not a single shared one), and the fader/readout values.
     private func cardChannelChanged(_ name: String, _ index: Int, bus: Bus) {
-        cardChannelIndex[name] = index
-        if name == "DV · DIF corruptor" { corruptorChannelIndex[bus] = index }
-        guard let slot = slots(forEffect: name, bus: bus).first else { return }
-        let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
-
+        if name == PanelSet.corruptorCardName {
+            corruptorChannelIndex[bus] = index
+        } else if let entry = entry(forCard: name, bus: bus) {
+            engine.setTarget(index, of: entry.instanceID, on: chainBus(bus))
+        }
+        guard let slot = slot(forEffect: name, bus: bus) else { return }
+        let panel = panel(bus)
         panel.refreshMappingAddresses()
 
-        // Every parameter the card shows is re-read from whichever node it now points
-        // at. A selector that moved the data without changing what the screen shows
-        // would be worse than no selector.
         guard let node = engine.graph.nodes[slot] else { return }
         var displayed: [String: Double] = [:]
         for declared in node.parameters where declared.code != .wetDry {
@@ -1797,44 +1712,34 @@ final class ShellController {
     /// Which sub-mix an FX panel drives.
     private enum Bus { case one, two }
 
-    /// Takes an effect out of a chain: bypassed in the graph, card gone from the list.
-    ///
-    /// The graph itself is fixed, so "remove" means bypass — but the card really does
-    /// leave the list, and the chain's Add popup is how it comes back. Removing with
-    /// no way to restore would be a trap.
+    /// Takes a card out of its chain, with every copy. The Add menu is how it comes
+    /// back — for a built-in, onto its old slot, with its mappings.
     private func removeEffect(_ name: String, bus: Bus) {
-        // Resolved through `slot(forEffect:bus:)`, NOT through the static table.
-        // The per-channel corruptor has no entry there — its slot depends on which
-        // channel the card is pointed at — so reading the table directly meant the
-        // guard fell through and ✕ did nothing at all on the one card in the window
-        // most likely to be reached for. The enable switch and the badges were fixed
-        // this way already; this was the third path still going the old way.
-        // A per-channel card stands for BOTH of its channels, so taking it out has to
-        // bypass both. Bypassing only the one the selector happens to point at would
-        // leave the other channel corrupting with no card left in the window to
-        // reach it — the same unreachable-wedge problem the channel selector was
-        // added to solve, reintroduced by the ✕.
-        // Removal clears EVERY copy, whatever the selector happens to point at.
-        // Taking a card out of the chain while leaving the other channel's copy still
-        // running is the unreachable-effect problem all over again.
-        let targets = allSlots(forEffect: name, bus: bus)
-        guard !targets.isEmpty else {
-            Log.warn(.graph, "cannot remove \(name): no slot on bus \(bus == .one ? "ONE" : "TWO")")
+        if name == PanelSet.corruptorCardName {
+            // A fixed stage: "remove" bypasses both channels' corruptors and hides the
+            // card, so neither channel is left corrupting with no card to reach it.
+            for slot in allSlots(forEffect: name, bus: bus) {
+                engine.registry.setValue(0, slot: slot, code: .wetDry)
+            }
+            corruptorRemoved.insert(bus)
+        } else if let entry = entry(forCard: name, bus: bus) {
+            engine.removeModule(entry.instanceID, from: chainBus(bus))
+        } else {
+            Log.warn(.graph, "cannot remove \(name): not in the \(bus == .one ? "ONE" : "TWO") chain")
             return
         }
-        for slot in targets {
-            engine.registry.setValue(0, slot: slot, code: .wetDry)
-        }
-        let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
-        panel.removeEffect(named: name)
+        refreshCards(bus)
         Log.info(.graph, "\(name) removed from bus \(bus == .one ? "ONE" : "TWO")")
     }
 
-    /// Puts a removed effect back, bypassed, at the end of the chain.
-    private func addEffect(_ name: String, bus: Bus) {
-        let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
-        panel.restoreEffect(named: name)
-        Log.info(.graph, "\(name) added to bus \(bus == .one ? "ONE" : "TWO")")
+    /// Adds a module from the Add menu as the bottom card (applied first), bypassed.
+    private func addEffect(_ moduleID: String, bus: Bus) {
+        if moduleID == Self.corruptorModuleID {
+            corruptorRemoved.remove(bus)
+        } else if engine.addModule(moduleID, to: chainBus(bus)) == nil {
+            return
+        }
+        refreshCards(bus)
     }
 
     /// Clears sweeps on faders that were aimed at a channel that has just emptied.
@@ -1845,9 +1750,7 @@ final class ShellController {
     private func clearSweepsForCorruptor(channel: String) {
         let bus: Bus = ["A", "B"].contains(channel) ? .one : .two
         guard corruptorChannel(bus: bus) == channel else { return }
-        let panel = bus == .one
-            ? shell.grid.panels.effectsOneBody
-            : shell.grid.panels.effectsTwoBody
+        let panel = panel(bus)
         var cleared = 0
         for fader in VBFader.all(in: panel) where fader.sweep != nil {
             guard let code = fader.mappingCode,
@@ -1981,8 +1884,9 @@ final class ShellController {
                 guard let code = fader.mappingCode else { continue }
                 // The panel's OWN closure — the identical route a drag takes — so a
                 // swept parameter and a dragged one cannot diverge.
+                guard let card = fader.ownerCard else { continue }
                 found.append((fader, { [weak panel] value in
-                    panel?.onParameterChanged?(code.rawValue, value)
+                    panel?.onParameterChanged?(card, code.rawValue, value)
                 }))
             }
         }
@@ -2151,26 +2055,11 @@ final class ShellController {
     /// Lights an effect's badge when the mapping just made is that effect's wet/dry.
     private func lightEffectBadge(forSlot slot: String, code: ParamCode, source: ModulationSource) {
         guard code == .wetDry else { return }
-        for (name, slots) in Self.effectNameToSlot {
-            if slots.one == slot {
-                shell.grid.panels.effectsOneBody.setEffectModulationActive(
-                    effect: name, source: source, isActive: true)
+        for bus in [Bus.one, .two] {
+            let names = Array((cardInstances[bus] ?? [:]).keys) + [PanelSet.corruptorCardName]
+            for name in names where self.slot(forEffect: name, bus: bus) == slot {
+                panel(bus).setEffectModulationActive(effect: name, source: source, isActive: true)
             }
-            if slots.two == slot {
-                shell.grid.panels.effectsTwoBody.setEffectModulationActive(
-                    effect: name, source: source, isActive: true)
-            }
-        }
-        // The corruptor is not in that static table — its slot depends on which
-        // channel its card currently points at — so it is checked separately.
-        let corruptorName = "DV · DIF corruptor"
-        if slot == corruptorSlot(bus: .one) {
-            shell.grid.panels.effectsOneBody.setEffectModulationActive(
-                effect: corruptorName, source: source, isActive: true)
-        }
-        if slot == corruptorSlot(bus: .two) {
-            shell.grid.panels.effectsTwoBody.setEffectModulationActive(
-                effect: corruptorName, source: source, isActive: true)
         }
     }
 
@@ -2192,7 +2081,7 @@ final class ShellController {
         let parameter = ParamCode.wetDry
         let badge = source.legacyLetter
 
-        let panel = bus == .one ? shell.grid.panels.effectsOneBody : shell.grid.panels.effectsTwoBody
+        let panel = panel(bus)
         let isDriven: Bool
         switch source {
         case .midi: isDriven = engine.registry.bindings.contains { $0.slot == slot && $0.code == parameter }
@@ -2255,11 +2144,8 @@ final class ShellController {
 
     /// Enables or bypasses a named effect on one of the buses.
     private func setEffectEnabled(_ name: String, _ isOn: Bool, bus: Bus) {
-        let targets = slots(forEffect: name, bus: bus)
-        guard !targets.isEmpty else { return }
-        for slot in targets {
-            engine.registry.setValue(isOn ? 1 : 0, slot: slot, code: .wetDry)
-        }
+        guard let slot = slot(forEffect: name, bus: bus) else { return }
+        engine.registry.setValue(isOn ? 1 : 0, slot: slot, code: .wetDry)
         Log.info(.app, "\(name) on \(bus == .one ? "ONE" : "TWO") \(isOn ? "enabled" : "bypassed")")
     }
 

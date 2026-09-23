@@ -85,6 +85,10 @@ final class VBFader: NSControl {
     /// is which: that is the whole point of param codes, and it means shift-detect
     /// works on a fader without the panel having to know about detect at all.
     var mappingSlot: String?
+    /// The effect card this fader belongs to, when it is on one. Two cards can share
+    /// a param code (two ISF effects with an `amount`), so the code alone does not say
+    /// which card — and so which slot — a movement is for.
+    var ownerCard: String?
 
     // MARK: Sweep marks
     //
