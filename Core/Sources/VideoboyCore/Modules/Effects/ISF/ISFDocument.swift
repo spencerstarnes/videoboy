@@ -128,6 +128,9 @@ public struct ISFDocument: Equatable, Sendable {
     /// Names of images the file imports from disk. Parsed so a file that uses them is
     /// reported honestly; loading them is not built yet.
     public let importedImages: [String]
+    /// The files those images come from (each `PATH`, relative to the `.fs` file), so
+    /// importing the shader can copy its pictures with it. Cube maps list six paths.
+    public let importedImagePaths: [String]
     /// `VIDEOBOY.IDENTITY_AT_DEFAULTS` — see the file header.
     public let identityAtDefaults: Bool
     /// The GLSL after the header.
@@ -232,12 +235,21 @@ public struct ISFDocument: Equatable, Sendable {
         }
         passes = parsedPasses
 
+        // Two shapes: ISF 2 keys the images by name, ISF 1 lists them with a NAME.
+        let importedEntries: [(name: String, entry: [String: Any])]
         if let imported = root["IMPORTED"] as? [String: Any] {
-            importedImages = imported.keys.sorted()
+            importedEntries = imported.keys.sorted().map { ($0, imported[$0] as? [String: Any] ?? [:]) }
         } else if let imported = root["IMPORTED"] as? [[String: Any]] {
-            importedImages = imported.compactMap { $0["NAME"] as? String }
+            importedEntries = imported.compactMap { entry in
+                (entry["NAME"] as? String).map { ($0, entry) }
+            }
         } else {
-            importedImages = []
+            importedEntries = []
+        }
+        importedImages = importedEntries.map(\.name)
+        importedImagePaths = importedEntries.flatMap { item -> [String] in
+            if let path = item.entry["PATH"] as? String { return [path] }
+            return item.entry["PATH"] as? [String] ?? []
         }
 
         let videoboy = root["VIDEOBOY"] as? [String: Any] ?? [:]

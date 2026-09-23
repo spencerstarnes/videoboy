@@ -16,6 +16,7 @@
 #           output      — the borderless output window on the HDMI card (needs hardware)
 #           loopback    — capture the DVC100 and write metrics.json (needs hardware)
 #           calibrate   — measure the physical feedback round trip (needs hardware)
+#           shaders     — the Preferences Shaders pane: import copies, − removes, in a real window
 #           all         — every check that can run here
 # Outputs : selfqa/out/<check>/{*.png,metrics.json,result.txt}
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
@@ -65,6 +66,7 @@ case "$CHECK" in
   stream)    run_app_check stream ;;
   record)    run_app_check record ;;
   audit)     run_app_check audit ;;
+  shaders)   run_app_check shaders ;;
   # Opt-in, like loopback: it launches another application and needs Screen Recording.
   # Deliberately NOT in `all` or in verify.sh — a check that fails on a machine with no
   # emulator installed is a check that stops being read.
@@ -80,8 +82,9 @@ case "$CHECK" in
     run_app_check stream
     run_app_check record
     run_app_check audit
+    run_app_check shaders
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, stream, record, audit, shaders, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

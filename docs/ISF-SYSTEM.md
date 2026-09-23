@@ -69,6 +69,7 @@ build headlessly, and are covered by `swift test`.
 | `ISFNode.swift` | The graph node: passes, persistent / float buffers, uniforms, bypass, identity-skip, timing. |
 | `ISFSizeExpression.swift` | `"$WIDTH/4"`-style pass sizes, parsed once and evaluated per frame. |
 | `ISFLibrary.swift` | Find and parse files in the three folders; `ISFNode.builtin(_:identifier:)`. |
+| `ISFImporter.swift` | **Import = copy** into `~/Library/Application Support/Videoboy/ISF`, with the `.vs` partner and any `IMPORTED` images, so a module survives its original being moved or deleted. Refuses non-ISF files with a reason; renames on a clash (`Glow 2`), never overwrites; − moves to the Trash. |
 
 The built-in modules are `App/Resources/ISF/Builtin/{Colour,Transform,Echo}.fs`.
 `scripts/build.sh` copies them into the app bundle.
@@ -86,6 +87,7 @@ The built-in modules are `App/Resources/ISF/Builtin/{Colour,Transform,Echo}.fs`.
 | **Smooth playback** (CLAUDE.md) | Compiles never run on the tick. Bypassed or neutral nodes return their input with no pass. No per-frame allocation. Passes submit without waiting. |
 | **Logging** | Subsystem `[isf]`. Compile failures log the translated first error. |
 | **Self-QA** | `selfqa/out/isf/parity/`: native vs ISF, 27 picture comparisons plus cost. |
+| **Preferences → Shaders** | `ISFModuleListView`: every module in the three folders with a built-in / imported / shared badge; the selected one's inputs, credit and **whether it compiles**; **+** (files or folders), **−** (imports only; built-ins and the shared folder cannot be removed), drop onto the list, *Copy into Videoboy* for a shared module, *Show Folder*. Scanning, importing and compiling run off the main thread. |
 | **FX panel / Asset Browser** | **Not wired yet** (ISF-PLAN M5–M7). `ISFLibrary.scan()` is what the Add menu and browser will list. `ISFNode.state` (`.compiling` / `.ready` / `.failed(reason)`) is what a card shows. |
 
 ## What is proven (evidence)
@@ -102,6 +104,15 @@ The built-in modules are `App/Resources/ISF/Builtin/{Colour,Transform,Echo}.fs`.
   moving sequences). Every comparison shows **mean difference 0.000**; the worst single
   channel anywhere is 1/255. Cost at 720×480, best of three: Colour −0%, Transform −6%,
   Echo −2% relative to native.
+
+- **Shaders pane** (`scripts/selfqa.sh shaders`, `selfqa/out/isf/shaders-pane/`): in the
+  real Preferences window with real clicks, against temporary folders. Import copies;
+  with the originals deleted the modules are all still listed; a non-ISF file is refused
+  with an alert; an import is compiled and shown ready; − removes an import and is
+  disabled on built-ins; Copy keeps a shared module; the window keeps its size.
+  The owner's 7 VDMX shaders (imported as copies): **6 of 7 compile**; *Broken
+  Tesseract* fails on `mat4 *= mat4` (no Metal overload in the prelude yet), and that
+  error is reported against the generated line, not the file's.
 
 ## Known limits (visible, not silent)
 

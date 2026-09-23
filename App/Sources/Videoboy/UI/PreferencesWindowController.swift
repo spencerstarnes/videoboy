@@ -34,6 +34,7 @@ final class PreferencesWindowController: NSWindowController {
         case midiMapping
         case emu
         case macros
+        case shaders
 
         var title: String {
             switch self {
@@ -45,6 +46,7 @@ final class PreferencesWindowController: NSWindowController {
             case .midiMapping: "MIDI Mapping"
             case .emu: "EMU"
             case .macros: "Macros & AI"
+            case .shaders: "Shaders"
             }
         }
 
@@ -58,6 +60,7 @@ final class PreferencesWindowController: NSWindowController {
             case .midiMapping: "pianokeys"
             case .emu: "gamecontroller"
             case .macros: "wand.and.stars"
+            case .shaders: "camera.filters"
             }
         }
 
@@ -73,6 +76,7 @@ final class PreferencesWindowController: NSWindowController {
             case .midiMapping: "Every control currently bound to a controller."
             case .emu: "Emulated machines, and the cores, ROMs and discs they need."
             case .macros: "Sequences of commands, and letting a model drive them."
+            case .shaders: "ISF shader modules. Importing keeps a copy inside Videoboy."
             }
         }
     }
@@ -86,6 +90,10 @@ final class PreferencesWindowController: NSWindowController {
     var reminderCountLabel: NSTextField?
     var destinationList: DestinationListView?
     var sourceList: SourceListView?
+    var shaderList: ISFModuleListView?
+    /// Builds the Shaders pane's list. Replaced by the self-QA so it scans and imports
+    /// into temporary folders, never the operator's own ISF library.
+    var makeShaderList: () -> ISFModuleListView = { ISFModuleListView() }
 
     /// Called when the picture fill changes, so open previews follow immediately
     /// rather than at the next relaunch.
@@ -249,6 +257,7 @@ final class PreferencesWindowController: NSWindowController {
         case .midiMapping: makeMIDIMappingPane()
         case .emu: makeEmuPane()
         case .macros: makeMacrosPane()
+        case .shaders: makeShadersPane()
         }
     }
 }

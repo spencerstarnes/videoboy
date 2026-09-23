@@ -73,14 +73,22 @@ public enum ISFLibrary {
         return RepoPaths.root.appendingPathComponent("App/Resources/ISF/Builtin", isDirectory: true)
     }
 
+    /// Videoboy's own copy of every imported module. Importing COPIES files here
+    /// (ISFImporter), so a module keeps working after the original is moved or deleted.
+    public static var userFolder: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Videoboy/ISF", isDirectory: true)
+    }
+
+    /// The cross-application folder VDMX and the ISF Editor install into. Read, never written.
+    public static var sharedFolder: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Graphics/ISF", isDirectory: true)
+    }
+
     /// The three standard locations, in precedence order.
     public static var standardFolders: [(URL, ISFLibraryEntry.Folder)] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return [
-            (builtinFolder, .builtin),
-            (home.appendingPathComponent("Library/Application Support/Videoboy/ISF", isDirectory: true), .user),
-            (home.appendingPathComponent("Library/Graphics/ISF", isDirectory: true), .shared)
-        ]
+        [(builtinFolder, .builtin), (userFolder, .user), (sharedFolder, .shared)]
     }
 
     /// Lists and parses every `.fs` file under the given folders (recursively).
@@ -138,7 +146,7 @@ public enum ISFLibrary {
     }
 
     /// Every `.fs` file below `folder`, in a stable order.
-    private static func fragmentFiles(in folder: URL) -> [URL] {
+    public static func fragmentFiles(in folder: URL) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(
             at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return [] }
         var files: [URL] = []
