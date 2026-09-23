@@ -130,7 +130,7 @@ private struct CompositeParams {
 }
 
 /// Runs the NTSC codec over its input.
-public final class CompositeCodecNode: Node {
+public final class CompositeCodecNode: Node, ParameterApplying {
 
     public let identifier: String
     public let kind: NodeKind = .effect

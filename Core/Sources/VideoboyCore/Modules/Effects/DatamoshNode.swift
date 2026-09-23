@@ -31,7 +31,7 @@ import Foundation
 import Metal
 
 /// Live datamosh on one point of the graph.
-public final class DatamoshNode: Node {
+public final class DatamoshNode: Node, ParameterApplying {
 
     public let identifier: String
     public let kind: NodeKind = .effect

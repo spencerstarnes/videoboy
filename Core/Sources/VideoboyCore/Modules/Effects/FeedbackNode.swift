@@ -26,7 +26,7 @@ private struct FeedbackParams {
 }
 
 /// Mixes a delayed, transformed copy of its own output back in.
-public final class FeedbackNode: Node {
+public final class FeedbackNode: Node, ParameterApplying {
 
     public let identifier: String
     public let kind: NodeKind = .effect

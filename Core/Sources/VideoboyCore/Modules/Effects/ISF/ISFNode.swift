@@ -49,7 +49,7 @@ public enum ISFNodeState: Equatable, Sendable {
 }
 
 /// An ISF file running as a graph node.
-public final class ISFNode: Node {
+public final class ISFNode: Node, ParameterApplying {
 
     public let identifier: String
     public var latencyInFrames: Int { 0 }
@@ -65,6 +65,15 @@ public final class ISFNode: Node {
 
     public private(set) var state: ISFNodeState = .compiling
     public private(set) var program: ISFProgram?
+    /// The file's header, known the moment it is loaded — before it compiles. Its
+    /// controls are what `parameters` declares, so the registry, the card and every
+    /// mapping can address them straight away rather than after a background compile.
+    public private(set) var declaredDocument: ISFDocument?
+    /// The controls the loaded file declares, one per scalar or per component.
+    public private(set) var controls: [ISFControl] = []
+    /// Every input's current value BY NAME: the truth that survives a recompile, a
+    /// hot reload, and values set before the program arrived.
+    private var valuesByName: [String: [Double]] = [:]
 
     /// 0 bypasses the node entirely; 1 is fully applied. Driven by 02A.
     public var wetDry = 1.0
@@ -139,11 +148,22 @@ public final class ISFNode: Node {
     /// Starts compiling `source` off the render path; the node passes through until
     /// the program arrives on the main thread.
     public func load(source: String, name: String, compiler: ISFCompiler = .shared) {
+        // The header first, here and now: it is a JSON parse, microseconds, and it is
+        // what tells the registry which controls exist. A file that does not parse
+        // fails visibly at once rather than after a compile that could never start.
+        do {
+            declare(try ISFDocument(source: source, name: name))
+        } catch {
+            markFailed("\(error)")
+            return
+        }
         guard let metal = context else {
             markFailed("no Metal device")
             return
         }
-        state = .compiling
+        // A reload keeps drawing the old program until the new one compiles, so
+        // saving a broken file never blanks a live chain.
+        if program == nil { state = .compiling }
         compiler.compile(source: source, name: name, device: metal.device) { [weak self] result in
             switch result {
             case .success(let program): self?.install(program)
@@ -159,11 +179,7 @@ public final class ISFNode: Node {
         let document = program.document
         let layout = program.shader.uniformLayout
 
-        var previous: [String: [Double]] = [:]
-        for (index, input) in valueInputs.enumerated() where index < values.count {
-            previous[input.name] = values[index]
-        }
-
+        declare(document)
         documentKind = document.kind
         valueInputs = document.valueInputs
         inputIndexByName = [:]
@@ -171,16 +187,8 @@ public final class ISFNode: Node {
         inputOffsets = []
         for (index, input) in valueInputs.enumerated() {
             inputIndexByName[input.name] = index
-            if let kept = previous[input.name], kept.count == input.componentCount {
-                values.append(kept)
-            } else {
-                values.append(input.defaultValue)
-            }
+            values.append(valuesByName[input.name] ?? input.defaultValue)
             inputOffsets.append(layout.field(named: input.name)?.offset ?? -1)
-            if let code = input.videoboyCode, ParamCode(rawValue: code) == nil {
-                Log.warn(.isf, "'\(document.name)' input '\(input.name)' declares "
-                    + "unknown code \(code); it is settable by name only")
-            }
         }
 
         builtInOffsets = BuiltInOffsets(
@@ -236,25 +244,43 @@ public final class ISFNode: Node {
 
     // MARK: - Parameters
 
-    /// 02A wet/dry, plus every scalar input whose file declares a known code.
+    /// 02A wet/dry, plus one parameter per control the file declares (`controls`).
     public var parameters: [Parameter] {
-        var result = [Parameter(code: .wetDry, range: 0...1, defaultValue: 1)]
-        for input in valueInputs where input.componentCount == 1 {
-            guard let raw = input.videoboyCode, let code = ParamCode(rawValue: raw) else { continue }
-            result.append(Parameter(
-                code: code, range: ISFNode.range(of: input), defaultValue: input.defaultValue[0]))
-        }
-        return result
+        [Parameter(code: .wetDry, range: 0...1, defaultValue: 1)]
+            + controls.map { Parameter(code: $0.code, range: $0.range, defaultValue: $0.defaultValue) }
     }
 
-    /// Pulls every declared code from the registry.
+    /// Pulls every control from the registry.
     public func applyParameters(from registry: ParamRegistry) {
         if let value = registry.value(slot: identifier, code: .wetDry) { wetDry = value }
-        for input in valueInputs where input.componentCount == 1 {
-            guard let raw = input.videoboyCode, let code = ParamCode(rawValue: raw),
-                  let value = registry.value(slot: identifier, code: code) else { continue }
-            setValue(value, forInput: input.name)
+        guard !controls.isEmpty else { return }
+        var pending: [String: [Double]] = [:]
+        for control in controls {
+            guard let value = registry.value(slot: identifier, code: control.code) else { continue }
+            var components = pending[control.inputName] ?? valuesByName[control.inputName] ?? []
+            guard control.component < components.count else { continue }
+            components[control.component] = control.snapped(value)
+            pending[control.inputName] = components
         }
+        for (name, components) in pending where components != valuesByName[name] {
+            setValue(components, forInput: name)
+        }
+    }
+
+    /// Records a newly parsed header: its controls, and a value for every input
+    /// (kept by name from before, or the file's DEFAULT).
+    private func declare(_ document: ISFDocument) {
+        declaredDocument = document
+        controls = ISFControl.controls(for: document)
+        var kept: [String: [Double]] = [:]
+        for input in document.valueInputs {
+            if let previous = valuesByName[input.name], previous.count == input.componentCount {
+                kept[input.name] = previous
+            } else {
+                kept[input.name] = input.defaultValue
+            }
+        }
+        valuesByName = kept
     }
 
     /// Sets a scalar input by name, clamped to the file's MIN/MAX.
@@ -265,27 +291,29 @@ public final class ISFNode: Node {
     /// Sets any input by name. Wrong component counts and unknown names are logged
     /// and ignored rather than trusted.
     public func setValue(_ components: [Double], forInput name: String) {
-        guard let index = inputIndexByName[name] else {
+        guard let input = declaredDocument?.valueInputs.first(where: { $0.name == name }) else {
             Log.warn(.isf, "\(identifier): no input named '\(name)'")
             return
         }
-        let input = valueInputs[index]
         guard components.count == input.componentCount else {
             Log.warn(.isf, "\(identifier): '\(name)' takes \(input.componentCount) values, got \(components.count)")
             return
         }
-        values[index] = components.enumerated().map { component, value in
+        let clamped = components.enumerated().map { component, value -> Double in
             guard value.isFinite else { return input.defaultValue[component] }
             var clamped = value
             if let minimum = input.minimum?[component] { clamped = max(clamped, minimum) }
             if let maximum = input.maximum?[component] { clamped = min(clamped, maximum) }
             return clamped
         }
+        valuesByName[name] = clamped
+        // Live only once the program is installed; before then the value waits by name.
+        if let index = inputIndexByName[name], index < values.count { values[index] = clamped }
     }
 
     /// The current value of an input, by name.
     public func value(ofInput name: String) -> [Double]? {
-        inputIndexByName[name].map { values[$0] }
+        valuesByName[name]
     }
 
     /// Whether every input sits at its DEFAULT.
@@ -412,12 +440,9 @@ public final class ISFNode: Node {
             }
         }
 
-        commandBuffer.addCompletedHandler { [identifier] buffer in
-            if let error = buffer.error {
-                Log.error(.isf, "\(identifier) GPU pass failed: \(error)")
-            }
-        }
-        commandBuffer.commit()
+        // Through `submit`, like every node: never waits, and the one-per-frame fence
+        // (and the VIDEOBOY_SYNC_EVERY_PASS debugging switch) covers ISF passes too.
+        metal.submit(commandBuffer, label: identifier)
         framesRendered += 1
 
         guard let wet = result else { return inputs.first }

@@ -280,16 +280,49 @@ final class ISFNodeTests: XCTestCase {
             { "NAME": "bogus", "TYPE": "float", "VIDEOBOY_CODE": "ZZZ" }
             """), metal: metal)
         let codes = node.parameters.map(\.code)
-        XCTAssertEqual(codes, [.wetDry, .echoDecay], "only declared, existing codes are exposed")
+        // EVERY input is addressable (ISF-PLAN M2): a declared code where it is a real
+        // one, `x:<name>` otherwise — including an input whose declared code is junk.
+        XCTAssertEqual(codes, [.wetDry, .echoDecay, .isolated(inputName: "local"), .isolated(inputName: "bogus")])
         XCTAssertEqual(node.parameters[1].range, 0...2)
 
         let registry = ParamRegistry()
         registry.register(slot: node.identifier, parameters: node.parameters)
         registry.setValue(1.5, slot: node.identifier, code: .echoDecay)
+        registry.setValue(0.3, slot: node.identifier, code: .isolated(inputName: "local"))
         registry.setValue(0.25, slot: node.identifier, code: .wetDry)
         node.applyParameters(from: registry)
         XCTAssertEqual(node.value(ofInput: "amount"), [1.5])
+        XCTAssertEqual(node.value(ofInput: "local"), [0.3], "an undeclared input is reachable through its x: code")
         XCTAssertEqual(node.wetDry, 0.25)
+    }
+
+    func testControlsAreKnownBeforeTheProgramCompiles() throws {
+        // A compiler that never answers: whatever the node knows, it knows from the header.
+        let node = ISFNode(identifier: "test.early", context: metal)
+        node.load(source: effect(
+            "void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * glow; }",
+            inputs: """
+            { "NAME": "glow", "TYPE": "float", "DEFAULT": 0.5 },
+            { "NAME": "tint", "TYPE": "color", "DEFAULT": [1.0, 0.5, 0.25, 1.0] },
+            { "NAME": "centre", "TYPE": "point2D", "MIN": [0, 0], "MAX": [1, 1] },
+            { "NAME": "mode", "TYPE": "long", "VALUES": [0, 1, 2], "LABELS": ["off", "soft", "hard"] },
+            { "NAME": "on", "TYPE": "bool" }
+            """), name: "Early", compiler: ISFCompiler())
+        XCTAssertEqual(node.controls.map(\.code.rawValue),
+                       ["x:glow", "x:tint.r", "x:tint.g", "x:tint.b", "x:tint.a", "x:centre.x", "x:centre.y", "x:mode", "x:on"],
+                       "one control per scalar and per component, declared at once")
+
+        // A value set before the program arrives is kept, by name, and survives install.
+        let registry = ParamRegistry()
+        registry.register(slot: node.identifier, parameters: node.parameters)
+        registry.setValue(0.9, slot: node.identifier, code: .isolated(inputName: "tint.g"))
+        registry.setValue(1.4, slot: node.identifier, code: .isolated(inputName: "mode"))
+        node.applyParameters(from: registry)
+        XCTAssertEqual(node.value(ofInput: "tint"), [1.0, 0.9, 0.25, 1.0])
+        XCTAssertEqual(node.value(ofInput: "mode"), [1], "a long snaps to its nearest VALUE")
+        let mode = try XCTUnwrap(node.controls.first { $0.inputName == "mode" })
+        XCTAssertEqual(mode.valueText(2), "hard")
+        XCTAssertEqual(node.controls.first { $0.inputName == "on" }?.valueText(0.7), "on")
     }
 
     func testValuesAreClampedAndNonsenseIsRefused() throws {

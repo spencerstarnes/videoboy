@@ -50,6 +50,15 @@ public final class RenderGraph {
         nodes[node.identifier] = node
     }
 
+    /// Takes a node out, with every edge into or out of it. What it fed is left with
+    /// an empty input until something is connected there (the chain rewire does that
+    /// in the same step, between ticks).
+    public func remove(_ identifier: String) {
+        guard nodes.removeValue(forKey: identifier) != nil else { return }
+        edges.removeAll { $0.from == identifier || $0.to == identifier }
+        Log.info(.graph, "removed node '\(identifier)'")
+    }
+
     /// Connects two nodes. Both ends must already exist.
     @discardableResult
     public func connect(from: String, to: String, inputIndex: Int = 0) -> Bool {

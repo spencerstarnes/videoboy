@@ -84,21 +84,19 @@ final class Engine {
     /// The emulated machine, as a source any channel can be pointed at.
     private(set) var emulator: EmulatedTitlerNode?
 
-    /// Bus effects, one chain per sub-mix (SPEC 2's `bus FX`). The composite codec is
-    /// the analog character; echo and feedback sit after it.
-    private(set) var compositeCodec: CompositeCodecNode!
-    /// Every channel's own copy of the effect chain, in signal order.
-    private(set) var channelEffects: [String: [Node]] = [:]
+    /// The modules an effect chain can hold: natives, the built-in ISF ports, and
+    /// every ISF file in the operator's folders (ISF-PLAN M7).
+    let catalog: ModuleCatalog
 
-    private(set) var transformOne: TransformNode!
-    private(set) var transformTwo: TransformNode!
-    private(set) var colour: ColourControlNode!
-    private(set) var echo: EchoNode!
-    private(set) var feedback: FeedbackNode!
-    private(set) var compositeCodecTwo: CompositeCodecNode!
-    private(set) var colourTwo: ColourControlNode!
-    private(set) var echoTwo: EchoNode!
-    private(set) var feedbackTwo: FeedbackNode!
+    /// Each sub-mix's effect chain, as data (ISF-PLAN M5). The FX panel's cards are
+    /// these entries; `rebuildChain` turns them into nodes and edges.
+    private(set) var chains: [ChainBus: EffectChain] = [.one: .standard, .two: .standard]
+
+    /// Every node the chains own, by slot (`fx.a.colour`, `fx.one.isf-bad-tv`…).
+    private var chainNodes: [String: Node] = [:]
+
+    /// Every channel's own copy of its chain, in signal order.
+    private(set) var channelEffects: [String: [Node]] = [:]
 
     /// Bus data effects: re-encode the mix so its bitstream can be damaged.
     /// One per bus plus one on PROGRAM, since the format leaving the mixer is its
@@ -107,13 +105,6 @@ final class Engine {
     private(set) var busCodecTwo: BusCodecNode!
     private(set) var busCodecProgram: BusCodecNode!
     private(set) var compositeProgram: CompositeCodecNode!
-    /// Freeze at the end of each bus chain: the whole-frame hold gesture.
-    private(set) var freezeOne: FreezeNode!
-    private(set) var freezeTwo: FreezeNode!
-    /// Live H.264 datamosh at the head of each bus chain, straight after the mix, so
-    /// a cut between the bus's two channels is what gets moshed.
-    private(set) var moshOne: DatamoshNode!
-    private(set) var moshTwo: DatamoshNode!
 
     /// Configured sources (SPEC 6, SPEC 10) — cameras, captured windows, IP cameras,
     /// DV decks — by `ConfiguredSource.id`. One `CaptureSourceNode` per entry, created
@@ -189,7 +180,10 @@ final class Engine {
     /// The mode the output display negotiated, logged and shown in the settings bar.
     private(set) var negotiatedOutputMode = "not yet negotiated"
 
-    init() {
+    /// - Parameter catalog: where modules come from. The self-QA passes one pointed at
+    ///   temporary ISF folders, so a check never touches the operator's library.
+    init(catalog: ModuleCatalog = ModuleCatalog()) {
+        self.catalog = catalog
         buildGraph()
         buildSchedule()
     }
@@ -217,88 +211,6 @@ final class Engine {
         graph.add(subMixTwo)
         graph.add(primary)
 
-        // PER-CHANNEL FX (SPEC 2's chFX). Each channel gets its own copy of every
-        // effect, between its source and the sub-mix, so an effect can be applied to
-        // A without also applying it to B.
-        //
-        // These do not replace the bus copies downstream of the mix — they sit
-        // alongside them, and that is what makes the card's A / B / BOTH selector
-        // honest: A and B address these, BOTH addresses the bus copy, which affects
-        // both channels because it runs after they are mixed. One pass instead of
-        // two, and genuinely "both" rather than "two things set to the same value".
-        //
-        // Affordable, and measured rather than assumed: one chain is 1.54 ms and all
-        // four channels come to 6.17 ms of a 33.4 ms frame (PerChannelCostBenchmark).
-        // Idle cost is lower still, because every one of these returns its input
-        // untouched while bypassed.
-        for (letter, subMix, index) in [
-            ("A", GraphTopology.subMixOne, 0), ("B", GraphTopology.subMixOne, 1),
-            ("C", GraphTopology.subMixTwo, 0), ("D", GraphTopology.subMixTwo, 1)
-        ] {
-            let source = Engine.slot(forChannel: letter)
-            var upstream = source
-
-            // Datamosh FIRST: it re-encodes whatever the source is, and every later
-            // effect then works on the moshed picture — the order a hardware chain
-            // with a codec in it would have.
-            let mosh = DatamoshNode(
-                identifier: Engine.channelSlot(letter, "mosh"), context: metal)
-            let transform = TransformNode(
-                identifier: Engine.channelSlot(letter, "transform"), context: metal)
-            let colour = ColourControlNode(
-                identifier: Engine.channelSlot(letter, "colour"), context: metal)
-            let composite = CompositeCodecNode(
-                identifier: Engine.channelSlot(letter, "composite"), context: metal)
-            let echo = EchoNode(
-                identifier: Engine.channelSlot(letter, "echo"), context: metal)
-            let feedbackNode = FeedbackNode(
-                identifier: Engine.channelSlot(letter, "feedback"), context: metal)
-            let freezeNode = FreezeNode(
-                identifier: Engine.channelSlot(letter, "freeze"), context: metal)
-
-            for node in [mosh, transform, colour, composite, echo, feedbackNode, freezeNode] as [Node] {
-                graph.add(node)
-                graph.connect(from: upstream, to: node.identifier, inputIndex: 0)
-                upstream = node.identifier
-            }
-            channelEffects[letter] = [mosh, transform, colour, composite, echo, feedbackNode, freezeNode]
-            graph.connect(from: upstream, to: subMix, inputIndex: index)
-        }
-        // Bus FX on ONE, in order: composite codec, then echo, then feedback. The
-        // codec runs first on purpose — the analog character should be applied to the
-        // picture, and the trails and loop then act on the already-degraded signal,
-        // which is the order a real chain would have.
-        // The grade goes FIRST in the chain, before the composite codec. Matching
-        // four sources to each other is something you do to a clean picture; doing it
-        // after the NTSC path means grading artefacts as well as the image, and the
-        // corrections stop behaving the way the controls say they do.
-        transformOne = TransformNode(identifier: Engine.transformSlot, context: metal)
-        colour = ColourControlNode(identifier: Engine.colourSlot, context: metal)
-        compositeCodec = CompositeCodecNode(identifier: Engine.compositeSlot, context: metal)
-        echo = EchoNode(identifier: Engine.echoSlot, context: metal)
-        feedback = FeedbackNode(identifier: Engine.feedbackSlot, context: metal)
-        graph.add(transformOne)
-        graph.add(colour)
-        graph.add(compositeCodec)
-        graph.add(echo)
-        graph.add(feedback)
-
-        // Datamosh at the head of the bus chain: cutting A↔B while it is held moshes
-        // one channel's motion onto the other's picture.
-        moshOne = DatamoshNode(identifier: Engine.moshOneSlot, context: metal)
-        graph.add(moshOne)
-        graph.connect(from: GraphTopology.subMixOne, to: Engine.moshOneSlot, inputIndex: 0)
-        graph.connect(from: Engine.moshOneSlot, to: Engine.transformSlot, inputIndex: 0)
-        graph.connect(from: Engine.transformSlot, to: Engine.colourSlot, inputIndex: 0)
-        graph.connect(from: Engine.colourSlot, to: Engine.compositeSlot, inputIndex: 0)
-        graph.connect(from: Engine.compositeSlot, to: Engine.echoSlot, inputIndex: 0)
-        graph.connect(from: Engine.echoSlot, to: Engine.feedbackSlot, inputIndex: 0)
-
-        // Freeze sits at the end of the picture chain, after feedback: holding the
-        // frame is something done TO the bus rather than another layer inside it.
-        freezeOne = FreezeNode(identifier: Engine.freezeOneSlot, context: metal)
-        graph.add(freezeOne)
-        graph.connect(from: Engine.feedbackSlot, to: Engine.freezeOneSlot, inputIndex: 0)
         // The bus data stage sits at the END of each chain, just before the mix:
         // it re-encodes whatever the chain produced, so it damages the finished bus
         // rather than something half-processed.
@@ -308,36 +220,7 @@ final class Engine {
         graph.add(busCodecOne)
         graph.add(busCodecTwo)
         graph.add(busCodecProgram)
-
-        graph.connect(from: Engine.freezeOneSlot, to: Engine.busCodecOneSlot, inputIndex: 0)
         graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
-
-        // The same chain on TWO. Separate instances rather than a shared one: the two
-        // buses must be able to carry different looks at once, which is the whole
-        // point of having two of them.
-        transformTwo = TransformNode(identifier: Engine.transformTwoSlot, context: metal)
-        colourTwo = ColourControlNode(identifier: Engine.colourTwoSlot, context: metal)
-        compositeCodecTwo = CompositeCodecNode(identifier: Engine.compositeTwoSlot, context: metal)
-        echoTwo = EchoNode(identifier: Engine.echoTwoSlot, context: metal)
-        feedbackTwo = FeedbackNode(identifier: Engine.feedbackTwoSlot, context: metal)
-        graph.add(transformTwo)
-        graph.add(colourTwo)
-        graph.add(compositeCodecTwo)
-        graph.add(echoTwo)
-        graph.add(feedbackTwo)
-
-        moshTwo = DatamoshNode(identifier: Engine.moshTwoSlot, context: metal)
-        graph.add(moshTwo)
-        graph.connect(from: GraphTopology.subMixTwo, to: Engine.moshTwoSlot, inputIndex: 0)
-        graph.connect(from: Engine.moshTwoSlot, to: Engine.transformTwoSlot, inputIndex: 0)
-        graph.connect(from: Engine.transformTwoSlot, to: Engine.colourTwoSlot, inputIndex: 0)
-        graph.connect(from: Engine.colourTwoSlot, to: Engine.compositeTwoSlot, inputIndex: 0)
-        graph.connect(from: Engine.compositeTwoSlot, to: Engine.echoTwoSlot, inputIndex: 0)
-        graph.connect(from: Engine.echoTwoSlot, to: Engine.feedbackTwoSlot, inputIndex: 0)
-        freezeTwo = FreezeNode(identifier: Engine.freezeTwoSlot, context: metal)
-        graph.add(freezeTwo)
-        graph.connect(from: Engine.feedbackTwoSlot, to: Engine.freezeTwoSlot, inputIndex: 0)
-        graph.connect(from: Engine.freezeTwoSlot, to: Engine.busCodecTwoSlot, inputIndex: 0)
         graph.connect(from: Engine.busCodecTwoSlot, to: GraphTopology.primary, inputIndex: 1)
 
         // PROGRAM's own data stage, after the ONE/TWO mix. It was created and added
@@ -400,6 +283,11 @@ final class Engine {
 
         graph.registerParameters(into: registry)
 
+        // THE EFFECT CHAINS, from data (ISF-PLAN M5). Each card is a node per channel
+        // (upstream of the mix, SPEC 2's chFX) and one on the bus (after it), wired in
+        // the chain's order. See `rebuildChain`.
+        for bus in ChainBus.allCases { rebuildChain(bus) }
+
         // The bus effects start bypassed so the app opens showing what was loaded
         // rather than a processed version of it. Their switches in the FX panel are
         // what turns them on, which keeps "what you see" traceable to a deliberate act.
@@ -414,7 +302,9 @@ final class Engine {
         // switch read one thing and the engine did another — which is the NTSC boot
         // bug, and it is why `liveAtLaunchSlots` is spelled out beside the list it
         // is subtracted from rather than left implicit somewhere else.
-        for slot in Engine.busEffectSlots where !Engine.liveAtLaunchSlots.contains(slot) {
+        // (Chain nodes are bypassed as they are made, in `makeChainNode`, with the
+        // same `liveAtLaunchSlots` exception.)
+        for slot in [Engine.compositeProgramSlot, Engine.busCodecProgramSlot] {
             registry.setValue(0, slot: slot, code: .wetDry)
         }
 
@@ -424,11 +314,133 @@ final class Engine {
         // zero so there is nothing to see until someone moves a fader.
         for letter in ["A", "B", "C", "D"] {
             registry.setValue(0, slot: Engine.slot(forChannel: letter), code: .wetDry)
-            for node in channelEffects[letter] ?? [] {
-                registry.setValue(0, slot: node.identifier, code: .wetDry)
-            }
         }
         Log.info(.graph, "graph built: \(graph.nodeCount) nodes, max latency \(graph.maximumLatencyInFrames) frames")
+    }
+
+    // MARK: - Effect chains as data (ISF-PLAN M5)
+
+    /// Rebuilds one sub-mix's chain in the graph from `chains[bus]`.
+    ///
+    /// Makes the nodes of cards that are new, removes the nodes of cards that are
+    /// gone, and rewires every copy in order:
+    ///
+    ///     each channel:  its source → card, card, … → the sub-mix (its input)
+    ///     the bus:       the sub-mix → card, card, … → the bus codec
+    ///
+    /// Main thread, between ticks — the same place every other graph edit happens.
+    /// Nodes that stay are kept as they are, so a reorder costs no compiles, drops no
+    /// trails and resets no values. A new ISF node compiles in the background and
+    /// passes its picture through until it is ready.
+    func rebuildChain(_ bus: ChainBus) {
+        guard let chain = chains[bus] else { return }
+
+        // Nodes of cards that are no longer in the chain.
+        let wanted = Set(chain.entries.flatMap { EffectChain.slots(instanceID: $0.instanceID, bus: bus) })
+        let lanes = bus.channels.map { $0.lowercased() } + [bus.lane]
+        for slot in chainNodes.keys where !wanted.contains(slot) {
+            let lane = slot.split(separator: ".").dropFirst().first.map(String.init) ?? ""
+            guard lanes.contains(lane) else { continue }
+            graph.remove(slot)
+            chainNodes.removeValue(forKey: slot)
+        }
+
+        // Nodes of cards that are new.
+        for entry in chain.entries {
+            for slot in EffectChain.slots(instanceID: entry.instanceID, bus: bus) where chainNodes[slot] == nil {
+                makeChainNode(slot: slot, moduleID: entry.moduleID)
+            }
+        }
+
+        // Every channel's copy, from whatever the channel is showing into the mix.
+        let subMix = bus == .one ? GraphTopology.subMixOne : GraphTopology.subMixTwo
+        for (index, letter) in bus.channels.enumerated() {
+            var previous = Engine.upstreamSlot(for: channelSourceKinds[letter] ?? .file, channel: letter)
+            var nodes: [Node] = []
+            for entry in chain.entries {
+                let slot = EffectChain.slot(instanceID: entry.instanceID, lane: letter)
+                graph.connect(from: previous, to: slot, inputIndex: 0)
+                previous = slot
+                if let node = chainNodes[slot] { nodes.append(node) }
+            }
+            graph.connect(from: previous, to: subMix, inputIndex: index)
+            channelEffects[letter] = nodes
+        }
+
+        // The bus copy, from the mix into the bus's data stage.
+        var previous = subMix
+        for entry in chain.entries {
+            let slot = EffectChain.slot(instanceID: entry.instanceID, lane: bus.lane)
+            graph.connect(from: previous, to: slot, inputIndex: 0)
+            previous = slot
+        }
+        graph.connect(from: previous, to: bus == .one ? Engine.busCodecOneSlot : Engine.busCodecTwoSlot, inputIndex: 0)
+
+        Log.info(.graph, "chain \(bus.rawValue.uppercased()): "
+            + chain.entries.map(\.instanceID).joined(separator: " → "))
+    }
+
+    /// Makes one copy of a module under a slot, registers its parameters, and starts
+    /// it bypassed — every effect is something you switch on, except the grade on the
+    /// bus (`liveAtLaunchSlots`), which costs nothing at its neutral settings.
+    private func makeChainNode(slot: String, moduleID: String) {
+        let node: Node
+        if let module = catalog.module(moduleID), module.isAvailable {
+            node = module.makeNode(identifier: slot, context: metal)
+        } else {
+            let reason = catalog.module(moduleID)?.problem ?? "module '\(moduleID)' is not installed"
+            Log.warn(.graph, "\(slot): \(reason); passing the picture through")
+            node = MissingModuleNode(identifier: slot, reason: reason)
+        }
+        graph.add(node)
+        chainNodes[slot] = node
+        registry.register(slot: slot, parameters: node.parameters)
+        if !Engine.liveAtLaunchSlots.contains(slot) {
+            registry.setValue(0, slot: slot, code: .wetDry)
+        }
+    }
+
+    /// The node in a chain slot, if there is one.
+    func chainNode(_ slot: String) -> Node? { chainNodes[slot] }
+
+    /// Adds a module to a chain as its bottom card (applied first), bypassed.
+    @discardableResult
+    func addModule(_ moduleID: String, to bus: ChainBus) -> ChainEntry? {
+        guard catalog.module(moduleID)?.isAvailable == true else {
+            Log.warn(.graph, "cannot add '\(moduleID)': not available")
+            return nil
+        }
+        // A built-in coming back gets its old slot, and with it any mapping to it.
+        let preferred = EffectChain.standard.entries.first { $0.moduleID == moduleID }?.instanceID
+        let entry = chains[bus, default: .standard].add(moduleID: moduleID, preferredID: preferred)
+        rebuildChain(bus)
+        Log.info(.graph, "added \(moduleID) to \(bus.rawValue.uppercased()) as \(entry.instanceID)")
+        return entry
+    }
+
+    /// Takes a card out of a chain, with all its copies.
+    func removeModule(_ instanceID: String, from bus: ChainBus) {
+        guard chains[bus]?.remove(instanceID) == true else { return }
+        rebuildChain(bus)
+    }
+
+    /// Reorders a chain to the panel's new top-to-bottom order.
+    func reorderChain(_ bus: ChainBus, displayOrder ids: [String]) {
+        chains[bus]?.reorder(displayOrder: ids)
+        rebuildChain(bus)
+    }
+
+    /// Points a card at one channel's copy, or the bus copy.
+    func setTarget(_ target: Int, of instanceID: String, on bus: ChainBus) {
+        chains[bus]?.setTarget(target, of: instanceID)
+    }
+
+    /// Replaces both chains (a template load). Values are applied separately, by slot.
+    func loadChains(_ newChains: [ChainBus: EffectChain]) {
+        for (bus, chain) in newChains {
+            chains[bus] = chain
+            rebuildChain(bus)
+        }
     }
 
     /// Bus effects that are live when the app opens, rather than bypassed.
@@ -744,35 +756,12 @@ final class Engine {
         subMixOne.applyParameters(from: registry)
         subMixTwo.applyParameters(from: registry)
         primary.applyParameters(from: registry)
-        compositeCodec.applyParameters(from: registry)
-        for nodes in channelEffects.values {
-            for node in nodes {
-                switch node {
-                case let n as TransformNode: n.applyParameters(from: registry)
-                case let n as ColourControlNode: n.applyParameters(from: registry)
-                case let n as CompositeCodecNode: n.applyParameters(from: registry)
-                case let n as EchoNode: n.applyParameters(from: registry)
-                case let n as FeedbackNode: n.applyParameters(from: registry)
-                case let n as FreezeNode: n.applyParameters(from: registry)
-                case let n as DatamoshNode: n.applyParameters(from: registry)
-                default: break
-                }
-            }
+        // Every chain node, whatever module it is: they share one protocol, so a
+        // module added at runtime cannot be the one left out of this list.
+        for node in chainNodes.values {
+            (node as? ParameterApplying)?.applyParameters(from: registry)
         }
-        transformOne.applyParameters(from: registry)
-        transformTwo.applyParameters(from: registry)
-        colour.applyParameters(from: registry)
-        echo.applyParameters(from: registry)
-        feedback.applyParameters(from: registry)
         compositeProgram.applyParameters(from: registry)
-        freezeOne.applyParameters(from: registry)
-        freezeTwo.applyParameters(from: registry)
-        moshOne.applyParameters(from: registry)
-        moshTwo.applyParameters(from: registry)
-        compositeCodecTwo.applyParameters(from: registry)
-        colourTwo.applyParameters(from: registry)
-        echoTwo.applyParameters(from: registry)
-        feedbackTwo.applyParameters(from: registry)
         for generator in generators.values { generator.applyParameters(from: registry) }
         busCodecOne.applyParameters(from: registry)
         busCodecTwo.applyParameters(from: registry)
@@ -1191,8 +1180,14 @@ final class Engine {
     /// one-frame delay is what makes the send expressible, and it is the same delay
     /// the internal ring already uses.
     private func applyFeedbackSends() {
-        feedback.externalHistory = feedbackSends["ONE"].flatMap { currentTextures[$0] }
-        feedbackTwo.externalHistory = feedbackSends["TWO"].flatMap { currentTextures[$0] }
+        for (bus, name) in [(ChainBus.one, "ONE"), (ChainBus.two, "TWO")] {
+            // The bus's first Feedback card, if it still has one: a card can be
+            // removed now, and a send into a loop that is not there goes nowhere.
+            guard let entry = chains[bus]?.entries.first(where: { $0.moduleID == ModuleCatalog.ID.feedback }),
+                  let loop = chainNodes[EffectChain.slot(instanceID: entry.instanceID, lane: bus.lane)] as? FeedbackNode
+            else { continue }
+            loop.externalHistory = feedbackSends[name].flatMap { currentTextures[$0] }
+        }
     }
 
     // MARK: - Output emulation (SPEC 9, 13)

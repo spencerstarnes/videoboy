@@ -84,8 +84,12 @@ public struct TemplateLayout: Codable, Equatable {
 /// A complete saved setup.
 public struct TemplateDocument: Codable, Equatable {
 
-    /// Bumped when the format changes incompatibly. Loading tolerates older values.
-    public static let currentVersion = 1
+    /// Bumped when the format changes. Loading tolerates older values.
+    ///
+    /// 2 (2026-09-23): the effect chains (`chains`), now that a chain is data rather
+    /// than hard-wired. A version-1 template has none and loads with the standard
+    /// chain, its values applied by slot and code as before (`chains(orStandard:)`).
+    public static let currentVersion = 2
 
     public var version: Int
     /// Free-text name shown in the window subtitle.
@@ -95,6 +99,9 @@ public struct TemplateDocument: Codable, Equatable {
     public var mappings: [TemplateMapping]
     public var clock: TemplateClock
     public var layout: TemplateLayout
+    /// Each sub-mix's effect chain, by bus (`one`, `two`). Nil in a template saved
+    /// before chains were data.
+    public var chains: [String: EffectChain]?
 
     public init(
         version: Int = TemplateDocument.currentVersion,
@@ -103,7 +110,8 @@ public struct TemplateDocument: Codable, Equatable {
         edges: [GraphEdge] = [],
         mappings: [TemplateMapping] = [],
         clock: TemplateClock = TemplateClock(),
-        layout: TemplateLayout = TemplateLayout()
+        layout: TemplateLayout = TemplateLayout(),
+        chains: [String: EffectChain]? = nil
     ) {
         self.version = version
         self.name = name
@@ -112,12 +120,20 @@ public struct TemplateDocument: Codable, Equatable {
         self.mappings = mappings
         self.clock = clock
         self.layout = layout
+        self.chains = chains
+    }
+
+    /// The chain a bus should run: the saved one, or the standard chain for a
+    /// template from before chains were saved (its values still apply by slot, since
+    /// the standard chain uses the slots the hard-wired one did).
+    public func chain(for bus: ChainBus) -> EffectChain {
+        chains?[bus.rawValue] ?? .standard
     }
 
     // Every field has a default, so a hand-edited template missing a section still
     // loads. This is the mechanism behind SPEC 16's "unknown keys are non-fatal".
     private enum CodingKeys: String, CodingKey {
-        case version, name, nodes, edges, mappings, clock, layout
+        case version, name, nodes, edges, mappings, clock, layout, chains
     }
 
     public init(from decoder: Decoder) throws {
@@ -129,6 +145,7 @@ public struct TemplateDocument: Codable, Equatable {
         mappings = try container.decodeIfPresent([TemplateMapping].self, forKey: .mappings) ?? []
         clock = try container.decodeIfPresent(TemplateClock.self, forKey: .clock) ?? TemplateClock()
         layout = try container.decodeIfPresent(TemplateLayout.self, forKey: .layout) ?? TemplateLayout()
+        chains = try container.decodeIfPresent([String: EffectChain].self, forKey: .chains)
 
         if version > TemplateDocument.currentVersion {
             Log.warn(.template, "template is version \(version) but this build understands \(TemplateDocument.currentVersion); loading anyway")
@@ -189,7 +206,8 @@ public struct TemplateDocument: Codable, Equatable {
 
     /// Builds a template from the current graph and registry.
     public static func capture(
-        name: String, graph: RenderGraph, registry: ParamRegistry, clock: TemplateClock
+        name: String, graph: RenderGraph, registry: ParamRegistry, clock: TemplateClock,
+        chains: [ChainBus: EffectChain]? = nil
     ) -> TemplateDocument {
         let nodes = graph.nodes.values.map { node -> TemplateNode in
             var values: [String: Double] = [:]
@@ -216,7 +234,8 @@ public struct TemplateDocument: Codable, Equatable {
             nodes: nodes,
             edges: graph.edges.sorted { ($0.to, $0.inputIndex) < ($1.to, $1.inputIndex) },
             mappings: mappings,
-            clock: clock
+            clock: clock,
+            chains: chains.map { Dictionary(uniqueKeysWithValues: $0.map { ($0.key.rawValue, $0.value) }) }
         )
     }
 

@@ -92,3 +92,13 @@ public extension Node {
     /// Most nodes are immediate.
     var latencyInFrames: Int { 0 }
 }
+
+/// A node that reads its settings from the registry each frame.
+///
+/// One protocol rather than a list of concrete types in the engine: a node left out
+/// of such a list silently keeps its defaults and ignores every fader, which looks
+/// like the effect "not working" and is hard to spot. Anything that conforms is
+/// reached; the chain can hold any module without the engine knowing its type.
+public protocol ParameterApplying: AnyObject {
+    func applyParameters(from registry: ParamRegistry)
+}

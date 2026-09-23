@@ -20,7 +20,7 @@ import Foundation
 import Metal
 
 /// Holds the current frame while `hold` is up.
-public final class FreezeNode: Node {
+public final class FreezeNode: Node, ParameterApplying {
 
     public let identifier: String
     public let kind: NodeKind = .effect
