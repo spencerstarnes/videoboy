@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-23T03:35:52Z
+when:     2026-09-23T17:40:48Z
 core:     0.3.0
 
 notes:
@@ -12,9 +12,9 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
   adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 11.12 ms, p95 12.33 ms, worst 12.91 ms, budget 33.37 ms
+  frame time with everything on: mean 11.49 ms, p95 12.90 ms, worst 13.11 ms, budget 33.37 ms
 
-assertions (99/99 passed):
+assertions (100/100 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
   PASS  wide is not blank — luminance variance 806.2
   PASS  dimensions — expected 1000x760, got 1000x760
@@ -31,14 +31,15 @@ assertions (99/99 passed):
   PASS  assigning a driver marks exactly the parameters it drives — 2 faders marked, expected 2
   PASS  a driven fader's bar follows the value driving it — 8 distinct bar positions over eight LFO steps
   PASS  removing the driver clears the mark — 0 faders still marked
-  PASS  preferences save has content — luminance variance 166.9
-  PASS  preferences defaults has content — luminance variance 323.2
-  PASS  preferences outputs has content — luminance variance 256.1
-  PASS  preferences inputs has content — luminance variance 176.7
-  PASS  preferences hotKeys has content — luminance variance 172.5
-  PASS  preferences midiMapping has content — luminance variance 146.4
-  PASS  preferences emu has content — luminance variance 331.9
-  PASS  preferences macros has content — luminance variance 263.3
+  PASS  preferences save has content — luminance variance 171.4
+  PASS  preferences defaults has content — luminance variance 327.5
+  PASS  preferences outputs has content — luminance variance 260.3
+  PASS  preferences inputs has content — luminance variance 181.1
+  PASS  preferences hotKeys has content — luminance variance 177.0
+  PASS  preferences midiMapping has content — luminance variance 150.9
+  PASS  preferences emu has content — luminance variance 336.2
+  PASS  preferences macros has content — luminance variance 267.6
+  PASS  preferences shaders has content — luminance variance 243.4
   PASS  double-click fills a pair then comes back round — channels offered: A, B, A
   PASS  switching pair starts at that pair's first channel — offered C after switching to C/D
   PASS  library thumbnails decode real frames — 12 of 24 thumbnails have a picture
@@ -79,8 +80,8 @@ assertions (99/99 passed):
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
   PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 12.91 ms against a 33.37 ms budget (mean 11.12, p95 12.33)
-  PASS  frame time is even, not just fast on average — worst is 1.2x the mean
+  PASS  no frame misses the budget with every effect running — worst frame 13.11 ms against a 33.37 ms budget (mean 11.49, p95 12.90)
+  PASS  frame time is even, not just fast on average — worst is 1.1x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there
   PASS  a crossfader accepts sweep marks — 0.19...0.81
