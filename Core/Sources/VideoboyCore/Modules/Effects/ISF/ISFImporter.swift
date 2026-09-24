@@ -179,24 +179,32 @@ public enum ISFImporter {
 
         // Images, at the same relative path so the header's PATH still resolves.
         let sourceFolder = source.deletingLastPathComponent()
-        for path in document.importedImagePaths {
-            let from = sourceFolder.appendingPathComponent(path).standardizedFileURL
-            let to = destination.appendingPathComponent(path).standardizedFileURL
-            guard isInside(to, folder: destination) else {
-                notes.append("image '\(path)' points outside the folder and was not copied")
-                continue
-            }
-            if fileManager.fileExists(atPath: to.path) { continue }
-            guard fileManager.fileExists(atPath: from.path) else {
-                notes.append("image '\(path)' was not found beside the file")
-                continue
-            }
-            do {
-                try fileManager.createDirectory(
-                    at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try fileManager.copyItem(at: from, to: to)
-            } catch {
-                notes.append("image '\(path)' could not be copied: \(error.localizedDescription)")
+        for (imageName, paths) in document.importedImageFiles {
+            for path in paths {
+                let byPath = sourceFolder.appendingPathComponent(path).standardizedFileURL
+                // PATH, or a picture named after the import (isf.video editor exports),
+                // copied under the name it was found by so the same lookup finds it again.
+                let found = ISFProgram.importedImageURL(name: imageName, path: path, in: sourceFolder)?
+                    .standardizedFileURL
+                let from = found ?? byPath
+                let copiedPath = (found == nil || found == byPath) ? path : from.lastPathComponent
+                let to = destination.appendingPathComponent(copiedPath).standardizedFileURL
+                guard isInside(to, folder: destination) else {
+                    notes.append("image '\(path)' points outside the folder and was not copied")
+                    continue
+                }
+                if fileManager.fileExists(atPath: to.path) { continue }
+                guard fileManager.fileExists(atPath: from.path) else {
+                    notes.append("image '\(path)' was not found beside the file")
+                    continue
+                }
+                do {
+                    try fileManager.createDirectory(
+                        at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try fileManager.copyItem(at: from, to: to)
+                } catch {
+                    notes.append("image '\(path)' could not be copied: \(error.localizedDescription)")
+                }
             }
         }
         for note in notes { Log.warn(.isf, "'\(name)': \(note)") }

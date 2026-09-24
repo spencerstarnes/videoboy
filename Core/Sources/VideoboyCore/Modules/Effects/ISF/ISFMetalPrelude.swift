@@ -169,9 +169,13 @@ enum ISFMetalPrelude {
     /// sample takes level 0 explicitly, which is what GLSL's texture2D does in a
     /// vertex shader.
     static var vertexMembers: String {
-        members.replacingOccurrences(
-            of: "image.sample(isf_sampler, float2(normalised.x, 1.0 - normalised.y))",
-            with: "image.sample(isf_sampler, float2(normalised.x, 1.0 - normalised.y), level(0.0))")
+        members
+            .replacingOccurrences(
+                of: "image.sample(isf_sampler, float2(normalised.x, 1.0 - normalised.y))",
+                with: "image.sample(isf_sampler, float2(normalised.x, 1.0 - normalised.y), level(0.0))")
+            .replacingOccurrences(
+                of: "cube.sample(isf_sampler, direction)",
+                with: "cube.sample(isf_sampler, direction, level(0.0))")
     }
 
     static let members = """
@@ -271,6 +275,19 @@ enum ISFMetalPrelude {
         }
         vec4 texture2DRect(texture2d<float> image, vec2 pixel) {
             return IMG_PIXEL(image, pixel);
+        }
+        // Cube maps (IMPORTED "TYPE": "cube"), sampled by direction.
+        vec4 textureCube(texturecube<float> cube, vec3 direction) {
+            return cube.sample(isf_sampler, direction);
+        }
+        vec4 textureCube(texturecube<float> cube, vec3 direction, float bias) {
+            return cube.sample(isf_sampler, direction);
+        }
+        vec4 texture_(texturecube<float> cube, vec3 direction) {
+            return cube.sample(isf_sampler, direction);
+        }
+        vec2 IMG_SIZE(texturecube<float> cube) {
+            return vec2(float(cube.get_width()), float(cube.get_width()));
         }
     """
 }

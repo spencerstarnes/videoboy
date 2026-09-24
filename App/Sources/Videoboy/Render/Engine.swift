@@ -505,7 +505,8 @@ final class Engine {
                               source.fragment != isf.sourceText || source.vertex != isf.vertexSourceText
                         else { continue }
                         isf.load(source: source.fragment, vertexSource: source.vertex,
-                                 name: url.deletingPathExtension().lastPathComponent)
+                                 name: url.deletingPathExtension().lastPathComponent,
+                                 resourceDirectory: url.deletingLastPathComponent())
                         registry.register(slot: slot, parameters: isf.parameters)
                         reloaded += 1
                     case is MissingModuleNode where module?.isAvailable == true:
@@ -526,7 +527,8 @@ final class Engine {
                   source.fragment != node.sourceText || source.vertex != node.vertexSourceText
             else { continue }
             node.load(source: source.fragment, vertexSource: source.vertex,
-                      name: url.deletingPathExtension().lastPathComponent)
+                      name: url.deletingPathExtension().lastPathComponent,
+                      resourceDirectory: url.deletingLastPathComponent())
             registry.register(slot: node.identifier, parameters: node.parameters)
             reloaded += 1
         }

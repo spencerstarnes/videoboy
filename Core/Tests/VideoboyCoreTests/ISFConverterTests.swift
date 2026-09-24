@@ -302,11 +302,7 @@ final class ISFConverterTests: XCTestCase {
             guard case .unsupported(let what) = $0 as? ISFGenerateError else { return XCTFail("\($0)") }
             XCTAssertTrue(what.contains("vertex shader"))
         }
-        let imported = #"/*{ "IMPORTED": { "noise": { "PATH": "noise.png" } } }*/ void main() {}"#
-        XCTAssertThrowsError(try ISFMetalGenerator.generate(ISFDocument(source: imported, name: "i"))) {
-            guard case .unsupported(let what) = $0 as? ISFGenerateError else { return XCTFail("\($0)") }
-            XCTAssertTrue(what.contains("IMPORTED"))
-        }
+
     }
 
     func testRewritingNeverMovesALine() throws {

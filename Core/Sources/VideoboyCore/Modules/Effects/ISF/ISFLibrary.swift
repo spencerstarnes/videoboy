@@ -209,7 +209,7 @@ public extension ISFNode {
         let url = ISFLibrary.builtinFolder.appendingPathComponent("\(name).fs")
         do {
             let source = try String(contentsOf: url, encoding: .utf8)
-            node.load(source: source, name: name, compiler: compiler)
+            node.load(source: source, name: name, resourceDirectory: ISFLibrary.builtinFolder, compiler: compiler)
         } catch {
             Log.error(.isf, "built-in module '\(name)' is missing from \(url.path)")
             node.markFailed("built-in module '\(name)' is missing")

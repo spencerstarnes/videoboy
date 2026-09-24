@@ -213,6 +213,67 @@ final class ISFCompatibilityTests: XCTestCase {
         XCTAssertEqual(Double(pixel.b), 0.5 * 255, accuracy: 2, "a ranged point is not scaled")
     }
 
+    func testAnImportedImageIsLoadedFromBesideTheFile() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("isf-imported-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try ImageBuffer(width: 8, height: 8, r: 10, g: 220, b: 30).writePNG(to: folder.appendingPathComponent("tex.png"))
+
+        let source = """
+            /*{ "INPUTS": [], "IMPORTED": { "tex": { "PATH": "tex.png" } } }*/
+            void main() { gl_FragColor = IMG_NORM_PIXEL(tex, vec2(0.5)) + vec4(0.0, 0.0, IMG_SIZE(tex).x / 255.0, 0.0); }
+            """
+        let program = try ISFProgram.compile(
+            source: source, name: "imported", device: metal.device, resourceDirectory: folder)
+        let node = ISFNode(identifier: "test.imported", context: metal)
+        node.install(program)
+        guard let output = node.render(inputs: [], context: ISFTestSupport.context()),
+              let picture = renderer.readback(output) else { throw XCTSkip("render failed") }
+        let pixel = picture.pixel(x: picture.width / 2, y: picture.height / 2)
+        XCTAssertEqual(pixel.g, 220, "the picture beside the file reached the shader")
+        XCTAssertEqual(Double(pixel.b), 30 + 8, accuracy: 2, "and IMG_SIZE knows its size")
+
+        // isf.video exports name the picture after the input while PATH keeps a
+        // hashed name: found by name.
+        let hashed = source.replacingOccurrences(of: "tex.png", with: "79520a3d.jpg")
+        XCTAssertNoThrow(try ISFProgram.compile(
+            source: hashed, name: "by-name", device: metal.device, resourceDirectory: folder))
+
+        let empty = folder.appendingPathComponent("empty")
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try ISFProgram.compile(
+            source: source, name: "missing", device: metal.device, resourceDirectory: empty)) {
+            XCTAssertTrue("\($0)".contains("tex.png"), "a missing image is named: \($0)")
+        }
+    }
+
+    func testAnImportedCubeMapSamplesByDirection() throws {
+        // Twisted-carbon's shape: six hashed PATHs, one picture shipped, named after
+        // the input. Every face shows it.
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("isf-cube-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try ImageBuffer(width: 16, height: 16, r: 40, g: 80, b: 240).writePNG(to: folder.appendingPathComponent("SKY.png"))
+        let source = """
+            /*{ "INPUTS": [], "IMPORTED": { "SKY": { "TYPE": "cube",
+                "PATH": ["h.jpg", "h_1.jpg", "h_2.jpg", "h_3.jpg", "h_4.png", "h_5.png"] } } }*/
+            void main() {
+                vec4 a = textureCube(SKY, vec3(1.0, 0.2, 0.1));
+                vec4 b = textureCube(SKY, vec3(0.0, -1.0, 0.3));
+                gl_FragColor = vec4(a.b, b.b, IMG_SIZE(SKY).x / 255.0, 1.0);
+            }
+            """
+        let program = try ISFProgram.compile(source: source, name: "cube", device: metal.device, resourceDirectory: folder)
+        let node = ISFNode(identifier: "test.cube", context: metal)
+        node.install(program)
+        guard let output = node.render(inputs: [], context: ISFTestSupport.context()),
+              let picture = renderer.readback(output) else { throw XCTSkip("render failed") }
+        let pixel = picture.pixel(x: picture.width / 2, y: picture.height / 2)
+        XCTAssertEqual(pixel.r, 240, "one face")
+        XCTAssertEqual(pixel.g, 240, "another face")
+        XCTAssertEqual(Double(pixel.b), 16, accuracy: 1, "the cube's side")
+    }
+
     func testISFVersionOnePerImageUniforms() throws {
         let pixel = try centre(of: effect("""
             void main() {

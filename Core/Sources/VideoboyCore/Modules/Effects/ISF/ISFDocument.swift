@@ -138,6 +138,10 @@ public struct ISFDocument: Equatable, Sendable {
     /// The files those images come from (each `PATH`, relative to the `.fs` file), so
     /// importing the shader can copy its pictures with it. Cube maps list six paths.
     public let importedImagePaths: [String]
+    /// Each imported image's file(s), by its name: one path, or six for a cube map.
+    public let importedImageFiles: [String: [String]]
+    /// The imports that are cube maps: `"TYPE": "cube"`, or six PATHs.
+    public let importedCubeMaps: [String]
     /// `VIDEOBOY.IDENTITY_AT_DEFAULTS` — see the file header.
     public let identityAtDefaults: Bool
     /// The GLSL after the header.
@@ -266,6 +270,13 @@ public struct ISFDocument: Equatable, Sendable {
             importedEntries = []
         }
         importedImages = importedEntries.map(\.name)
+        importedCubeMaps = importedEntries.filter { item in
+            (item.entry["TYPE"] as? String) == "cube" || (item.entry["PATH"] as? [String])?.count == 6
+        }.map(\.name)
+        importedImageFiles = Dictionary(importedEntries.map { item -> (String, [String]) in
+            if let path = item.entry["PATH"] as? String { return (item.name, [path]) }
+            return (item.name, item.entry["PATH"] as? [String] ?? [])
+        }, uniquingKeysWith: { first, _ in first })
         importedImagePaths = importedEntries.flatMap { item -> [String] in
             if let path = item.entry["PATH"] as? String { return [path] }
             return item.entry["PATH"] as? [String] ?? []

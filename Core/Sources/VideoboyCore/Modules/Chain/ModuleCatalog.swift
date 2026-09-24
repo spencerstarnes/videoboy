@@ -245,13 +245,15 @@ public final class ModuleCatalog {
         }
         let source = entry.source ?? ""
         let vertexSource = entry.vertexSource
+        let directory = entry.url.deletingLastPathComponent()
         let name = entry.name
         return ModuleDescriptor(
             id: id, name: title, origin: origin, group: group, controls: controls,
             problem: problem, fileURL: entry.url,
             factory: { identifier, context in
                 let node = ISFNode(identifier: identifier, context: context)
-                node.load(source: source, vertexSource: vertexSource, name: name)
+                node.load(source: source, vertexSource: vertexSource, name: name,
+                          resourceDirectory: directory)
                 return node
             })
     }

@@ -119,7 +119,14 @@ public final class ISFNode: Node, ParameterApplying {
         case buffer(String)
         /// An `audio` or `audioFFT` input: the live sound as a one-row image.
         case audio(name: String, isSpectrum: Bool, width: Int)
+        /// An IMPORTED image, uploaded once at install.
+        case imported(String)
     }
+
+    /// The program's IMPORTED images on the GPU, by name.
+    private var importedTextures: [String: MTLTexture] = [:]
+    /// The `.fs` file's folder, where IMPORTED paths resolve.
+    public private(set) var resourceDirectory: URL?
 
     /// Where `audio` inputs read the sound. The app's capture writes the shared one.
     public var audioFeed: ISFAudioFeed = .shared
@@ -167,8 +174,10 @@ public final class ISFNode: Node, ParameterApplying {
     /// Starts compiling `source` off the render path; the node passes through until
     /// the program arrives on the main thread.
     public func load(
-        source: String, vertexSource: String? = nil, name: String, compiler: ISFCompiler = .shared
+        source: String, vertexSource: String? = nil, name: String,
+        resourceDirectory: URL? = nil, compiler: ISFCompiler = .shared
     ) {
+        self.resourceDirectory = resourceDirectory
         // The header first, here and now: it is a JSON parse, microseconds, and it is
         // what tells the registry which controls exist. A file that does not parse
         // fails visibly at once rather than after a compile that could never start.
@@ -196,7 +205,8 @@ public final class ISFNode: Node, ParameterApplying {
         // saving a broken file never blanks a live chain.
         if program == nil { state = .compiling }
         compiler.compile(
-            source: source, vertexSource: vertexSource, name: name, device: metal.device
+            source: source, vertexSource: vertexSource, name: name, device: metal.device,
+            resourceDirectory: resourceDirectory
         ) { [weak self] result in
             guard let self else { return }
             switch result {
@@ -250,6 +260,7 @@ public final class ISFNode: Node, ParameterApplying {
         let audioInputs = Dictionary(document.audioInputs.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
         textureBindings = program.shader.textureNames.map { name in
             if let index = imageNames.firstIndex(of: name) { return .image(index) }
+            if program.importedImages[name] != nil { return .imported(name) }
             if let input = audioInputs[name] {
                 let isSpectrum = input.type == .audioFFT
                 // MAX is the number of samples (or bins) the shader wants.
@@ -261,6 +272,16 @@ public final class ISFNode: Node, ParameterApplying {
             return .buffer(name)
         }
         audioUploads = [:]
+        importedTextures = [:]
+        if let metal = context {
+            for (name, faces) in program.importedImages {
+                if faces.count == 6 {
+                    importedTextures[name] = ISFNode.makeCube(faces, device: metal.device, label: "\(identifier).\(name)")
+                } else if let image = faces.first {
+                    importedTextures[name] = metal.makeTexture(from: image, label: "\(identifier).\(name)")
+                }
+            }
+        }
         passLabels = document.passes.indices.map { "\(identifier) pass \($0)" }
         passSizes = document.passes.map { pass in
             (pass.widthExpression.flatMap(ISFNode.parseSize),
@@ -489,6 +510,8 @@ public final class ISFNode: Node, ParameterApplying {
                     texture = buffers[name]?.front
                 case .audio(let name, let isSpectrum, let width):
                     texture = audioTexture(name: name, isSpectrum: isSpectrum, width: width, metal: metal)
+                case .imported(let name):
+                    texture = importedTextures[name]
                 }
                 encoder.setFragmentTexture(texture ?? black(metal), index: binding)
                 if hasVertexShader { encoder.setVertexTexture(texture ?? black(metal), index: binding) }
@@ -644,6 +667,30 @@ public final class ISFNode: Node, ParameterApplying {
                 from: ImageBuffer(width: 1, height: 1, r: 0, g: 0, b: 0, a: 0), label: "isf-black")
         }
         return blackTexture
+    }
+
+    // MARK: - Imported cube maps
+
+    /// Six square faces as a cube texture, uploaded once. RGBA rows, as ImageBuffer
+    /// stores them, into an RGBA texture — no swizzle needed.
+    static func makeCube(_ faces: [ImageBuffer], device: MTLDevice, label: String) -> MTLTexture? {
+        guard let side = faces.first?.width, side > 0 else { return nil }
+        let descriptor = MTLTextureDescriptor.textureCubeDescriptor(
+            pixelFormat: .rgba8Unorm, size: side, mipmapped: false)
+        descriptor.usage = .shaderRead
+        guard let cube = device.makeTexture(descriptor: descriptor) else {
+            Log.error(.isf, "could not allocate cube map '\(label)'")
+            return nil
+        }
+        cube.label = label
+        for (slice, face) in faces.enumerated() where face.width == side && face.height >= side {
+            face.pixels.withUnsafeBytes { raw in
+                cube.replace(region: MTLRegionMake2D(0, 0, side, side), mipmapLevel: 0, slice: slice,
+                             withBytes: raw.baseAddress!, bytesPerRow: face.bytesPerRow,
+                             bytesPerImage: face.bytesPerRow * side)
+            }
+        }
+        return cube
     }
 
     // MARK: - Audio

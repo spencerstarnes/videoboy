@@ -18,6 +18,7 @@
 //
 
 import Foundation
+import ImageIO
 import Metal
 
 /// Why a program could not be built. `description` is what the FX card shows.
@@ -49,14 +50,21 @@ public final class ISFProgram {
     /// graph's own format, 16-bit float for `FLOAT` passes.
     let pipelines: [MTLPixelFormat: MTLRenderPipelineState]
 
+    /// The file's IMPORTED images, decoded while compiling (off the render path), by
+    /// name: one picture, or six faces for a cube map. The node uploads each once
+    /// when it installs the program.
+    public let importedImages: [String: [ImageBuffer]]
+
     /// Format for passes that ask for `FLOAT`.
     public static let floatPixelFormat: MTLPixelFormat = .rgba16Float
 
     private init(document: ISFDocument, shader: ISFGeneratedShader,
-                 pipelines: [MTLPixelFormat: MTLRenderPipelineState]) {
+                 pipelines: [MTLPixelFormat: MTLRenderPipelineState],
+                 importedImages: [String: [ImageBuffer]]) {
         self.document = document
         self.shader = shader
         self.pipelines = pipelines
+        self.importedImages = importedImages
     }
 
     /// The pipeline for a target format. Always present for formats `compile` built.
@@ -65,8 +73,11 @@ public final class ISFProgram {
     }
 
     /// Parses, converts and compiles. Synchronous — call from a background queue.
+    /// - Parameter resourceDirectory: the folder the `.fs` is in, where its IMPORTED
+    ///   image paths are resolved. Nil when there is no file (a test's source text).
     public static func compile(
-        source: String, vertexSource: String? = nil, name: String, device: MTLDevice
+        source: String, vertexSource: String? = nil, name: String, device: MTLDevice,
+        resourceDirectory: URL? = nil
     ) throws -> ISFProgram {
         let document: ISFDocument
         do {
@@ -74,7 +85,62 @@ public final class ISFProgram {
         } catch let error as ISFParseError {
             throw ISFCompileError.parse(error)
         }
-        return try compile(document: document, device: device)
+        return try compile(document: document, device: device, resourceDirectory: resourceDirectory)
+    }
+
+    /// Image extensions tried when an import is found by its name rather than its PATH.
+    static let importedImageExtensions = ["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp", "heic"]
+
+    /// Where an IMPORTED image is: its PATH beside the file, or — the isf.video
+    /// editor's exports name the file after the input (`TEXTURE_0.jpeg`) while PATH
+    /// keeps the site's hashed name — a picture named after the import.
+    public static func importedImageURL(name: String, path: String, in directory: URL) -> URL? {
+        let direct = directory.appendingPathComponent(path)
+        if FileManager.default.fileExists(atPath: direct.path) { return direct }
+        for ext in importedImageExtensions {
+            for candidate in [name, name.lowercased()] {
+                let url = directory.appendingPathComponent(candidate).appendingPathExtension(ext)
+                if FileManager.default.fileExists(atPath: url.path) { return url }
+            }
+        }
+        return nil
+    }
+
+    /// Decodes each IMPORTED image from beside the file. A missing or unreadable one
+    /// fails the module by name: a shader drawing with a black hole where its noise
+    /// texture should be is harder to diagnose than a card that says which file.
+    static func loadImportedImages(_ document: ISFDocument, from directory: URL?) throws -> [String: [ImageBuffer]] {
+        var images: [String: [ImageBuffer]] = [:]
+        for name in document.importedImages {
+            let paths = document.importedImageFiles[name] ?? []
+            guard let first = paths.first else { continue }
+            guard let directory else {
+                throw ISFCompileError.pipeline("IMPORTED image '\(name)' has no folder to load '\(first)' from")
+            }
+            func read(_ path: String) -> ImageBuffer? {
+                guard let url = ISFProgram.importedImageURL(name: name, path: path, in: directory),
+                      let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                      let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+                return ImageBuffer(scaling: image, toWidth: image.width, height: image.height)
+            }
+            guard let front = read(first) else {
+                throw ISFCompileError.pipeline("IMPORTED image '\(name)' could not be read from \(first)")
+            }
+            if document.importedCubeMaps.contains(name) {
+                // Six faces by PATH. Exports that ship one picture named after the
+                // input give every face that picture — a reflection of the one image
+                // it came with, rather than a module that will not load.
+                let faces = (0..<6).map { index in index < paths.count ? read(paths[index]) : nil }
+                let side = front.width
+                images[name] = faces.map { face in
+                    let chosen = face ?? front
+                    return chosen.width == side && chosen.height == side ? chosen : chosen.scaled(toWidth: side)
+                }
+            } else {
+                images[name] = [front]
+            }
+        }
+        return images
     }
 
     /// Tries each global integer vector as a float one, alone, then all together; the
@@ -95,7 +161,10 @@ public final class ISFProgram {
     }
 
     /// Converts and compiles an already-parsed document. Synchronous.
-    public static func compile(document: ISFDocument, device: MTLDevice) throws -> ISFProgram {
+    public static func compile(
+        document: ISFDocument, device: MTLDevice, resourceDirectory: URL? = nil
+    ) throws -> ISFProgram {
+        let importedImages = try loadImportedImages(document, from: resourceDirectory)
         var shader: ISFGeneratedShader
         do {
             shader = try ISFMetalGenerator.generate(document)
@@ -143,7 +212,8 @@ public final class ISFProgram {
                 throw ISFCompileError.pipeline("\(error)")
             }
         }
-        return ISFProgram(document: document, shader: shader, pipelines: pipelines)
+        return ISFProgram(document: document, shader: shader, pipelines: pipelines,
+                          importedImages: importedImages)
     }
 }
 
@@ -165,10 +235,12 @@ public final class ISFCompiler {
     /// Compiles `source` off the main thread; `completion` runs on main.
     public func compile(
         source: String, vertexSource: String? = nil, name: String, device: MTLDevice,
+        resourceDirectory: URL? = nil,
         completion: @escaping (Result<ISFProgram, ISFCompileError>) -> Void
     ) {
         queue.async { [self] in
             let key = "\(ISFMetalGenerator.version)\u{0}\(name)\u{0}\(source)\u{0}\(vertexSource ?? "")"
+                + "\u{0}\(resourceDirectory?.path ?? "")"
             let result: Result<ISFProgram, ISFCompileError>
             if let cached = cache[key] {
                 result = .success(cached)
@@ -176,7 +248,8 @@ public final class ISFCompiler {
                 let started = Date()
                 do {
                     let program = try ISFProgram.compile(
-                        source: source, vertexSource: vertexSource, name: name, device: device)
+                        source: source, vertexSource: vertexSource, name: name, device: device,
+                        resourceDirectory: resourceDirectory)
                     cache[key] = program
                     let milliseconds = Date().timeIntervalSince(started) * 1000
                     Log.info(.isf, "compiled '\(name)' in \(String(format: "%.1f", milliseconds)) ms")

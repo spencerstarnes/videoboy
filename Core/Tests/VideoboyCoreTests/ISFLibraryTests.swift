@@ -103,7 +103,8 @@ final class ISFFolderTrialTests: XCTestCase {
             do {
                 let program = try ISFProgram.compile(
                     source: entry.source ?? "", vertexSource: entry.vertexSource,
-                    name: entry.name, device: metal.device)
+                    name: entry.name, device: metal.device,
+                    resourceDirectory: entry.url.deletingLastPathComponent())
                 let node = ISFNode(identifier: "trial.\(entry.name)", context: metal)
                 node.install(program)
                 // Twelve frames at the content rate: trails and feedback need several to

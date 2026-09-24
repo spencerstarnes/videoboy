@@ -252,9 +252,10 @@ public enum ISFMetalGenerator {
     public static func generate(
         _ document: ISFDocument, promotingIntegerGlobals: Set<String> = []
     ) throws -> ISFGeneratedShader {
-        if !document.importedImages.isEmpty {
-            throw ISFGenerateError.unsupported(
-                "IMPORTED images (\(document.importedImages.joined(separator: ", ")))")
+        // IMPORTED cube maps are texture cubes; every other image is 2D.
+        let cubes = Set(document.importedCubeMaps)
+        func textureType(_ name: String) -> String {
+            cubes.contains(name) ? "texturecube<float>" : "texture2d<float>"
         }
 
         var fragmentTokens = GLSLTokenizer.tokenize(document.fragmentSource)
@@ -288,6 +289,7 @@ public enum ISFMetalGenerator {
 
         // Image inputs, then audio (an image the host fills with sound), then buffers.
         var textureNames = document.imageInputs.map(\.name) + document.audioInputs.map(\.name)
+            + document.importedImages
         for pass in document.passes {
             if let target = pass.target, !textureNames.contains(target) {
                 textureNames.append(target)
@@ -318,7 +320,7 @@ public enum ISFMetalGenerator {
         }
         head += "    // Images: inputs, then pass buffers.\n"
         for name in textureNames {
-            head += "    texture2d<float> \(name);\n"
+            head += "    \(textureType(name)) \(name);\n"
         }
         // ISF v1's per-image uniforms, for the files that still read them. Filled in
         // after construction; declared only when the file mentions them.
@@ -387,7 +389,7 @@ public enum ISFMetalGenerator {
                                      constant ISFUniforms& u [[buffer(0)]]
         """
         for (index, name) in textureNames.enumerated() {
-            tail += ",\n                             texture2d<float> tex_\(name) [[texture(\(index))]]"
+            tail += ",\n                             \(textureType(name)) tex_\(name) [[texture(\(index))]]"
         }
         tail += ") {\n"
         tail += """
@@ -477,6 +479,10 @@ public enum ISFMetalGenerator {
         document: ISFDocument, textureNames: [String], varyings: [Varying], legacyImages: [String],
         extraUniformMembers: String
     ) -> String {
+        let cubes = Set(document.importedCubeMaps)
+        func textureType(_ name: String) -> String {
+            cubes.contains(name) ? "texturecube<float>" : "texture2d<float>"
+        }
         var text = "struct ISFVertexShader {\n"
         for field in ISFUniformLayout.builtIns {
             text += "    \(memberType(field.1)) \(field.0);\n"
@@ -485,7 +491,7 @@ public enum ISFMetalGenerator {
             text += "    \(memberType(for: input)) \(input.name);\n"
         }
         for name in textureNames {
-            text += "    texture2d<float> \(name);\n"
+            text += "    \(textureType(name)) \(name);\n"
         }
         text += """
             sampler isf_sampler;
@@ -522,6 +528,10 @@ public enum ISFMetalGenerator {
     private static func vertexStageFunctions(
         document: ISFDocument, textureNames: [String], varyings: [Varying], legacyImages: [String]
     ) -> String {
+        let cubes = Set(document.importedCubeMaps)
+        func textureType(_ name: String) -> String {
+            cubes.contains(name) ? "texturecube<float>" : "texture2d<float>"
+        }
         var text = "struct ISFVertexOut {\n    float4 position [[position]];\n    float2 isf_norm;\n"
         for varying in varyings {
             // Integers cannot be interpolated; GLSL requires them `flat` too.
@@ -538,7 +548,7 @@ public enum ISFMetalGenerator {
                                        constant ISFUniforms& u [[buffer(0)]]
         """
         for (index, name) in textureNames.enumerated() {
-            text += ",\n                               texture2d<float> tex_\(name) [[texture(\(index))]]"
+            text += ",\n                               \(textureType(name)) tex_\(name) [[texture(\(index))]]"
         }
         text += ") {\n"
         text += """
