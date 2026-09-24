@@ -114,19 +114,45 @@ The built-in modules are `App/Resources/ISF/Builtin/{Colour,Transform,Echo}.fs`.
   Tesseract* fails on `mat4 *= mat4` (no Metal overload in the prelude yet), and that
   error is reported against the generated line, not the file's.
 
+## Spec coverage (2026-09-24)
+
+Measured with `VIDEOBOY_ISF_TRIAL=/folder scripts/test.sh --filter ISFFolderTrial`,
+which scans a folder the way the app does, compiles every file, renders twelve frames
+at 720×480 and times them (`selfqa/out/isf/trial/`).
+
+- **Vidvox ISF-Files** (the official corpus, 327 files, MIT): **every file compiles**;
+  315 draw a non-flat picture in their first second. The other 12 are plain by design
+  (Solid Color, Show Alpha), wait on their inputs (a moving picture, a second image,
+  sound), or — Random Shape — divide `isf_FragNormCoord` by `RENDERSIZE` in the shader
+  itself. Started at 250.
+- **Ethereios pack** (41 isf.video exports): 39. The last two render dark in their
+  first second.
+
+Supported, each with a pixel test (`ISFCompatibilityTests`, `ISFVertexShaderTests`,
+`ISFAudioTests`, `ISFTransitionTests`):
+
+- Every INPUT type: event, bool, long (VALUES/LABELS), float, point2D, color, image,
+  audio, audioFFT. A point2D with no MIN/MAX is a frame position, sent in pixels.
+- Custom vertex shaders (`.vs`), varyings (arrays and matrices too), drawn as the quad
+  ISF hosts draw. A `.vs` that only calls `isf_vertShaderInit()` is ignored.
+- PASSES, PERSISTENT and FLOAT buffers, WIDTH/HEIGHT expressions; a last pass into a
+  named buffer comes out in the graph's format.
+- IMPORTED images and cube maps, found by PATH or by the input's name.
+- audio / audioFFT from the live capture (the audio clock's, or started on demand).
+- Transitions, in every crossfader's transition key.
+- ISF v1: PERSISTENT_BUFFERS, `vv_` names, `_name_imgRect/_imgSize/_flip`.
+- GLSL as packs write it: inout swizzles, mixed matrix constructors, scalar
+  `distance`/`length`, `sampler2D` parameters, shadowing initializers, C++ words as
+  names, both-dialect files (`__VERSION__` is 120).
+
 ## Known limits (visible, not silent)
 
-- `IMPORTED` images, `audio` / `audioFFT` inputs and custom vertex shaders (`.vs`,
-  `varying`) are reported as "not supported yet" with the reason.
-- Extra `image` inputs beyond `inputImage` are bound to black until the FX card gets
-  a source picker (ISF-PLAN §5.3).
-- Real-world GLSL that desktop drivers forgive but Metal rejects (e.g. a vector `==`
-  used as a bool) fails with the Metal error on the file's own line. The pass rate on
-  the Vidvox ISF corpus is **not measured yet**, because no corpus is on this machine
-  (ISF-PLAN §9).
-- A struct member named `s`, `t`, `p` or `q` is rewritten as a swizzle (`.t` → `.y`).
-  This is rare in ISF, and the error points at the line.
-- No FSEvents hot reload yet; `ISFNode.install` already keeps values across a reload.
+- Extra `image` inputs beyond the first are bound to black until the FX card gets a
+  source picker (ISF-PLAN §5.3).
+- A host-supplied `cube` INPUT (not IMPORTED) has nothing to feed it.
+- The controls of an ISF transition (other than progress) have no faders yet; they are
+  registered, so they can be MIDI-mapped.
+- Audio is mono: `audio` and `audioFFT` images are one row.
 
 ---
 
