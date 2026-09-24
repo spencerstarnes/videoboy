@@ -76,7 +76,7 @@ public struct ISFControl: Equatable, Sendable {
                         range: low...max(low, high),
                         defaultValue: input.defaultValue[safe: component] ?? 0, choices: []))
                 }
-            case .image, .audio, .audioFFT:
+            case .image, .audio, .audioFFT, .cube:
                 continue
             }
         }

@@ -46,6 +46,7 @@ public enum ISFInputType: String, Codable, Sendable {
     case image
     case audio
     case audioFFT
+    case cube
 }
 
 /// One declared input — a control the operator sees, or an image the host supplies.
@@ -71,12 +72,12 @@ public struct ISFInput: Equatable, Sendable {
         case .float, .bool, .long, .event: 1
         case .point2D: 2
         case .color: 4
-        case .image, .audio, .audioFFT: 0
+        case .image, .audio, .audioFFT, .cube: 0
         }
     }
 
     /// Whether this input is a picture rather than a value.
-    public var isImage: Bool { type == .image || type == .audio || type == .audioFFT }
+    public var isImage: Bool { type == .image || type == .audio || type == .audioFFT || type == .cube }
 }
 
 /// One render pass. A file with no `PASSES` has exactly one, rendering to output.
@@ -290,7 +291,7 @@ public struct ISFDocument: Equatable, Sendable {
         case .float, .bool, .long, .event: components = 1
         case .point2D: components = 2
         case .color: components = 4
-        case .image, .audio, .audioFFT: components = 0
+        case .image, .audio, .audioFFT, .cube: components = 0
         }
 
         let values = (raw["VALUES"] as? [Any] ?? []).compactMap { number($0).map { Int($0) } }

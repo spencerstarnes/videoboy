@@ -358,3 +358,15 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   `mouseDown`. Until fixed, re-run `scripts/selfqa.sh ui` in an interactive
   foreground terminal if it stalls, or `kill -9` the `Videoboy --selfqa` process and
   retry.
+
+- **Library behaves like a Finder window (2026-09-24, perf/audit).** Icon view is an
+  `NSCollectionView`, list an `NSOutlineView`, columns two `NSTableView`s, all reading
+  one per-panel `LibraryBrowser`. Bins are folders in all three (open, drop onto,
+  rename in place, delete → clips return to the top level). Click / ⇧-click / ⌘-click /
+  ⌘A / rubber band select; a selection drags as a whole (to sources, bins, the queue,
+  the Finder); right-click menus everywhere; ⌘C/⌘V/⌘⌫ through a real Edit menu; a
+  generator or configured source drags onto a source panel. Evidence:
+  `scripts/selfqa.sh library` (36 assertions + screenshots in `selfqa/out/library/`).
+  Not done, deliberately: the library is still not saved between launches; clips added
+  from folders show "—" for duration (nothing reads it off the file yet); Import… stays
+  disabled; no reordering inside a bin or the up-next queue.

@@ -633,7 +633,9 @@ enum UISelfQA {
                 shell.layoutSubtreeIfNeeded()
 
                 var draggedURL: URL?
-                LibraryItemView.onDragStartedForChecks = { draggedURL = $0 }
+                LibraryItemView.onDragStartedForChecks = { items in
+                    draggedURL = items.first?.string(forType: .fileURL).flatMap(URL.init(string:))
+                }
                 defer { LibraryItemView.onDragStartedForChecks = nil }
 
                 let origin = cell.convert(
@@ -1256,7 +1258,7 @@ enum UISelfQA {
             // therefore what can stall the render. The grid rebuild it schedules
             // happens on a later runloop turn, where the display link can interleave.
             let start = Date()
-            library.onFilesDropped?(dropped)
+            library.onFilesDropped?(dropped, nil)
             let milliseconds = Date().timeIntervalSince(start) * 1000
             RunLoop.main.run(until: Date().addingTimeInterval(0.25))
             shell.layoutSubtreeIfNeeded()
@@ -1917,17 +1919,25 @@ enum UISelfQA {
                 ))
             }
 
-            // A bin groups without losing anything.
-            if let first = LibraryItemView.all(in: library).first?.item.name {
-                library.moveItem(named: first, toBin: "Set One")
+            // A bin groups without losing anything. Bins are FOLDERS: the clip leaves the
+            // top level, the bin appears there as a folder, and the clip is inside it.
+            if let first = LibraryItemView.all(in: library).first?.item {
+                let libraryModel = library.browser.model
+                let totalBefore = libraryModel.items.count
+                library.moveItem(named: first.name, toBin: "Set One")
                 RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+                library.reloadNow()
                 shell.layoutSubtreeIfNeeded()
+                let topLevel = library.browser.rootEntries()
                 check.record(AssertionResult(
-                    name: "an item moved into a bin is still in the library",
-                    passed: library.binNames.contains("Set One")
-                        && LibraryItemView.all(in: library).count == before,
-                    detail: "bins: \(library.binNames.joined(separator: ", ")), "
-                        + "\(LibraryItemView.all(in: library).count) items still shown"
+                    name: "an item moved into a bin is still in the library, inside that bin's folder",
+                    passed: libraryModel.items.count == totalBefore
+                        && libraryModel.item(withID: first.id)?.bin == "Set One"
+                        && topLevel.contains { $0.binName == "Set One" }
+                        && !topLevel.contains { $0.id == first.id },
+                    detail: "\(libraryModel.items.count) of \(totalBefore) items in the library, "
+                        + "\(first.name) in \(libraryModel.item(withID: first.id)?.bin ?? "no bin"), "
+                        + "top level: \(topLevel.map { $0.binName.map { "[\($0)]" } ?? ($0.item?.name ?? "?") })"
                 ))
             }
 
@@ -2412,6 +2422,61 @@ enum UISelfQA {
                     + "B reads \(engine.sourceSlot(forChannel: "B"))"))
         }
 
+        // EJECT on a channel that is not showing a file. Eject used to unload only the
+        // file node, so a generator went on playing under a caption that said the
+        // channel was empty. Driven through the panel's own drop callbacks and the
+        // real Eject button, the way a performer gets there.
+        sectionEject: do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+            withExtendedLifetime(controller) {}
+
+            guard let body = shell.grid.panels.sourceBodies["A"] else {
+                check.note("no source A panel; the eject check was skipped")
+                break sectionEject
+            }
+            func loadEjectButton() -> NSButton? {
+                Self.buttons(in: body).first { $0.title == "Load" || $0.title == "Eject" }
+            }
+
+            body.onReferenceDropped?("generator:\(GeneratorKind.checkerboard.rawValue)")
+            check.record(AssertionResult(
+                name: "a generator in a channel offers Eject",
+                passed: loadEjectButton()?.title == "Eject",
+                detail: "button reads \(loadEjectButton()?.title ?? "nothing")"))
+
+            loadEjectButton()?.performClick(nil)
+            let kind = engine.channelSourceKinds["A"] ?? .file
+            check.record(AssertionResult(
+                name: "ejecting a generator takes it off the channel",
+                passed: kind == .file
+                    && engine.sourceSlot(forChannel: "A") == Engine.slot(forChannel: "A"),
+                detail: "A is \(String(describing: kind)), reads \(engine.sourceSlot(forChannel: "A"))"))
+            check.record(AssertionResult(
+                name: "an ejected generator's channel reads empty",
+                passed: loadEjectButton()?.title == "Load" && body.preview.caption == "A",
+                detail: "button \(loadEjectButton()?.title ?? "nothing"), caption '\(body.preview.caption)'"))
+
+            // A clip dropped onto a generator has to replace it on screen, not only in
+            // the caption.
+            let clip = RepoPaths.samples.appendingPathComponent("motion.mov")
+            guard FileManager.default.fileExists(atPath: clip.path) else {
+                check.note("samples/motion.mov missing; the load-over-generator check was skipped")
+                break sectionEject
+            }
+            body.onReferenceDropped?("generator:\(GeneratorKind.checkerboard.rawValue)")
+            body.onClipDropped?(clip, nil)
+            let afterLoad = engine.channelSourceKinds["A"] ?? .file
+            check.record(AssertionResult(
+                name: "a clip dropped on a generator channel replaces the generator",
+                passed: afterLoad == .file && engine.sources["A"]?.mediaURL == clip,
+                detail: "A is \(String(describing: afterLoad)), "
+                    + "holds \(engine.sources["A"]?.mediaURL?.lastPathComponent ?? "nothing")"))
+        }
+
         // DROPPING A FOLDER TREE. The old importer read one level and silently discarded
         // everything below it, which is the shape most real clip libraries have. A drop
         // that accepts a folder and quietly ignores most of it is worse than one that
@@ -2589,6 +2654,12 @@ enum UISelfQA {
         var found: [NSColorWell] = []
         if let well = view as? NSColorWell { found.append(well) }
         return found + view.subviews.flatMap { colourWells(in: $0) }
+    }
+
+    private static func buttons(in view: NSView) -> [NSButton] {
+        var found: [NSButton] = []
+        if let button = view as? NSButton { found.append(button) }
+        return found + view.subviews.flatMap { buttons(in: $0) }
     }
 
     private static func textFields(in view: NSView) -> [NSTextField] {

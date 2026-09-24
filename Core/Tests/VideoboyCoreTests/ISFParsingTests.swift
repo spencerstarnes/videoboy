@@ -105,6 +105,15 @@ final class ISFDocumentTests: XCTestCase {
         XCTAssertTrue(document.identityAtDefaults)
     }
 
+    func testCubeInputTypeIsSupported() throws {
+        let document = try ISFDocument(
+            source: #"/*{ "INPUTS": [ { "NAME": "env", "TYPE": "cube" } ] }*/ void main() {}"#, name: "c")
+        XCTAssertEqual(document.inputs.count, 1)
+        XCTAssertEqual(document.inputs[0].type, .cube)
+        XCTAssertTrue(document.inputs[0].isImage)
+        XCTAssertEqual(document.inputs[0].componentCount, 0)
+    }
+
     func testBrokenFilesSayWhatIsWrong() {
         XCTAssertThrowsError(try ISFDocument(source: "void main() {}", name: "x")) {
             XCTAssertEqual($0 as? ISFParseError, .missingHeader)

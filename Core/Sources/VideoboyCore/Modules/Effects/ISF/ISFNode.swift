@@ -621,7 +621,7 @@ public final class ISFNode: Node, ParameterApplying {
             case .color:
                 store(SIMD4<Float>(Float(current[0]), Float(current[1]), Float(current[2]), Float(current[3])),
                       at: offset)
-            case .image, .audio, .audioFFT:
+            case .image, .audio, .audioFFT, .cube:
                 break
             }
         }

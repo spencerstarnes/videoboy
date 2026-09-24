@@ -1,0 +1,49 @@
+check:    library
+verdict:  PASS
+when:     2026-09-24T06:01:24Z
+core:     0.3.0
+
+notes:
+  app active false, window key false — ⌘-keys are sent up the first responder's chain (the Edit menu's own route needs a key window)
+  bins after dropping the fixture: Reel A, Reel B
+  after a plain click on bars.dv: 1 selected, anchor bars.dv
+  before the drag: 2 selected; pressed bars.dv then ⇧ motion.dv
+  list and column row clicks: hit-tested through the window, then applied with the table's own selectRowIndexes, because this window was not key (see clickRow)
+
+assertions (36/36 passed):
+  PASS  icon view shows each bin as a folder at the top level — folders: ["Reel A", "Reel B"]
+  PASS  click then ⇧-click selects the run of clips between them — hit true, selected 3 (expected 3), drawn selected 3
+  PASS  ⌘-click takes one clip out of the selection — 2 selected
+  PASS  ⌘A (the Edit menu's Select All) selects every folder and clip in view — 6 of 6; first responder Optional(Videoboy.HoverScrubView)
+  PASS  ⌘A in the search field selects the text, as in any text field — 6 of 6 characters selected
+  PASS  dragging one clip of a selection drags all of it, as files — 2 items, 2 with a file URL
+  PASS  pressing a selected clip keeps the selection so it can be dragged — 2 still selected
+  PASS  dropping clips on a folder moves them into that bin — landed on LibraryGridView, move, folder lit true, Reel B 3 → 5
+  PASS  right-clicking a clip offers Copy, Paste, Move to and Remove from Library — Load into A · Load into B · Add to A · Add to B · Play Next on A · Play Next on B · Copy · Paste · Move to · New Bin with Selection (1 Item) · Show in Finder · Remove from Library
+  PASS  right-clicking an unselected item selects it, so the menu acts on it — 1 selected
+  PASS  right-clicking the background offers New Bin, Paste and Select All — New Bin · Paste · Select All
+  PASS  ⌘C puts the selected clip's file on the pasteboard — 1 library ids, 1 files
+  PASS  double-clicking a folder opens it, with a path bar back out — open bin Reel A, path bar showing
+  PASS  ⌘V inside a bin files a copy of the clip there, and keeps the original — Reel A 2 → 3
+  PASS  the path bar's Library key goes back to the top, with the bin selected — open bin none
+  PASS  New Bin with Selection files the clip in a new bin and starts renaming it — bin untitled bin, name being edited true
+  PASS  typing a name and leaving the field renames the bin — Keepers, Reel A, Reel B
+  PASS  the list fills the panel instead of stopping part way down — list 321pt of 321pt
+  PASS  the list shows bins as folder rows with a disclosure triangle — 3 folder rows for 3 bins
+  PASS  opening a folder row shows its clips beneath it — 5 rows under Reel B, bin holds 5
+  PASS  in the list, click then ⇧-click selects the rows between — rows [3, 4, 5], browser holds 3
+  PASS  every selected list row can be dragged — 3 of 3 rows give a drag item
+  PASS  ⌘A selects every row of the list — 9 of 9
+  PASS  dropping a clip on a folder row files it in that bin — move, now in Reel A
+  PASS  right-clicking a list row gives the library's menu — Load into A · Load into B · Add to A · Add to B · Play Next on A · Play Next on B · Copy · Paste · Move to · New Bin with Selection (6 Items) · Show in Finder · Remove from Library
+  PASS  the left column lists bins first, then loose clips — [Keepers], [Reel A], [Reel B]
+  PASS  clicking a bin in the left column shows its clips in the right one — open Reel B, right column 5 rows
+  PASS  in a column, click then ⇧-click selects the run — rows [0, 1, 2]
+  PASS  ⌘A in a column selects everything in that column — 5 of 5
+  PASS  dropping a clip on a bin in the left column files it there — move, now in Reel A
+  PASS  the C/D library shows the same bins — Keepers, Reel A, Reel B
+  PASS  in every panel and view, the scrolling areas fill the panel top to bottom — C/D and the browser in all three views, A/B in column
+  PASS  the asset browser's tab strip is on the tab it is showing — strip on Clips, showing Clips
+  PASS  a generator dragged from the asset browser loads on the source it is dropped on — carried generator:3, accepted
+  PASS  re-showing a 250-item library takes less than one frame — 8.4 ms
+  PASS  no toolbar control moved through every view, bin and selection change — 6 controls where they were

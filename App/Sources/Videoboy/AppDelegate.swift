@@ -254,6 +254,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // features they drive; until then they are visibly present and disabled.
         for title in ["File", "Edit", "Workspace", "Templates"] {
             let item = NSMenuItem()
+            if title == "Edit" {
+                item.submenu = Self.makeEditMenu()
+                mainMenu.addItem(item)
+                continue
+            }
             let submenu = NSMenu(title: title)
             let placeholder = NSMenuItem(title: "Not yet implemented", action: nil, keyEquivalent: "")
             placeholder.isEnabled = false
@@ -279,5 +284,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(helpMenuItem)
 
         NSApp.mainMenu = mainMenu
+    }
+
+    /// The standard Edit menu.
+    ///
+    /// Every item is sent to the FIRST RESPONDER (no target), which is how ⌘A, ⌘C and
+    /// ⌘V reach whatever has the keyboard: a text field, or a library, whose panel
+    /// implements copy, paste, delete and select-all for its clips. Without this menu
+    /// those keys went nowhere at all — not even in the search field. Static so the
+    /// self-QA can install the same menu and press the same keys.
+    static func makeEditMenu() -> NSMenu {
+        let menu = NSMenu(title: "Edit")
+        func add(_ title: String, _ action: Selector, _ key: String,
+                 _ modifiers: NSEvent.ModifierFlags = .command) {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
+            menu.addItem(item)
+        }
+        add("Undo", Selector(("undo:")), "z")
+        add("Redo", Selector(("redo:")), "z", [.command, .shift])
+        menu.addItem(.separator())
+        add("Cut", #selector(NSText.cut(_:)), "x")
+        add("Copy", #selector(NSText.copy(_:)), "c")
+        add("Paste", #selector(NSText.paste(_:)), "v")
+        // No key: ⌘⌫ in a text field means "delete to the start of the line", and a
+        // menu key would take it away. The libraries handle ⌘⌫ themselves.
+        add("Delete", #selector(NSText.delete(_:)), "")
+        add("Select All", #selector(NSText.selectAll(_:)), "a")
+        return menu
     }
 }

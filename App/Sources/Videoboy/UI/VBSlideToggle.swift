@@ -154,6 +154,10 @@ final class VBSlideToggle: NSControl {
         updateIcons()
     }
 
+    /// Works on the first click even while another window (the output, Preferences)
+    /// is key — like every other control in this window.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         guard isEnabled, let index = position(at: convert(event.locationInWindow, from: nil))
         else { return }

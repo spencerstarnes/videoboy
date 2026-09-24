@@ -146,7 +146,7 @@ final class SourcePanelBody: NSView {
     // MARK: - Drop target
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard droppedURL(from: sender) != nil else { return [] }
+        guard droppedURL(from: sender) != nil || droppedReference(from: sender) != nil else { return [] }
         isDropTarget = true
         return .copy
     }
@@ -157,9 +157,22 @@ final class SourcePanelBody: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         isDropTarget = false
+        // A generator or a configured source from the asset browser carries a
+        // reference and no file. Checked FIRST: the first item decides, as it does
+        // for a file, and a reference is never also a file.
+        if let reference = droppedReference(from: sender) {
+            onReferenceDropped?(reference)
+            return true
+        }
         guard let clip = droppedClip(from: sender) else { return false }
         onClipDropped?(clip.url, clip.range)
         return true
+    }
+
+    /// The library reference ("generator:3", "isf:<id>", "source:<id>") the first
+    /// dragged item carries, if it is not a file.
+    private func droppedReference(from sender: NSDraggingInfo) -> String? {
+        sender.draggingPasteboard.pasteboardItems?.first?.string(forType: .videoboyLibraryReference)
     }
 
     /// The first file URL on the pasteboard, if there is one.
@@ -209,6 +222,10 @@ final class SourcePanelBody: NSView {
     /// the file came from the Finder rather than from a library cell.
     var onClipDropped: ((URL, ClosedRange<Double>?) -> Void)?
 
+    /// A generator or configured source was dropped on this source, by reference —
+    /// see `LibraryItem.reference`.
+    var onReferenceDropped: ((String) -> Void)?
+
     /// Highlighted while a drop is hovering, so the target is obvious before release.
     private var isDropTarget = false {
         didSet {
@@ -233,7 +250,7 @@ final class SourcePanelBody: NSView {
         // Accepts clips dragged from a library AND files dragged from the Finder.
         // The same type, so there is one drop path rather than a private one for the
         // library that would work while the obvious gesture did not.
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes([.fileURL, .videoboyLibraryReference])
 
         // Shuttle strip: transport buttons, a scrub track, and the loop-mode toggle.
         // Every source gets one (SPEC 14.2).

@@ -104,7 +104,7 @@ public struct ISFUniformLayout: Equatable, Sendable {
             case .bool, .long, .event: entries.append((input.name, .int))
             case .point2D: entries.append((input.name, .float2))
             case .color: entries.append((input.name, .float4))
-            case .image, .audio, .audioFFT: break
+            case .image, .audio, .audioFFT, .cube: break
             }
         }
         var offset = 0
@@ -347,6 +347,7 @@ public enum ISFMetalGenerator {
         case .point2D: "float2"
         case .color: "float4"
         case .image, .audio, .audioFFT: "texture2d<float>"
+        case .cube: "texturecube<float>"
         }
     }
 

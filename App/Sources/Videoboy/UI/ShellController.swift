@@ -104,6 +104,7 @@ final class ShellController {
             return
         }
         engine.sources[channel]?.playbackRange = range
+        returnChannelToFile(channel)
         // The marks go on the play bar, so a trimmed clip LOOKS trimmed. A clip that
         // looks identical whether or not it has in and out points is how those points
         // come to seem broken.
@@ -180,7 +181,16 @@ final class ShellController {
     /// caption and the Load/Eject button both read from that — an eject that cleared
     /// the picture but left the button saying Eject would strand the channel with no
     /// way to put anything back into it.
+    ///
+    /// EVERYTHING in the channel, not only the file. A channel showing a generator,
+    /// an ISF generator, a camera or the Amiga reads from a different node than the
+    /// file, so unloading the file alone cleared the caption and left that picture
+    /// playing — Eject looked done and the source stayed on air. Ejecting routes the
+    /// channel back to its (now empty) file node. What it was showing is not stopped:
+    /// the Amiga is shared with other channels, and stopping a camera session blocks
+    /// the main thread, which would stall a frame for an eject.
     private func ejectClip(fromChannel channel: String) {
+        returnChannelToFile(channel)
         engine.unload(channel: channel)
         shell.grid.panels.sourceBodies[channel]?.setMediaName(nil)
         shell.grid.panels.sourceBodies[channel]?.setMarkedRange(nil)
@@ -189,6 +199,18 @@ final class ShellController {
         // key and its ✕ away with them.
         clearSweepsForCorruptor(channel: channel)
         Log.info(.dv, "ejected channel \(channel)")
+    }
+
+    /// Points a channel back at its file node, if it is showing anything else.
+    ///
+    /// Used by eject and by loading a clip: a file dropped onto a channel that was
+    /// showing a generator was captioned with the file's name while the generator
+    /// went on playing.
+    private func returnChannelToFile(_ channel: String) {
+        let showing = engine.channelSourceKinds[channel] ?? .file
+        guard showing != .file else { return }
+        setGenerator(nil, channel: channel)
+        if showing == .emulator { shell.grid.panels.emuBrowser.refresh() }
     }
 
     /// Wires the libraries: double-click loads into the pair's next channel.
@@ -309,8 +331,8 @@ final class ShellController {
         }
 
         for library in [panels.libraryOneBody, panels.libraryTwoBody, panels.assetBrowserBody] {
-            library.onFilesDropped = { [weak self] urls in
-                self?.addToLibrary(urls, library: library)
+            library.onFilesDropped = { [weak self] urls, bin in
+                self?.addToLibrary(urls, library: library, intoBin: bin)
             }
             library.onAutoPlayChanged = { [weak self] isOn in
                 guard let self else { return }
@@ -365,6 +387,28 @@ final class ShellController {
 
         refreshConfiguredSources()
         preferences.onChange = { [weak self] _ in self?.refreshConfiguredSources() }
+    }
+
+    /// Loads what a dragged generator or configured source refers to into a channel —
+    /// the drag equivalent of double-clicking it in the asset browser.
+    private func loadLibraryReference(_ reference: String, into letter: String) {
+        let parts = reference.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else {
+            Log.warn(.app, "a drop carried an unreadable library reference '\(reference)'")
+            return
+        }
+        switch parts[0] {
+        case "generator":
+            guard let raw = Int(parts[1]), let kind = GeneratorKind(rawValue: raw) else { return }
+            setGenerator(kind, channel: letter)
+            shell.grid.panels.sourceBodies[letter]?.setMediaName(kind.displayName)
+        case "isf":
+            assignISFGenerator(parts[1], toChannel: letter)
+        case "source":
+            assignSource(parts[1], toChannel: letter)
+        default:
+            Log.warn(.app, "a drop carried an unknown library reference '\(reference)'")
+        }
     }
 
     /// Rebuilds the Asset Browser's Sources tab from `Preferences.configuredSources`.
@@ -523,7 +567,10 @@ final class ShellController {
     static let maximumFolderDepth = 4
 
     /// actually read.
-    private func addToLibrary(_ urls: [URL], library: LibraryPanelBody) {
+    /// - Parameter bin: where the drop or paste landed. Nil is the top level, where a
+    ///   folder's shape on disk becomes bins; into a bin, everything is filed in THAT
+    ///   bin, because bins are one level deep and the person chose where it goes.
+    private func addToLibrary(_ urls: [URL], library: LibraryPanelBody, intoBin bin: String? = nil) {
         var accepted: [LibraryItem] = []
         var rejected: [String] = []
 
@@ -579,6 +626,13 @@ final class ShellController {
             }
         }
 
+        if let bin {
+            accepted = accepted.map { item in
+                var item = item
+                item.bin = bin
+                return item
+            }
+        }
         library.addItems(accepted)
 
         if !rejected.isEmpty {
@@ -754,6 +808,7 @@ final class ShellController {
             body.onPlayToggled = { [weak self] in self?.togglePlayback(channel: letter) }
             body.onFileSelected = { [weak self] in
                 self?.setGenerator(nil, channel: letter)
+                self?.captionChannel(letter)
             }
             body.onEmulatorSelected = { [weak self] in
                 self?.assignEmulator(toChannel: letter)
@@ -804,6 +859,9 @@ final class ShellController {
                 // The range travels with the drag now, so a dragged clip honours its
                 // marks exactly as a double-clicked one does.
                 self?.loadClip(url, into: letter, range: range)
+            }
+            body.onReferenceDropped = { [weak self] reference in
+                self?.loadLibraryReference(reference, into: letter)
             }
             body.onLoopModeChanged = { [weak self] mode in
                 self?.engine.sources[letter]?.loopMode = mode
@@ -901,10 +959,22 @@ final class ShellController {
     private func refreshChannelAfterSwap(_ letter: String) {
         guard let node = engine.sources[letter],
               let body = shell.grid.panels.sourceBodies[letter] else { return }
-        let range = node.playbackRange
         // The caption names WHAT THE CHANNEL SHOWS, which after a swap may not be a file
         // at all. Captioning the clip regardless would put a filename on a channel that
         // is showing the Amiga — a label describing a node the channel is not reading.
+        captionChannel(letter)
+        body.setMarkedRange(node.playbackRange)
+        body.setTiming(node.timing)
+        body.setScrubPosition(node.normalisedPosition)
+    }
+
+    /// Captions a channel's panel with whatever the channel is actually showing.
+    ///
+    /// The caption is also what turns Load into Eject, so every kind of source must
+    /// set one. The Amiga and cameras used to set none: their channels read "Load",
+    /// and the only way out was to load a file over them.
+    private func captionChannel(_ letter: String) {
+        guard let body = shell.grid.panels.sourceBodies[letter] else { return }
         switch engine.channelSourceKinds[letter] ?? .file {
         case .emulator:
             body.setMediaName("Amiga")
@@ -916,13 +986,11 @@ final class ShellController {
         case .isfGenerator(let id):
             body.setMediaName(engine.catalog.generator(id)?.name ?? "ISF generator")
         case .file:
-            body.setMediaName(node.mediaURL.map {
+            let range = engine.sources[letter]?.playbackRange
+            body.setMediaName(engine.sources[letter]?.mediaURL.map {
                 range == nil ? $0.lastPathComponent : "\($0.lastPathComponent) [trimmed]"
             })
         }
-        body.setMarkedRange(range)
-        body.setTiming(node.timing)
-        body.setScrubPosition(node.normalisedPosition)
     }
 
     /// Closes everything that owes the outside world an ending, at quit.
@@ -990,6 +1058,7 @@ final class ShellController {
 
         engine.emulator?.host = emulator.host
         engine.setChannelSource(.emulator, channel: letter)
+        captionChannel(letter)
         shell.grid.panels.emuBrowser.refresh()
     }
 
@@ -1010,6 +1079,7 @@ final class ShellController {
         }
         sourceSessions.start(source, engine: engine)
         engine.setChannelSource(.capture(id), channel: letter)
+        captionChannel(letter)
     }
 
     /// The per-channel "Camera" button's fallback when there is no Sources-tab tile
@@ -1560,7 +1630,9 @@ final class ShellController {
             self?.refreshISFGeneratorLists(rerender: false)
         }
         let items = generators.map { generator -> LibraryItem in
-            var item = LibraryItem(name: generator.name, badge: "ISF", isAvailable: true, url: nil)
+            var item = LibraryItem(
+                name: generator.name, badge: "ISF", isAvailable: true, url: nil,
+                id: "isf:\(generator.id)")
             item.isfModuleID = generator.id
             item.thumbnail = GeneratorThumbnails.shared.image(for: generator)
             return item

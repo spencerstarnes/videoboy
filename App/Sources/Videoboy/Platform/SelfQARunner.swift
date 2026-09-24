@@ -66,6 +66,8 @@ enum SelfQARunner {
             verdict = MoshSelfQA.run()
         case "shaders":
             verdict = ShadersSelfQA.run()
+        case "library":
+            verdict = LibrarySelfQA.run()
         case "isf":
             verdict = ISFSelfQA.run()
         default:

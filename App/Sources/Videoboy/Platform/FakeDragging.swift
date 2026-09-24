@@ -34,6 +34,20 @@ final class FakeDragging: NSObject, NSDraggingInfo {
         super.init()
     }
 
+    /// A drag of whatever the library would write — clips with their library ids, or
+    /// a generator's reference — at a point in window coordinates.
+    init(
+        pasteboardItems: [NSPasteboardItem], pasteboardName: String = "videoboy-fake-drag",
+        location: NSPoint = .zero, mask: NSDragOperation = [.move, .copy, .generic]
+    ) {
+        draggingPasteboard = NSPasteboard(name: .init(pasteboardName))
+        draggingPasteboard.clearContents()
+        draggingPasteboard.writeObjects(pasteboardItems)
+        draggingLocation = location
+        draggingSourceOperationMask = mask
+        super.init()
+    }
+
     // The rest of the protocol. None of it is consulted by a file drop, and
     // implementing it honestly as "unused" is clearer than inventing values that
     // look meaningful.
