@@ -1,6 +1,6 @@
 check:    perf/stress
 verdict:  PASS
-when:     2026-09-24T01:06:36Z
+when:     2026-09-24T01:56:37Z
 core:     0.3.0
 
 notes:
@@ -13,23 +13,27 @@ notes:
     fx.two.mosh: MoshStatistics(received: 291, emitted: 291, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
   display link at 30.0 Hz (33.33 ms/refresh)
   240 frames rendered in 8 s = 30.00/s; 0 dropped refreshes
-  whole tick: mean 8.56 ms, p95 9.35 ms, worst 16.40 ms
-    of which graph: mean 8.22 ms, worst 16.11 ms; UI/onFrame: mean 0.34 ms
-    node source.b: 1.57 ms/tick
-    node source.a: 1.33 ms/tick
-    node source.d: 1.07 ms/tick
+  whole tick: mean 8.75 ms, p95 9.55 ms, worst 18.71 ms
+    of which graph: mean 8.45 ms, worst 18.43 ms; UI/onFrame: mean 0.30 ms
+    node source.b: 1.65 ms/tick
+    node source.a: 1.36 ms/tick
+    node source.d: 1.12 ms/tick
     node fx.a.mosh: 0.22 ms/tick
-    node fx.d.mosh: 0.21 ms/tick
     node fx.b.mosh: 0.20 ms/tick
-    node fx.c.mosh: 0.20 ms/tick
-    node fx.two.mosh: 0.18 ms/tick
+    node fx.d.mosh: 0.20 ms/tick
+    node fx.c.mosh: 0.19 ms/tick
     node fx.one.mosh: 0.18 ms/tick
+    node fx.two.mosh: 0.18 ms/tick
     node source.c: 0.14 ms/tick
-  window hidden: 120 frames in 4 s, worst tick 16.89 ms
+  program preview: 196 frames shown; refreshes each was held for — 1×: 1, 2×: 192, 3×: 1, 4×: 1
+  transitions moving: 194 frames in 6.5 s = 29.85/s, 0 dropped; tick mean 8.41 ms, p95 9.16 ms, worst 23.76 ms; graph mean 8.04 ms, worst 23.27 ms
+  window hidden: 120 frames in 4 s, worst tick 18.74 ms
 
-assertions (5/5 passed):
+assertions (7/7 passed):
   PASS  every datamosh node is encoding and decoding under load — 6 of 6 running with frames flowing
   PASS  the graph renders at the 29.97 content rate under full load — 30.00 frames/s against 29.97
   PASS  under 1% of display-link ticks dropped under full load — 0 dropped of 240
-  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 16.40 ms, p95 9.35 ms, mean 8.56 ms
-  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 16.89 ms
+  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 18.71 ms, p95 9.55 ms, mean 8.75 ms
+  PASS  the program preview paces a moving wipe evenly (90% of frames held 2 refreshes) — 192 of 195 — 1×: 1, 2×: 192, 3×: 1, 4×: 1
+  PASS  transitions in motion hold 29.97 with no tick over one SD frame — 29.85 frames/s, 0 dropped, worst 23.76 ms, p95 9.16 ms
+  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 18.74 ms

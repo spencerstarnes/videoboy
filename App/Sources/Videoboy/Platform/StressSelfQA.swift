@@ -160,6 +160,95 @@ enum StressSelfQA {
             detail: String(format: "worst %.2f ms, p95 %.2f ms, mean %.2f ms", worst, p95, mean)
         ))
 
+        // TRANSITIONS IN MOTION. Everything above holds the faders still at 0.5; a
+        // show moves them. FADE runs back and forth on all three buses, stepping
+        // every bus through every pattern, with the AVE-5 popover open — the per-tick
+        // work a wipe costs while it is actually travelling, UI included.
+        if let shell = controller.shellController {
+            let panels = shell.shell.grid.panels
+            let buses: [(body: FaderPanelBody, slot: String)] = [
+                (panels.faderABBody, GraphTopology.subMixOne),
+                (panels.faderCDBody, GraphTopology.subMixTwo),
+                (panels.faderOneTwoBody, GraphTopology.primary)
+            ]
+            if let anchor = panels.faderOneTwoBody.transitionButton {
+                engine.registry.setValue(Transition.ave5.normalisedPosition,
+                                         slot: GraphTopology.primary, code: .transition)
+                shell.toggleAVE5Panel(slot: GraphTopology.primary, anchor: anchor)
+            }
+            engine.setTransportRunning(true)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            let movingDropsBefore = engine.droppedFrames
+            engine.tickCostsForChecks = []
+            engine.graphCostsForChecks = []
+            let programPreview = panels.programBody.preview
+            programPreview.presentedTimesForChecks = []
+            var step = 0
+            let fadeSeconds = FadeRate.fast.seconds + 0.1
+            let movingSeconds = Double(Transition.allCases.count) * fadeSeconds
+            let end = Date().addingTimeInterval(movingSeconds)
+            while Date() < end {
+                let pattern = Transition.allCases[step % Transition.allCases.count]
+                for bus in buses {
+                    // Keep the primary on AVE-5 so the open popover stays live.
+                    if bus.slot != GraphTopology.primary {
+                        engine.registry.setValue(pattern.normalisedPosition, slot: bus.slot, code: .transition)
+                    }
+                    bus.body.onFade?(.fast)
+                }
+                step += 1
+                RunLoop.main.run(until: Date().addingTimeInterval(fadeSeconds))
+            }
+            let moving = engine.tickCostsForChecks ?? []
+            let movingGraph = engine.graphCostsForChecks ?? []
+            engine.tickCostsForChecks = nil
+            engine.graphCostsForChecks = nil
+            let movingDrops = engine.droppedFrames - movingDropsBefore
+            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+            let shown = (programPreview.presentedTimesForChecks ?? []).filter { $0 > 0 }
+            programPreview.presentedTimesForChecks = nil
+            // How long each frame stayed on the PREVIEW, in screen refreshes. Even
+            // pacing is every frame for the same count (2 at 60 Hz); a mix of 1s and
+            // 3s is judder that a moving wipe edge shows and a dissolve hides.
+            let screenRefresh = 1.0 / Double(window.screen?.maximumFramesPerSecond ?? 60)
+            var held: [Int: Int] = [:]
+            for (earlier, later) in zip(shown, shown.dropFirst()) {
+                held[Int(((later - earlier) / screenRefresh).rounded()), default: 0] += 1
+            }
+            let heldSummary = held.keys.sorted().map { "\($0)×: \(held[$0]!)" }.joined(separator: ", ")
+            check.note("program preview: \(shown.count) frames shown; refreshes each was held for — \(heldSummary)")
+            // Only asserted where frames divide the screen's refreshes evenly (60, 120 Hz);
+            // on a 50 or 144 Hz screen an uneven cadence is the correct answer.
+            let refreshesPerFrame = 1.0 / (screenRefresh * StandardDefinition.frameRate)
+            let evenHold = Int(refreshesPerFrame.rounded())
+            if abs(refreshesPerFrame - Double(evenHold)) < 0.05, shown.count > 10 {
+                let even = held[evenHold] ?? 0
+                let intervals = shown.count - 1
+                check.record(AssertionResult(
+                    name: "the program preview paces a moving wipe evenly (90% of frames held \(evenHold) refreshes)",
+                    passed: Double(even) >= Double(intervals) * 0.9,
+                    detail: "\(even) of \(intervals) — \(heldSummary)"))
+            }
+            engine.setTransportRunning(false)
+            shell.closeAVE5Panel()
+            let movingSorted = moving.sorted()
+            let movingWorst = movingSorted.last ?? 0
+            let movingMean = moving.isEmpty ? 0 : moving.reduce(0, +) / Double(moving.count)
+            let movingP95 = movingSorted.isEmpty ? 0 : movingSorted[Int(Double(movingSorted.count - 1) * 0.95)]
+            let movingRate = Double(moving.count) / movingSeconds
+            check.note(String(format: "transitions moving: %d frames in %.1f s = %.2f/s, %d dropped; tick mean %.2f ms, p95 %.2f ms, worst %.2f ms; graph mean %.2f ms, worst %.2f ms",
+                              moving.count, movingSeconds, movingRate, movingDrops, movingMean, movingP95, movingWorst,
+                              movingGraph.isEmpty ? 0 : movingGraph.reduce(0, +) / Double(movingGraph.count),
+                              movingGraph.max() ?? 0))
+            check.record(AssertionResult(
+                name: "transitions in motion hold 29.97 with no tick over one SD frame",
+                passed: abs(movingRate - contentRate) <= contentRate * 0.02
+                    && movingWorst < contentBudget
+                    && Double(movingDrops) <= Double(moving.count) * 0.01,
+                detail: String(format: "%.2f frames/s, %d dropped, worst %.2f ms, p95 %.2f ms",
+                               movingRate, movingDrops, movingWorst, movingP95)))
+        }
+
         // HIDDEN WINDOW. A performer covers Videoboy with another app mid-show; the
         // render loop also drives the OUTPUT window, so it must not stall on preview
         // layers nobody can see (a starved `nextDrawable()` blocks for up to 1 s).

@@ -25,10 +25,13 @@ final class MetalPreviewView: NSView {
         didSet { captionLabel.stringValue = caption }
     }
 
-    /// The texture to draw. Setting it schedules a redraw.
-    var texture: MTLTexture? {
-        didSet { needsDisplay = true }
-    }
+    /// The texture to draw. Setting it does NOT schedule a redraw: every caller sets
+    /// it on the render tick and calls `present()` straight after. Marking the view
+    /// dirty here as well made AppKit's display pass present the frame a second
+    /// time, out of phase with the tick — ~35 presents/s for 30 frames, which a
+    /// moving wipe edge showed as judder. `draw(_:)` still presents on a resize or
+    /// an unhide, which AppKit dirties the view for by itself.
+    var texture: MTLTexture?
 
     /// Draws the action-safe and title-safe rectangles over the picture (SPEC 11).
     var showsSafeZones = false {
@@ -62,6 +65,10 @@ final class MetalPreviewView: NSView {
     private let captionLabel = NSTextField(labelWithString: "")
     private let emptyLabel = NSTextField(labelWithString: "no source")
     private var metalLayer: CAMetalLayer?
+
+    /// When each drawable actually reached the screen (seconds, host clock), recorded
+    /// only while a check sets this non-nil. Nil in normal use: no handler, no cost.
+    var presentedTimesForChecks: [CFTimeInterval]?
     private let overlayLayer = CAShapeLayer()
 
     /// The tally glow: a red neon line inside the picture's edge, whose brightness is
@@ -445,7 +452,10 @@ final class MetalPreviewView: NSView {
     /// screen — so ejecting a clip showed "no source" printed over the frame that was
     /// playing when it was ejected. A layer keeps what it was last given until it is
     /// given something else; going empty has to be drawn, not merely stopped.
-    func present() {
+    /// - Parameter time: the refresh to show this frame on (host clock), from the
+    ///   render tick. Nil — a resize, an unhide — shows it as soon as it is drawn.
+    ///   Scheduling does not wait: the drawable is queued and the tick carries on.
+    func present(at time: CFTimeInterval? = nil) {
         emptyLabel.isHidden = texture != nil
 
         guard let context = MetalContext.shared, let metalLayer else { return }
@@ -481,7 +491,17 @@ final class MetalPreviewView: NSView {
         encoder.setFragmentTexture(texture, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
-        commandBuffer.present(drawable)
+        if presentedTimesForChecks != nil {
+            drawable.addPresentedHandler { [weak self] shown in
+                let time = shown.presentedTime
+                DispatchQueue.main.async { self?.presentedTimesForChecks?.append(time) }
+            }
+        }
+        if let time, time > CACurrentMediaTime() {
+            commandBuffer.present(drawable, atTime: time)
+        } else {
+            commandBuffer.present(drawable)
+        }
         commandBuffer.commit()
     }
 

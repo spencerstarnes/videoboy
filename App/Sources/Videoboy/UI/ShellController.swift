@@ -16,7 +16,7 @@ import VideoboyCore
 /// Connects the shell's views to the engine.
 final class ShellController {
 
-    private let shell: ShellView
+    let shell: ShellView
     private let engine: Engine
     private let preferences: PreferenceStore
     /// Live sessions for whatever configured sources (SPEC 6, SPEC 10) are actually
@@ -2605,6 +2605,7 @@ final class ShellController {
     private func refresh(from engine: Engine) {
         let panels = shell.grid.panels
         updateRecordPulse(from: engine)
+        let showAt = engine.framePresentationTime
 
         for letter in Self.channels {
             // Ask the engine WHICH node this channel is playing from. Reading the
@@ -2613,7 +2614,7 @@ final class ShellController {
             // the one window that should have shown it stayed blank.
             let slot = engine.sourceSlot(forChannel: letter)
             panels.sourceBodies[letter]?.preview.texture = engine.texture(for: slot)
-            panels.sourceBodies[letter]?.preview.present()
+            panels.sourceBodies[letter]?.preview.present(at: showAt)
             // The scrub track follows playback, so it reads as a position indicator
             // as well as a control.
             if let source = engine.sources[letter], source.isPlaying {
@@ -2630,17 +2631,17 @@ final class ShellController {
         // window. A sub-mix preview must show that sub-mix as it will be mixed.
         panels.subMixOneBody.preview.texture = engine.texture(for: Engine.busCodecOneSlot)
             ?? engine.texture(for: GraphTopology.subMixOne)
-        panels.subMixOneBody.preview.present()
+        panels.subMixOneBody.preview.present(at: showAt)
         panels.subMixTwoBody.preview.texture = engine.texture(for: Engine.busCodecTwoSlot)
             ?? engine.texture(for: GraphTopology.subMixTwo)
-        panels.subMixTwoBody.preview.present()
+        panels.subMixTwoBody.preview.present(at: showAt)
 
         // The end of the programme chain, falling back to the mix while the data
         // stage has produced nothing yet.
         let program = engine.texture(for: Engine.outputSlot)
             ?? engine.texture(for: GraphTopology.primary)
         panels.programBody.preview.texture = program
-        panels.programBody.preview.present()
+        panels.programBody.preview.present(at: showAt)
         outputWindow?.present(texture: program)
 
         // Everything else that has been routed somewhere. The four-up is assembled

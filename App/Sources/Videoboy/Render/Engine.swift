@@ -779,6 +779,13 @@ final class Engine {
     /// The interval the display link is actually firing at, in seconds.
     private(set) var refreshInterval: Double = 0
 
+    /// The refresh this frame is meant to appear on (the display link's target, host
+    /// clock). The in-window previews schedule their presents for it: unsynced and
+    /// unscheduled, each frame showed whenever its GPU work finished, which sat on
+    /// a refresh boundary — frames held 1, 3, 1, 3 refreshes instead of 2, 2, 2,
+    /// which a moving wipe edge shows as judder.
+    private(set) var framePresentationTime: CFTimeInterval = 0
+
     /// When the next 29.97 content frame is due, on the display link's clock.
     private var nextFrameDue: CFTimeInterval = 0
 
@@ -851,6 +858,7 @@ final class Engine {
             graphCostsForChecks?.append((CACurrentMediaTime() - graphStart) * 1000)
         }
         frameIndex += 1
+        framePresentationTime = link.targetTimestamp
         onFrame?(self)
     }
 
