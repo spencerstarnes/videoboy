@@ -29,6 +29,7 @@ final class PreferencesWindowController: NSWindowController {
         case save
         case defaults
         case outputs
+        case dataBurn
         case inputs
         case hotKeys
         case midiMapping
@@ -41,6 +42,7 @@ final class PreferencesWindowController: NSWindowController {
             case .save: "Save"
             case .defaults: "Defaults"
             case .outputs: "Outputs"
+            case .dataBurn: "Data Burn"
             case .inputs: "Sources"
             case .hotKeys: "Hot Keys"
             case .midiMapping: "MIDI Mapping"
@@ -55,6 +57,7 @@ final class PreferencesWindowController: NSWindowController {
             case .save: "externaldrive"
             case .defaults: "slider.horizontal.3"
             case .outputs: "tv"
+            case .dataBurn: "textformat"
             case .inputs: "cable.connector"
             case .hotKeys: "keyboard"
             case .midiMapping: "pianokeys"
@@ -70,6 +73,8 @@ final class PreferencesWindowController: NSWindowController {
             case .save: "Where your work goes, and how often it gets there by itself."
             case .defaults: "What a new source, bus and session start out as."
             case .outputs: "Where PROGRAM and the buses can be sent."
+            case .dataBurn: "How FILE and TC text looks on the monitors, and when DATA BURN "
+                + "puts it into a sub-mix."
             case .inputs: "MIDI, and every camera, window, IP camera or deck available "
                 + "to a channel."
             case .hotKeys: "Keys for the things you reach for mid-set."
@@ -91,6 +96,8 @@ final class PreferencesWindowController: NSWindowController {
     var destinationList: DestinationListView?
     var sourceList: SourceListView?
     var shaderList: ISFModuleListView?
+    /// The Data Burn pane's sample line, redrawn whenever the style changes.
+    var dataBurnSample: NSImageView?
     /// Builds the Shaders pane's list. Replaced by the self-QA so it scans and imports
     /// into temporary folders, never the operator's own ISF library.
     var makeShaderList: () -> ISFModuleListView = { ISFModuleListView() }
@@ -252,6 +259,7 @@ final class PreferencesWindowController: NSWindowController {
         case .save: makeSavePane()
         case .defaults: makeDefaultsPane()
         case .outputs: makeOutputsPane()
+        case .dataBurn: makeDataBurnPane()
         case .inputs: makeInputsPane()
         case .hotKeys: makeHotKeysPane()
         case .midiMapping: makeMIDIMappingPane()

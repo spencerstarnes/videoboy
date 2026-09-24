@@ -286,6 +286,57 @@ enum StressSelfQA {
                                movingRate, movingDrops, movingWorst, movingP95)))
         }
 
+        // DATA BURN ON AIR. Timecode ticks every frame, so a burning sub-mix redraws
+        // its text block every frame, and every monitor showing FILE/TC does too. Both
+        // sub-mixes burn a waveform, file names and timecode while PROGRAM's monitor
+        // shows its own S1/S2 lines — the heaviest the data keys can make a frame —
+        // pressed through the panels' own key callbacks, as a click reaches them.
+        if let shell = controller.shellController {
+            let panels = shell.shell.grid.panels
+            let burnKeys: [PreviewPanelBody.ScopeKey] = [.kind(.waveform), .fileName, .timecode, .burn]
+            func press(_ keys: [PreviewPanelBody.ScopeKey], on body: PreviewPanelBody) {
+                for key in keys { body.onScopeKeyPressed?(key) }
+            }
+            press(burnKeys, on: panels.subMixOneBody)
+            press(burnKeys, on: panels.subMixTwoBody)
+            press([.fileName, .timecode], on: panels.programBody)
+            engine.setTransportRunning(true)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            let burnDropsBefore = engine.droppedFrames
+            engine.tickCostsForChecks = []
+            let burnSeconds = 5.0
+            RunLoop.main.run(until: Date().addingTimeInterval(burnSeconds))
+            let burning = engine.tickCostsForChecks ?? []
+            engine.tickCostsForChecks = nil
+            let burnDrops = engine.droppedFrames - burnDropsBefore
+            let burnedText = [GraphTopology.subMixOne, GraphTopology.subMixTwo]
+                .filter { engine.dataBurns[$0]?.isBurningText == true }.count
+            engine.setTransportRunning(false)
+            // Off again, in reverse, so the hidden-window check below measures the
+            // same load it always has.
+            press(burnKeys.reversed(), on: panels.subMixOneBody)
+            press(burnKeys.reversed(), on: panels.subMixTwoBody)
+            press([.timecode, .fileName], on: panels.programBody)
+
+            let burnSorted = burning.sorted()
+            let burnWorst = burnSorted.last ?? 0
+            let burnMean = burning.isEmpty ? 0 : burning.reduce(0, +) / Double(burning.count)
+            let burnP95 = burnSorted.isEmpty ? 0 : burnSorted[Int(Double(burnSorted.count - 1) * 0.95)]
+            let burnRate = Double(burning.count) / burnSeconds
+            check.note(String(format: "data burn on air: %d frames in %.0f s = %.2f/s, %d dropped; tick mean %.2f ms, p95 %.2f ms, worst %.2f ms",
+                              burning.count, burnSeconds, burnRate, burnDrops, burnMean, burnP95, burnWorst))
+            check.record(AssertionResult(
+                name: "both sub-mixes burn their text while it is on",
+                passed: burnedText == 2, detail: "\(burnedText) of 2 burning text"))
+            check.record(AssertionResult(
+                name: "DATA BURN on both sub-mixes holds 29.97 with no tick over one SD frame",
+                passed: abs(burnRate - contentRate) <= contentRate * 0.02
+                    && burnWorst < contentBudget
+                    && Double(burnDrops) <= Double(burning.count) * 0.01,
+                detail: String(format: "%.2f frames/s, %d dropped, worst %.2f ms, p95 %.2f ms",
+                               burnRate, burnDrops, burnWorst, burnP95)))
+        }
+
         // HIDDEN WINDOW. A performer covers Videoboy with another app mid-show; the
         // render loop also drives the OUTPUT window, so it must not stall on preview
         // layers nobody can see (a starved `nextDrawable()` blocks for up to 1 s).

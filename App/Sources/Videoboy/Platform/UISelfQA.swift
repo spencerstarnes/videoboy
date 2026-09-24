@@ -61,6 +61,35 @@ enum UISelfQA {
                 detail: "luminance variance \(String(format: "%.1f", FrameAssertions.luminanceVariance(image)))"
             ))
             check.note("\(layoutCase.name): \(Int(layoutCase.size.width))x\(Int(layoutCase.size.height)) rendered")
+
+            // The scope row under each sub-mix and PROGRAM is the most crowded row in
+            // the window. A key the panel cannot fit is squeezed or pushed off its edge,
+            // and it then cannot be pressed — which is how the first DATA BURN key
+            // failed. Every key must sit whole inside its panel at every width.
+            let panels = shell.grid.panels
+            for (name, body) in [("Sub Mix 1", panels.subMixOneBody as NSView),
+                                 ("Sub Mix 2", panels.subMixTwoBody),
+                                 ("PROGRAM", panels.programBody)]
+            where body.bounds.width > 0 && !body.isHiddenOrHasHiddenAncestor {
+                let clipped = VBOptionButton.all(in: body).filter { key in
+                    let frame = key.convert(key.bounds, to: body)
+                    return frame.minX < -0.5 || frame.maxX > body.bounds.width + 0.5
+                        || frame.width < key.intrinsicContentSize.width - 0.5
+                }
+                let detail = clipped.isEmpty
+                    ? "\(VBOptionButton.all(in: body).count) keys in \(Int(body.bounds.width))pt"
+                    : "clipped: " + clipped.map { $0.title.replacingOccurrences(of: "\n", with: " ") }
+                        .joined(separator: ", ") + " in \(Int(body.bounds.width))pt"
+                // Narrow is noted, not failed: the row has never fitted a 247pt panel
+                // (the old seven-key row overflowed there too). See BUILD-PLAN backlog.
+                if layoutCase.name == "narrow" {
+                    check.note("narrow: keys under \(name) — \(detail)")
+                    continue
+                }
+                check.record(AssertionResult(
+                    name: "\(layoutCase.name): every key under \(name) fits",
+                    passed: clipped.isEmpty, detail: detail))
+            }
         }
 
         // Collapsed states. The point of collapsing is that the middle of the window
@@ -2525,6 +2554,135 @@ enum UISelfQA {
                 name: "each folder becomes its own bin",
                 passed: deep?.bin == "Deep",
                 detail: "the clip in Reel B/Deep is binned as \(deep?.bin ?? "nothing")"))
+        }
+
+        // DATA BURN. The old SEND key compared the programme panel's id with the
+        // programme data-stage slot — two different strings — so it never burned
+        // anything. The keys are found by HIT-TESTING their centres (a key the row
+        // covers is a key nobody can press), then fired the way a click fires them,
+        // and the proof is a rendered PROGRAM frame: burned text must arrive through
+        // the mix, in Sub Mix 1's corner and nowhere else.
+        sectionDataBurn: do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+            shell.displayIfNeeded()
+            withExtendedLifetime(controller) {}
+
+            let panels = shell.grid.panels
+            func key(_ title: String, in body: NSView) -> VBOptionButton? {
+                VBOptionButton.all(in: body).first { $0.title == title }
+            }
+            check.record(AssertionResult(
+                name: "PROGRAM has FILE and TC but no DATA BURN key",
+                passed: key("FILE", in: panels.programBody) != nil
+                    && key("TC", in: panels.programBody) != nil
+                    && key("DATA\nBURN", in: panels.programBody) == nil,
+                detail: "PROGRAM keys: "
+                    + VBOptionButton.all(in: panels.programBody).map(\.title).joined(separator: " ")))
+
+            guard let tc = key("TC", in: panels.subMixOneBody),
+                  let burn = key("DATA\nBURN", in: panels.subMixOneBody) else {
+                check.record(AssertionResult(
+                    name: "Sub Mix 1 has TC and DATA BURN keys", passed: false,
+                    detail: VBOptionButton.all(in: panels.subMixOneBody).map(\.title)
+                        .joined(separator: " ")))
+                break sectionDataBurn
+            }
+            if let image = render(view: panels.subMixOneBody) {
+                _ = try? check.writeImage(image, named: "data-burn-keys.png")
+            }
+
+            /// Presses a key through the view hierarchy: hit-test its centre, and fire
+            /// whatever that lands on exactly as `VBOptionButton.mouseDown` does.
+            func press(_ target: VBOptionButton) -> Bool {
+                let centre = shell.convert(
+                    NSPoint(x: target.bounds.midX, y: target.bounds.midY), from: target)
+                guard let hit = shell.hitTest(centre) as? VBOptionButton, hit === target,
+                      hit.isEnabled else { return false }
+                hit.isOn.toggle()
+                hit.sendAction(hit.action, to: hit.target)
+                return true
+            }
+
+            check.record(AssertionResult(
+                name: "DATA BURN is greyed while there is nothing to burn",
+                passed: !burn.isEnabled, detail: burn.isEnabled ? "enabled" : "disabled"))
+
+            let clip = RepoPaths.samples.appendingPathComponent("motion.dv")
+            guard FileManager.default.fileExists(atPath: clip.path),
+                  engine.load(url: clip, intoChannel: "A"),
+                  let metal = MetalContext.shared,
+                  let renderer = OffscreenRenderer(context: metal) else {
+                check.note("no motion.dv or no Metal; the data burn render check was skipped")
+                break sectionDataBurn
+            }
+            // Held on one frame, so any difference between two renders is the burn.
+            engine.sources["A"]?.isPlaying = false
+            engine.registry.setValue(0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+            engine.registry.setValue(0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
+
+            func renderProgram() -> ImageBuffer? {
+                let context = RenderContext(frameIndex: 0, presentationTime: 0, musicalPosition: nil)
+                guard let texture = engine.evaluateGraph(context: context)[Engine.outputSlot]
+                else { return nil }
+                return renderer.readback(texture)
+            }
+
+            let pressedTC = press(tc)
+            let clean = renderProgram()
+            let pressedBurn = press(burn)
+            let burned = renderProgram()
+            check.record(AssertionResult(
+                name: "TC and DATA BURN are reachable by hit-testing, and light",
+                passed: pressedTC && pressedBurn && tc.isOn && burn.isOn,
+                detail: "TC pressed=\(pressedTC) lit=\(tc.isOn), "
+                    + "BURN pressed=\(pressedBurn) lit=\(burn.isOn)"))
+
+            guard let clean, let burned else {
+                check.record(AssertionResult(
+                    name: "PROGRAM renders", passed: false, detail: "a frame failed to render"))
+                break sectionDataBurn
+            }
+            _ = try? check.writeImage(burned, named: "data-burn-program.png")
+
+            // Where the frames differ: the burn belongs in the top-left block only.
+            var inCorner = 0, elsewhere = 0
+            for y in stride(from: 0, to: burned.height, by: 2) {
+                for x in stride(from: 0, to: burned.width, by: 2) {
+                    let a = clean.pixel(x: x, y: y), b = burned.pixel(x: x, y: y)
+                    let delta = abs(Int(a.r) - Int(b.r)) + abs(Int(a.g) - Int(b.g))
+                        + abs(Int(a.b) - Int(b.b))
+                    guard delta > 30 else { continue }
+                    if x < burned.width / 2 && y < burned.height / 4 { inCorner += 1 } else { elsewhere += 1 }
+                }
+            }
+            check.record(AssertionResult(
+                name: "Sub Mix 1's burned timecode reaches PROGRAM, in its top-left corner",
+                passed: inCorner > 100 && elsewhere == 0,
+                detail: "\(inCorner) changed samples in the corner, \(elsewhere) elsewhere"))
+
+            // The fader rule: a channel shut out by its fader keeps its label, blank.
+            let lines = { engine.dataBurns[GraphTopology.subMixOne]?.textProvider?() ?? [] }
+            let withA = lines()
+            engine.registry.setValue(1, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+            let withoutA = lines()
+            check.record(AssertionResult(
+                name: "a channel faded out keeps its label with nothing after it",
+                passed: withA.first?.hasPrefix("A: 00:00:0") == true && withoutA.first == "A:",
+                detail: "fader at A: \(withA), fader at B: \(withoutA)"))
+
+            // Nothing left to show turns the burn off, and leaves no trace behind.
+            engine.registry.setValue(0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+            _ = press(tc)
+            let after = renderProgram()
+            check.record(AssertionResult(
+                name: "turning the last data key off takes DATA BURN off with it",
+                passed: !burn.isOn && !burn.isEnabled
+                    && after.map { FrameAssertions.differingPixelFraction($0, clean) < 0.001 } == true,
+                detail: "burn lit=\(burn.isOn) enabled=\(burn.isEnabled)"))
         }
 
         return check.finish()

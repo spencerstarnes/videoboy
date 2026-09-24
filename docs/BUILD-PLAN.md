@@ -370,3 +370,11 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   Not done, deliberately: the library is still not saved between launches; clips added
   from folders show "—" for duration (nothing reads it off the file yet); Import… stays
   disabled; no reordering inside a bin or the up-next queue.
+
+- **The scope row does not fit a sub-mix/PROGRAM panel at the narrow breakpoint.**
+  Noted 2026-09-24 with DATA BURN / FILE / TC. At 760pt wide the panels are ~247pt and
+  the row (send glyph, WFM RGB HIST VEC FILE TC, OVER L3, DATA BURN) needs ~300pt, so
+  OVER and L3 are squeezed. Not a regression: the old seven-key row (with SEND)
+  overflowed there too, and at 1000pt as well — it now fits at 1000pt and 1460pt, which
+  `selfqa ui` asserts ("every key under … fits"); narrow is logged as a note. A real fix
+  is a second row, or moving OVER/L3 behind a right-click, at narrow widths only.

@@ -50,6 +50,7 @@ final class ShellController {
         wireFaders()
         wireSeamSwapKeys()
         wireBlendControls()
+        wireDataBurn()
         wireEffectChains()
         wireToolbar()
         wireSettingsBar()
@@ -270,8 +271,10 @@ final class ShellController {
     private func wireRouting() {
         let panels = shell.grid.panels
         var sources: [(MetalPreviewView, RoutingSource)] = [
-            (panels.subMixOneBody.preview, .slot(Engine.busCodecOneSlot)),
-            (panels.subMixTwoBody.preview, .slot(Engine.busCodecTwoSlot)),
+            // After DATA BURN, so a sub-mix sent straight to a display carries the
+            // same burned-in data it carries into the mix.
+            (panels.subMixOneBody.preview, .slot(Engine.dataBurnOneSlot)),
+            (panels.subMixTwoBody.preview, .slot(Engine.dataBurnTwoSlot)),
             (panels.programBody.preview, .slot(Engine.outputSlot))
         ]
         for letter in Self.channels {
@@ -386,7 +389,10 @@ final class ShellController {
         }
 
         refreshConfiguredSources()
-        preferences.onChange = { [weak self] _ in self?.refreshConfiguredSources() }
+        preferences.onChange = { [weak self] preferences in
+            self?.refreshConfiguredSources()
+            self?.applyDataBurnStyle(preferences.dataBurnStyle)
+        }
     }
 
     /// Loads what a dragged generator or configured source refers to into a channel —
@@ -1777,8 +1783,8 @@ final class ShellController {
     /// Which graph slot each armable feed reads from.
     private func slot(forFeed label: String) -> String {
         switch label {
-        case "1": Engine.busCodecOneSlot
-        case "2": Engine.busCodecTwoSlot
+        case "1": Engine.dataBurnOneSlot
+        case "2": Engine.dataBurnTwoSlot
         case "P": Engine.outputSlot
         default: Engine.slot(forChannel: label)
         }
@@ -1802,15 +1808,18 @@ final class ShellController {
             selection.isOverlaid.toggle()
         case .lowerThird:
             selection.isLowerThird.toggle()
-        case .send:
-            selection.isSent.toggle()
+        case .fileName:
+            selection.showsFileName.toggle()
+        case .timecode:
+            selection.showsTimecode.toggle()
+        case .burn:
+            selection.isBurnedIn.toggle()
         }
 
-        // Turning off the last instrument turns everything off, including SEND. A
-        // scope that is "sent" but has nothing to draw would leave the send key lit
-        // over a picture with nothing on it, which reads as the send being broken.
-        if !selection.isShowing {
-            selection.isSent = false
+        // Turning off the last thing shown turns DATA BURN off too. A burn key lit
+        // over a picture with nothing burned into it reads as the burn being broken.
+        if !selection.hasAnything {
+            selection.isBurnedIn = false
         }
 
         scopeSelections[slot] = selection
@@ -1819,14 +1828,15 @@ final class ShellController {
         if !selection.isShowing {
             body.preview.setScopeImage(nil, dimsPicture: false)
         }
-        updateScopeSend(for: slot, selection: selection)
+        updateBurn(for: slot, selection: selection, body: body)
 
+        var shown = selection.orderedKinds.map(\.displayName)
+        if selection.showsFileName { shown.append("name") }
+        if selection.showsTimecode { shown.append("timecode") }
         Log.info(.app, "scopes on \(slot): "
-            + (selection.isShowing
-                ? selection.orderedKinds.map(\.displayName).joined(separator: "+")
-                    + " · \(selection.placement.displayName)"
-                    + (selection.isSent ? " · ON AIR" : "")
-                : "off"))
+            + (shown.isEmpty ? "off"
+                : shown.joined(separator: "+") + " · \(selection.placement.displayName)"
+                    + (selection.isBurnedIn ? " · BURNED IN" : "")))
     }
 
     /// A fresh selection, with the defaults that make the first click do the obvious
@@ -1837,23 +1847,156 @@ final class ShellController {
         return selection
     }
 
-    /// Puts the scope into the programme feed, or takes it out.
+    /// Puts a sub-mix's scope into its DATA BURN node, or takes it out.
     ///
-    /// Only the PROGRAMME slot can be sent. A sub-mix scope shown on air would be a
-    /// scope of a picture that is not the one going out, which is worse than useless —
-    /// so the key is there for consistency but reports plainly when it cannot act.
-    private func updateScopeSend(for slot: String, selection: ScopeSelection) {
-        guard slot == Engine.scopeSourceSlot else {
-            if selection.isSent {
-                Log.warn(.app, "only PROGRAM's scopes can be sent to air; "
-                    + "\(slot) shows the picture before the mix")
-            }
-            return
+    /// The text needs nothing here: the node pulls it each frame through the provider
+    /// `wireDataBurn` gave it, which reads this same selection. PROGRAM has no burn
+    /// node — its data arrives burned into the sub-mixes it is mixing.
+    private func updateBurn(for slot: String, selection: ScopeSelection, body: PreviewPanelBody) {
+        guard let burn = engine.dataBurns[slot] else { return }
+        burn.placement = selection.placement
+        burn.dimming = selection.isOverlaid ? 0 : 1
+        if !selection.isBurnedIn || !selection.isShowing {
+            burn.setOverlay(nil)
         }
-        engine.scopeOverlay?.placement = selection.placement
-        engine.scopeOverlay?.dimming = selection.isOverlaid ? 0 : 1
-        if !selection.isSent {
-            engine.scopeOverlay?.setOverlay(nil)
+        if selection.isBurnedIn {
+            // The monitor now shows the burned picture; its own scope layer on top
+            // would draw the instrument twice. `updateScopes` keeps it off.
+            body.preview.setScopeImage(nil, dimsPicture: false)
+        }
+    }
+
+    // MARK: - NAME / TC
+
+    /// NAME / TC lines last drawn on each composite's monitor, so an unchanged frame
+    /// does not redraw them.
+    private var monitorDataLines: [String: [String]] = [:]
+
+    /// Gives each sub-mix's burn node its text, and the style from Preferences.
+    private func wireDataBurn() {
+        for (slot, burn) in engine.dataBurns {
+            burn.textProvider = { [weak self] in
+                guard let self,
+                      let selection = self.scopeSelections[slot],
+                      selection.isBurnedIn, selection.showsData else { return [] }
+                return DataBurnText.lines(
+                    self.dataEntries(forComposite: slot),
+                    showsName: selection.showsFileName,
+                    showsTimecode: selection.showsTimecode)
+            }
+        }
+        applyDataBurnStyle(preferences.preferences.dataBurnStyle)
+    }
+
+    /// Restyles every burn and monitor block. Called when Preferences change.
+    private func applyDataBurnStyle(_ style: DataBurnStyle) {
+        for burn in engine.dataBurns.values { burn.textStyle = style }
+        // Forget what the monitors drew, so the next frame redraws in the new style.
+        monitorDataLines.removeAll()
+    }
+
+    /// Which corner each composite's text block uses. The sub-mixes match their burn
+    /// nodes (see `Engine.buildGraph`); PROGRAM takes the middle, clear of both.
+    private func dataAnchor(forComposite slot: String) -> DataBurnAnchor {
+        switch slot {
+        case GraphTopology.subMixOne: .topLeft
+        case GraphTopology.subMixTwo: .topRight
+        default: .topCentre
+        }
+    }
+
+    /// The channels a composite's NAME / TC block describes.
+    ///
+    /// A sub-mix lists its two channels. PROGRAM lists S1 and S2, each describing the
+    /// channel that sub-mix's fader favours. A line whose fader shuts it out entirely
+    /// stays, blank after its label.
+    private func dataEntries(forComposite slot: String) -> [DataBurnEntry] {
+        let buses: [(label: String, mix: String, code: ParamCode, channels: [String])] = [
+            ("S1", GraphTopology.subMixOne, .crossfadeAB, ["A", "B"]),
+            ("S2", GraphTopology.subMixTwo, .crossfadeCD, ["C", "D"])
+        ]
+        func position(_ mix: String, _ code: ParamCode) -> Double {
+            engine.registry.value(slot: mix, code: code) ?? 0.5
+        }
+
+        if let bus = buses.first(where: { $0.mix == slot }) {
+            let fader = position(bus.mix, bus.code)
+            return bus.channels.enumerated().map { index, letter in
+                channelEntry(letter, label: letter,
+                             isOnAir: DataBurnText.isOnAir(input: index, position: fader))
+            }
+        }
+
+        let programFader = position(GraphTopology.primary, .crossfadeOneTwo)
+        return buses.enumerated().map { index, bus in
+            let favoured = position(bus.mix, bus.code) < 0.5 ? bus.channels[0] : bus.channels[1]
+            return channelEntry(favoured, label: bus.label,
+                                isOnAir: DataBurnText.isOnAir(input: index, position: programFader))
+        }
+    }
+
+    /// One channel's name and playhead, whatever kind of source it is showing.
+    private func channelEntry(_ letter: String, label: String, isOnAir: Bool) -> DataBurnEntry {
+        switch engine.channelSourceKinds[letter] ?? .file {
+        case .file:
+            let clip = engine.sources[letter]
+            let isLoaded = (clip?.frameCount ?? 0) > 0
+            return DataBurnEntry(
+                label: label,
+                name: isLoaded ? clip?.mediaURL?.lastPathComponent : nil,
+                frame: isLoaded ? clip.map { Int($0.playheadFrame) } : nil,
+                isOnAir: isOnAir)
+        case .generator:
+            return DataBurnEntry(label: label, name: "Generator", frame: nil, isOnAir: isOnAir)
+        case .emulator:
+            return DataBurnEntry(label: label, name: "Emulator", frame: nil, isOnAir: isOnAir)
+        case .isfGenerator(let module):
+            return DataBurnEntry(label: label, name: module, frame: nil, isOnAir: isOnAir)
+        case .capture(let id):
+            let name = preferences.preferences.configuredSources
+                .first(where: { $0.id == id })?.name ?? "Live source"
+            return DataBurnEntry(label: label, name: name, frame: nil, isOnAir: isOnAir)
+        }
+    }
+
+    /// Draws each composite's NAME / TC block onto its monitor. Every frame, because a
+    /// timecode ticks every frame; the drawing itself happens only when a line changed.
+    ///
+    /// A sub-mix that is burning shows nothing here: its monitor already shows the
+    /// burned picture, and a second copy on top would be the same text twice.
+    private func updateMonitorData(from engine: Engine) {
+        let panels = shell.grid.panels
+        let composites: [(body: PreviewPanelBody, slot: String)] = [
+            (panels.subMixOneBody, GraphTopology.subMixOne),
+            (panels.subMixTwoBody, GraphTopology.subMixTwo),
+            (panels.programBody, GraphTopology.primary)
+        ]
+        for composite in composites {
+            let selection = scopeSelections[composite.slot] ?? ScopeSelection()
+            let isBurned = selection.isBurnedIn && engine.dataBurns[composite.slot] != nil
+            let lines = selection.showsData && !isBurned
+                ? DataBurnText.lines(
+                    dataEntries(forComposite: composite.slot),
+                    showsName: selection.showsFileName,
+                    showsTimecode: selection.showsTimecode)
+                : []
+            guard lines != monitorDataLines[composite.slot] else { continue }
+            monitorDataLines[composite.slot] = lines
+
+            // Drawn at the picture's own height, so the monitor's block is the same
+            // size relative to the picture as the burned one.
+            let picture = composite.body.preview.texture
+            let frameWidth = picture?.width ?? 720
+            let frameHeight = picture?.height ?? Int(DataBurnRenderer.referenceFrameHeight)
+            guard let image = DataBurnRenderer.render(
+                lines: lines, style: preferences.preferences.dataBurnStyle,
+                frameHeight: frameHeight) else {
+                composite.body.preview.setDataImage(nil, rect: (0, 0, 0, 0))
+                continue
+            }
+            composite.body.preview.setDataImage(image, rect: DataBurnRenderer.rect(
+                for: image, anchor: dataAnchor(forComposite: composite.slot),
+                frameWidth: frameWidth, frameHeight: frameHeight))
         }
     }
 
@@ -2261,7 +2404,7 @@ final class ShellController {
             // Scopes must read what actually goes OUT, which is the end of the
             // programme chain — but BEFORE the scope overlay, or a sent scope would
             // measure itself and climb until the trace was solid white.
-            (panels.programBody, GraphTopology.primary, Engine.scopeSourceSlot)
+            (panels.programBody, GraphTopology.primary, Engine.outputSlot)
         ]
 
         for composite in composites {
@@ -2281,17 +2424,18 @@ final class ShellController {
             guard let scope = ScopeRenderer.compose(
                 selection, from: image, width: size.width, height: size.height) else { continue }
 
-            composite.body.preview.scopePlacement = selection.placement
-            composite.body.preview.setScopeImage(
-                scope, dimsPicture: selection.isOverlaid)
-
-            // SEND: the same image, handed to the node at the end of the programme
-            // chain, so it lands in the picture that goes to air rather than only in
-            // the preview.
-            if selection.isSent, composite.slot == Engine.scopeSourceSlot {
-                engine.scopeOverlay?.placement = selection.placement
-                engine.scopeOverlay?.dimming = selection.isOverlaid ? 0 : 1
-                engine.scopeOverlay?.setOverlay(scope)
+            // DATA BURN: the same image, handed to the sub-mix's burn node, so it
+            // lands in the picture that goes into the mix. The monitor shows that
+            // burned picture, so it does not draw its own copy on top.
+            if selection.isBurnedIn, let burn = engine.dataBurns[composite.slot] {
+                burn.placement = selection.placement
+                burn.dimming = selection.isOverlaid ? 0 : 1
+                burn.setOverlay(scope)
+                composite.body.preview.setScopeImage(nil, dimsPicture: false)
+            } else {
+                composite.body.preview.scopePlacement = selection.placement
+                composite.body.preview.setScopeImage(
+                    scope, dimsPicture: selection.isOverlaid)
             }
         }
     }
@@ -2725,10 +2869,12 @@ final class ShellController {
         // turning on an effect changed PROGRAM while the sub-mix preview it belonged
         // to sat there unchanged — which reads as the effect landing in the wrong
         // window. A sub-mix preview must show that sub-mix as it will be mixed.
-        panels.subMixOneBody.preview.texture = engine.texture(for: Engine.busCodecOneSlot)
+        //
+        // After DATA BURN, so a burning sub-mix's monitor shows what it sends.
+        panels.subMixOneBody.preview.texture = engine.texture(for: Engine.dataBurnOneSlot)
             ?? engine.texture(for: GraphTopology.subMixOne)
         panels.subMixOneBody.preview.present(at: showAt)
-        panels.subMixTwoBody.preview.texture = engine.texture(for: Engine.busCodecTwoSlot)
+        panels.subMixTwoBody.preview.texture = engine.texture(for: Engine.dataBurnTwoSlot)
             ?? engine.texture(for: GraphTopology.subMixTwo)
         panels.subMixTwoBody.preview.present(at: showAt)
 

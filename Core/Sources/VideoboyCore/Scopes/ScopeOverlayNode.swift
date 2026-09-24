@@ -1,34 +1,41 @@
 //
-//  ScopeOverlayNode.swift — a scope, on air.
+//  ScopeOverlayNode.swift — DATA BURN: scopes and data lines, into a sub-mix.
 //
-//  Purpose : Puts the scope into the picture that goes to programme, rather than only
-//            into the preview. SEND turns an instrument into part of the video feed.
-//  Inputs  : the finished programme picture, and a scope image set from outside.
-//  Outputs : the same picture with the scope screened onto it.
-//  Connects: Engine (which puts it last in the chain), ShellController (which hands it
-//            the scope image), ScopeRenderer, ScopeSelection.
-//  Extend  : anything else that needs to be laid over the finished picture from the
-//            CPU side — a now-playing card, a countdown — is the same shape as this.
-//            Take the rectangle and the image; do not teach this node what a scope is.
+//  Purpose : Puts the scope and the NAME/TC text into a sub-mix's picture, rather than
+//            only onto its monitor, so they reach air whenever that sub-mix is mixed
+//            into PROGRAM. One per sub-mix, after its data stage.
+//  Inputs  : the finished sub-mix picture; a scope image set from outside at scope
+//            refresh rate; data lines pulled once per render from `textProvider`.
+//  Outputs : the same picture with the scope screened onto it and the text laid over.
+//  Connects: Engine (which wires it between the bus data stage and the mix),
+//            ShellController (scope image, text provider, style), ScopeRenderer,
+//            DataBurnRenderer, ScopeSelection.
+//  Extend  : another CPU-drawn layer is a third texture and rectangle in the same
+//            pass. Take the rectangle and the image; do not teach this node what a
+//            scope or a timecode is.
 //
 //  ── THE ONLY RULE THAT MATTERS HERE ─────────────────────────────────────────────
 //
-//  This node is LAST IN THE CHAIN, so it runs on every frame that goes to air, whether
-//  or not anything is being sent. So when nothing is set it returns its input
-//  untouched — no pass, no upload, no allocation. A node that costs a full-frame pass
-//  to reproduce its input is exactly the sort of thing that eats the frame budget
-//  while appearing to do nothing.
+//  This node is on the path of every frame a sub-mix produces, burning or not. So
+//  when nothing is set it returns its input untouched — no pass, no upload, no
+//  allocation. A node that costs a full-frame pass to reproduce its input is exactly
+//  the sort of thing that eats the frame budget while appearing to do nothing.
 //
-//  The image is uploaded only when it CHANGES. Scopes refresh well below frame rate —
-//  a few times a second — so at 29.97 the overwhelming majority of frames reuse the
-//  texture that is already there.
+//  The scope is uploaded only when it CHANGES (a few times a second). The text is
+//  redrawn only when its lines change — every frame while a timecode ticks — and that
+//  redraw is a small block, not a frame, uploaded through a reused `TextureUploader`.
+//
+//  WHY THE TEXT IS PULLED, NOT PUSHED. The provider is called inside `render`, after
+//  the sources upstream have advanced their playheads for this frame. Pushing lines
+//  from the UI before the render would burn the PREVIOUS frame's timecode onto the
+//  picture — a burn-in one frame out of step with its own picture.
 //
 
 import Foundation
 import Metal
 import simd
 
-/// Screens a CPU-drawn image over the picture, in a chosen rectangle.
+/// Burns a CPU-drawn scope and a block of text into the picture.
 public final class ScopeOverlayNode: Node {
 
     public let identifier: String
@@ -50,6 +57,25 @@ public final class ScopeOverlayNode: Node {
     /// How strongly the trace is added.
     public var opacity: Double = 1
 
+    // MARK: Text
+
+    /// Returns this frame's data lines, or none. Called once per render.
+    public var textProvider: (() -> [String])?
+    /// Which corner the text block sits in.
+    public var textAnchor: DataBurnAnchor = .topLeft
+    /// How the text looks. Changing it redraws on the next frame.
+    public var textStyle = DataBurnStyle() {
+        didSet { if textStyle != oldValue { drawnLines = nil } }
+    }
+
+    private var textUploader: TextureUploader?
+    private var textTexture: MTLTexture?
+    private var textRect: (x: Double, y: Double, width: Double, height: Double) = (0, 0, 0, 0)
+    /// What `textTexture` shows, and at which frame height, so an unchanged frame
+    /// reuses it.
+    private var drawnLines: [String]?
+    private var drawnHeight = 0
+
     public init(identifier: String, context: MetalContext? = MetalContext.shared) {
         self.identifier = identifier
         self.context = context
@@ -58,7 +84,7 @@ public final class ScopeOverlayNode: Node {
     public var parameters: [Parameter] { [] }
     public func applyParameters(from registry: ParamRegistry) {}
 
-    /// Hands over the image to lay on, or nil to stop.
+    /// Hands over the scope image to lay on, or nil to stop.
     ///
     /// Called from the UI thread at scope refresh rate. It takes a lock and stores a
     /// reference — no work, so it cannot hold the caller up.
@@ -69,11 +95,14 @@ public final class ScopeOverlayNode: Node {
         lock.unlock()
     }
 
-    /// Whether anything is currently being laid on.
+    /// Whether a scope is currently being laid on. Text is `isBurningText`.
     public var isActive: Bool {
         lock.lock(); defer { lock.unlock() }
         return pendingImage != nil || overlayTexture != nil
     }
+
+    /// Whether the last render burned any text.
+    public var isBurningText: Bool { textTexture != nil }
 
     public func render(inputs: [MTLTexture], context renderContext: RenderContext) -> MTLTexture? {
         guard let metal = context, let input = inputs.first else { return inputs.first }
@@ -87,8 +116,11 @@ public final class ScopeOverlayNode: Node {
         let overlay = overlayTexture
         lock.unlock()
 
-        // Nothing to send: hand the picture straight back. No pass, no cost.
-        guard let overlay else { return input }
+        updateText(frameWidth: input.width, frameHeight: input.height, metal: metal)
+        let text = textTexture
+
+        // Nothing to burn: hand the picture straight back. No pass, no cost.
+        guard overlay != nil || text != nil else { return input }
 
         let width = input.width
         let height = input.height
@@ -114,11 +146,17 @@ public final class ScopeOverlayNode: Node {
             origin: SIMD2<Float>(Float(rect.x), Float(rect.y)),
             size: SIMD2<Float>(Float(rect.width), Float(rect.height)),
             opacity: Float(opacity),
-            dim: Float(dimming))
+            dim: Float(dimming),
+            textOrigin: SIMD2<Float>(Float(textRect.x), Float(textRect.y)),
+            textSize: SIMD2<Float>(Float(textRect.width), Float(textRect.height)),
+            hasScope: overlay == nil ? 0 : 1,
+            hasText: text == nil ? 0 : 1)
 
         encoder.setRenderPipelineState(metal.scopeOverlayPipeline)
         encoder.setFragmentTexture(input, index: 0)
-        encoder.setFragmentTexture(overlay, index: 1)
+        // An absent layer still needs SOMETHING bound; the flags stop it being read.
+        encoder.setFragmentTexture(overlay ?? input, index: 1)
+        encoder.setFragmentTexture(text ?? input, index: 2)
         encoder.setFragmentBytes(
             &params, length: MemoryLayout<ScopeOverlayParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
@@ -126,6 +164,31 @@ public final class ScopeOverlayNode: Node {
         metal.submit(commandBuffer, label: identifier)
 
         return target
+    }
+
+    /// Redraws the text block if this frame's lines differ from the last ones drawn.
+    private func updateText(frameWidth: Int, frameHeight: Int, metal: MetalContext) {
+        let lines = textProvider?() ?? []
+        guard !lines.isEmpty else {
+            textTexture = nil
+            drawnLines = nil
+            return
+        }
+        guard lines != drawnLines || frameHeight != drawnHeight else { return }
+        drawnLines = lines
+        drawnHeight = frameHeight
+
+        guard let image = DataBurnRenderer.render(
+            lines: lines, style: textStyle, frameHeight: frameHeight) else {
+            textTexture = nil
+            return
+        }
+        if textUploader == nil {
+            textUploader = TextureUploader(context: metal, label: "\(identifier).text")
+        }
+        textTexture = textUploader?.upload(image)
+        textRect = DataBurnRenderer.rect(
+            for: image, anchor: textAnchor, frameWidth: frameWidth, frameHeight: frameHeight)
     }
 }
 
@@ -135,4 +198,8 @@ struct ScopeOverlayParams {
     var size: SIMD2<Float>
     var opacity: Float
     var dim: Float
+    var textOrigin: SIMD2<Float>
+    var textSize: SIMD2<Float>
+    var hasScope: Float
+    var hasText: Float
 }

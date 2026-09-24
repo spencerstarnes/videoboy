@@ -116,6 +116,12 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// Nil means "look in the usual places" — see EmulatorController.
     public var emulatorDiscPath: String?
 
+    // MARK: Data burn
+
+    /// How NAME and TC text looks, on the monitors and when DATA BURN puts it into a
+    /// sub-mix. One style for all of them, so a burned line looks like the monitor's.
+    public var dataBurnStyle = DataBurnStyle()
+
     // MARK: Reminders
 
     /// Which prompts have been answered with "don't remind me again".
@@ -184,6 +190,7 @@ public struct Preferences: Codable, Equatable, Sendable {
             destinations = raw.compactMap(\.value)
         }
         hotKeys = decode(.hotKeys, [String: String]())
+        dataBurnStyle = decode(.dataBurnStyle, DataBurnStyle())
     }
 }
 

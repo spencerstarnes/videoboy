@@ -119,6 +119,11 @@ enum Theme {
         static let height: CGFloat = 17
         static let horizontalPadding: CGFloat = 7
         static let cornerRadius: CGFloat = 3
+        /// Side padding for a row packed with keys (the scope row under each sub-mix
+        /// and PROGRAM), where the standard padding no longer fits the panel.
+        static let compactHorizontalPadding: CGFloat = 3
+        /// Space between the cap heights of a two-line key's lines.
+        static let stackedLineGap: CGFloat = 2.5
     }
 
     // MARK: - AVE-5 wipe block
@@ -557,6 +562,8 @@ enum Theme {
         static let label = NSFont.systemFont(ofSize: 11, weight: .regular)
         /// Even smaller labels (mapping badges, param codes).
         static let tinyLabel = NSFont.systemFont(ofSize: 10, weight: .regular)
+        /// A two-line key's label (DATA / BURN): small enough to stack in 17pt.
+        static let stackedKeyLabel = NSFont.systemFont(ofSize: 7.5, weight: .semibold)
         /// Monospaced readouts: param codes, negotiated modes, fps.
         static let mono = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         /// The large tempo readout in the toolbar.

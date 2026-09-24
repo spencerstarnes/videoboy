@@ -81,11 +81,31 @@ final class VBOptionButton: NSControl {
         }
     }
 
+    /// The title's lines. A title with a newline is drawn stacked, in a smaller face,
+    /// so a two-word key (DATA / BURN) keeps the same height as its neighbours.
+    private var titleLines: [String] { title.components(separatedBy: "\n") }
+
+    private var titleFont: NSFont {
+        titleLines.count > 1 ? Theme.Font.stackedKeyLabel : Theme.Font.tinyLabel
+    }
+
+    /// Narrower side padding, for a row that has to fit many keys.
+    var isCompact = false {
+        didSet {
+            guard isCompact != oldValue else { return }
+            invalidateIntrinsicContentSize()
+        }
+    }
+
     override var intrinsicContentSize: NSSize {
-        let text = title as NSString
-        let width = text.size(withAttributes: [.font: Theme.Font.tinyLabel]).width
+        let font = titleFont
+        let padding = isCompact
+            ? Theme.OptionButton.compactHorizontalPadding : Theme.OptionButton.horizontalPadding
+        let width = titleLines
+            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
         return NSSize(
-            width: ceil(width) + Theme.OptionButton.horizontalPadding * 2,
+            width: ceil(width) + padding * 2,
             height: isTall ? Theme.BusButton.height : Theme.OptionButton.height)
     }
 
@@ -347,16 +367,26 @@ final class VBOptionButton: NSControl {
             highlight.stroke()
         }
 
+        let font = titleFont
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: Theme.Font.tinyLabel,
+            .font: font,
             .foregroundColor: isOn
                 ? NSColor.white
                 : Theme.Color.textSecondary.withAlphaComponent(isEnabled ? 1 : 0.4)
         ]
-        let text = title as NSString
-        let size = text.size(withAttributes: attributes)
-        text.draw(
-            at: NSPoint(x: body.midX - size.width / 2, y: body.midY - size.height / 2),
-            withAttributes: attributes)
+        // Lines stacked on the cap height rather than the font's full line height:
+        // two full lines of even a small face overflow a 17pt key.
+        let lines = titleLines
+        let pitch = lines.count > 1 ? font.capHeight + Theme.OptionButton.stackedLineGap : 0
+        let blockHeight = pitch * CGFloat(lines.count - 1)
+        for (index, line) in lines.enumerated() {
+            let text = line as NSString
+            let size = text.size(withAttributes: attributes)
+            // This view is not flipped: the first line is the highest.
+            let centreY = body.midY + blockHeight / 2 - pitch * CGFloat(index)
+            text.draw(
+                at: NSPoint(x: body.midX - size.width / 2, y: centreY - size.height / 2),
+                withAttributes: attributes)
+        }
     }
 }

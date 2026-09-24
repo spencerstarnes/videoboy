@@ -582,8 +582,12 @@ final class PreviewPanelBody: NSView {
         case overlay
         /// In the lower-third band.
         case lowerThird
-        /// Into the programme video feed.
-        case send
+        /// NAME: each channel's clip name, as a line of text.
+        case fileName
+        /// TC: each channel's playhead, as drop-frame timecode.
+        case timecode
+        /// DATA BURN: into the sub-mix picture itself. Sub-mixes only.
+        case burn
     }
 
     /// The scope keys, so their lit state can be set from the selection.
@@ -597,7 +601,10 @@ final class PreviewPanelBody: NSView {
 
     /// - Parameter showsBlendControls: true for the composites that carry a blend
     ///   mode — the two sub-mixes and the program.
-    init(caption: String, showsBlendControls: Bool = false, recordLabel: String? = nil) {
+    /// - Parameter offersDataBurn: true for the two sub-mixes. PROGRAM has no burn
+    ///   key: anything burned into a sub-mix reaches it through the mix.
+    init(caption: String, showsBlendControls: Bool = false, recordLabel: String? = nil,
+         offersDataBurn: Bool = false) {
         // No send glyph on the picture: these are the big previews, the ones actually
         // being watched, and the bar below has room for it. See the row built further
         // down.
@@ -667,12 +674,23 @@ final class PreviewPanelBody: NSView {
                 scopeRow.append(key)
             }
 
-            // A gap: the four on the left say WHAT, the three on the right say WHERE
-            // and WHETHER. Without it, seven identical keys read as one undifferentiated
-            // run and the SEND key is the last thing you want lost in a row.
+            // The data lines sit with the instruments: they are more things to SHOW,
+            // and OVER / L3 / DATA BURN act on them exactly as on a scope.
+            scopeRow.append(makeScopeKey(
+                .fileName, title: "FILE",
+                tooltip: "Show the file name each channel is playing. A channel its "
+                    + "fader shuts out keeps its label with nothing after it."))
+            scopeRow.append(makeScopeKey(
+                .timecode, title: "TC",
+                tooltip: "Show where each channel's playhead is, as drop-frame "
+                    + "timecode (HH:MM:SS;FF)."))
+
+            // A gap: the keys on the left say WHAT, the ones on the right say WHERE
+            // and WHETHER. Without it, a row of identical keys reads as one undifferentiated
+            // run and DATA BURN is the last thing you want lost in a row.
             let gap = NSView()
             gap.translatesAutoresizingMaskIntoConstraints = false
-            gap.widthAnchor.constraint(equalToConstant: 8).isActive = true
+            gap.widthAnchor.constraint(equalToConstant: 6).isActive = true
             scopeRow.append(gap)
 
             scopeRow.append(makeScopeKey(
@@ -686,17 +704,21 @@ final class PreviewPanelBody: NSView {
 
             // Tally red, because this one changes what an audience sees. Every other
             // key on this row is a monitoring choice that cannot reach the output.
-            let send = makeScopeKey(
-                .send, title: "SEND", colour: Theme.Color.tallyOnAir,
-                tooltip: "Put the scope INTO the programme video feed, not just the "
-                    + "preview. The trace is screened over the picture, so it goes to "
-                    + "air as part of the image.")
-            scopeRow.append(send)
+            if offersDataBurn {
+                scopeRow.append(makeScopeKey(
+                    .burn, title: "DATA\nBURN", colour: Theme.Color.tallyOnAir,
+                    tooltip: "Burn the scopes, names and timecode INTO this sub-mix's "
+                        + "picture, so they go to air whenever this sub-mix is in the "
+                        + "programme mix. Font and style: Settings → Outputs."))
+            }
 
             // The send glyph, then everything else pushed right. One spacer, so the
             // scope keys sit as one block against the trailing edge instead of being
             // spread by a popup that is no longer there.
-            let row = Controls.row([routing, Controls.spacer()] + scopeRow, spacing: 3)
+            // Compact keys and 2pt spacing: FILE, TC and DATA BURN made this row ~70pt
+            // wider, and at the standard padding it no longer fit a sub-mix panel.
+            for case let key as VBOptionButton in scopeRow { key.isCompact = true }
+            let row = Controls.row([routing, Controls.spacer()] + scopeRow, spacing: 2)
             row.translatesAutoresizingMaskIntoConstraints = false
             addSubview(row)
 
@@ -757,6 +779,8 @@ final class PreviewPanelBody: NSView {
         button.toolTip = tooltip
         button.target = self
         button.action = #selector(scopeKeyPressed(_:))
+        // Holds its full width: a squeezed row must never clip a key's label.
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
         scopeKeys[key] = button
         return button
     }
@@ -815,14 +839,17 @@ final class PreviewPanelBody: NSView {
         }
         scopeKeys[.overlay]?.isOn = selection.isOverlaid
         scopeKeys[.lowerThird]?.isOn = selection.isLowerThird
-        scopeKeys[.send]?.isOn = selection.isSent
+        scopeKeys[.fileName]?.isOn = selection.showsFileName
+        scopeKeys[.timecode]?.isOn = selection.showsTimecode
+        scopeKeys[.burn]?.isOn = selection.isBurnedIn
 
-        // The placement and SEND keys mean nothing with no instrument chosen. Disabled
-        // rather than hidden, per the house rule — a key that vanishes and comes back
-        // is harder to learn than one that greys.
-        for key in [ScopeKey.overlay, .lowerThird, .send] {
-            scopeKeys[key]?.isEnabled = selection.isShowing
-        }
+        // The placement keys mean nothing with no instrument chosen, and DATA BURN
+        // means nothing with nothing at all to burn. Disabled rather than hidden, per
+        // the house rule — a key that vanishes and comes back is harder to learn than
+        // one that greys.
+        scopeKeys[.overlay]?.isEnabled = selection.isShowing
+        scopeKeys[.lowerThird]?.isEnabled = selection.isShowing
+        scopeKeys[.burn]?.isEnabled = selection.hasAnything
     }
 
     @objc private func interchangeChanged(_ sender: NSPopUpButton) {

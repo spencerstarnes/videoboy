@@ -120,7 +120,7 @@ public enum ScopePlacement: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// Which scopes are showing, where, and whether they go to air.
+/// Which scopes and data lines are showing, where, and whether they are burned in.
 ///
 /// ── WHY A SET AND NOT A MODE ────────────────────────────────────────────────────
 ///
@@ -144,17 +144,29 @@ public struct ScopeSelection: Equatable, Codable, Sendable {
     /// Sits in the lower-third band rather than filling the frame.
     public var isLowerThird: Bool = false
 
-    /// Composited into the PROGRAMME OUTPUT, not merely shown in the preview.
+    /// The NAME key: which clip each channel is playing.
+    public var showsFileName: Bool = false
+    /// The TC key: where each channel's playhead is, as drop-frame timecode.
+    public var showsTimecode: Bool = false
+
+    /// DATA BURN: burned into the sub-mix picture, not merely shown on its monitor.
     ///
-    /// The scope stops being an instrument and becomes part of the picture going to
-    /// air. Off by default and deliberately a separate button, because everything else
-    /// here is a monitoring choice that cannot affect what an audience sees, and this
-    /// one can.
-    public var isSent: Bool = false
+    /// The scopes and text stop being instruments and become part of the picture, so
+    /// they reach air whenever that sub-mix is in the programme mix. Off by default and
+    /// deliberately a separate key, because everything else here is a monitoring
+    /// choice that cannot affect what an audience sees, and this one can.
+    public var isBurnedIn: Bool = false
 
     public init() {}
 
+    /// Whether any instrument is drawn. Text is `showsData`.
     public var isShowing: Bool { !kinds.isEmpty }
+
+    /// Whether any text line is asked for.
+    public var showsData: Bool { showsFileName || showsTimecode }
+
+    /// Whether anything at all is on — the condition DATA BURN needs to mean anything.
+    public var hasAnything: Bool { isShowing || showsData }
 
     /// Where it sits.
     ///

@@ -100,9 +100,11 @@ final class PanelSet {
         // of thing, none of them true of the picture underneath. The scopes report
         // levels, and they do it by measuring.
         subMixOneBody = PreviewPanelBody(
-            caption: "", showsBlendControls: true, recordLabel: "1")
+            caption: "", showsBlendControls: true, recordLabel: "1",
+            offersDataBurn: true)
         subMixTwoBody = PreviewPanelBody(
-            caption: "", showsBlendControls: true, recordLabel: "2")
+            caption: "", showsBlendControls: true, recordLabel: "2",
+            offersDataBurn: true)
         programBody = PreviewPanelBody(
             caption: "", showsBlendControls: true, recordLabel: "P")
 

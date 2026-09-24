@@ -78,6 +78,12 @@ final class MetalPreviewView: NSView {
     /// The scope image drawn over the picture, when scopes are on for this preview.
     private let scopeLayer = CALayer()
 
+    /// The NAME / TC text block, drawn by `DataBurnRenderer` so the monitor shows
+    /// exactly what DATA BURN would put on air.
+    private let dataLayer = CALayer()
+    /// Where `dataLayer` sits, in 0...1 of the picture, origin top left.
+    private var dataRect: (x: Double, y: Double, width: Double, height: Double) = (0, 0, 0, 0)
+
 
     /// - Parameters:
     ///   - caption: overlay text, e.g. "A" or "720x480 · 480i".
@@ -127,6 +133,10 @@ final class MetalPreviewView: NSView {
         scopeLayer.contentsGravity = .resize
         scopeLayer.isHidden = true
         layer?.addSublayer(scopeLayer)
+
+        dataLayer.contentsGravity = .resize
+        dataLayer.isHidden = true
+        layer?.addSublayer(dataLayer)
 
 
         // Overlays sit above the picture and never intercept clicks.
@@ -295,6 +305,11 @@ final class MetalPreviewView: NSView {
             y: frame.maxY - frame.height * (rect.y + rect.height),
             width: frame.width * rect.width,
             height: frame.height * rect.height)
+        dataLayer.frame = CGRect(
+            x: frame.minX + frame.width * dataRect.x,
+            y: frame.maxY - frame.height * (dataRect.y + dataRect.height),
+            width: frame.width * dataRect.width,
+            height: frame.height * dataRect.height)
         overlayLayer.frame = frame
         // The tally gets the VIEW's bounds, not the picture's.
         //
@@ -437,6 +452,28 @@ final class MetalPreviewView: NSView {
         // Over a picture the scope needs the picture held back, or the trace is lost
         // in it. Over black there is nothing to hold back.
         metalLayer?.opacity = dimsPicture ? 0.35 : 0.0
+    }
+
+    /// Shows a NAME / TC block at `rect` (0...1 of the picture, origin top left), or
+    /// hides it when `image` is nil.
+    func setDataImage(
+        _ image: ImageBuffer?, rect: (x: Double, y: Double, width: Double, height: Double)
+    ) {
+        CATransaction.begin()
+        // Changes every frame while a timecode ticks; an implicit fade would smear it.
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard let image, let cgImage = image.makeCGImage() else {
+            dataLayer.isHidden = true
+            dataLayer.contents = nil
+            return
+        }
+        dataLayer.contents = cgImage
+        dataLayer.isHidden = false
+        if rect != dataRect {
+            dataRect = rect
+            needsLayout = true
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {

@@ -210,6 +210,123 @@ extension PreferencesWindowController {
         ], spacing: 8)
     }
 
+    // MARK: - Data Burn
+
+    /// FILE / TC text style. One style for every monitor and both sub-mix burns, so
+    /// the text a performer reads on a monitor is the text that goes to air.
+    func makeDataBurnPane() -> NSView {
+        let style = store.preferences.dataBurnStyle
+
+        // Every installed family, plus the saved one if it has since been removed —
+        // a missing font should still show what was chosen rather than silently
+        // pretending the first family in the list was.
+        var families = NSFontManager.shared.availableFontFamilies
+        if !families.contains(style.fontFamily) { families.insert(style.fontFamily, at: 0) }
+        let font = Controls.popUp(families, target: self, action: #selector(dataBurnFontChanged(_:)))
+        font.selectItem(withTitle: style.fontFamily)
+
+        let sizes = DataBurnStyle.pixelSizes
+        let size = Controls.popUp(
+            sizes.map { "\(Int($0)) px" }, target: self, action: #selector(dataBurnSizeChanged(_:)))
+        size.selectItem(at: sizes.firstIndex(of: style.pixelSize)
+            ?? sizes.firstIndex(of: DataBurnStyle().pixelSize) ?? 0)
+
+        let bold = Controls.toggle(
+            on: style.isBold, target: self, action: #selector(dataBurnBoldChanged(_:)))
+
+        let colour = NSColorWell()
+        colour.isBordered = true
+        colour.color = NSColor(cgColor: style.colour.cgColor) ?? .white
+        colour.target = self
+        colour.action = #selector(dataBurnColourChanged(_:))
+        colour.translatesAutoresizingMaskIntoConstraints = false
+        colour.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        colour.widthAnchor.constraint(equalToConstant: 44).isActive = true
+
+        let backings = DataBurnStyle.Backing.allCases
+        let backing = Controls.segmented(
+            backings.map(\.displayName),
+            selected: backings.firstIndex(of: style.backing) ?? 0,
+            target: self, action: #selector(dataBurnBackingChanged(_:)))
+
+        let sample = NSImageView()
+        sample.translatesAutoresizingMaskIntoConstraints = false
+        sample.imageScaling = .scaleNone
+        sample.wantsLayer = true
+        sample.layer?.backgroundColor = Theme.Color.previewEmpty.cgColor
+        sample.widthAnchor.constraint(equalToConstant: 420).isActive = true
+        sample.heightAnchor.constraint(equalToConstant: 90).isActive = true
+        dataBurnSample = sample
+        refreshDataBurnSample()
+
+        return Controls.column([
+            header(.dataBurn),
+            spacer(14),
+            field("Font", font),
+            field("Size", size),
+            field("Bold", bold),
+            field("Colour", colour),
+            field("Backing", backing),
+            spacer(10),
+            field("Sample", sample),
+            spacer(8),
+            Controls.note(
+                "Size is in pixels of a 480-line picture, so the text keeps its place in "
+                + "the frame whatever the output resolution. Timecode is drop-frame "
+                + "(HH:MM:SS;FF) from each clip's playhead.", width: Self.noteWidth)
+        ], spacing: 8)
+    }
+
+    /// Draws the sample with the renderer the burn uses, over a picture-grey plate —
+    /// not a mock-up that could drift from the real thing.
+    func refreshDataBurnSample() {
+        guard let sample = dataBurnSample else { return }
+        guard let image = DataBurnRenderer.render(
+                lines: ["A: night_drive.dv 00:04:44;28", "B:"],
+                style: store.preferences.dataBurnStyle,
+                frameHeight: Int(DataBurnRenderer.referenceFrameHeight)),
+              let cgImage = image.makeCGImage() else {
+            sample.image = nil
+            return
+        }
+        sample.image = NSImage(cgImage: cgImage, size: NSSize(width: image.width, height: image.height))
+    }
+
+    private func updateDataBurnStyle(_ change: (inout DataBurnStyle) -> Void) {
+        change(&store.preferences.dataBurnStyle)
+        refreshDataBurnSample()
+    }
+
+    @objc func dataBurnFontChanged(_ sender: NSPopUpButton) {
+        guard let family = sender.titleOfSelectedItem else { return }
+        updateDataBurnStyle { $0.fontFamily = family }
+    }
+
+    @objc func dataBurnSizeChanged(_ sender: NSPopUpButton) {
+        let sizes = DataBurnStyle.pixelSizes
+        guard sizes.indices.contains(sender.indexOfSelectedItem) else { return }
+        updateDataBurnStyle { $0.pixelSize = sizes[sender.indexOfSelectedItem] }
+    }
+
+    @objc func dataBurnBoldChanged(_ sender: NSSwitch) {
+        updateDataBurnStyle { $0.isBold = sender.state == .on }
+    }
+
+    @objc func dataBurnColourChanged(_ sender: NSColorWell) {
+        guard let rgb = sender.color.usingColorSpace(.deviceRGB) else { return }
+        updateDataBurnStyle {
+            $0.colour = TitlerColor(
+                red: Double(rgb.redComponent), green: Double(rgb.greenComponent),
+                blue: Double(rgb.blueComponent))
+        }
+    }
+
+    @objc func dataBurnBackingChanged(_ sender: NSSegmentedControl) {
+        let backings = DataBurnStyle.Backing.allCases
+        guard backings.indices.contains(sender.selectedSegment) else { return }
+        updateDataBurnStyle { $0.backing = backings[sender.selectedSegment] }
+    }
+
     // MARK: - Inputs / Sources
 
     func makeInputsPane() -> NSView {

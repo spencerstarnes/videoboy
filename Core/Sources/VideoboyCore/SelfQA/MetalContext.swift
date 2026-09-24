@@ -687,6 +687,10 @@ enum ShaderSource {
         float2 size;
         float opacity;   // how strongly the trace is added
         float dim;       // how far the picture behind it is held back
+        float2 textOrigin; // the data-burn text block, in 0...1 of the frame
+        float2 textSize;
+        float hasScope;  // 1 when texture(1) is a scope, 0 when it is a placeholder
+        float hasText;   // 1 when texture(2) is text, 0 when it is a placeholder
     };
 
     /* Composites a scope over the picture.
@@ -699,19 +703,29 @@ enum ShaderSource {
     fragment float4 scope_overlay_fragment(VertexOut in [[stage_in]],
                                            texture2d<float> picture [[texture(0)]],
                                            texture2d<float> scope [[texture(1)]],
+                                           texture2d<float> text [[texture(2)]],
                                            constant ScopeOverlayParams &p [[buffer(0)]]) {
         constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
-        float3 base = picture.sample(linearSampler, in.uv).rgb;
+        float3 result = picture.sample(linearSampler, in.uv).rgb;
 
         float2 local = (in.uv - p.origin) / max(p.size, float2(0.0001));
-        if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) {
-            return float4(base, 1.0);
+        if (p.hasScope > 0.5 && all(local >= 0.0) && all(local <= 1.0)) {
+            float3 trace = scope.sample(linearSampler, local).rgb;
+            float3 behind = result * (1.0 - clamp(p.dim, 0.0, 1.0));
+            result = 1.0 - (1.0 - behind) * (1.0 - trace * clamp(p.opacity, 0.0, 1.0));
         }
 
-        float3 trace = scope.sample(linearSampler, local).rgb;
-        float3 behind = base * (1.0 - clamp(p.dim, 0.0, 1.0));
-        float3 lit = 1.0 - (1.0 - behind) * (1.0 - trace * clamp(p.opacity, 0.0, 1.0));
-        return float4(clamp(lit, 0.0, 1.0), 1.0);
+        /* The text is OVER, not screen: its backing box has to be able to darken the
+         * picture, and screening black does nothing. Premultiplied, as CoreGraphics
+         * draws it. Nearest sampling: the block is drawn at frame resolution and
+         * placed on whole pixels, so 1:1 is exact and linear would only soften it. */
+        constexpr sampler nearestSampler(filter::nearest, address::clamp_to_edge);
+        float2 textLocal = (in.uv - p.textOrigin) / max(p.textSize, float2(0.0001));
+        if (p.hasText > 0.5 && all(textLocal >= 0.0) && all(textLocal <= 1.0)) {
+            float4 letters = text.sample(nearestSampler, textLocal);
+            result = letters.rgb + result * (1.0 - letters.a);
+        }
+        return float4(clamp(result, 0.0, 1.0), 1.0);
     }
 
     /* Transition patterns (Transition.swift). Mode numbers must match that enum.

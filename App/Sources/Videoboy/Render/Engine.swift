@@ -81,8 +81,10 @@ final class Engine {
     private(set) var subMixTwo: CrossfadeNode!
     private(set) var primary: CrossfadeNode!
 
-    /// The node that puts a scope into the programme picture, when SEND is lit.
-    private(set) var scopeOverlay: ScopeOverlayNode?
+    /// DATA BURN for each sub-mix: scopes and NAME/TC text burned into the bus, after
+    /// its data stage and before the mix, so a burned sub-mix goes to air like any
+    /// other picture. Keyed by the sub-mix's `GraphTopology` id.
+    private(set) var dataBurns: [String: ScopeOverlayNode] = [:]
 
     /// The emulated machine, as a source any channel can be pointed at.
     private(set) var emulator: EmulatedTitlerNode?
@@ -233,8 +235,27 @@ final class Engine {
         graph.add(busCodecOne)
         graph.add(busCodecTwo)
         graph.add(busCodecProgram)
-        graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
-        graph.connect(from: Engine.busCodecTwoSlot, to: GraphTopology.primary, inputIndex: 1)
+
+        // DATA BURN, between each bus's data stage and the mix. After the data stage
+        // so a bus codec cannot chew the burned text up; before the mix so the burn
+        // fades in and out with its sub-mix. It costs NOTHING when nothing is burned:
+        // the node hands its input straight back.
+        for (subMix, codecSlot, burnSlot, anchor) in [
+            (GraphTopology.subMixOne, Engine.busCodecOneSlot, Engine.dataBurnOneSlot,
+             DataBurnAnchor.topLeft),
+            (GraphTopology.subMixTwo, Engine.busCodecTwoSlot, Engine.dataBurnTwoSlot,
+             DataBurnAnchor.topRight)
+        ] {
+            let burn = ScopeOverlayNode(identifier: burnSlot, context: metal)
+            // Opposite corners, so the two blocks never overlap while PROGRAM is
+            // crossfading between the sub-mixes.
+            burn.textAnchor = anchor
+            graph.add(burn)
+            graph.connect(from: codecSlot, to: burnSlot, inputIndex: 0)
+            dataBurns[subMix] = burn
+        }
+        graph.connect(from: Engine.dataBurnOneSlot, to: GraphTopology.primary, inputIndex: 0)
+        graph.connect(from: Engine.dataBurnTwoSlot, to: GraphTopology.primary, inputIndex: 1)
 
         // PROGRAM's own data stage, after the ONE/TWO mix. It was created and added
         // but never connected, so the programme's data controls moved nothing — the
@@ -250,21 +271,6 @@ final class Engine {
             from: GraphTopology.primary, to: Engine.compositeProgramSlot, inputIndex: 0)
         graph.connect(
             from: Engine.compositeProgramSlot, to: Engine.busCodecProgramSlot, inputIndex: 0)
-
-        // The scope overlay, after everything. SEND on a preview's scope keys puts the
-        // instrument into the picture that goes to air, which is only possible at the
-        // very end — anything earlier and the bus codec and the NTSC stage would chew
-        // the trace up on its way past.
-        //
-        // It costs NOTHING when nothing is being sent: the node returns its input
-        // untouched, with no pass and no upload. That matters because it is on the
-        // path of every frame that goes out.
-        let scopeOverlay = ScopeOverlayNode(
-            identifier: Engine.scopeOverlaySlot, context: metal)
-        graph.add(scopeOverlay)
-        graph.connect(
-            from: Engine.busCodecProgramSlot, to: Engine.scopeOverlaySlot, inputIndex: 0)
-        self.scopeOverlay = scopeOverlay
 
         // The emulated machine, created up front for the same reason the generators
         // are: so it exists, is addressable and can be assigned to a channel without
@@ -589,8 +595,9 @@ final class Engine {
     static let moshOneSlot = "fx.one.mosh"
     static let moshTwoSlot = "fx.two.mosh"
 
-    /// The scope overlay, last of all — see `scopeOverlaySlot`.
-    static let scopeOverlaySlot = "out.scopeoverlay"
+    /// DATA BURN on each sub-mix — see `dataBurns`.
+    static let dataBurnOneSlot = "burn.one"
+    static let dataBurnTwoSlot = "burn.two"
 
     /// The emulated machine, as a source. One for the whole app — see
     /// `ChannelSourceKind.emulator`.
@@ -601,16 +608,10 @@ final class Engine {
     /// Named separately from `GraphTopology.primary` because they are not the same
     /// thing: primary is the ONE/TWO mix, and the programme data stage runs after it.
     /// Conflating them is what left that stage unconnected.
-    static var outputSlot: String { scopeOverlaySlot }
-
-    /// What the PROGRAMME scopes measure.
     ///
-    /// The end of the picture chain, and deliberately NOT `outputSlot`, which now has
-    /// the scope overlay after it. Measuring the output would mean measuring a picture
-    /// with the scope already drawn on it — the trace would feed into its own waveform
-    /// and climb until the whole instrument was white. Scopes read what goes out
-    /// BEFORE the instrument is drawn over it.
-    static var scopeSourceSlot: String { busCodecProgramSlot }
+    /// Nothing is burned in after it: DATA BURN happens on the sub-mixes, so burned
+    /// data reaches PROGRAM through the mix like any other picture.
+    static var outputSlot: String { busCodecProgramSlot }
 
     /// The graph slot for one configured source, by its `ConfiguredSource.id`.
     static func captureSlot(for id: String) -> String { "source.capture.\(id)" }
@@ -1416,7 +1417,7 @@ final class Engine {
         } else {
             // Put the mix back on PROGRAM's first input. The nodes themselves were
             // never removed, so only this one edge has to be restored.
-            graph.connect(from: Engine.busCodecOneSlot, to: GraphTopology.primary, inputIndex: 0)
+            graph.connect(from: Engine.dataBurnOneSlot, to: GraphTopology.primary, inputIndex: 0)
             if let crossfadeBeforeTestPattern {
                 registry.setValue(
                     crossfadeBeforeTestPattern,
