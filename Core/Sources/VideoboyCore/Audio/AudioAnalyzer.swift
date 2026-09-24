@@ -41,6 +41,11 @@ public struct AudioFrame: Equatable, Sendable {
     ///  - log(1 + C·level) rather than level, so a quiet snare still counts next to
     ///    a loud sustained bass line.
     public let onsetStrength: Double
+    /// The window's samples, -1…1, before windowing — what an ISF `audio` input shows.
+    public var waveform: [Float] = []
+    /// The window's spectrum, one value per FFT bin up to Nyquist, 0…1 on a 60 dB
+    /// scale — what an ISF `audioFFT` input shows.
+    public var spectrum: [Float] = []
 
     public init(
         rms: Double, peak: Double, bands: [Double], flux: Double, onset: Bool,
@@ -146,6 +151,8 @@ public final class AudioAnalyzer {
             )
         }
 
+        let rawWindow = window
+
         // A Hann window before the FFT, or every window boundary looks like an edge
         // and smears energy across the whole spectrum.
         vDSP_vmul(window, 1, hann, 1, &window, 1, vDSP_Length(size))
@@ -201,7 +208,7 @@ public final class AudioAnalyzer {
         let bands = bandEnergies(magnitudes: magnitudes, halfSize: halfSize)
         let onset = detectOnset(flux: flux)
 
-        return AudioFrame(
+        var frame = AudioFrame(
             rms: min(rms, 1),
             peak: min(Double(peak), 1),
             bands: bands,
@@ -209,6 +216,21 @@ public final class AudioAnalyzer {
             onset: onset,
             onsetStrength: onsetStrength
         )
+        frame.waveform = rawWindow
+        frame.spectrum = AudioAnalyzer.displaySpectrum(magnitudes)
+        return frame
+    }
+
+    /// Magnitudes as 0…1 on a 60 dB scale: a full-scale sine near 1, -60 dB and
+    /// below at 0. Loudness is heard logarithmically, so a linear scale would leave
+    /// everything but the loudest bins at the floor of an FFT visualiser.
+    static func displaySpectrum(_ magnitudes: [Float]) -> [Float] {
+        // A full-scale Hann-windowed sine peaks near 0.25 after the 1/size scaling.
+        let reference: Float = 0.25
+        return magnitudes.map { magnitude in
+            let decibels = 20 * log10(max(magnitude / reference, 1e-6))
+            return min(max((decibels + 60) / 60, 0), 1)
+        }
     }
 
     /// Log-spaced bands from 40 Hz to 16 kHz, about a third of an octave each, as

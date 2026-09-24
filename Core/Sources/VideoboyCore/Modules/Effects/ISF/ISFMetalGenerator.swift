@@ -157,7 +157,7 @@ public struct ISFGeneratedShader: Sendable {
     public let fragmentFunctionName = "isf_fragment"
     public let uniformLayout: ISFUniformLayout
     /// Texture names by binding index: `[[texture(i)]]` is `textureNames[i]`. Image
-    /// inputs first, in file order, then pass targets, in pass order.
+    /// inputs first, in file order, then audio inputs, then pass targets, in pass order.
     public let textureNames: [String]
     /// 1-based line in `source` where line 1 of the author's GLSL body sits.
     let bodyFirstGeneratedLine: Int
@@ -256,9 +256,6 @@ public enum ISFMetalGenerator {
             throw ISFGenerateError.unsupported(
                 "IMPORTED images (\(document.importedImages.joined(separator: ", ")))")
         }
-        if let audio = document.inputs.first(where: { $0.type == .audio || $0.type == .audioFFT }) {
-            throw ISFGenerateError.unsupported("audio input '\(audio.name)'")
-        }
 
         var fragmentTokens = GLSLTokenizer.tokenize(document.fragmentSource)
         if !promotingIntegerGlobals.isEmpty {
@@ -289,7 +286,8 @@ public enum ISFMetalGenerator {
         }
         let extraUniformMembers = extraUniforms.map { "    \($0.member)\n" }.joined()
 
-        var textureNames = document.imageInputs.map(\.name)
+        // Image inputs, then audio (an image the host fills with sound), then buffers.
+        var textureNames = document.imageInputs.map(\.name) + document.audioInputs.map(\.name)
         for pass in document.passes {
             if let target = pass.target, !textureNames.contains(target) {
                 textureNames.append(target)

@@ -307,8 +307,6 @@ final class ISFConverterTests: XCTestCase {
             guard case .unsupported(let what) = $0 as? ISFGenerateError else { return XCTFail("\($0)") }
             XCTAssertTrue(what.contains("IMPORTED"))
         }
-        let audio = #"/*{ "INPUTS": [ { "NAME": "sound", "TYPE": "audioFFT" } ] }*/ void main() {}"#
-        XCTAssertThrowsError(try ISFMetalGenerator.generate(ISFDocument(source: audio, name: "a")))
     }
 
     func testRewritingNeverMovesALine() throws {

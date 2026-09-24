@@ -117,7 +117,17 @@ public final class ISFNode: Node, ParameterApplying {
         case image(Int)
         /// A pass buffer, by target name.
         case buffer(String)
+        /// An `audio` or `audioFFT` input: the live sound as a one-row image.
+        case audio(name: String, isSpectrum: Bool, width: Int)
     }
+
+    /// Where `audio` inputs read the sound. The app's capture writes the shared one.
+    public var audioFeed: ISFAudioFeed = .shared
+    /// Whether the loaded file listens to sound, known from its header before it
+    /// compiles — what the Engine asks to decide whether to start capture.
+    public private(set) var usesAudio = false
+    /// One uploader and the last-uploaded feed version per audio input.
+    private var audioUploads: [String: (uploader: TextureUploader, version: Int, texture: MTLTexture?)] = [:]
 
     // MARK: Changing state
 
@@ -237,10 +247,20 @@ public final class ISFNode: Node, ParameterApplying {
             phase: layout.field(named: "VB_PHASE")?.offset ?? -1)
 
         let imageNames = document.imageInputs.map(\.name)
+        let audioInputs = Dictionary(document.audioInputs.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
         textureBindings = program.shader.textureNames.map { name in
             if let index = imageNames.firstIndex(of: name) { return .image(index) }
+            if let input = audioInputs[name] {
+                let isSpectrum = input.type == .audioFFT
+                // MAX is the number of samples (or bins) the shader wants.
+                let asked = input.maximum?.first.map { Int($0) } ?? 0
+                let width = asked > 0 ? min(asked, 4096)
+                    : (isSpectrum ? ISFAudioFeed.defaultSpectrumWidth : ISFAudioFeed.defaultWaveformWidth)
+                return .audio(name: name, isSpectrum: isSpectrum, width: width)
+            }
             return .buffer(name)
         }
+        audioUploads = [:]
         passLabels = document.passes.indices.map { "\(identifier) pass \($0)" }
         passSizes = document.passes.map { pass in
             (pass.widthExpression.flatMap(ISFNode.parseSize),
@@ -306,6 +326,7 @@ public final class ISFNode: Node, ParameterApplying {
     /// (kept by name from before, or the file's DEFAULT).
     private func declare(_ document: ISFDocument) {
         declaredDocument = document
+        usesAudio = !document.audioInputs.isEmpty
         controls = ISFControl.controls(for: document)
         var kept: [String: [Double]] = [:]
         for input in document.valueInputs {
@@ -466,6 +487,8 @@ public final class ISFNode: Node, ParameterApplying {
                     // Readers see what was last written, which for the pass writing
                     // this buffer is the previous frame (persistent trails).
                     texture = buffers[name]?.front
+                case .audio(let name, let isSpectrum, let width):
+                    texture = audioTexture(name: name, isSpectrum: isSpectrum, width: width, metal: metal)
                 }
                 encoder.setFragmentTexture(texture ?? black(metal), index: binding)
                 if hasVertexShader { encoder.setVertexTexture(texture ?? black(metal), index: binding) }
@@ -621,6 +644,22 @@ public final class ISFNode: Node, ParameterApplying {
                 from: ImageBuffer(width: 1, height: 1, r: 0, g: 0, b: 0, a: 0), label: "isf-black")
         }
         return blackTexture
+    }
+
+    // MARK: - Audio
+
+    /// The newest sound for one audio input, uploaded only when the feed moved on —
+    /// a few dozen times a second at most, one small row each time.
+    private func audioTexture(name: String, isSpectrum: Bool, width: Int, metal: MetalContext) -> MTLTexture? {
+        let version = audioFeed.version
+        if let cached = audioUploads[name], cached.version == version, let texture = cached.texture {
+            return texture
+        }
+        let uploader = audioUploads[name]?.uploader ?? TextureUploader(context: metal, label: "\(identifier).\(name)")
+        let image = isSpectrum ? audioFeed.spectrumImage(width: width) : audioFeed.waveformImage(width: width)
+        let texture = uploader.upload(image)
+        audioUploads[name] = (uploader, version, texture)
+        return texture
     }
 
     // MARK: - Uniforms

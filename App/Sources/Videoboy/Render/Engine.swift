@@ -137,6 +137,9 @@ final class Engine {
 
     /// The live audio tap. Nil until audio is switched on.
     private var audioInput: AudioInput?
+    /// Capture started only because an ISF shader listens to sound (`audio` /
+    /// `audioFFT` inputs) while the clock is not on audio. See `refreshShaderAudio`.
+    private var shaderAudioInput: AudioInput?
 
     /// Where the transport gets its tempo from.
     private(set) var clockSource: ClockSource = .internalTransport
@@ -353,6 +356,7 @@ final class Engine {
     /// passes its picture through until it is ready.
     func rebuildChain(_ bus: ChainBus) {
         guard let chain = chains[bus] else { return }
+        defer { refreshShaderAudio() }
 
         // Nodes of cards that are no longer in the chain.
         let wanted = Set(chain.entries.flatMap { EffectChain.slots(instanceID: $0.instanceID, bus: bus) })
@@ -441,6 +445,7 @@ final class Engine {
         isfGeneratorModules[letter] = moduleID
         registry.register(slot: slot, parameters: node.parameters)
         setChannelSource(.isfGenerator(moduleID), channel: letter)
+        refreshShaderAudio()
         return true
     }
 
@@ -526,6 +531,7 @@ final class Engine {
             reloaded += 1
         }
         Log.info(.isf, "ISF folders changed: \(catalog.modules.count) modules, \(catalog.unavailable.count) unavailable, \(reloaded) live copies reloaded")
+        refreshShaderAudio()
         onModulesChanged?()
     }
 
@@ -783,6 +789,7 @@ final class Engine {
         screenObserver = nil
         if let liveActivity { ProcessInfo.processInfo.endActivity(liveActivity) }
         liveActivity = nil
+        stopShaderAudio()
         audioInput?.stop()
         audioInput = nil
     }
@@ -1200,6 +1207,9 @@ final class Engine {
         case .audio(let captureSource):
             let input = AudioInput(source: captureSource)
             input.onFrame = { [weak self, weak input] frame in
+                // ISF audio inputs read the newest window straight from here; the feed
+                // is thread-safe, so this costs no hop to the main thread.
+                ISFAudioFeed.shared.update(with: frame)
                 // Analysis arrives on its own queue; parameter state and the UI
                 // both live on the main thread.
                 DispatchQueue.main.async {
@@ -1220,6 +1230,8 @@ final class Engine {
             }
             audioClockFailure = nil
             stopAudioInput()
+            // The clock's capture feeds the shaders now; a shader-only one is redundant.
+            stopShaderAudio()
             audioInput = input
             audioReactivity.isRunning = true
             clockSource = source
@@ -1230,10 +1242,51 @@ final class Engine {
     }
 
     private func stopAudioInput() {
+        let wasRunning = audioInput != nil
         audioInput?.stop()
         audioInput = nil
         audioReactivity.isRunning = false
         audioReactivity.reset()
+        if wasRunning {
+            ISFAudioFeed.shared.silence()
+            // Shaders that still listen get their own capture back.
+            DispatchQueue.main.async { [weak self] in self?.refreshShaderAudio() }
+        }
+    }
+
+    // MARK: - Audio for ISF shaders
+
+    /// Starts or stops capture for ISF shaders that listen to sound.
+    ///
+    /// Only when one is actually loaded, and only while the clock is not already
+    /// capturing (its input feeds the shaders too). The source is the audio input
+    /// device: the one choice that exists on every Mac. Stopped again as soon as the
+    /// last listening shader goes, so an idle patch never holds the microphone.
+    /// Called wherever modules come and go: chain rebuilds, generators, reloads.
+    func refreshShaderAudio() {
+        let listening = graph.nodes.values.contains { ($0 as? ISFNode)?.usesAudio == true }
+        guard listening, audioInput == nil else {
+            if !listening || audioInput != nil { stopShaderAudio() }
+            return
+        }
+        guard shaderAudioInput == nil else { return }
+        let input = AudioInput(source: .inputDevice)
+        input.onFrame = { frame in ISFAudioFeed.shared.update(with: frame) }
+        guard input.start() else {
+            Log.warn(.isf, "a shader listens to sound, but audio input could not start: "
+                + (input.failureReason ?? "unknown reason") + "; it will see silence")
+            return
+        }
+        shaderAudioInput = input
+        Log.info(.isf, "listening to the audio input for ISF shaders")
+    }
+
+    private func stopShaderAudio() {
+        guard let input = shaderAudioInput else { return }
+        input.stop()
+        shaderAudioInput = nil
+        if audioInput == nil { ISFAudioFeed.shared.silence() }
+        Log.info(.isf, "stopped listening for ISF shaders")
     }
 
     /// Applies a beat tracker report to the transport.

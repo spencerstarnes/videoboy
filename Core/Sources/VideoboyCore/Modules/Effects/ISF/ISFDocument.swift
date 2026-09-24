@@ -166,6 +166,9 @@ public struct ISFDocument: Equatable, Sendable {
     /// Image inputs, in file order. `inputImage` is the effect's own picture.
     public var imageInputs: [ISFInput] { inputs.filter { $0.type == .image } }
 
+    /// `audio` and `audioFFT` inputs, in file order: images the host fills with sound.
+    public var audioInputs: [ISFInput] { inputs.filter { $0.type == .audio || $0.type == .audioFFT } }
+
     /// Parses the text of a `.fs` file.
     ///
     /// - Throws: `ISFParseError` naming what is wrong. Never crashes on bad input — a
@@ -348,7 +351,10 @@ public struct ISFDocument: Equatable, Sendable {
             label: raw["LABEL"] as? String ?? name,
             defaultValue: defaultValue,
             minimum: vector(raw["MIN"], count: components),
-            maximum: vector(raw["MAX"], count: components),
+            // For audio, MAX is the number of samples or bins the shader wants.
+            maximum: (type == .audio || type == .audioFFT)
+                ? number(raw["MAX"]).map { [$0] }
+                : vector(raw["MAX"], count: components),
             values: values,
             labels: labels,
             videoboyCode: raw["VIDEOBOY_CODE"] as? String
