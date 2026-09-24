@@ -77,6 +77,8 @@ public final class ISFNode: Node, ParameterApplying {
     /// The text last handed to `load`, so a hot reload can tell whether the file
     /// really changed.
     public private(set) var sourceText: String?
+    /// The `.vs` text it was loaded with, when it has a custom vertex shader.
+    public private(set) var vertexSourceText: String?
     /// Why the most recent reload did not take, while the previous program keeps
     /// drawing (ISF-PLAN §3.2: saving a broken file never blanks a live chain). Nil
     /// once a reload succeeds.
@@ -154,14 +156,17 @@ public final class ISFNode: Node, ParameterApplying {
 
     /// Starts compiling `source` off the render path; the node passes through until
     /// the program arrives on the main thread.
-    public func load(source: String, name: String, compiler: ISFCompiler = .shared) {
+    public func load(
+        source: String, vertexSource: String? = nil, name: String, compiler: ISFCompiler = .shared
+    ) {
         // The header first, here and now: it is a JSON parse, microseconds, and it is
         // what tells the registry which controls exist. A file that does not parse
         // fails visibly at once rather than after a compile that could never start.
         sourceText = source
+        vertexSourceText = vertexSource
         let document: ISFDocument
         do {
-            document = try ISFDocument(source: source, name: name)
+            document = try ISFDocument(source: source, name: name, vertexSource: vertexSource)
         } catch {
             // A reload of a running module keeps the old program; a first load fails.
             if program != nil {
@@ -180,7 +185,9 @@ public final class ISFNode: Node, ParameterApplying {
         // A reload keeps drawing the old program until the new one compiles, so
         // saving a broken file never blanks a live chain.
         if program == nil { state = .compiling }
-        compiler.compile(source: source, name: name, device: metal.device) { [weak self] result in
+        compiler.compile(
+            source: source, vertexSource: vertexSource, name: name, device: metal.device
+        ) { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(let program):
@@ -441,8 +448,13 @@ public final class ISFNode: Node, ParameterApplying {
             encoder.setRenderPipelineState(pipeline)
 
             writeUniforms(passIndex: passIndex, width: size.width, height: size.height)
+            // A custom vertex shader sees the same uniforms and images as the fragment.
+            let hasVertexShader = program.shader.hasVertexShader
             uniformBytes.withUnsafeBytes { bytes in
                 encoder.setFragmentBytes(bytes.baseAddress!, length: bytes.count, index: 0)
+                if hasVertexShader {
+                    encoder.setVertexBytes(bytes.baseAddress!, length: bytes.count, index: 0)
+                }
             }
 
             for binding in textureBindings.indices {
@@ -456,8 +468,13 @@ public final class ISFNode: Node, ParameterApplying {
                     texture = buffers[name]?.front
                 }
                 encoder.setFragmentTexture(texture ?? black(metal), index: binding)
+                if hasVertexShader { encoder.setVertexTexture(texture ?? black(metal), index: binding) }
             }
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            if hasVertexShader {
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            } else {
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            }
             encoder.endEncoding()
 
             if let name = pass.target {

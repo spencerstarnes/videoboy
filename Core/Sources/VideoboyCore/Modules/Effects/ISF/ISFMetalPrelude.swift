@@ -55,6 +55,12 @@ enum ISFMetalPrelude {
     inline thread float3& operator*=(thread float3& v, float3x3 m) { v = v * m; return v; }
     inline thread float4& operator*=(thread float4& v, float4x4 m) { v = v * m; return v; }
 
+    // ISF files that support both GLSL dialects branch on `__VERSION__`. This host
+    // speaks the GLSL 1.2 side (varying, gl_FragColor, texture2D), so say so.
+    #ifdef __VERSION__
+    #undef __VERSION__
+    #endif
+    #define __VERSION__ 120
     // Precision qualifiers mean nothing on Apple GPUs.
     #define lowp
     #define mediump
@@ -71,6 +77,15 @@ enum ISFMetalPrelude {
     ///
     /// Overloads are spelled out per type rather than templated: templates made
     /// `mod(float, 1.0)` ambiguous in the feasibility test.
+    /// The same helpers for the vertex stage, where there are no derivatives: every
+    /// sample takes level 0 explicitly, which is what GLSL's texture2D does in a
+    /// vertex shader.
+    static var vertexMembers: String {
+        members.replacingOccurrences(
+            of: "image.sample(isf_sampler, float2(normalised.x, 1.0 - normalised.y))",
+            with: "image.sample(isf_sampler, float2(normalised.x, 1.0 - normalised.y), level(0.0))")
+    }
+
     static let members = """
         // ---- GLSL built-ins Metal spells differently or lacks -------------------
 

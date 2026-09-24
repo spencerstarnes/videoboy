@@ -244,13 +244,14 @@ public final class ModuleCatalog {
             group = document?.categories.first { $0 != "Videoboy" } ?? "ISF"
         }
         let source = entry.source ?? ""
+        let vertexSource = entry.vertexSource
         let name = entry.name
         return ModuleDescriptor(
             id: id, name: title, origin: origin, group: group, controls: controls,
             problem: problem, fileURL: entry.url,
             factory: { identifier, context in
                 let node = ISFNode(identifier: identifier, context: context)
-                node.load(source: source, name: name)
+                node.load(source: source, vertexSource: vertexSource, name: name)
                 return node
             })
     }

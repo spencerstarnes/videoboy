@@ -481,8 +481,12 @@ final class Engine {
     /// - New files appear in the Add menu (`onModulesChanged`).
     func applyLibrary(_ entries: [ISFLibraryEntry]) {
         catalog.refresh(with: entries)
-        let sources = Dictionary(entries.compactMap { entry in entry.source.map { (entry.url.standardizedFileURL, $0) } },
-                                 uniquingKeysWith: { first, _ in first })
+        // Fragment and vertex text per file: an edit to either one reloads the module.
+        let sources = Dictionary(
+            entries.compactMap { entry in
+                entry.source.map { (entry.url.standardizedFileURL, (fragment: $0, vertex: entry.vertexSource)) }
+            },
+            uniquingKeysWith: { first, _ in first })
         var reloaded = 0
         for bus in ChainBus.allCases {
             guard let chain = chains[bus] else { continue }
@@ -493,8 +497,10 @@ final class Engine {
                     switch chainNodes[slot] {
                     case let isf as ISFNode:
                         guard let url = module?.fileURL?.standardizedFileURL, let source = sources[url],
-                              source != isf.sourceText else { continue }
-                        isf.load(source: source, name: url.deletingPathExtension().lastPathComponent)
+                              source.fragment != isf.sourceText || source.vertex != isf.vertexSourceText
+                        else { continue }
+                        isf.load(source: source.fragment, vertexSource: source.vertex,
+                                 name: url.deletingPathExtension().lastPathComponent)
                         registry.register(slot: slot, parameters: isf.parameters)
                         reloaded += 1
                     case is MissingModuleNode where module?.isAvailable == true:
@@ -511,8 +517,11 @@ final class Engine {
         for (letter, node) in isfGenerators {
             guard let id = isfGeneratorModules[letter],
                   let url = catalog.generator(id)?.fileURL?.standardizedFileURL,
-                  let source = sources[url], source != node.sourceText else { continue }
-            node.load(source: source, name: url.deletingPathExtension().lastPathComponent)
+                  let source = sources[url],
+                  source.fragment != node.sourceText || source.vertex != node.vertexSourceText
+            else { continue }
+            node.load(source: source.fragment, vertexSource: source.vertex,
+                      name: url.deletingPathExtension().lastPathComponent)
             registry.register(slot: node.identifier, parameters: node.parameters)
             reloaded += 1
         }

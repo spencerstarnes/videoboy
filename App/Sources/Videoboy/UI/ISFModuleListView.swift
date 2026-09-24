@@ -385,7 +385,9 @@ final class ISFModuleListView: NSView {
         let path = entry.url.path
         compileState[path] = .some(nil)
         showCompileState(nil)
-        ISFCompiler.shared.compile(source: source, name: entry.name, device: device) { [weak self] result in
+        ISFCompiler.shared.compile(
+            source: source, vertexSource: entry.vertexSource, name: entry.name, device: device
+        ) { [weak self] result in
             guard let self else { return }
             let state: Result<Void, ISFCompileError> = result.map { _ in () }
             self.compileState[path] = .some(state)

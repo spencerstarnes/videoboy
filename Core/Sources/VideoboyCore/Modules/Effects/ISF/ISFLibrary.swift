@@ -36,6 +36,8 @@ public struct ISFLibraryEntry: Sendable {
     public let name: String
     /// The file's text, kept so the node can compile it without a second read.
     public let source: String?
+    /// The `.vs` partner's text, when it is more than the ISF default.
+    public var vertexSource: String? = nil
     public let result: Result<ISFDocument, ISFLibraryError>
 
     public var document: ISFDocument? { try? result.get() }
@@ -47,17 +49,12 @@ public enum ISFLibraryError: Error, Equatable, CustomStringConvertible, Sendable
     case parse(ISFParseError)
     /// A same-named file earlier in the precedence order wins.
     case shadowed(by: String)
-    /// A `.vs` vertex shader that does more than the default sits beside the file;
-    /// not supported yet. (One that only calls `isf_vertShaderInit()` is ignored — see
-    /// `ISFLibrary.isPassThroughVertexShader`.)
-    case needsVertexShader
 
     public var description: String {
         switch self {
         case .unreadable(let detail): "could not read the file: \(detail)"
         case .parse(let error): error.description
         case .shadowed(let path): "hidden by a file of the same name at \(path)"
-        case .needsVertexShader: "not supported yet: a custom vertex shader (.vs)"
         }
     }
 }
@@ -130,17 +127,24 @@ public enum ISFLibrary {
             return ISFLibraryEntry(url: url, folder: folder, name: name, source: nil,
                                    result: .failure(.unreadable(error.localizedDescription)))
         }
+        // The `.vs` partner, kept only when it does more than the default — a default
+        // one changes nothing, and dropping it keeps such files on the faster path.
+        var vertexSource: String?
         let vertexShader = url.deletingPathExtension().appendingPathExtension("vs")
         if FileManager.default.fileExists(atPath: vertexShader.path) {
-            let vertexSource = (try? String(contentsOf: vertexShader, encoding: .utf8)) ?? ""
-            if !isPassThroughVertexShader(vertexSource) {
+            do {
+                let text = try String(contentsOf: vertexShader, encoding: .utf8)
+                if !isPassThroughVertexShader(text) { vertexSource = text }
+            } catch {
                 return ISFLibraryEntry(url: url, folder: folder, name: name, source: source,
-                                       result: .failure(.needsVertexShader))
+                                       result: .failure(.unreadable("its vertex shader: \(error.localizedDescription)")))
             }
         }
         do {
-            let document = try ISFDocument(source: source, name: name)
-            return ISFLibraryEntry(url: url, folder: folder, name: name, source: source, result: .success(document))
+            let document = try ISFDocument(source: source, name: name, vertexSource: vertexSource)
+            var entry = ISFLibraryEntry(url: url, folder: folder, name: name, source: source, result: .success(document))
+            entry.vertexSource = vertexSource
+            return entry
         } catch let error as ISFParseError {
             Log.warn(.isf, "'\(name)': \(error.description)")
             return ISFLibraryEntry(url: url, folder: folder, name: name, source: source, result: .failure(.parse(error)))

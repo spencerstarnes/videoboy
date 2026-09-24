@@ -37,7 +37,7 @@ final class ISFLibraryTests: XCTestCase {
         XCTAssertFalse(ISFLibrary.isPassThroughVertexShader(""))
     }
 
-    func testAShaderWithTheDefaultVertexShaderLoadsAndOneWithARealOneDoesNot() throws {
+    func testBothDefaultAndRealVertexShadersLoad() throws {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("isf-vs-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -57,9 +57,11 @@ final class ISFLibraryTests: XCTestCase {
             return XCTFail("the default .vs failed its shader: \(String(describing: entries["Plain"]))")
         }
         XCTAssertEqual(document.kind, .generator)
-        guard case .failure(.needsVertexShader) = entries["Custom"] else {
-            return XCTFail("a real vertex shader must still be refused: \(String(describing: entries["Custom"]))")
+        guard case .success(let custom) = entries["Custom"] else {
+            return XCTFail("a real vertex shader must load: \(String(describing: entries["Custom"]))")
         }
+        XCTAssertNotNil(custom.vertexSource, "a real .vs travels with its shader")
+        XCTAssertNil(document.vertexSource, "a default .vs is dropped, keeping the fast path")
     }
 }
 
@@ -78,9 +80,12 @@ final class ISFFolderTrialTests: XCTestCase {
         let entries = ISFLibrary.scan([(URL(fileURLWithPath: path, isDirectory: true), .user)])
         check.note("\(entries.count) files in \(path)")
 
-        // SD frame, the size every source renders at.
-        let plate = ImageBuffer(width: 720, height: 480, r: 0, g: 0, b: 0)
-        guard let input = metal.makeTexture(from: plate, label: "trial.in") else {
+        // SD frames, the size every source renders at: bars for a filter to work on,
+        // and a second, different picture for a transition to go to.
+        guard let input = metal.makeTexture(from: TestPattern.colorBars(), label: "trial.in"),
+              let second = metal.makeTexture(
+                from: ImageBuffer(width: 720, height: 480, r: 30, g: 60, b: 120), label: "trial.in2")
+        else {
             throw XCTSkip("could not upload")
         }
 
@@ -97,15 +102,16 @@ final class ISFFolderTrialTests: XCTestCase {
             kinds["\(document.kind)", default: 0] += 1
             do {
                 let program = try ISFProgram.compile(
-                    source: entry.source ?? "", name: entry.name, device: metal.device)
+                    source: entry.source ?? "", vertexSource: entry.vertexSource,
+                    name: entry.name, device: metal.device)
                 let node = ISFNode(identifier: "trial.\(entry.name)", context: metal)
                 node.install(program)
                 let context = RenderContext(frameIndex: 30, presentationTime: 1.0, musicalPosition: nil)
                 // One warm-up render, then a timed one: the first pays for pipeline setup.
-                _ = node.render(inputs: [input], context: context)
+                _ = node.render(inputs: [input, second], context: context)
                 metal.waitForIdle()
                 let start = CFAbsoluteTimeGetCurrent()
-                let output = node.render(inputs: [input], context: context)
+                let output = node.render(inputs: [input, second], context: context)
                 metal.waitForIdle()
                 let milliseconds = (CFAbsoluteTimeGetCurrent() - start) * 1000
                 guard let output, let picture = renderer.readback(output) else {

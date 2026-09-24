@@ -65,10 +65,12 @@ public final class ISFProgram {
     }
 
     /// Parses, converts and compiles. Synchronous — call from a background queue.
-    public static func compile(source: String, name: String, device: MTLDevice) throws -> ISFProgram {
+    public static func compile(
+        source: String, vertexSource: String? = nil, name: String, device: MTLDevice
+    ) throws -> ISFProgram {
         let document: ISFDocument
         do {
-            document = try ISFDocument(source: source, name: name)
+            document = try ISFDocument(source: source, name: name, vertexSource: vertexSource)
         } catch let error as ISFParseError {
             throw ISFCompileError.parse(error)
         }
@@ -137,18 +139,19 @@ public final class ISFCompiler {
 
     /// Compiles `source` off the main thread; `completion` runs on main.
     public func compile(
-        source: String, name: String, device: MTLDevice,
+        source: String, vertexSource: String? = nil, name: String, device: MTLDevice,
         completion: @escaping (Result<ISFProgram, ISFCompileError>) -> Void
     ) {
         queue.async { [self] in
-            let key = "\(ISFMetalGenerator.version)\u{0}\(name)\u{0}\(source)"
+            let key = "\(ISFMetalGenerator.version)\u{0}\(name)\u{0}\(source)\u{0}\(vertexSource ?? "")"
             let result: Result<ISFProgram, ISFCompileError>
             if let cached = cache[key] {
                 result = .success(cached)
             } else {
                 let started = Date()
                 do {
-                    let program = try ISFProgram.compile(source: source, name: name, device: device)
+                    let program = try ISFProgram.compile(
+                        source: source, vertexSource: vertexSource, name: name, device: device)
                     cache[key] = program
                     let milliseconds = Date().timeIntervalSince(started) * 1000
                     Log.info(.isf, "compiled '\(name)' in \(String(format: "%.1f", milliseconds)) ms")

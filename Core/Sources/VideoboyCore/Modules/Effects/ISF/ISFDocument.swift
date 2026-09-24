@@ -139,6 +139,9 @@ public struct ISFDocument: Equatable, Sendable {
     /// 1-based line in the original file where `fragmentSource` starts, so a compiler
     /// error can be reported against the line the author sees.
     public let fragmentStartLine: Int
+    /// The GLSL of the `.vs` beside the file, when it does more than the ISF default
+    /// (`ISFLibrary.isPassThroughVertexShader`). Nil means the default vertex stage.
+    public let vertexSource: String?
 
     /// Effect, generator or transition, by the ISF rules.
     public var kind: ISFKind {
@@ -161,8 +164,9 @@ public struct ISFDocument: Equatable, Sendable {
     ///
     /// - Throws: `ISFParseError` naming what is wrong. Never crashes on bad input — a
     ///   broken file must show up greyed with a reason, not take the app down.
-    public init(source rawSource: String, name: String) throws {
+    public init(source rawSource: String, name: String, vertexSource: String? = nil) throws {
         self.name = name
+        self.vertexSource = vertexSource.map(ISFDocument.normalisingLineEndings)
         // One line-ending convention from here on. Files from Windows-era VDMX packs
         // use CRLF, and some old Mac ones bare CR; Metal counts any of them as a line
         // break, so everything downstream must agree on what a line is or error lines
