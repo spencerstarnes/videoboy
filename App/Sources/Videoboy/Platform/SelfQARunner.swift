@@ -60,6 +60,8 @@ enum SelfQARunner {
             verdict = ControlAuditSelfQA.run()
         case "stress":
             verdict = StressSelfQA.run()
+        case "push-fade":
+            verdict = PushFadeSelfQA.run()
         case "mosh":
             verdict = MoshSelfQA.run()
         case "shaders":
@@ -67,7 +69,7 @@ enum SelfQARunner {
         case "isf":
             verdict = ISFSelfQA.run()
         default:
-            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend, transitions, ave5, stream, record, audit, shaders, isf, stress, mosh)")
+            Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend, transitions, ave5, stream, record, audit, shaders, isf, stress, push-fade, mosh)")
             return 2
         }
         // Blocked is not a failure: absent hardware must never fail a build.

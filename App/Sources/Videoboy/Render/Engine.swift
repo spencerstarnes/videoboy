@@ -180,6 +180,16 @@ final class Engine {
     /// Called after each rendered frame so the UI can refresh previews and readouts.
     var onFrame: ((Engine) -> Void)?
 
+    /// Called just BEFORE each frame renders, with `framePresentationTime` already
+    /// set to when that frame will be seen. Automation (fades, sweeps, cuts) writes
+    /// its values here, sampled at that time.
+    ///
+    /// Sampled in `onFrame` instead — after the render, at `CACurrentMediaTime()` —
+    /// each value was taken whenever the previous tick happened to finish, which
+    /// wanders by the tick's cost (6–20 ms of a 33 ms frame). A push moves the whole
+    /// picture by the fader's step, so steps of 27, 30, 13, 26 px read as stutter.
+    var onBeforeRender: ((Engine) -> Void)?
+
     /// The mode the output display negotiated, logged and shown in the settings bar.
     private(set) var negotiatedOutputMode = "not yet negotiated"
 
@@ -846,6 +856,8 @@ final class Engine {
 
         guard contentFrameDue(at: now, refresh: link.targetTimestamp - link.timestamp) else { return }
         rendered = true
+        framePresentationTime = link.targetTimestamp
+        onBeforeRender?(self)
 
         let context = RenderContext(
             frameIndex: frameIndex,
@@ -858,7 +870,6 @@ final class Engine {
             graphCostsForChecks?.append((CACurrentMediaTime() - graphStart) * 1000)
         }
         frameIndex += 1
-        framePresentationTime = link.targetTimestamp
         onFrame?(self)
     }
 

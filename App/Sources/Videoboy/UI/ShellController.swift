@@ -69,7 +69,19 @@ final class ShellController {
             self?.shell.toolbar.setTempo(tempo)
         }
         engine.onBeatReport = { [weak self] report in self?.showBeatReport(report) }
+        engine.onBeforeRender = { [weak self] engine in self?.advanceAutomation(from: engine) }
         engine.onFrame = { [weak self] engine in self?.refresh(from: engine) }
+    }
+
+    /// Moves every automated fader to where it should be in the frame about to render.
+    ///
+    /// Sampled at the frame's PRESENTATION time, before it renders — not after the
+    /// previous one at whatever moment that finished. The fader is then exactly on
+    /// its curve in every frame, so a push or slide travels by an even step.
+    private func advanceAutomation(from engine: Engine) {
+        let showAt = engine.framePresentationTime
+        updateFadesAndCuts(at: showAt)
+        driveSweeps(from: engine, at: showAt)
     }
 
     /// Loads a clip into a channel and says what happened.
@@ -1107,13 +1119,14 @@ final class ShellController {
     private var pendingCuts: [String: PendingCut] = [:]
     private var beatCutEnabled: [String: Bool] = [:]
 
-    /// Advances any fade or pending cut. Called once per frame.
+    /// Advances any fade or pending cut. Called once per frame, before it renders.
     ///
-    /// A cut waiting on a beat is taken at `fireHostTime`, which is the beat's time
-    /// LESS the graph's latency — that is what makes the picture change on the beat
-    /// rather than a few frames after it (SPEC 21).
-    private func updateFadesAndCuts(from engine: Engine) {
-        let now = CACurrentMediaTime()
+    /// `now` is when the frame being rendered will be SEEN, so a fade's position is
+    /// the one that belongs on screen at that moment, and a cut lands in the first
+    /// frame shown at or after its `fireHostTime` — the beat's time LESS the graph's
+    /// latency — which is what makes the picture change on the beat rather than a
+    /// few frames after it (SPEC 21).
+    private func updateFadesAndCuts(at now: CFTimeInterval) {
 
         for (slot, cut) in pendingCuts where cut.isDue(atHostTime: now) {
             pendingCuts.removeValue(forKey: slot)
@@ -1998,7 +2011,7 @@ final class ShellController {
 
     /// Drives the sweeps once, for checks that step the graph by hand rather than
     /// through the display link.
-    func driveSweepsForChecks() { driveSweeps(from: engine) }
+    func driveSweepsForChecks() { driveSweeps(from: engine, at: CACurrentMediaTime()) }
 
     /// Polls the action-trigger codes once, for checks that need to prove a
     /// MIDI-mapped CUT/FADE/bus-key actually fires rather than just arming.
@@ -2047,7 +2060,7 @@ final class ShellController {
         Log.info(.param, "\(found.count) button(s) flipping on the beat")
     }
 
-    /// Drives every armed fader sweep, once a frame.
+    /// Drives every armed fader sweep, once a frame, at the time the frame will be seen.
     ///
     /// A fader with two marks stops being a control you hold and becomes one that
     /// plays itself between them on the clock. The fader owns the marks and the rate;
@@ -2056,10 +2069,10 @@ final class ShellController {
     /// Writes through the SAME path a drag does — the panel's onParameterChanged
     /// closure — so a swept parameter and a dragged one cannot end up taking
     /// different routes into the engine.
-    private func driveSweeps(from engine: Engine) {
+    private func driveSweeps(from engine: Engine, at showAt: CFTimeInterval) {
         guard !armedSweeps.isEmpty else { return }
         guard engine.transport.isRunning else { return }
-        let beats = engine.transport.beats(atHostTime: CACurrentMediaTime())
+        let beats = engine.transport.beats(atHostTime: showAt)
 
         for entry in armedSweeps {
             guard let fader = entry.fader, let sweep = fader.sweep else { continue }
@@ -2675,11 +2688,9 @@ final class ShellController {
             }
         }
 
-        updateFadesAndCuts(from: engine)
         updateTallies(from: engine)
         updateScopes(from: engine)
         updateBeatLights(from: engine)
-        driveSweeps(from: engine)
         fireActionTriggers(from: engine)
         flipAutomatedButtons(from: engine)
         refreshAVE5()

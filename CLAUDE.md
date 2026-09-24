@@ -86,6 +86,10 @@ The rules that follow from that:
 - **In-window previews never wait for vsync** (`displaySyncEnabled = false`) and skip
   presenting while their window isn't visible; a blocked `nextDrawable()` stalls the
   whole tick. Only the output window syncs to its display.
+- **Automation is sampled at the frame's presentation time, before it renders**
+  (`Engine.onBeforeRender`). Fades and sweeps read `framePresentationTime`, never
+  `CACurrentMediaTime()` after the render — that wanders with tick cost and made a
+  pushed picture jump 13–30 px per frame. `selfqa push-fade` asserts it.
 - **The render clock is a SCREEN display link, never a view's.** A view's link stops
   when its window is hidden — and the same loop feeds the output, so hiding the main
   window froze the analog signal. `selfqa stress` asserts the hidden-window case.

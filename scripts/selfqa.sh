@@ -19,6 +19,8 @@
 #           output      — the borderless output window on the HDMI card (needs hardware)
 #           loopback    — capture the DVC100 and write metrics.json (needs hardware)
 #           stress      — real window, live display link, all 4 channels + every effect
+#           push-fade   — clips in A and C, Push on the centre fader, FADE and a sweep:
+#                         every frame on the automation curve, previews evenly paced
 #           mosh        — the Datamosh card, clicked for real; a cut moshed on the A/B bus
 #           calibrate   — measure the physical feedback round trip (needs hardware)
 #           shaders     — the Preferences Shaders pane: import copies, − removes, in a real window
@@ -79,6 +81,7 @@ case "$CHECK" in
   # Opens a real window on the main display and runs the live display link under full
   # load for ~10 s. Needs a logged-in GUI session, so it is opt-in, not part of `all`.
   stress)    run_app_check stress ;;
+  push-fade) run_app_check push-fade ;;
   # The Datamosh card driven through real clicks on a real window; needs a GUI
   # session like stress, so it is opt-in too.
   mosh)      run_app_check mosh ;;
@@ -104,5 +107,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, isf, stress, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, isf, stress, push-fade, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

@@ -30,6 +30,10 @@ enum StressSelfQA {
         }
         window.setFrame(screen.visibleFrame.insetBy(dx: 40, dy: 40), display: true)
         controller.showWindow(nil)
+        // In front, or every preview skips presenting (nobody can see it) and the
+        // cadence assertion below has no frames to judge.
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
         let engine = controller.engine
 
         // Four channels, four kinds of media: two DV decodes, MPEG-2, ordinary video.
@@ -243,6 +247,12 @@ enum StressSelfQA {
             // on a 50 or 144 Hz screen an uneven cadence is the correct answer.
             let refreshesPerFrame = 1.0 / (screenRefresh * StandardDefinition.frameRate)
             let evenHold = Int(refreshesPerFrame.rounded())
+            // A preview that showed nothing is not "evenly paced" — it is unmeasured,
+            // and must say so rather than skip the assertion.
+            check.record(AssertionResult(
+                name: "the program preview presented frames while the wipes moved",
+                passed: shown.count > 10,
+                detail: "\(shown.count) frames shown"))
             if abs(refreshesPerFrame - Double(evenHold)) < 0.05, shown.count > 10 {
                 let even = held[evenHold] ?? 0
                 let intervals = shown.count - 1
