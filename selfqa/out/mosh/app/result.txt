@@ -1,19 +1,28 @@
 check:    mosh/app
 verdict:  PASS
-when:     2026-09-23T23:22:08Z
+when:     2026-09-24T02:57:22Z
 core:     0.3.0
 
 notes:
   mosh fader: enabled true, in window true, value 0.0
   app active false, window key false, fader accepts first mouse true
   after the click the fader reads 0.7107055961070559
-  fx.one.mosh over the cut: MoshStatistics(received: 96, emitted: 64, droppedKeyframes: 0, droppedCuts: 30, droppedRandom: 2, bloomed: 0, passedUnchanged: 0)
+  fx.one.mosh over the cut: MoshStatistics(received: 96, emitted: 66, droppedKeyframes: 0, droppedCuts: 30, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+  card: 226×408 pt
+  HEAL key: mapping slot fx.one.mosh, code 37B
 
-assertions (7/7 passed):
+assertions (14/14 passed):
   PASS  the Datamosh card is last in the chain, so no existing card moved — Freeze → Feedback → Echo / Trails → Composite · NTSC → Colour → Transform → Datamosh · H.264
   PASS  a click on the Datamosh switch lands on the switch — hitTest returns the switch
   PASS  switching the card on reaches the bus mosh node — switch on, fx.one.mosh wet/dry 1.00
   PASS  a click on the mosh fader lands on it and sets the bus node's amount — hit yes, fx.one.mosh 35B = 0.71
-  PASS  the bus mosh node is running and dropped the cut — running true, cut frames kept from the decoder: 29
+  PASS  the bus mosh node is running and dropped the cut — running true, cut frames kept from the decoder: 28
   PASS  after the cut, clean shows B and moshed shows something else — mean |Δ| from B's own picture: clean 0.0, moshed 111.0
-  PASS  pulling mosh to zero releases the encoder — running false
+  PASS  heal is a key, not a fader, and the new controls are on the card — HEAL key true, heal fader false, missing faders: none
+  PASS  the HEAL key can be learned to MIDI (Shift-click), addressed to the bus node — slot fx.one.mosh
+  PASS  a click on HEAL lands on it and starts an eased heal (not a jump) — hit yes, heals 0 → 1, clean 0.50 one second into a two-second heal
+  PASS  after the heal the keyframe has landed: the fade is gone and the picture is B again — clean 0.00; mean |Δ| from B: moshed 111.0, half way 50.8, healed 7.2
+  PASS  opacity 0 is the clean input, 0.5 sits between, Difference is its own picture — mean |Δ| from B: opacity 1 112.2, 0.5 55.4, 0 0.0; Difference vs the plain mosh 93.4 (mean level 110)
+  PASS  pulling bloom down slows the stream rather than doing nothing — replays per second: bloom 1.0 → 29, bloom 0.3 → 9
+  PASS  heal every 1 beat heals on the beat (about four in two seconds at 120) — 4 heals in 2.0 s
+  PASS  pulling mosh to zero fades back to clean, then releases the encoder — easing after 0.15 s true, running after 0.95 s false
