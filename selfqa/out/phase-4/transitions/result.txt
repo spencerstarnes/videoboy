@@ -1,6 +1,6 @@
 check:    phase-4/transitions
 verdict:  PASS
-when:     2026-09-23T23:21:07Z
+when:     2026-09-24T01:09:07Z
 core:     0.3.0
 
 notes:
@@ -8,12 +8,12 @@ notes:
   contact-sheet.png: one row per pattern, at 25% / 50% / 75% of the travel
 
 assertions (10/10 passed):
-  PASS  every transition rendered at its midpoint — 12 of 12
-  PASS  every pattern differs from a dissolve at the midpoint — 11 of 11
-  PASS  hard right is the right source untouched, for every pattern — all 12 match
+  PASS  every transition rendered at its midpoint — 13 of 13
+  PASS  every pattern differs from a dissolve at the midpoint — 12 of 12
+  PASS  hard right is the right source untouched, for every pattern — all 13 match
   PASS  the transition key is laid out left of the transport cluster — frame {{6, 51}, {30, 30}} in a panel 353 wide
-  PASS  the menu lists every pattern with a pictogram — 12 items
-  PASS  choosing Iris on the key writes the ONE bus's transition — registry 0.636, key shows Iris
+  PASS  the menu lists every pattern with a pictogram — 13 items
+  PASS  choosing Iris on the key writes the ONE bus's transition — registry 0.583, key shows Iris
   PASS  the picture follows the key: B in the iris, A outside it — centre is B: true, corner is not B: true
   PASS  wide: the transition key fits on every fader, overlapping nothing and moving no key — 3 faders clear
   PASS  compact: the transition key fits on every fader, overlapping nothing and moving no key — 3 faders clear

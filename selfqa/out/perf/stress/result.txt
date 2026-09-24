@@ -1,35 +1,35 @@
 check:    perf/stress
 verdict:  PASS
-when:     2026-09-23T23:21:59Z
+when:     2026-09-24T01:06:36Z
 core:     0.3.0
 
 notes:
   loaded A=bars.dv, B=motion.dv, C=motion.m2v, D=motion.mov
-    fx.a.mosh: MoshStatistics(received: 290, emitted: 287, droppedKeyframes: 0, droppedCuts: 3, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
-    fx.b.mosh: MoshStatistics(received: 290, emitted: 290, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
-    fx.c.mosh: MoshStatistics(received: 290, emitted: 290, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
-    fx.d.mosh: MoshStatistics(received: 289, emitted: 289, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
-    fx.one.mosh: MoshStatistics(received: 290, emitted: 290, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
-    fx.two.mosh: MoshStatistics(received: 289, emitted: 289, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.a.mosh: MoshStatistics(received: 291, emitted: 288, droppedKeyframes: 0, droppedCuts: 3, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.b.mosh: MoshStatistics(received: 291, emitted: 291, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.c.mosh: MoshStatistics(received: 291, emitted: 291, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.d.mosh: MoshStatistics(received: 291, emitted: 291, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.one.mosh: MoshStatistics(received: 291, emitted: 291, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
+    fx.two.mosh: MoshStatistics(received: 291, emitted: 291, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)
   display link at 30.0 Hz (33.33 ms/refresh)
   240 frames rendered in 8 s = 30.00/s; 0 dropped refreshes
-  whole tick: mean 8.93 ms, p95 9.64 ms, worst 17.29 ms
-    of which graph: mean 8.60 ms, worst 16.99 ms; UI/onFrame: mean 0.33 ms
-    node source.b: 1.72 ms/tick
-    node source.a: 1.44 ms/tick
-    node source.d: 1.14 ms/tick
+  whole tick: mean 8.56 ms, p95 9.35 ms, worst 16.40 ms
+    of which graph: mean 8.22 ms, worst 16.11 ms; UI/onFrame: mean 0.34 ms
+    node source.b: 1.57 ms/tick
+    node source.a: 1.33 ms/tick
+    node source.d: 1.07 ms/tick
     node fx.a.mosh: 0.22 ms/tick
-    node fx.b.mosh: 0.21 ms/tick
-    node fx.d.mosh: 0.20 ms/tick
-    node fx.c.mosh: 0.19 ms/tick
-    node fx.one.mosh: 0.19 ms/tick
+    node fx.d.mosh: 0.21 ms/tick
+    node fx.b.mosh: 0.20 ms/tick
+    node fx.c.mosh: 0.20 ms/tick
     node fx.two.mosh: 0.18 ms/tick
+    node fx.one.mosh: 0.18 ms/tick
     node source.c: 0.14 ms/tick
-  window hidden: 120 frames in 4 s, worst tick 17.01 ms
+  window hidden: 120 frames in 4 s, worst tick 16.89 ms
 
 assertions (5/5 passed):
   PASS  every datamosh node is encoding and decoding under load — 6 of 6 running with frames flowing
   PASS  the graph renders at the 29.97 content rate under full load — 30.00 frames/s against 29.97
   PASS  under 1% of display-link ticks dropped under full load — 0 dropped of 240
-  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 17.29 ms, p95 9.64 ms, mean 8.93 ms
-  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 17.01 ms
+  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 16.40 ms, p95 9.35 ms, mean 8.56 ms
+  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 16.89 ms

@@ -1,6 +1,6 @@
 check:    phase-2/ui-layout
 verdict:  PASS
-when:     2026-09-23T23:21:03Z
+when:     2026-09-24T01:09:04Z
 core:     0.3.0
 
 notes:
@@ -12,7 +12,7 @@ notes:
   collapsed-sources-only: folded A/B, C/D
   collapsed-effects-only: folded FX 1, FX 2
   adding 24 files took 0.2 ms of main-thread time (one frame is 33.4 ms)
-  frame time with everything on: mean 5.84 ms, p95 6.26 ms, worst 6.87 ms, budget 33.37 ms
+  frame time with everything on: mean 4.92 ms, p95 5.39 ms, worst 6.63 ms, budget 33.37 ms
 
 assertions (117/117 passed):
   PASS  dimensions — expected 1460x912, got 1460x912
@@ -80,8 +80,8 @@ assertions (117/117 passed):
   PASS  a marked range reaches the source node — 0.25...0.75
   PASS  a dragged clip carries its in and out points — 0.25...0.75 survived the pasteboard
   PASS  adding files to a library does not stall the render for multiple frames — 0.2 ms for 24 files — 0.0 frames' worth
-  PASS  no frame misses the budget with every effect running — worst frame 6.87 ms against a 33.37 ms budget (mean 5.84, p95 6.26)
-  PASS  frame time is even, not just fast on average — worst is 1.2x the mean
+  PASS  no frame misses the budget with every effect running — worst frame 6.63 ms against a 33.37 ms budget (mean 4.92, p95 5.39)
+  PASS  frame time is even, not just fast on average — worst is 1.3x the mean
   PASS  an ANIMATING fader leaves no ghost where the cap was — swept position reads 6480 after moving, 29744 with the cap there
   PASS  a fader leaves no ghost of the cap at its previous position — left position reads 4720 after moving away, 29168 while the cap was there
   PASS  a crossfader accepts sweep marks — 0.19...0.81

@@ -1,0 +1,25 @@
+check:    phase-4/ave5
+verdict:  PASS
+when:     2026-09-24T01:10:18Z
+core:     0.3.0
+
+notes:
+  table-rows-*.png: the manual's WIPE PATTERNS table (p.5), row for row — NON MULTI, ×4, ×16 — black A, white B, at 45% of the lever
+  key-pictograms.png: the fader key armed with A|B, cut, corner box, circle, diamond, diagonal, circle ×4, arrow ×16
+
+assertions (15/15 passed):
+  PASS  the table has the manual's 31 rows, each a different set of keys — 31 rows, 31 distinct
+  PASS  every row of the table rendered in all three MULTI states — 93 of 93 frames
+  PASS  live DV: the diamond has B inside and A in the corners — centre is B: true, corner is A: true
+  PASS  live DV: both ends are the pure sources under a busy AVE-5 state — hard right vs B: 0.0, hard left vs A: 0.0
+  PASS  choosing AVE-5 on the key arms it and opens the block — registry AVE-5, panel for mix.one, shown true
+  PASS  opening the block moves no control on any fader panel — 51 control frames compared
+  PASS  clicking A|B's partners and the circle lights all five: a diamond — keys 31, Diamond
+  PASS  MULTI twice is ×16 and WIPE once is a border — lamps and legends follow — multi ×16, edge BORDER
+  PASS  the fader key's pictogram follows the block — key shows Diamond ×16
+  PASS  the positioner pad writes X and Y — X 0.25, Y 0.3
+  PASS  Shift lights all ten keys in the block, and both positioner faders — 10 of 10 keys; X true, Y true
+  PASS  Shift-click learns the circle key as a note and positioner X as anything — mix.one/65G, mix.one/68F
+  PASS  a learned MIDI key presses MULTI once, on the edge — ×16 → MULTI
+  PASS  pitch bend drives positioner X, and the block's fader shows it — X 0.1250
+  PASS  clicking the key again closes the block — closed
