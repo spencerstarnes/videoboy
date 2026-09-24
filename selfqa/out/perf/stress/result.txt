@@ -1,41 +1,44 @@
 check:    perf/stress
 verdict:  PASS
-when:     2026-09-24T06:33:57Z
-core:     0.3.0
+when:     2026-09-24T18:27:20Z
+core:     0.4.0
 
 notes:
   loaded A=bars.dv, B=motion.dv, C=motion.m2v, D=motion.mov
-    fx.a.mosh: MoshStatistics(received: 291, emitted: 287, droppedKeyframes: 0, droppedCuts: 1, droppedRandom: 3, bloomed: 139, passedUnchanged: 0), heals 19
-    fx.b.mosh: MoshStatistics(received: 291, emitted: 288, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 139, passedUnchanged: 0), heals 19
-    fx.c.mosh: MoshStatistics(received: 291, emitted: 288, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 139, passedUnchanged: 0), heals 19
-    fx.d.mosh: MoshStatistics(received: 291, emitted: 288, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 139, passedUnchanged: 0), heals 19
-    fx.one.mosh: MoshStatistics(received: 291, emitted: 288, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 139, passedUnchanged: 0), heals 19
-    fx.two.mosh: MoshStatistics(received: 291, emitted: 288, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 139, passedUnchanged: 0), heals 19
+    fx.a.mosh: MoshStatistics(received: 288, emitted: 284, droppedKeyframes: 0, droppedCuts: 1, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.b.mosh: MoshStatistics(received: 288, emitted: 285, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.c.mosh: MoshStatistics(received: 288, emitted: 285, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.d.mosh: MoshStatistics(received: 288, emitted: 285, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.one.mosh: MoshStatistics(received: 288, emitted: 285, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.two.mosh: MoshStatistics(received: 288, emitted: 285, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
   display link at 30.0 Hz (33.33 ms/refresh)
   240 frames rendered in 8 s = 30.00/s; 0 dropped refreshes
-  whole tick: mean 8.28 ms, p95 8.73 ms, worst 18.10 ms
-    of which graph: mean 7.98 ms, worst 17.76 ms; UI/onFrame: mean 0.30 ms
-    node source.b: 1.58 ms/tick
-    node source.a: 1.31 ms/tick
+  whole tick: mean 8.20 ms, p95 8.76 ms, worst 19.12 ms
+    of which graph: mean 7.90 ms, worst 18.76 ms; UI/onFrame: mean 0.30 ms
+    node source.b: 1.56 ms/tick
+    node source.a: 1.29 ms/tick
     node source.d: 1.08 ms/tick
-    node fx.a.mosh: 0.25 ms/tick
+    node fx.a.mosh: 0.26 ms/tick
     node fx.d.mosh: 0.23 ms/tick
+    node fx.b.mosh: 0.23 ms/tick
     node fx.c.mosh: 0.22 ms/tick
-    node fx.b.mosh: 0.22 ms/tick
     node fx.one.mosh: 0.21 ms/tick
     node fx.two.mosh: 0.20 ms/tick
     node source.c: 0.14 ms/tick
-  program preview: 196 frames shown; refreshes each was held for — 1×: 1, 2×: 192, 3×: 1, 4×: 1
+  program preview: 197 frames shown; refreshes each was held for — 1×: 1, 2×: 194, 3×: 1
   main window: visible true, on the active Space true
-  transitions moving: 194 frames in 6.5 s = 29.85/s, 0 dropped; tick mean 8.13 ms, p95 8.55 ms, worst 18.16 ms; graph mean 7.76 ms, worst 17.81 ms
-  window hidden: 120 frames in 4 s, worst tick 17.98 ms
+  transitions moving: 195 frames in 6.5 s = 30.00/s, 0 dropped; tick mean 8.05 ms, p95 8.40 ms, worst 18.23 ms; graph mean 7.66 ms, worst 17.87 ms
+  data burn on air: 149 frames in 5 s = 29.80/s, 0 dropped; tick mean 9.37 ms, p95 14.18 ms, worst 19.02 ms
+  window hidden: 122 frames in 4 s, worst tick 18.94 ms
 
-assertions (8/8 passed):
+assertions (10/10 passed):
   PASS  every datamosh node is encoding, decoding, blooming and healing on the beat under load — 6 of 6 running with frames flowing
   PASS  the graph renders at the 29.97 content rate under full load — 30.00 frames/s against 29.97
   PASS  under 1% of display-link ticks dropped under full load — 0 dropped of 240
-  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 18.10 ms, p95 8.73 ms, mean 8.28 ms
-  PASS  the program preview presented frames while the wipes moved — 196 frames shown; window visible true, on the active Space true
-  PASS  the program preview paces a moving wipe evenly (90% of frames held 2 refreshes) — 192 of 195 — 1×: 1, 2×: 192, 3×: 1, 4×: 1
-  PASS  transitions in motion hold 29.97 with no tick over one SD frame — 29.85 frames/s, 0 dropped, worst 18.16 ms, p95 8.55 ms
-  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 17.98 ms
+  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 19.12 ms, p95 8.76 ms, mean 8.20 ms
+  PASS  the program preview presented frames while the wipes moved — 197 frames shown; window visible true, on the active Space true
+  PASS  the program preview paces a moving wipe evenly (90% of frames held 2 refreshes) — 194 of 196 — 1×: 1, 2×: 194, 3×: 1
+  PASS  transitions in motion hold 29.97 with no tick over one SD frame — 30.00 frames/s, 0 dropped, worst 18.23 ms, p95 8.40 ms
+  PASS  both sub-mixes burn their text while it is on — 2 of 2 burning text
+  PASS  DATA BURN on both sub-mixes holds 29.97 with no tick over one SD frame — 29.80 frames/s, 0 dropped, worst 19.02 ms, p95 14.18 ms
+  PASS  a hidden main window never stalls the render loop — 122 frames in 4 s, worst 18.94 ms
