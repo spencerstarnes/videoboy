@@ -61,6 +61,94 @@ enum ISFMetalPrelude {
     #undef __VERSION__
     #endif
     #define __VERSION__ 120
+    // Sampler types as parameter types: `vec3 dof(sampler2D tex, …)`. In Metal the
+    // texture is the thing passed; sampling goes through the struct's sampler.
+    typedef texture2d<float> sampler2D;
+    typedef texture2d<float> sampler2DRect;
+    typedef texturecube<float> samplerCube;
+    // A swizzle passed to an out/inout parameter (`pR(p.xz, a)`). Metal cannot bind a
+    // reference to a swizzle; GLSL copies in and back out. This holds the copy, hands
+    // the function a reference to it, and writes it back when the call's expression
+    // ends — the same order GLSL gives.
+    template <typename V, int N> struct ISFSwizzleRef {
+        thread V* base;
+        int index[4];
+        vec<float, N> value;
+        ISFSwizzleRef(thread V& v, int a, int b, int c, int d) : base(&v) {
+            index[0] = a; index[1] = b; index[2] = c; index[3] = d;
+            for (int i = 0; i < N; i++) value[i] = v[index[i]];
+        }
+        ~ISFSwizzleRef() { for (int i = 0; i < N; i++) (*base)[index[i]] = value[i]; }
+        operator thread vec<float, N>&() { return value; }
+    };
+    template <int N, typename V>
+    ISFSwizzleRef<V, N> isf_swizzle(thread V& v, int a, int b, int c = 0, int d = 0) {
+        return ISFSwizzleRef<V, N>(v, a, b, c, d);
+    }
+    // The same for one component passed to an inout float: `pMod(p.z, 8.0)`.
+    template <typename V> struct ISFComponentRef {
+        thread V* base;
+        int index;
+        float value;
+        ISFComponentRef(thread V& v, int i) : base(&v), index(i), value(v[i]) {}
+        ~ISFComponentRef() { (*base)[index] = value; }
+        operator thread float&() { return value; }
+    };
+    template <typename V> ISFComponentRef<V> isf_component(thread V& v, int i) {
+        return ISFComponentRef<V>(v, i);
+    }
+    // GLSL's geometric functions take plain floats too, and Apple's GLSL accepts a
+    // float where a vector is expected (`distance(center, 0.5)`). At FILE scope, so a
+    // shader that defines its own `distance` or names an input `length` simply hides
+    // these, as its own names would hide GLSL's; Metal's vector forms stay visible
+    // through `using namespace metal`.
+    inline float distance(float a, float b) { return metal::abs(a - b); }
+    inline float distance(float2 a, float b) { return metal::distance(a, float2(b)); }
+    inline float distance(float3 a, float b) { return metal::distance(a, float3(b)); }
+    inline float distance(float4 a, float b) { return metal::distance(a, float4(b)); }
+    inline float distance(float a, float2 b) { return metal::distance(float2(a), b); }
+    inline float distance(float a, float3 b) { return metal::distance(float3(a), b); }
+    inline float distance(float a, float4 b) { return metal::distance(float4(a), b); }
+    inline float length(float x) { return metal::abs(x); }
+    inline float dot(float a, float b) { return a * b; }
+    inline float normalize(float x) { return metal::sign(x); }
+    // Matrix constructors with GLSL's mixed arguments — `mat2(a.y, -a.x, a)` — which
+    // Metal's matrix types do not take. The converter sends every `matN(` here: the
+    // arguments are flattened in order into columns, one scalar makes a diagonal, and
+    // a matrix argument is resized, all as GLSL defines.
+    inline void isf_push(thread float* c, thread int& i, float x) { if (i < 16) c[i++] = x; }
+    inline void isf_push(thread float* c, thread int& i, int x) { if (i < 16) c[i++] = float(x); }
+    inline void isf_push(thread float* c, thread int& i, bool x) { if (i < 16) c[i++] = x ? 1.0 : 0.0; }
+    inline void isf_push(thread float* c, thread int& i, float2 x) { isf_push(c, i, x.x); isf_push(c, i, x.y); }
+    inline void isf_push(thread float* c, thread int& i, float3 x) { isf_push(c, i, x.xy); isf_push(c, i, x.z); }
+    inline void isf_push(thread float* c, thread int& i, float4 x) { isf_push(c, i, x.xy); isf_push(c, i, x.zw); }
+    template <typename... A> inline float2x2 isf_mat2(A... a) {
+        float c[16] = {0}; int i = 0; int expand[] = { 0, (isf_push(c, i, a), 0)... }; (void)expand;
+        return float2x2(float2(c[0], c[1]), float2(c[2], c[3]));
+    }
+    template <typename... A> inline float3x3 isf_mat3(A... a) {
+        float c[16] = {0}; int i = 0; int expand[] = { 0, (isf_push(c, i, a), 0)... }; (void)expand;
+        return float3x3(float3(c[0], c[1], c[2]), float3(c[3], c[4], c[5]), float3(c[6], c[7], c[8]));
+    }
+    template <typename... A> inline float4x4 isf_mat4(A... a) {
+        float c[16] = {0}; int i = 0; int expand[] = { 0, (isf_push(c, i, a), 0)... }; (void)expand;
+        return float4x4(float4(c[0], c[1], c[2], c[3]), float4(c[4], c[5], c[6], c[7]),
+                        float4(c[8], c[9], c[10], c[11]), float4(c[12], c[13], c[14], c[15]));
+    }
+    inline float2x2 isf_mat2(float d) { return float2x2(float2(d, 0.0), float2(0.0, d)); }
+    inline float2x2 isf_mat2(int d) { return isf_mat2(float(d)); }
+    inline float2x2 isf_mat2(float2x2 m) { return m; }
+    inline float2x2 isf_mat2(float3x3 m) { return float2x2(m[0].xy, m[1].xy); }
+    inline float2x2 isf_mat2(float4x4 m) { return float2x2(m[0].xy, m[1].xy); }
+    inline float3x3 isf_mat3(float d) { return float3x3(float3(d, 0, 0), float3(0, d, 0), float3(0, 0, d)); }
+    inline float3x3 isf_mat3(int d) { return isf_mat3(float(d)); }
+    inline float3x3 isf_mat3(float3x3 m) { return m; }
+    inline float3x3 isf_mat3(float4x4 m) { return float3x3(m[0].xyz, m[1].xyz, m[2].xyz); }
+    inline float3x3 isf_mat3(float2x2 m) { return float3x3(float3(m[0], 0), float3(m[1], 0), float3(0, 0, 1)); }
+    inline float4x4 isf_mat4(float d) { return float4x4(float4(d,0,0,0), float4(0,d,0,0), float4(0,0,d,0), float4(0,0,0,d)); }
+    inline float4x4 isf_mat4(int d) { return isf_mat4(float(d)); }
+    inline float4x4 isf_mat4(float4x4 m) { return m; }
+    inline float4x4 isf_mat4(float3x3 m) { return float4x4(float4(m[0], 0), float4(m[1], 0), float4(m[2], 0), float4(0, 0, 0, 1)); }
     // Precision qualifiers mean nothing on Apple GPUs.
     #define lowp
     #define mediump
@@ -111,6 +199,11 @@ enum ISFMetalPrelude {
         vec3 atan(vec3 x) { return metal::atan(x); }
         vec4 atan(vec4 x) { return metal::atan(x); }
 
+        // mod with an int or uint vector divisor (`mod(uv, glyphSize)`, uvec2).
+        vec2 mod(vec2 x, uvec2 y) { return mod(x, vec2(y)); }
+        vec2 mod(vec2 x, ivec2 y) { return mod(x, vec2(y)); }
+        vec3 mod(vec3 x, ivec3 y) { return mod(x, vec3(y)); }
+        vec4 mod(vec4 x, ivec4 y) { return mod(x, vec4(y)); }
         float inversesqrt(float x) { return metal::rsqrt(x); }
         vec2 inversesqrt(vec2 x) { return metal::rsqrt(x); }
         vec3 inversesqrt(vec3 x) { return metal::rsqrt(x); }

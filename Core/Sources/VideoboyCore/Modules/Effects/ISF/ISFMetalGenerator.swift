@@ -45,6 +45,20 @@
 //      the stage-in struct. Only with a `.vs`; without one they are an error, since
 //      nothing would write them. `attribute` is refused: there are no vertex buffers.
 //
+//    - `.stpq` swizzle mapping skips names declared as struct fields (`hex.q`)
+//    - a declaration that reads its own name in its initializer (`vec4 lastRow =
+//      IMG_PIXEL(lastRow, …)`, `float distance = distance(a, b)`) renames the new
+//      variable from there to the end of its block: in GLSL the initializer still sees
+//      the OUTER name, in C++ it would see the variable being declared
+//    - a swizzle passed to an `out`/`inout` parameter (`pR(p.xz, a)`) goes through
+//      `isf_swizzle<N>(p, 0, 2)`, a temporary that writes back when the call ends —
+//      Metal cannot bind a reference to a swizzle, GLSL copies in and out
+//
+//    - `matN(` → `isf_matN(` (mixed scalar/vector arguments, as GLSL allows)
+//    - `a.xz *= m;` → `a.xz = a.xz * (m);` (Metal cannot bind a swizzle to `*=`)
+//    - a top-level `uniform T x;` the header does not declare becomes a member that
+//      reads zero, rather than vanishing and leaving `x` undeclared
+//
 //  CUSTOM VERTEX SHADERS (`.vs`). The same trick again: the vertex GLSL goes inside an
 //  `ISFVertexShader` struct with the uniforms, images, `gl_Position` and
 //  `isf_vertShaderInit()` as members. It is drawn as a four-vertex QUAD, as ISF hosts
@@ -214,7 +228,10 @@ public enum ISFMetalGenerator {
         "static_assert", "static_cast", "template", "this", "throw", "try", "typeid",
         "typename", "using", "virtual", "and", "or", "not", "xor", "bitand", "bitor",
         "compl", "and_eq", "or_eq", "not_eq", "xor_eq", "alignas", "alignof",
-        "decltype", "noexcept", "nullptr", "constexpr", "thread_local", "size_t"
+        "decltype", "noexcept", "nullptr", "constexpr", "thread_local", "size_t",
+        // C/C++ type words GLSL leaves free: `float signed = sign(x);` is real code.
+        "signed", "unsigned", "short", "long", "union", "typedef", "static", "extern",
+        "volatile", "inline", "enum"
     ]
 
     /// GLSL type names that can open an array constructor, `float[3](…)`.
@@ -228,7 +245,13 @@ public enum ISFMetalGenerator {
     ///
     /// - Throws: `ISFGenerateError.unsupported` for features that are recognised but
     ///   not built yet, so the card can say so instead of failing mysteriously.
-    public static func generate(_ document: ISFDocument) throws -> ISFGeneratedShader {
+    /// - Parameter promotingIntegerGlobals: names of top-level `ivecN`/`uvecN`
+    ///   variables to retype as `vecN`. Apple's GLSL converts them silently where float
+    ///   maths meets them (`uv / glyphSize`); Metal will not. Only used as a retry after
+    ///   exactly that error, so a shader that compiles as written is never changed.
+    public static func generate(
+        _ document: ISFDocument, promotingIntegerGlobals: Set<String> = []
+    ) throws -> ISFGeneratedShader {
         if !document.importedImages.isEmpty {
             throw ISFGenerateError.unsupported(
                 "IMPORTED images (\(document.importedImages.joined(separator: ", ")))")
@@ -237,7 +260,11 @@ public enum ISFMetalGenerator {
             throw ISFGenerateError.unsupported("audio input '\(audio.name)'")
         }
 
-        let rewrite = try rewriteBody(GLSLTokenizer.tokenize(document.fragmentSource), stage: .fragment)
+        var fragmentTokens = GLSLTokenizer.tokenize(document.fragmentSource)
+        if !promotingIntegerGlobals.isEmpty {
+            promoteIntegerGlobals(&fragmentTokens, names: promotingIntegerGlobals)
+        }
+        let rewrite = try rewriteBody(fragmentTokens, stage: .fragment)
         let vertexRewrite = try document.vertexSource.map {
             try rewriteBody(GLSLTokenizer.tokenize($0), stage: .vertex)
         }
@@ -252,6 +279,15 @@ public enum ISFMetalGenerator {
             varyings.append(varying)
         }
         let layout = ISFUniformLayout(document: document)
+        // Uniforms the GLSL declares that the header does not: members that read zero.
+        let known = Set(ISFUniformLayout.builtIns.map(\.0) + document.inputs.map(\.name)
+                        + document.passes.compactMap(\.target) + varyings.map(\.name))
+        var extraUniforms: [Varying] = []
+        for uniform in rewrite.uniforms + (vertexRewrite?.uniforms ?? [])
+        where !known.contains(uniform.name) && !extraUniforms.contains(where: { $0.name == uniform.name }) {
+            extraUniforms.append(uniform)
+        }
+        let extraUniformMembers = extraUniforms.map { "    \($0.member)\n" }.joined()
 
         var textureNames = document.imageInputs.map(\.name)
         for pass in document.passes {
@@ -286,6 +322,12 @@ public enum ISFMetalGenerator {
         for name in textureNames {
             head += "    texture2d<float> \(name);\n"
         }
+        // ISF v1's per-image uniforms, for the files that still read them. Filled in
+        // after construction; declared only when the file mentions them.
+        let allSource = document.fragmentSource + (document.vertexSource ?? "")
+        let legacyImages = textureNames.filter {
+            allSource.contains("_\($0)_img") || allSource.contains("_\($0)_flip")
+        }
         head += """
             sampler isf_sampler;
             float4 gl_FragCoord;
@@ -297,6 +339,8 @@ public enum ISFMetalGenerator {
         for varying in varyings {
             head += "    \(varying.member)\n"
         }
+        head += legacyImageMembers(legacyImages)
+        head += extraUniformMembers
         head += ISFMetalPrelude.members + "\n"
         head += "    // ---- author's GLSL body ----\n"
 
@@ -309,7 +353,8 @@ public enum ISFMetalGenerator {
             // The vertex struct, its body, then the stage-in struct and the vertex
             // function that fills it.
             var vertexHead = vertexStructHead(document: document, textureNames: textureNames,
-                                              varyings: varyings)
+                                              varyings: varyings, legacyImages: legacyImages,
+                                              extraUniformMembers: extraUniformMembers)
             vertexHead += "    // ---- author's vertex GLSL ----\n"
             tail += vertexHead
             vertexBodyFirstLine = GLSLTokenizer.lineBreakCount(head) + GLSLTokenizer.lineBreakCount(body)
@@ -318,7 +363,7 @@ public enum ISFMetalGenerator {
             tail += vertexRewrite.text
             tail += "\n    // ---- end of vertex GLSL ----\n};\n\n"
             tail += vertexStageFunctions(document: document, textureNames: textureNames,
-                                         varyings: varyings)
+                                         varyings: varyings, legacyImages: legacyImages)
         } else {
             tail += """
             struct ISFVertexOut {
@@ -386,6 +431,7 @@ public enum ISFMetalGenerator {
                 for part in varying.stageFields { tail += "    shader.\(part.access) = in.\(part.field);\n" }
             }
         }
+        tail += legacyImageAssignments(legacyImages)
         tail += "    shader.main();\n"
         tail += "    return shader.gl_FragColor;\n"
         tail += "}\n"
@@ -405,13 +451,33 @@ public enum ISFMetalGenerator {
         return shader
     }
 
+    // MARK: - ISF v1 per-image uniforms
+
+    /// `_name_imgRect` (origin and size), `_name_imgSize`, `_name_flip` per image.
+    private static func legacyImageMembers(_ names: [String]) -> String {
+        names.map {
+            "    float4 _\($0)_imgRect = float4(0.0);\n    float2 _\($0)_imgSize = float2(0.0);\n"
+                + "    bool _\($0)_flip = false;\n"
+        }.joined()
+    }
+
+    /// Fills them from the bound textures. Nothing is flipped: the sampling helpers
+    /// already turn Videoboy's top-down rows into ISF's bottom-up coordinates.
+    private static func legacyImageAssignments(_ names: [String]) -> String {
+        names.map { name in
+            "    shader._\(name)_imgSize = float2(float(tex_\(name).get_width()), float(tex_\(name).get_height()));\n"
+                + "    shader._\(name)_imgRect = float4(0.0, 0.0, shader._\(name)_imgSize);\n"
+        }.joined()
+    }
+
     // MARK: - Custom vertex shaders
 
     /// `ISFVertexShader`, up to where the author's `.vs` body goes: the same uniforms
     /// and images the fragment side sees, `gl_Position`, the varyings, and the ISF
     /// vertex built-ins.
     private static func vertexStructHead(
-        document: ISFDocument, textureNames: [String], varyings: [Varying]
+        document: ISFDocument, textureNames: [String], varyings: [Varying], legacyImages: [String],
+        extraUniformMembers: String
     ) -> String {
         var text = "struct ISFVertexShader {\n"
         for field in ISFUniformLayout.builtIns {
@@ -436,6 +502,8 @@ public enum ISFMetalGenerator {
         for varying in varyings {
             text += "    \(varying.member)\n"
         }
+        text += legacyImageMembers(legacyImages)
+        text += extraUniformMembers
         text += """
             // The ISF default vertex stage: a full-frame quad, normalised coordinates
             // with (0,0) at the bottom left.
@@ -454,7 +522,7 @@ public enum ISFMetalGenerator {
 
     /// The stage-in struct and the vertex function for a custom vertex shader.
     private static func vertexStageFunctions(
-        document: ISFDocument, textureNames: [String], varyings: [Varying]
+        document: ISFDocument, textureNames: [String], varyings: [Varying], legacyImages: [String]
     ) -> String {
         var text = "struct ISFVertexOut {\n    float4 position [[position]];\n    float2 isf_norm;\n"
         for varying in varyings {
@@ -492,7 +560,9 @@ public enum ISFMetalGenerator {
         initialisers += ["isfSampler", "corners[vertexID]"]
         text += "    ISFVertexShader shader {\n        "
         text += initialisers.joined(separator: ",\n        ")
-        text += "\n    };\n    shader.main();\n"
+        text += "\n    };\n"
+        text += legacyImageAssignments(legacyImages)
+        text += "    shader.main();\n"
         text += "    ISFVertexOut out;\n    out.position = shader.gl_Position;\n"
         text += "    out.isf_norm = shader.isf_FragNormCoord;\n"
         for varying in varyings {
@@ -533,6 +603,8 @@ public enum ISFMetalGenerator {
         let outputAlias: String?
         /// Top-level varyings, in declaration order.
         var varyings: [Varying] = []
+        /// Top-level `uniform` declarations (not samplers), for names the header lacks.
+        var uniforms: [Varying] = []
     }
 
     /// One varying: its GLSL type, name, and array length (nil for a plain value).
@@ -595,6 +667,9 @@ public enum ISFMetalGenerator {
         var tokens = input
         var outputAlias: String?
         var varyings: [Varying] = []
+        var uniforms: [Varying] = []
+        var inoutFunctions: [String: Set<Int>] = [:]
+        let structFields = structFieldNames(tokens)
 
         // Pass 1: local rules anywhere in the body. These run FIRST, so the keywords the
         // top-level pass writes (`thread`) are never mistaken for names to rename.
@@ -612,10 +687,14 @@ public enum ISFMetalGenerator {
                     tokens[index].text += "_"
                 } else if typeNames.contains(token.text) {
                     rewriteArrayConstructor(at: index, tokens: &tokens)
+                    if ["mat2", "mat3", "mat4"].contains(tokens[index].text),
+                       let next = nextSignificant(after: index, in: tokens), tokens[next].text == "(" {
+                        tokens[index].text = "isf_" + tokens[index].text
+                    }
                 }
             case .symbol where token.text == ".":
                 if let next = nextSignificant(after: index, in: tokens),
-                   tokens[next].kind == .identifier {
+                   tokens[next].kind == .identifier, !structFields.contains(tokens[next].text) {
                     tokens[next].text = mappedSwizzle(tokens[next].text)
                 }
             default:
@@ -631,7 +710,14 @@ public enum ISFMetalGenerator {
             let head = tokens[first].text
 
             switch head {
-            case "precision", "uniform":
+            case "precision":
+                blank(item, in: &tokens)
+                continue
+            case "uniform":
+                let texts = significant.map { tokens[$0].text }
+                if !texts.contains(where: { $0.hasPrefix("sampler") }) {
+                    uniforms += (try? parseVaryings(Array(texts.dropFirst()))) ?? []
+                }
                 blank(item, in: &tokens)
                 continue
             case "attribute":
@@ -672,16 +758,27 @@ public enum ISFMetalGenerator {
                 continue
             }
             if isDefinition, hasParen, !equalsBeforeParen {
-                rewriteParameterQualifiers(item: significant, tokens: &tokens)
+                let referenceParameters = rewriteParameterQualifiers(item: significant, tokens: &tokens)
+                if !referenceParameters.isEmpty,
+                   let paren = texts.firstIndex(of: "("), paren > 0 {
+                    inoutFunctions[texts[paren - 1], default: []].formUnion(referenceParameters)
+                }
             }
         }
+
+        // Pass 3: rules that need the whole body.
+        let typeWords = typeNames.union(["void"]).union(structNames(tokens))
+        renameSelfReferencingDeclarations(&tokens, typeWords: typeWords)
+        rewriteSwizzleCompoundMultiply(&tokens)
+        rewriteSwizzleArguments(&tokens, functions: inoutFunctions, typeWords: typeWords)
 
         // Files that serve GLSL 1.2 and 3 both (`#if __VERSION__ <= 120` … `varying`,
         // `#else` … `out`) declare every varying twice. Both declarations are blanked;
         // one member each is kept.
         var seen = Set<String>()
         varyings = varyings.filter { seen.insert($0.name).inserted }
-        return RewriteResult(text: GLSLTokenizer.join(tokens), outputAlias: outputAlias, varyings: varyings)
+        return RewriteResult(text: GLSLTokenizer.join(tokens), outputAlias: outputAlias,
+                             varyings: varyings, uniforms: uniforms)
     }
 
     /// `varying vec2 a, b[5];` → a (vec2), b (vec2 × 5). An array length must be a
@@ -772,9 +869,13 @@ public enum ISFMetalGenerator {
 
     /// In a function header's parameter list: `in T x` → `T x`,
     /// `out T x` / `inout T x` → `thread T& x`.
-    private static func rewriteParameterQualifiers(item significant: [Int], tokens: inout [GLSLToken]) {
+    /// Returns the 0-based positions of the parameters that became references.
+    @discardableResult
+    private static func rewriteParameterQualifiers(item significant: [Int], tokens: inout [GLSLToken]) -> Set<Int> {
         // The parameter list is between the first `(` and its matching `)`.
-        guard let openPosition = significant.firstIndex(where: { tokens[$0].text == "(" }) else { return }
+        guard let openPosition = significant.firstIndex(where: { tokens[$0].text == "(" }) else { return [] }
+        var references = Set<Int>()
+        var parameter = 0
         var depth = 0
         var position = openPosition
         while position < significant.count {
@@ -785,10 +886,12 @@ public enum ISFMetalGenerator {
                 depth -= 1
                 if depth == 0 { break }
             }
+            if depth == 1, text == "," { parameter += 1 }
             if depth == 1, tokens[index].kind == .identifier {
                 if text == "in" {
                     tokens[index].text = ""
                 } else if text == "out" || text == "inout" {
+                    references.insert(parameter)
                     tokens[index].text = "thread"
                     // The type is the next identifier that is itself followed by an
                     // identifier (the parameter name). Mark it as a reference.
@@ -806,6 +909,215 @@ public enum ISFMetalGenerator {
             }
             position += 1
         }
+        return references
+    }
+
+    // MARK: - Whole-body rules
+
+    /// Every `struct` name the body declares, so its variables are known as types.
+    static func structNames(_ tokens: [GLSLToken]) -> Set<String> {
+        let significant = tokens.filter { !$0.isTrivia && $0.kind != .preprocessor }.map(\.text)
+        var names = Set<String>()
+        for (index, text) in significant.enumerated() where text == "struct" && index + 1 < significant.count {
+            names.insert(significant[index + 1])
+        }
+        return names
+    }
+
+    /// Every name declared as a field of a `struct` in the body.
+    static func structFieldNames(_ tokens: [GLSLToken]) -> Set<String> {
+        var fields = Set<String>()
+        let significant = tokens.indices.filter { !tokens[$0].isTrivia && tokens[$0].kind != .preprocessor }
+        var position = 0
+        while position < significant.count {
+            guard tokens[significant[position]].text == "struct" else { position += 1; continue }
+            // struct Name { type a, b; type c; }
+            guard let open = (position..<significant.count).first(where: { tokens[significant[$0]].text == "{" })
+            else { break }
+            var cursor = open + 1
+            var previous: String?
+            while cursor < significant.count, tokens[significant[cursor]].text != "}" {
+                let text = tokens[significant[cursor]].text
+                if (text == ";" || text == "," || text == "["), let name = previous,
+                   tokens[significant[cursor - 1]].kind == .identifier {
+                    fields.insert(name)
+                }
+                previous = text
+                cursor += 1
+            }
+            position = cursor + 1
+        }
+        return fields
+    }
+
+    /// `T name = …name…;` → the new variable is `name_isf` from its declarator to the
+    /// end of its block, and the initializer keeps meaning the outer `name`.
+    static func renameSelfReferencingDeclarations(_ tokens: inout [GLSLToken], typeWords: Set<String>) {
+        let significant = tokens.indices.filter { !tokens[$0].isTrivia && tokens[$0].kind != .preprocessor }
+        func text(_ position: Int) -> String {
+            position >= 0 && position < significant.count ? tokens[significant[position]].text : ""
+        }
+        var position = 1
+        while position + 1 < significant.count {
+            defer { position += 1 }
+            let nameIndex = significant[position]
+            // A declaration: a type word, then the name, then `=` (`return x = …` is not).
+            guard tokens[nameIndex].kind == .identifier, text(position + 1) == "=",
+                  typeWords.contains(text(position - 1)) else { continue }
+            let name = tokens[nameIndex].text
+            // The initializer: up to `;` or `,` at depth 0.
+            var end = position + 2
+            var depth = 0
+            var mentions = false
+            while end < significant.count {
+                let t = text(end)
+                if t == "(" || t == "[" || t == "{" { depth += 1 }
+                if t == ")" || t == "]" || t == "}" { depth -= 1 }
+                if depth < 0 || (depth == 0 && (t == ";" || t == ",")) { break }
+                if t == name, text(end - 1) != "." { mentions = true }
+                end += 1
+            }
+            guard mentions else { continue }
+            // Rename the declarator, then every later use until the block closes.
+            let renamed = name + "_isf"
+            tokens[nameIndex].text = renamed
+            var blockDepth = 0
+            var cursor = end
+            while cursor < significant.count {
+                let t = text(cursor)
+                if t == "{" { blockDepth += 1 }
+                if t == "}" {
+                    blockDepth -= 1
+                    if blockDepth < 0 { break }
+                }
+                if t == name, text(cursor - 1) != "." {
+                    tokens[significant[cursor]].text = renamed
+                }
+                cursor += 1
+            }
+        }
+    }
+
+    /// `a.xz *= m;` → `a.xz = a.xz * (m);`. Same meaning in GLSL; the only spelling
+    /// Metal takes when `m` is a matrix, since `*=` would need a reference to a swizzle.
+    static func rewriteSwizzleCompoundMultiply(_ tokens: inout [GLSLToken]) {
+        let significant = tokens.indices.filter { !tokens[$0].isTrivia && tokens[$0].kind != .preprocessor }
+        func text(_ position: Int) -> String {
+            position >= 0 && position < significant.count ? tokens[significant[position]].text : ""
+        }
+        for position in significant.indices where text(position) == "*=" {
+            guard position >= 3, text(position - 2) == ".", text(position - 4) != ".",
+                  tokens[significant[position - 3]].kind == .identifier,
+                  let indices = swizzleIndices(text(position - 1)), indices.count >= 2 else { continue }
+            // Find the end of the right-hand side.
+            var end = position + 1
+            var depth = 0
+            while end < significant.count {
+                let t = text(end)
+                if t == "(" || t == "[" { depth += 1 }
+                if t == ")" || t == "]" { depth -= 1 }
+                if depth < 0 || (depth == 0 && (t == ";" || t == ",")) { break }
+                end += 1
+            }
+            let target = "\(text(position - 3)).\(text(position - 1))"
+            tokens[significant[position]].text = "= \(target) * ("
+            if end < significant.count {
+                tokens[significant[end]].text = ")" + tokens[significant[end]].text
+            }
+        }
+    }
+
+    /// `f(p.xz, …)` where `f`'s first parameter is `inout` → `f(isf_swizzle<2>(p, 0, 2), …)`.
+    static func rewriteSwizzleArguments(
+        _ tokens: inout [GLSLToken], functions: [String: Set<Int>], typeWords: Set<String>
+    ) {
+        guard !functions.isEmpty else { return }
+        let significant = tokens.indices.filter { !tokens[$0].isTrivia && tokens[$0].kind != .preprocessor }
+        func text(_ position: Int) -> String {
+            position >= 0 && position < significant.count ? tokens[significant[position]].text : ""
+        }
+        for position in significant.indices {
+            guard let parameters = functions[text(position)], text(position + 1) == "(" else { continue }
+            // Skip the definition itself: a type word sits before its name.
+            if typeWords.contains(text(position - 1)) { continue }
+            var argument = 0
+            var depth = 0
+            var start = position + 2
+            var cursor = position + 2
+            while cursor < significant.count {
+                let t = text(cursor)
+                let closes = (t == ")" && depth == 0)
+                if (t == "," && depth == 0) || closes {
+                    // Exactly `name . swizzle`.
+                    if parameters.contains(argument), cursor - start == 3, text(start + 1) == ".",
+                       tokens[significant[start]].kind == .identifier,
+                       let indices = swizzleIndices(text(start + 2)) {
+                        let base = text(start)
+                        tokens[significant[start]].text = indices.count == 1
+                            ? "isf_component(\(base), \(indices[0]))"
+                            : "isf_swizzle<\(indices.count)>(\(base), \(indices.map(String.init).joined(separator: ", ")))"
+                        tokens[significant[start + 1]].text = ""
+                        tokens[significant[start + 2]].text = ""
+                    }
+                    argument += 1
+                    start = cursor + 1
+                    if closes { break }
+                } else if t == "(" || t == "[" {
+                    depth += 1
+                } else if t == ")" || t == "]" {
+                    depth -= 1
+                }
+                cursor += 1
+            }
+        }
+    }
+
+    /// The top-level `ivecN`/`uvecN` variables a file declares, by name.
+    public static func integerGlobalNames(_ document: ISFDocument) -> [String] {
+        let tokens = GLSLTokenizer.tokenize(document.fragmentSource)
+        var names: [String] = []
+        for item in topLevelItems(tokens) {
+            let texts = item.filter { !tokens[$0].isTrivia && tokens[$0].kind != .preprocessor }.map { tokens[$0].text }
+            guard !texts.contains("{"), let typePosition = texts.firstIndex(where: { $0 != "const" }),
+                  texts[typePosition].hasPrefix("ivec") || texts[typePosition].hasPrefix("uvec"),
+                  typePosition + 1 < texts.count else { continue }
+            names.append(texts[typePosition + 1])
+        }
+        return names
+    }
+
+    /// Top-level `uvec2 name = …;` → `vec2 name = vec2(…);` for the named globals.
+    static func promoteIntegerGlobals(_ tokens: inout [GLSLToken], names: Set<String>) {
+        for item in topLevelItems(tokens) {
+            let significant = item.filter { !tokens[$0].isTrivia && tokens[$0].kind != .preprocessor }
+            guard significant.count > 2 else { continue }
+            let texts = significant.map { tokens[$0].text }
+            // A variable, not a function: no `{`, and the type is first (after const).
+            guard !texts.contains("{"), let typePosition = texts.firstIndex(where: { $0 != "const" }) else { continue }
+            let type = texts[typePosition]
+            guard let size = ["ivec2": 2, "ivec3": 3, "ivec4": 4, "uvec2": 2, "uvec3": 3, "uvec4": 4][type],
+                  typePosition + 1 < texts.count, names.contains(texts[typePosition + 1])
+            else { continue }
+            for index in significant where ["ivec", "uvec"].contains(where: { tokens[index].text == "\($0)\(size)" }) {
+                tokens[index].text = "vec\(size)"
+            }
+        }
+    }
+
+    /// `xz` → [0, 2]; nil for anything that is not a swizzle.
+    static func swizzleIndices(_ name: String) -> [Int]? {
+        guard (1...4).contains(name.count) else { return nil }
+        var indices: [Int] = []
+        for character in name {
+            switch character {
+            case "x", "r", "s": indices.append(0)
+            case "y", "g", "t": indices.append(1)
+            case "z", "b", "p": indices.append(2)
+            case "w", "a", "q": indices.append(3)
+            default: return nil
+            }
+        }
+        return indices
     }
 
     /// `float[3](a, b, c)` or `float[](a, b, c)` → `{a, b, c}`.

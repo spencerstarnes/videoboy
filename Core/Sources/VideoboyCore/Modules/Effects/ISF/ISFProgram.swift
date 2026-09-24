@@ -77,9 +77,26 @@ public final class ISFProgram {
         return try compile(document: document, device: device)
     }
 
+    /// Tries each global integer vector as a float one, alone, then all together; the
+    /// first version that compiles wins. One at a time because a file can hold both
+    /// a size that float maths divides by and an integer table that must stay integer.
+    private static func retryPromotingIntegerGlobals(
+        _ document: ISFDocument, device: MTLDevice
+    ) -> (ISFGeneratedShader, MTLLibrary)? {
+        let names = ISFMetalGenerator.integerGlobalNames(document)
+        let attempts = names.map { Set([$0]) } + (names.count > 1 ? [Set(names)] : [])
+        for promoted in attempts {
+            guard let shader = try? ISFMetalGenerator.generate(document, promotingIntegerGlobals: promoted),
+                  let library = try? device.makeLibrary(source: shader.source, options: nil) else { continue }
+            Log.info(.isf, "'\(document.name)': compiled with \(promoted.sorted().joined(separator: ", ")) as float")
+            return (shader, library)
+        }
+        return nil
+    }
+
     /// Converts and compiles an already-parsed document. Synchronous.
     public static func compile(document: ISFDocument, device: MTLDevice) throws -> ISFProgram {
-        let shader: ISFGeneratedShader
+        var shader: ISFGeneratedShader
         do {
             shader = try ISFMetalGenerator.generate(document)
         } catch let error as ISFGenerateError {
@@ -93,9 +110,17 @@ public final class ISFProgram {
             // localizedDescription is the compiler's own text; "\(error)" would wrap
             // it in NSError debug formatting that has no place on a card.
             let raw = (error as NSError).localizedDescription
-            throw ISFCompileError.metal(
-                message: shader.translateCompilerMessage(raw),
-                firstError: shader.firstError(in: raw))
+            // Apple's GLSL mixes int and float vectors silently; Metal does not. One
+            // retry with global integer vectors as float ones, only for that error.
+            if raw.contains("implicit conversions between vector types"),
+               let (retried, retriedLibrary) = retryPromotingIntegerGlobals(document, device: device) {
+                shader = retried
+                library = retriedLibrary
+            } else {
+                throw ISFCompileError.metal(
+                    message: shader.translateCompilerMessage(raw),
+                    firstError: shader.firstError(in: raw))
+            }
         }
         guard let vertex = library.makeFunction(name: shader.vertexFunctionName),
               let fragment = library.makeFunction(name: shader.fragmentFunctionName) else {
