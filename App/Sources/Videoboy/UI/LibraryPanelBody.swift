@@ -43,6 +43,14 @@ struct LibraryItem {
     /// it sends the generator to the chosen channel.
     var isfModuleID: String?
 
+    /// The built-in generator this item stands for. Opening it sends the generator
+    /// to the chosen channel.
+    var generatorKind: GeneratorKind?
+
+    /// A still picture for items that have no file to decode one from — the
+    /// generators, rendered once by `GeneratorThumbnails`.
+    var thumbnail: NSImage?
+
     /// Which bin this item sits in. Nil means the ungrouped set at the top.
     ///
     /// A plain string rather than a bin object: bins here are a way of arranging a
@@ -449,7 +457,10 @@ extension LibraryItemView: NSDraggingSource {
 /// decoded frame; the cell owns the badge, the caption and the drag.
 final class HoverScrubView: NSView {
 
-    var item: LibraryItem?
+    var item: LibraryItem? {
+        // A generator has no file to scrub, so its rendered still IS the picture.
+        didSet { if item?.url == nil { frameImage = item?.thumbnail } }
+    }
 
     /// 0...1 under the pointer, or nil when not hovering.
     private var scrubPosition: Double?
@@ -1126,8 +1137,11 @@ final class LibraryPanelBody: NSView {
             return sources
         case .generators:
             // Every generator is real and assignable, so they are all available.
-            return GeneratorKind.allCases.map {
-                LibraryItem(name: $0.displayName, badge: "GEN", isAvailable: true)
+            return GeneratorKind.allCases.map { kind in
+                var item = LibraryItem(name: kind.displayName, badge: "GEN", isAvailable: true)
+                item.generatorKind = kind
+                item.thumbnail = GeneratorThumbnails.shared.image(for: kind)
+                return item
             } + isfGeneratorItems
         case .graphics, .images:
             // Empty on purpose; the tab says why rather than showing a blank box.

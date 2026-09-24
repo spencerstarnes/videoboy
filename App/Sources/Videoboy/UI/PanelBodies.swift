@@ -116,27 +116,12 @@ final class SourcePanelBody: NSView {
     /// decides whether the button loads or ejects.
     private var hasMedia = false
 
-    /// Switches this channel to a generator, or back to its file.
-    /// A nil kind means "go back to the file".
-    var onGeneratorSelected: ((GeneratorKind?) -> Void)?
+    /// Called when the File row is chosen: the channel goes back to its file.
+    /// Generators are not in this menu — they are assigned from the Generators tab.
+    var onFileSelected: (() -> Void)?
 
     /// Called when the Camera row is chosen in the source menu.
     var onCameraSelected: (() -> Void)?
-
-    /// Called when an ISF generator is chosen in the source menu, with its module ID.
-    var onISFGeneratorSelected: ((String) -> Void)?
-
-    /// The ISF generators the source menu offers (ISF-PLAN M9), from the module
-    /// catalogue. Setting it rebuilds the menu's items, keeping what is selected.
-    var isfGenerators: [SourceKindMenu.ISFGenerator] = [] {
-        didSet {
-            guard let popUp = generatorPopUp else { return }
-            let selected = popUp.titleOfSelectedItem
-            popUp.removeAllItems()
-            popUp.addItems(withTitles: SourceKindMenu.titles(isf: isfGenerators))
-            if let selected, popUp.item(withTitle: selected) != nil { popUp.selectItem(withTitle: selected) }
-        }
-    }
 
     /// Called when the Amiga (EMU) row is chosen in the source menu.
     var onEmulatorSelected: (() -> Void)?
@@ -319,8 +304,9 @@ final class SourcePanelBody: NSView {
         load.setContentCompressionResistancePriority(.required, for: .horizontal)
         self.loadButton = load
 
-        // A generator is an alternative source for the channel, not a separate panel:
-        // SPEC 6A says generators are selectable anywhere A/B/C/D.
+        // The source KIND: file, camera or emulator. Generators are chosen from the
+        // asset browser's Generators tab, where each has a thumbnail (SPEC 6A: they
+        // are still assignable to any of A/B/C/D, by the destination pair).
         let generatorPopUp = Controls.popUp(
             // Every KIND of source a channel can take, in one list. The camera and the
             // emulator were reachable from neither this menu nor anywhere else on the
@@ -509,13 +495,9 @@ final class SourcePanelBody: NSView {
     }
 
     @objc private func generatorChanged(_ sender: NSPopUpButton) {
-        switch SourceKindMenu.kind(at: sender.indexOfSelectedItem, isf: isfGenerators) {
+        switch SourceKindMenu.kind(at: sender.indexOfSelectedItem) {
         case .file:
-            onGeneratorSelected?(nil)
-        case .generator(let kind):
-            onGeneratorSelected?(kind)
-        case .isfGenerator(let id):
-            onISFGeneratorSelected?(id)
+            onFileSelected?()
         case .camera:
             onCameraSelected?()
         case .emulator:
@@ -533,33 +515,22 @@ enum SourceKindMenu {
 
     enum Kind {
         case file
-        case generator(GeneratorKind)
-        /// An ISF generator file, by module ID (ISF-PLAN M9).
-        case isfGenerator(String)
         case camera
         case emulator
     }
 
-    /// An ISF generator as the menu lists it.
-    struct ISFGenerator: Equatable {
-        let id: String
-        let name: String
+    /// File, the camera and the emulator. Generators live in the asset browser's
+    /// Generators tab, where each one has a picture, not in this menu.
+    static func titles() -> [String] {
+        ["File", "Camera", "Amiga (EMU)"]
     }
 
-    /// File, the built-in generators, the ISF generators, then the camera and the
-    /// emulator. ISF rows are prefixed so they read as files, not built-ins.
-    static func titles(isf: [ISFGenerator] = []) -> [String] {
-        ["File"] + GeneratorKind.allCases.map(\.displayName) + isf.map { "ISF · \($0.name)" }
-            + ["Camera", "Amiga (EMU)"]
-    }
-
-    static func kind(at index: Int, isf: [ISFGenerator] = []) -> Kind {
-        let generators = GeneratorKind.allCases
-        if index == 0 { return .file }
-        if index <= generators.count { return .generator(generators[index - 1]) }
-        let isfIndex = index - generators.count - 1
-        if isfIndex < isf.count { return .isfGenerator(isf[isfIndex].id) }
-        return isfIndex == isf.count ? .camera : .emulator
+    static func kind(at index: Int) -> Kind {
+        switch index {
+        case 0: .file
+        case 1: .camera
+        default: .emulator
+        }
     }
 }
 

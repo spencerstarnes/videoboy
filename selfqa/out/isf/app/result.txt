@@ -1,9 +1,9 @@
 check:    isf/app
 verdict:  PASS
-when:     2026-09-23T23:21:23Z
+when:     2026-09-24T01:50:55Z
 core:     0.3.0
 
-assertions (14/14 passed):
+assertions (15/15 passed):
   PASS  the Add menu offers built-ins, the imported shader by category, and the broken file greyed — Add effect… | Built-in | Composite · NTSC | Datamosh · H.264 | Feedback | Freeze | Colour | Echo / Trails | Transform | QA Test | QA Invert | Failed to load (1) | QA Broken
   PASS  the Add menu is where a click lands — 
   PASS  adding a shader puts its card in the chain and moves no existing card — cards: Freeze → Feedback → Echo / Trails → Composite · NTSC → Colour → Transform → Datamosh · H.264 → QA Invert
@@ -16,5 +16,6 @@ assertions (14/14 passed):
   PASS  saving the shader reloads it live, keeping its fader — picture changed by 169.7; amount still 1.00
   PASS  a broken save keeps the last good version on screen and says why on the card — status '⚠ edit not applied (running the last good version): line 13:25: use of undeclare'
   PASS  a shader dropped into the folder shows up in the Add menu — 
-  PASS  an ISF generator runs as channel A's source, animated, from the Generators tab — listed true, in source menu true, kind Optional(Videoboy.ChannelSourceKind.isfGenerator("isf.QA Stripes"))
+  PASS  an ISF generator runs as channel A's source, animated, from the Generators tab — listed true, has thumbnail true, kind Optional(Videoboy.ChannelSourceKind.isfGenerator("isf.QA Stripes"))
+  PASS  every generator tile in the Generators tab has a thumbnail — 13 of 13 tiles pictured
   PASS  ✕ removes the card and every copy of its node — cards: Freeze, Feedback, Echo / Trails, Composite · NTSC, Colour, Transform, Datamosh · H.264

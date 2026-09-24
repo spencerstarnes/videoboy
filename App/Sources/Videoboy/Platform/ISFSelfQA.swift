@@ -199,9 +199,12 @@ enum ISFSelfQA {
         // 10. An ISF generator as a channel's source, from the Generators tab.
         let library = shell.grid.panels.libraryOneBody
         let stripesItem = library.isfGeneratorItems.first { $0.name == "QA Stripes" }
-        let menuOffers = shell.grid.panels.sourceBodies["A"]?.isfGenerators.contains { $0.name == "QA Stripes" } == true
         if let stripesItem { library.onItemOpened?(stripesItem, "A", nil) }
         waitFor(10) { engine.isfGenerators["A"]?.state == .ready }
+        // Generators left the source menu for the Generators tab, so the tile must carry
+        // a picture. It is rendered once the file compiles, which is asynchronous.
+        waitFor(10) { library.isfGeneratorItems.first { $0.name == "QA Stripes" }?.thumbnail != nil }
+        let hasThumbnail = library.isfGeneratorItems.first { $0.name == "QA Stripes" }?.thumbnail != nil
         pump(0.5)
         let generatorSlot = Engine.isfGeneratorSlot(forChannel: "A")
         let first = engine.texture(for: generatorSlot).flatMap { OffscreenRenderer()?.readback($0) }
@@ -209,11 +212,38 @@ enum ISFSelfQA {
         let later = engine.texture(for: generatorSlot).flatMap { OffscreenRenderer()?.readback($0) }
         check.record(AssertionResult(
             name: "an ISF generator runs as channel A's source, animated, from the Generators tab",
-            passed: stripesItem != nil && menuOffers && engine.channelSourceKinds["A"] == .isfGenerator(ModuleCatalog.ID.isf("QA Stripes"))
+            passed: stripesItem != nil && hasThumbnail && engine.channelSourceKinds["A"] == .isfGenerator(ModuleCatalog.ID.isf("QA Stripes"))
                 && (first.map { FrameAssertions.signalPresent($0, varianceThreshold: 100) } ?? false)
                 && meanDifference(first, later) > 1,
-            detail: "listed \(stripesItem != nil), in source menu \(menuOffers), kind \(String(describing: engine.channelSourceKinds["A"]))"))
+            detail: "listed \(stripesItem != nil), has thumbnail \(hasThumbnail), kind \(String(describing: engine.channelSourceKinds["A"]))"))
         if let later { _ = try? check.writeImage(later, named: "generator.png") }
+
+        // 10b. Every tile in the Generators tab has a picture: the built-ins and the ISF files.
+        let browser = shell.grid.panels.assetBrowserBody
+        func segmented(in view: NSView) -> NSSegmentedControl? {
+            if let control = view as? NSSegmentedControl,
+               (0..<control.segmentCount).contains(where: { control.label(forSegment: $0) == "Generators" }) {
+                return control
+            }
+            return view.subviews.lazy.compactMap { segmented(in: $0) }.first
+        }
+        if let tabs = segmented(in: browser),
+           let index = (0..<tabs.segmentCount).first(where: { tabs.label(forSegment: $0) == "Generators" }) {
+            tabs.selectedSegment = index
+            _ = tabs.target?.perform(tabs.action, with: tabs)
+        }
+        pump(0.5)
+        let tiles = HoverScrubView.all(in: browser).filter { !$0.isHiddenOrHasHiddenAncestor }
+        let pictured = tiles.filter(\.hasDecodedFrame).count
+        check.record(AssertionResult(
+            name: "every generator tile in the Generators tab has a thumbnail",
+            passed: tiles.count >= GeneratorKind.allCases.count + 1 && pictured == tiles.count,
+            detail: "\(pictured) of \(tiles.count) tiles pictured"))
+        browser.layoutSubtreeIfNeeded()
+        if let rep = browser.bitmapImageRepForCachingDisplay(in: browser.bounds) {
+            browser.cacheDisplay(in: browser.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: check.artifactURL("generators-tab.png"))
+        }
 
         // 11. ✕ takes the card out, with every copy.
         if let remove = find(NSButton.self, id: cardName, in: panel, title: "✕") {

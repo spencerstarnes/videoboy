@@ -335,6 +335,11 @@ final class ShellController {
                     self.assignISFGenerator(moduleID, toChannel: channel)
                     return
                 }
+                if let kind = item.generatorKind {
+                    self.setGenerator(kind, channel: channel)
+                    self.shell.grid.panels.sourceBodies[channel]?.setMediaName(kind.displayName)
+                    return
+                }
                 guard let url = item.url else {
                     self.presentNotice(
                         "\(item.name) is not a file",
@@ -735,14 +740,11 @@ final class ShellController {
                 self?.playlistAdvance(channel: letter)
             }
             body.onPlayToggled = { [weak self] in self?.togglePlayback(channel: letter) }
-            body.onGeneratorSelected = { [weak self] kind in
-                self?.setGenerator(kind, channel: letter)
+            body.onFileSelected = { [weak self] in
+                self?.setGenerator(nil, channel: letter)
             }
             body.onEmulatorSelected = { [weak self] in
                 self?.assignEmulator(toChannel: letter)
-            }
-            body.onISFGeneratorSelected = { [weak self] id in
-                self?.assignISFGenerator(id, toChannel: letter)
             }
             body.onCameraSelected = { [weak self] in
                 self?.assignCamera(toChannel: letter)
@@ -1522,15 +1524,21 @@ final class ShellController {
 
     // MARK: - ISF generators (ISF-PLAN M9)
 
-    /// Puts the catalogue's ISF generators in every source menu and every library's
-    /// Generators tab.
-    private func refreshISFGeneratorLists() {
+    /// Puts the catalogue's ISF generators in every library's Generators tab.
+    ///
+    /// - Parameter rerender: false when only a thumbnail finished, so the pictures
+    ///   already made are kept.
+    private func refreshISFGeneratorLists(rerender: Bool = true) {
         let generators = engine.catalog.generators
-        let menu = generators.map { SourceKindMenu.ISFGenerator(id: $0.id, name: $0.name) }
-        for letter in Self.channels { shell.grid.panels.sourceBodies[letter]?.isfGenerators = menu }
+        // A hot reload may have changed a shader, so its picture is re-rendered.
+        if rerender { GeneratorThumbnails.shared.forgetISF() }
+        GeneratorThumbnails.shared.onISFUpdated = { [weak self] in
+            self?.refreshISFGeneratorLists(rerender: false)
+        }
         let items = generators.map { generator -> LibraryItem in
             var item = LibraryItem(name: generator.name, badge: "ISF", isAvailable: true, url: nil)
             item.isfModuleID = generator.id
+            item.thumbnail = GeneratorThumbnails.shared.image(for: generator)
             return item
         }
         for library in [shell.grid.panels.libraryOneBody, shell.grid.panels.libraryTwoBody,
