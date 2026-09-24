@@ -1455,7 +1455,8 @@ final class ShellController {
                 return EffectParameterModel(
                     name: control.label, code: control.code.rawValue,
                     value: parameter.normalise(value), enabled: available,
-                    valueText: { control.valueText(parameter.denormalise($0)) })
+                    valueText: { control.valueText(parameter.denormalise($0)) },
+                    isTrigger: control.kind == .trigger)
             }
             cards.append(EffectCardModel(
                 name: name, id: entry.instanceID,

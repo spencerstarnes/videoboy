@@ -11,10 +11,14 @@
 //
 //              MOSH   drops keyframes and the intra-heavy frames at a cut, so a new
 //                     scene's motion is painted onto the old scene. Higher amounts
-//                     also drop ordinary P-frames now and then, so the error builds
-//                     and the picture melts even without a cut.
+//                     treat smaller changes as cuts.
+//              MELT   drops ordinary P-frames now and then, so the error builds and
+//                     the picture melts even without a cut.
 //              BLOOM  replays the last few P-frames in a loop, so the same motion is
-//                     applied again and again and the picture streams outward.
+//                     applied again and again and the picture streams outward. The
+//                     amount is how many frames in each run are replays: 1 is every
+//                     frame, 0.5 every other one (live motion in between), so the
+//                     stream slows as the fader comes down rather than stopping dead.
 //              HEAL   lets one clean keyframe through, resetting the picture.
 //
 //            These are the two classic moves (I-frame removal, P-frame duplication),
@@ -34,26 +38,37 @@ import Foundation
 /// What the performer is asking for, read once per frame.
 public struct MoshControls: Equatable, Sendable {
     /// 0 is clean. Above 0, keyframes and cut frames are dropped; towards 1 the
-    /// threshold for "a cut" falls and random P-frames are dropped as well.
+    /// threshold for "a cut" falls, so smaller changes count as one.
     public var mosh: Double = 0
+    /// 0 is none. Above 0, ordinary P-frames are dropped at random (up to about
+    /// one in three at 1), so the error piles up on continuous footage.
+    public var melt: Double = 0
+    /// How much of the stream is the bloom loop, 0...1. At 1 every frame is a replay;
+    /// at 0.5 every other one, with a live frame between. Only read while
+    /// `bloomLength` is above 0.
+    public var bloom: Double = 1
     /// 0 is off. Above 0, the last `bloomLength` P-frames are replayed in a loop.
     public var bloomLength: Int = 0
     /// Let the next keyframe through (the node asks the encoder for one).
     public var heal = false
 
-    public init(mosh: Double = 0, bloomLength: Int = 0, heal: Bool = false) {
+    public init(mosh: Double = 0, melt: Double = 0, bloom: Double = 1, bloomLength: Int = 0, heal: Bool = false) {
         self.mosh = mosh
+        self.melt = melt
+        self.bloom = bloom
         self.bloomLength = bloomLength
         self.heal = heal
     }
 
     /// Nothing is being done to the stream.
-    public var isNeutral: Bool { mosh <= 0 && bloomLength <= 0 }
+    public var isNeutral: Bool { mosh <= 0 && melt <= 0 && (bloomLength <= 0 || bloom <= 0) }
 
-    /// Bloom's fader (0...1) as a loop length: off at 0, then 1...8 frames.
+    /// The longest loop bloom can play.
+    public static let maximumBloomLength = 16
+
+    /// The loop fader (0...1) as a length: 1 frame at the bottom, 16 at the top.
     public static func bloomLength(fromNormalised value: Double) -> Int {
-        guard value > 0.001 else { return 0 }
-        return 1 + Int((min(value, 1) * 7).rounded())
+        1 + Int((min(max(value, 0), 1) * Double(maximumBloomLength - 1)).rounded())
     }
 }
 
@@ -95,10 +110,14 @@ public final class MoshEngine {
     private let sizeWindow = 30
     /// The last P-frames that were emitted, newest last, for bloom.
     private var recentPFrames: [H264AccessUnit] = []
-    private let bloomCapacity = 8
+    private let bloomCapacity = MoshControls.maximumBloomLength
     /// The loop bloom is playing, and where in it.
     private var bloomLoop: [H264AccessUnit] = []
     private var bloomIndex = 0
+    /// Bloom's share of the stream, accumulated: each frame adds `bloom`, and a
+    /// replay is played whenever it reaches 1. Even spacing, not a coin toss, so
+    /// half-way reads as a steady alternation rather than clumps.
+    private var bloomCredit = 0.0
 
     private var random: SeededRandom
 
@@ -117,6 +136,7 @@ public final class MoshEngine {
         recentPFrames = []
         bloomLoop = []
         bloomIndex = 0
+        bloomCredit = 0
         statistics = MoshStatistics()
     }
 
@@ -144,19 +164,35 @@ public final class MoshEngine {
         let typical = medianSize()
         if !slices.isKeyframe { remember(size: size) }
 
-        // BLOOM outranks MOSH: the live frame is discarded and the loop plays instead.
-        if controls.bloomLength > 0, !recentPFrames.isEmpty {
-            if bloomLoop.isEmpty || bloomLoop.count != min(controls.bloomLength, recentPFrames.count) {
-                bloomLoop = Array(recentPFrames.suffix(controls.bloomLength))
+        // BLOOM outranks MOSH: on a replay the live frame is discarded and the loop
+        // plays instead. Below 1, live frames come through between replays.
+        if controls.bloomLength > 0, controls.bloom > 0, !recentPFrames.isEmpty {
+            let length = min(controls.bloomLength, recentPFrames.count)
+            if bloomLoop.count != length {
+                bloomLoop = Array(recentPFrames.suffix(length))
                 bloomIndex = 0
             }
-            let replay = bloomLoop[bloomIndex % bloomLoop.count]
-            bloomIndex += 1
-            statistics.bloomed += 1
-            return emit(replay, rememberAsP: false)
+            bloomCredit += min(controls.bloom, 1)
+            if bloomCredit >= 1 {
+                bloomCredit -= 1
+                let replay = bloomLoop[bloomIndex % bloomLoop.count]
+                bloomIndex += 1
+                statistics.bloomed += 1
+                return emit(replay, rememberAsP: false)
+            }
+            // A live frame between replays. Kept out of `recentPFrames`, so the loop
+            // stays the gesture that was captured rather than drifting.
+            return moshLive(slices, size: size, typical: typical, controls: controls, remember: false)
         }
         bloomLoop = []
+        bloomCredit = 0
+        return moshLive(slices, size: size, typical: typical, controls: controls, remember: true)
+    }
 
+    /// An ordinary live frame, through MOSH and MELT.
+    private func moshLive(
+        _ slices: H264AccessUnit, size: Int, typical: Int?, controls: MoshControls, remember: Bool
+    ) -> [H264AccessUnit] {
         if controls.mosh > 0 {
             if slices.isKeyframe {
                 statistics.droppedKeyframes += 1
@@ -170,17 +206,19 @@ public final class MoshEngine {
                 statistics.droppedCuts += 1
                 return []
             }
-            // Past halfway, ordinary P-frames are dropped too, so errors pile up even
-            // on continuous footage. Squared, so the top of the fader is where it bites.
-            let dropChance = max(0, controls.mosh - 0.5) * 2
-            if random.nextUnitValue() < dropChance * dropChance * 0.35 {
+        }
+        // MELT: ordinary P-frames are dropped too, so errors pile up even on
+        // continuous footage. Squared, so the top of the fader is where it bites.
+        // Never the keyframe that starts or heals a stream.
+        if controls.melt > 0, !slices.isKeyframe {
+            let chance = min(controls.melt, 1)
+            if random.nextUnitValue() < chance * chance * 0.35 {
                 statistics.droppedRandom += 1
                 return []
             }
-        } else {
-            statistics.passedUnchanged += 1
         }
-        return emit(slices)
+        if controls.mosh <= 0 && controls.melt <= 0 { statistics.passedUnchanged += 1 }
+        return emit(slices, rememberAsP: remember)
     }
 
     // MARK: - Internals

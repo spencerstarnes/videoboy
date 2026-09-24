@@ -86,6 +86,14 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
       I-frame removal and P-frame bloom on a live VideoToolbox H.264 stream, decoded by
       libavcodec: the "Datamosh · H.264" card on both FX panels (A / B / BOTH), codes
       35B–38B. Runs on every channel and both buses inside the stress budget.
+- [x] **Datamosh: graceful exit, more control** (owner request, 2026-09-23). Bloom is
+      an amount (share of frames replayed) with its own loop length, so pulling it
+      down slows the stream; melt split out of mosh; HEAL is a momentary key (MIDI
+      learnable, presses latched so a tap between frames counts) that eases back to
+      clean over a heal time in a shape (fade / blocks / wipe / luma) before the
+      keyframe; heal on the beat (1/16 … 4 bars); letting go eases out; opacity and
+      blend mode over the clean input. Codes 39B–3EB + 01A. `selfqa mosh` 14/14,
+      stress holds 29.97 with all six nodes healing on the beat.
 - [~] Clean Core Text character generator + period preset (SPEC §18.1). Core node done
       and pixel-tested (fill, outline, shadow, kerning/tracking/leading, alignment,
       position/anchor, scale, title-safe clamp, roll/crawl clock-synced, period

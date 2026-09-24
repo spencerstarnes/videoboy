@@ -1038,6 +1038,70 @@ enum ShaderSource {
         float3 result = mix(base, rightSide, t);
         return float4(clamp(result, 0.0, 1.0), 1.0);
     }
+
+    /* The datamosh as a layer over its own clean input (DatamoshNode, MoshHeal.swift).
+     *
+     * Two things in one pass, because both run every frame the card is doing more
+     * than a plain mosh:
+     *
+     *   1. HEAL. `heal` (0...1) is how far the clean picture has come back. The shape
+     *      decides which pixels come back first. Shape numbers match MoshHealShape.
+     *        0 fade    — every pixel together
+     *        1 blocks  — 16x16 macroblocks at random, as intra refresh looks
+     *        2 wipe    — macroblock rows from the top down, as a refresh sweep looks
+     *        3 luma    — the brightest parts of the clean picture first
+     *   2. BLEND. The healed mosh is combined with the clean picture by a blend mode
+     *      (`blendChannelwise`, same numbers as BlendMode) and laid over it at
+     *      `opacity`. Normal at 1 is the mosh alone; anything at 0 is the clean input.
+     */
+    struct MoshLayerParams {
+        float opacity;
+        int mode;
+        float heal;
+        int shape;
+        float blockSize;
+        float seed;
+    };
+
+    fragment float4 mosh_layer_fragment(VertexOut in [[stage_in]],
+                                        texture2d<float> cleanLayer [[texture(0)]],
+                                        texture2d<float> moshLayer [[texture(1)]],
+                                        constant MoshLayerParams &p [[buffer(0)]]) {
+        constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+        float3 clean = cleanLayer.sample(linearSampler, in.uv).rgb;
+        float3 mosh = moshLayer.sample(linearSampler, in.uv).rgb;
+
+        float heal = clamp(p.heal, 0.0, 1.0);
+        float back = 0.0;
+        if (heal >= 1.0) {
+            back = 1.0;
+        } else if (heal > 0.0) {
+            float2 block = floor(in.position.xy / max(p.blockSize, 1.0));
+            float rows = ceil(float(cleanLayer.get_height()) / max(p.blockSize, 1.0));
+            switch (p.shape) {
+                case 1: {
+                    float h = fract(sin(dot(block, float2(12.9898, 78.233)) + p.seed * 17.17) * 43758.5453);
+                    back = step(h, heal);
+                    break;
+                }
+                case 2:
+                    back = step((block.y + 1.0) / max(rows, 1.0), heal);
+                    break;
+                case 3: {
+                    float luma = dot(clean, float3(0.299, 0.587, 0.114));
+                    back = smoothstep(1.0 - heal * 1.1, 1.1 - heal * 1.1, luma);
+                    break;
+                }
+                default:
+                    back = heal;
+                    break;
+            }
+        }
+        float3 healed = mix(mosh, clean, back);
+        float3 blended = clamp(blendChannelwise(p.mode, clean, healed), 0.0, 1.0);
+        float3 result = mix(clean, blended, clamp(p.opacity, 0.0, 1.0));
+        return float4(clamp(result, 0.0, 1.0), 1.0);
+    }
     """
 }
 
@@ -1071,6 +1135,8 @@ public final class MetalContext {
     public let transformPipeline: MTLRenderPipelineState
     /// Feedback: the previous output, transformed, mixed back in.
     public let feedbackPipeline: MTLRenderPipelineState
+    /// The datamosh laid over its clean input: heal shape, blend mode, opacity.
+    public let moshLayerPipeline: MTLRenderPipelineState
 
     /// The pixel format used everywhere in the graph. BGRA8 matches what CoreVideo
     /// hands back from capture and what a `CAMetalLayer` wants to present, so the
@@ -1117,7 +1183,8 @@ public final class MetalContext {
               let echo = makePipeline(vertex: "fullscreen_vertex", fragment: "echo_fragment"),
               let colour = makePipeline(vertex: "fullscreen_vertex", fragment: "colour_fragment"),
               let transform = makePipeline(vertex: "fullscreen_vertex", fragment: "transform_fragment"),
-              let feedback = makePipeline(vertex: "fullscreen_vertex", fragment: "feedback_fragment") else {
+              let feedback = makePipeline(vertex: "fullscreen_vertex", fragment: "feedback_fragment"),
+              let moshLayer = makePipeline(vertex: "fullscreen_vertex", fragment: "mosh_layer_fragment") else {
             return nil
         }
 
@@ -1134,6 +1201,7 @@ public final class MetalContext {
         self.colourPipeline = colour
         self.transformPipeline = transform
         self.feedbackPipeline = feedback
+        self.moshLayerPipeline = moshLayer
         Log.info(.render, "Metal ready on \(device.name)")
     }
 

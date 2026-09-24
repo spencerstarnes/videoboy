@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import Metal
 @testable import VideoboyCore
 
 /// Writes MSB-first bits and Exp-Golomb codes, to build test headers.
@@ -227,10 +228,166 @@ final class MoshEngineTests: XCTestCase {
         XCTAssertEqual(try Fixture.describe(out).map(\.0), [0], "an IDR restarts the numbering")
     }
 
-    func testBloomFaderMapsToALoopLength() {
-        XCTAssertEqual(MoshControls.bloomLength(fromNormalised: 0), 0)
-        XCTAssertEqual(MoshControls.bloomLength(fromNormalised: 0.01), 1)
-        XCTAssertEqual(MoshControls.bloomLength(fromNormalised: 1), 8)
+    func testLoopFaderMapsToALoopLength() {
+        XCTAssertEqual(MoshControls.bloomLength(fromNormalised: 0), 1)
+        XCTAssertEqual(MoshControls.bloomLength(fromNormalised: DatamoshNode.defaultLoop), 4)
+        XCTAssertEqual(MoshControls.bloomLength(fromNormalised: 1), 16)
+    }
+
+    func testHalfBloomAlternatesReplaysWithLiveFrames() throws {
+        let engine = MoshEngine()
+        _ = run(engine, [Fixture.keyframe()] + (1...4).map { Fixture.pFrame($0, payload: UInt8(0x10 + $0)) },
+                MoshControls())
+        let out = run(engine, (5...10).map { Fixture.pFrame($0, payload: UInt8(0x20 + $0)) },
+                      MoshControls(bloom: 0.5, bloomLength: 2))
+        XCTAssertEqual(try Fixture.describe(out).map(\.2), [0x25, 0x13, 0x27, 0x14, 0x29, 0x13],
+                       "live, replay, live, replay: the stream slows rather than stops")
+        XCTAssertEqual(engine.statistics.bloomed, 3)
+    }
+
+    func testBloomFadesOutAsTheFaderComesDown() throws {
+        // The complaint that started this: pulling bloom down did nothing until 0.
+        // Replays per 30 frames must fall steadily with the fader.
+        var counts: [Int] = []
+        for amount in [1.0, 0.75, 0.5, 0.25, 0.125] {
+            let engine = MoshEngine()
+            _ = run(engine, [Fixture.keyframe()] + (1...4).map { Fixture.pFrame($0, payload: 1) }, MoshControls())
+            _ = run(engine, (5...34).map { Fixture.pFrame($0, payload: 2) }, MoshControls(bloom: amount, bloomLength: 4))
+            counts.append(engine.statistics.bloomed)
+        }
+        XCTAssertEqual(counts, [30, 22, 15, 7, 3])
+    }
+
+    func testMeltDropsOrdinaryFramesAndMoshAloneDoesNot() throws {
+        let moshOnly = MoshEngine()
+        _ = run(moshOnly, [Fixture.keyframe()] + (1...200).map { Fixture.pFrame($0 % 16, payload: 1) }, MoshControls(mosh: 1))
+        XCTAssertEqual(moshOnly.statistics.droppedRandom, 0, "mosh drops cuts; random drops are melt's job")
+
+        let melting = MoshEngine()
+        _ = run(melting, [Fixture.keyframe()] + (1...200).map { Fixture.pFrame($0 % 16, payload: 1) }, MoshControls(melt: 1))
+        XCTAssertGreaterThan(melting.statistics.droppedRandom, 40)
+        XCTAssertLessThan(melting.statistics.droppedRandom, 110)
+        XCTAssertTrue(melting.started, "the starting keyframe is never melted away")
+    }
+}
+
+/// The eased heal, heal on the beat, and the card's choice faders.
+final class MoshHealTests: XCTestCase {
+
+    func testAHealEasesInThenAsksForTheKeyframeAndDropsAwayWhenItLands() {
+        var envelope = MoshHealEnvelope()
+        XCTAssertEqual(envelope.trigger(frames: 4), .none)
+        var actions: [MoshHealEnvelope.Action] = []
+        var cleans: [Double] = []
+        for _ in 0..<4 {
+            actions.append(envelope.advance(frames: 4, neutral: false))
+            cleans.append(envelope.clean)
+        }
+        XCTAssertEqual(cleans, [0.25, 0.5, 0.75, 1])
+        XCTAssertEqual(actions, [.none, .none, .none, .requestKeyframe], "the keyframe only once the screen is clean")
+        XCTAssertEqual(envelope.advance(frames: 4, neutral: false), .none)
+        XCTAssertEqual(envelope.clean, 1, "held clean until the keyframe is on screen")
+        envelope.keyframeShown()
+        XCTAssertEqual(envelope.phase, .idle)
+        XCTAssertEqual(envelope.clean, 0)
+    }
+
+    func testAnInstantHealIsTheOldBehaviour() {
+        var envelope = MoshHealEnvelope()
+        XCTAssertEqual(envelope.trigger(frames: 0), .requestKeyframe)
+        XCTAssertEqual(envelope.advance(frames: 0, neutral: false), .none)
+        XCTAssertEqual(envelope.clean, 0)
+        XCTAssertEqual(envelope.advance(frames: 0, neutral: true), .stop, "letting go with no heal time stops at once")
+    }
+
+    func testALostKeyframeIsAskedForAgain() {
+        var envelope = MoshHealEnvelope()
+        _ = envelope.trigger(frames: 1)
+        XCTAssertEqual(envelope.advance(frames: 1, neutral: false), .requestKeyframe)
+        var again = 0
+        for _ in 0...MoshHealEnvelope.keyframeTimeout where envelope.advance(frames: 1, neutral: false) == .requestKeyframe {
+            again += 1
+        }
+        XCTAssertEqual(again, 1)
+    }
+
+    func testLettingGoFadesOutThenStopsAndPushingBackUpReturns() {
+        var envelope = MoshHealEnvelope()
+        XCTAssertEqual(envelope.advance(frames: 4, neutral: true), .none)
+        XCTAssertEqual(envelope.advance(frames: 4, neutral: true), .none)
+        XCTAssertEqual(envelope.clean, 0.5)
+        // Pushed back up half way through the release: the mosh comes back, no jump.
+        XCTAssertEqual(envelope.advance(frames: 4, neutral: false), .none)
+        XCTAssertEqual(envelope.phase, .returning)
+        XCTAssertEqual(envelope.clean, 0.25)
+        _ = envelope.advance(frames: 4, neutral: false)
+        XCTAssertEqual(envelope.phase, .idle)
+        // Let go for good.
+        let actions = (0..<4).map { _ in envelope.advance(frames: 4, neutral: true) }
+        XCTAssertEqual(actions, [.none, .none, .none, .stop])
+        XCTAssertEqual(envelope.clean, 0)
+    }
+
+    func testPressesDuringAHealAreIgnored() {
+        var envelope = MoshHealEnvelope()
+        _ = envelope.trigger(frames: 10)
+        _ = envelope.advance(frames: 10, neutral: false)
+        XCTAssertEqual(envelope.trigger(frames: 10), .none)
+        XCTAssertEqual(envelope.phase, .healing)
+        XCTAssertEqual(envelope.clean, 0.1, accuracy: 1e-9)
+    }
+
+    func testHealTimeFaderIsFramesUpToTwoSeconds() {
+        XCTAssertEqual(MoshHealEnvelope.frames(fromNormalised: 0), 0)
+        XCTAssertEqual(MoshHealEnvelope.frames(fromNormalised: DatamoshNode.defaultHealTime), 15)
+        XCTAssertEqual(MoshHealEnvelope.frames(fromNormalised: 1), 60)
+    }
+
+    private func position(beats: Double, beatsPerBar: Int = 4) -> MusicalPosition {
+        let whole = Int(beats.rounded(.down))
+        return MusicalPosition(bar: whole / beatsPerBar, beat: whole % beatsPerBar,
+                               phase: beats - Double(whole), totalBeats: beats)
+    }
+
+    func testTheBeatTriggerFiresOnEachBoundaryCrossed() {
+        var trigger = MoshBeatTrigger()
+        let frames = stride(from: 0.0, to: 4.0, by: 0.1).map { position(beats: $0) }
+        let fired = frames.filter { trigger.fires(every: .beat, at: $0) }.map { Int($0.totalBeats.rounded(.down)) }
+        XCTAssertEqual(fired, [1, 2, 3], "once per beat, not on the frame the transport started")
+    }
+
+    func testTheBeatTriggerCountsBarsAndStaysQuietWhenStopped() {
+        var trigger = MoshBeatTrigger()
+        var fired = 0
+        for beats in stride(from: 0.0, to: 16.0, by: 0.25) where trigger.fires(every: .twoBars, at: position(beats: beats)) {
+            fired += 1
+        }
+        XCTAssertEqual(fired, 1, "bars 0-3: one boundary, at bar 2")
+        XCTAssertFalse(trigger.fires(every: .twoBars, at: nil))
+        XCTAssertFalse(trigger.fires(every: .twoBars, at: position(beats: 40)), "no heal on the first frame after a restart")
+        XCTAssertFalse(trigger.fires(every: .off, at: position(beats: 48)))
+        XCTAssertFalse(trigger.fires(every: .beat, at: position(beats: 49)), "changing the division is not a beat")
+    }
+
+    func testATapBetweenTwoFramesIsStillAPress() {
+        let registry = ParamRegistry()
+        registry.register(slot: "fx", parameters: DatamoshNode(identifier: "fx", context: nil).parameters)
+        registry.setValue(1, slot: "fx", code: .moshHeal)
+        registry.setValue(0, slot: "fx", code: .moshHeal)   // released before any frame
+        XCTAssertTrue(registry.consumePress(slot: "fx", code: .moshHeal))
+        XCTAssertFalse(registry.consumePress(slot: "fx", code: .moshHeal), "once per press")
+        registry.setValue(1, slot: "fx", code: .moshAmount)
+        XCTAssertFalse(registry.consumePress(slot: "fx", code: .moshAmount), "levels are not latched")
+    }
+
+    func testChoiceFadersReachEveryChoice() {
+        XCTAssertEqual(MoshHealEvery.from(normalised: 0), .off)
+        XCTAssertEqual(MoshHealEvery.from(normalised: 1), .fourBars)
+        XCTAssertEqual(MoshHealShape.from(normalised: 0), .fade)
+        XCTAssertEqual(MoshHealShape.from(normalised: 1), .luma)
+        XCTAssertEqual(DatamoshNode.blendMode(fromNormalised: 0), .normal)
+        XCTAssertEqual(DatamoshNode.blendMode(fromNormalised: 1), .softLight)
+        XCTAssertFalse(DatamoshNode.blendModes.contains(.key))
     }
 }
 
@@ -442,11 +599,42 @@ final class DatamoshNodeTests: XCTestCase {
         let difference = Double(total) / Double(finalPicture.width * finalPicture.height)
         XCTAssertGreaterThan(difference, 8, "the output is moshed, not the clean input (diff \(difference))")
 
-        // Letting go: the next frame is the input, clean, and the encoder is gone.
+        // Letting go eases out over the heal time (15 frames by default), then the
+        // input comes back untouched and the encoder is gone.
         node.mosh = 0
         let input = try XCTUnwrap(uploader.upload(motion[0]))
-        let released = node.render(inputs: [input], context: RenderContext(frameIndex: 999, presentationTime: 0, musicalPosition: nil))
+        var releaseFrames = 0
+        var released: MTLTexture?
+        repeat {
+            released = node.render(inputs: [input], context: RenderContext(frameIndex: 999, presentationTime: 0, musicalPosition: nil))
+            metal.waitForIdle()
+            releaseFrames += 1
+        } while node.isRunning && releaseFrames < 100
+        XCTAssertEqual(releaseFrames, MoshHealEnvelope.frames(fromNormalised: DatamoshNode.defaultHealTime),
+                       "released after the heal time, not at once")
         XCTAssertTrue(released === input)
+        XCTAssertFalse(node.isRunning)
+    }
+
+    func testTheSwitchAndAnInstantHealTimeStillLetGoAtOnce() throws {
+        guard let metal = MetalContext.shared else { throw XCTSkip("no Metal") }
+        let node = DatamoshNode(identifier: "test.mosh.instant", context: metal)
+        let uploader = TextureUploader(context: metal, label: "test-instant")
+        let input = try XCTUnwrap(uploader.upload(ImageBuffer(width: 64, height: 48)))
+        let context = RenderContext(frameIndex: 0, presentationTime: 0, musicalPosition: nil)
+        node.mosh = 0.5
+        _ = node.render(inputs: [input], context: context)
+        XCTAssertTrue(node.isRunning)
+        node.wetDry = 0
+        XCTAssertTrue(node.render(inputs: [input], context: context) === input, "the switch is a bypass: at once")
+        XCTAssertFalse(node.isRunning)
+
+        node.wetDry = 1
+        node.healTime = 0
+        _ = node.render(inputs: [input], context: context)
+        XCTAssertTrue(node.isRunning)
+        node.mosh = 0
+        XCTAssertTrue(node.render(inputs: [input], context: context) === input, "heal time 0: let go at once")
         XCTAssertFalse(node.isRunning)
     }
 }

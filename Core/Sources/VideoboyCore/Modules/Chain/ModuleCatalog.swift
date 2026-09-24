@@ -238,10 +238,28 @@ public final class ModuleCatalog {
                 id: ID.datamosh, name: "Datamosh · H.264", origin: .native, group: "Built-in",
                 controls: [
                     ModuleControl(label: "mosh", code: .moshAmount),
-                    ModuleControl(label: "bloom", code: .moshBloom),
+                    ModuleControl(label: "melt", code: .moshMelt),
+                    ModuleControl(label: "bloom", code: .moshBloom,
+                                  valueText: { $0 > 0.001 ? number($0) : "off" }),
+                    ModuleControl(label: "loop", code: .moshLoop,
+                                  valueText: { "\(MoshControls.bloomLength(fromNormalised: $0))fr" }),
+                    ModuleControl(label: "blocks", code: .moshBlocks),
                     ModuleControl(label: "heal", code: .moshHeal, kind: .trigger,
                                   valueText: { $0 >= 0.5 ? "heal" : "—" }),
-                    ModuleControl(label: "blocks", code: .moshBlocks)
+                    ModuleControl(label: "heal every", code: .moshHealEvery, kind: .choice,
+                                  valueText: { MoshHealEvery.from(normalised: $0).shortName }),
+                    ModuleControl(label: "heal time", code: .moshHealTime,
+                                  valueText: { value in
+                                      let frames = MoshHealEnvelope.frames(fromNormalised: value)
+                                      return frames == 0
+                                          ? "now"
+                                          : String(format: "%.2fs", Double(frames) / StandardDefinition.frameRate)
+                                  }),
+                    ModuleControl(label: "heal shape", code: .moshHealShape, kind: .choice,
+                                  valueText: { MoshHealShape.from(normalised: $0).displayName }),
+                    ModuleControl(label: "opacity", code: .opacity),
+                    ModuleControl(label: "blend", code: .moshBlend, kind: .choice,
+                                  valueText: { DatamoshNode.blendShortName(DatamoshNode.blendMode(fromNormalised: $0)) })
                 ],
                 problem: nil, fileURL: nil,
                 factory: { DatamoshNode(identifier: $0, context: $1) }),

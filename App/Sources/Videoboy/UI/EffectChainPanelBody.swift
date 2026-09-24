@@ -40,6 +40,9 @@ struct EffectParameterModel {
     /// What the readout says for a fader position (0...1): "on", a choice's label, a
     /// number in the parameter's own units. Nil shows the position itself.
     var valueText: ((Double) -> String)? = nil
+    /// A trigger (`ModuleControlKind.trigger`): drawn as a momentary key, not a fader.
+    /// 1 while held, 0 on release — the same two values a MIDI note sends.
+    var isTrigger = false
 
     /// The readout for a fader position.
     func text(for value: Double) -> String {
@@ -157,6 +160,12 @@ final class EffectChainPanelBody: NSView {
     }
 
     private func refreshMappingAddresses(in view: NSView) {
+        if let key = view as? VBOptionButton,
+           let (code, card) = Self.triggerAddress(key.identifier?.rawValue),
+           let paramCode = ParamCode(rawValue: code) {
+            key.mappingCode = paramCode
+            key.mappingSlot = mappingSlotForParameter?(card, paramCode)
+        }
         if let fader = view as? VBFader,
            let card = fader.ownerCard,
            let raw = fader.identifier?.rawValue,
@@ -531,8 +540,61 @@ final class EffectChainPanelBody: NSView {
         return card
     }
 
+    /// The readout's width: the standard one, or wider when the parameter's labels
+    /// need it ("screen", "5.00 s"). Measured over the whole travel, so it is fixed
+    /// for the row and never twitches as the value changes.
+    private static func readoutWidth(for parameter: EffectParameterModel) -> CGFloat {
+        guard parameter.valueText != nil else { return Theme.Metrics.valueReadoutWidth }
+        var widest: CGFloat = 0
+        for step in 0...64 {
+            let text = parameter.text(for: Double(step) / 64) as NSString
+            widest = max(widest, text.size(withAttributes: [.font: Theme.Font.mono]).width)
+        }
+        return max(Theme.Metrics.valueReadoutWidth, ceil(widest) + 2)
+    }
+
+    /// A trigger key's identifier: "trigger|<code>|<card>".
+    private static func triggerIdentifier(code: String, card: String) -> String {
+        "trigger|\(code)|\(card)"
+    }
+
+    /// The code and card a trigger key's identifier names, or nil for anything else.
+    private static func triggerAddress(_ identifier: String?) -> (code: String, card: String)? {
+        guard let parts = identifier?.split(separator: "|", maxSplits: 2).map(String.init),
+              parts.count == 3, parts[0] == "trigger" else { return nil }
+        return (parts[1], parts[2])
+    }
+
+    /// One line for a trigger: its name and code, then a key to hit.
+    ///
+    /// A KEY, not a fader. A trigger does one thing when it is pressed; a fader for it
+    /// read as a level ("heal 0.62?") and had to be dragged across halfway and back
+    /// to fire twice. The key is a pad: on while held, and it learns a MIDI note with
+    /// Shift-click like CUT and FADE do.
+    private func makeTriggerRow(_ parameter: EffectParameterModel, card: String) -> [NSView] {
+        let label = Controls.monoLabel(
+            "\(parameter.name)·\(parameter.code)",
+            color: parameter.enabled ? Theme.Color.textSecondary : Theme.Color.textTertiary
+        )
+        let key = VBOptionButton(title: parameter.name.uppercased(), onColour: Theme.Color.accent)
+        key.isMomentary = true
+        key.isTall = true
+        key.isEnabled = parameter.enabled
+        key.target = self
+        key.action = #selector(triggerPressed(_:))
+        key.identifier = NSUserInterfaceItemIdentifier(Self.triggerIdentifier(code: parameter.code, card: card))
+        key.toolTip = "\(parameter.name.capitalized) — hold Shift and click to learn a MIDI note"
+        if let code = ParamCode(rawValue: parameter.code) {
+            key.mappingCode = code
+            key.mappingSlot = mappingSlotForParameter?(card, code)
+        }
+        key.widthAnchor.constraint(greaterThanOrEqualToConstant: Theme.Metrics.triggerKeyMinWidth).isActive = true
+        return [Controls.row([label, Controls.spacer(), key], spacing: 5)]
+    }
+
     /// The two lines for one parameter: badges/name/value, then a full-width fader.
     private func makeParameterRows(_ parameter: EffectParameterModel, card: String) -> [NSView] {
+        if parameter.isTrigger { return makeTriggerRow(parameter, card: card) }
         // Line 1 — name with its param code, and the current value. No badge column:
         // it said the same three things on every row of every card, and Shift-click
         // maps a parameter without needing a control of its own.
@@ -546,7 +608,7 @@ final class EffectChainPanelBody: NSView {
         value.alignment = .right
         value.translatesAutoresizingMaskIntoConstraints = false
         value.widthAnchor.constraint(
-            equalToConstant: Theme.Metrics.valueReadoutWidth).isActive = true
+            equalToConstant: Self.readoutWidth(for: parameter)).isActive = true
         value.identifier = NSUserInterfaceItemIdentifier("value|\(parameter.code)")
 
         // The sweep's rate key, to the LEFT of the value, and only once a sweep is
@@ -873,6 +935,12 @@ final class EffectChainPanelBody: NSView {
             }
         }
         onParameterChanged?(card, code, sender.value)
+    }
+
+    /// A trigger key went down (1) or came up (0).
+    @objc private func triggerPressed(_ sender: VBOptionButton) {
+        guard let (code, card) = Self.triggerAddress(sender.identifier?.rawValue) else { return }
+        onParameterChanged?(card, code, sender.isOn ? 1 : 0)
     }
 
     /// A badge on an effect's header. Reports the effect name and the source's

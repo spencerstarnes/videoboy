@@ -68,6 +68,26 @@ enum StressSelfQA {
         for slot in [Engine.moshOneSlot, Engine.moshTwoSlot] {
             engine.registry.setValue(0.5, slot: slot, code: .moshAmount)
         }
+        // And every mosh control that costs anything, on all six: melt and bloom in
+        // the engine, a heal on every beat (blocks, half a second — at 120 BPM one is
+        // always in progress), and the mosh screened over its clean input at 0.8, so
+        // the layer pass runs on every frame.
+        let screenBlend = DatamoshNode.blendModes.firstIndex(of: .screen) ?? 0
+        let moshSlots = ["A", "B", "C", "D"].map { Engine.channelSlot($0, "mosh") }
+            + [Engine.moshOneSlot, Engine.moshTwoSlot]
+        for slot in moshSlots {
+            for (code, value) in [
+                (ParamCode.moshMelt, 0.3),
+                (.moshBloom, 0.5),
+                (.moshHealEvery, MoshHealEvery.beat.normalisedPosition),
+                (.moshHealTime, DatamoshNode.defaultHealTime),
+                (.moshHealShape, MoshHealShape.blocks.normalisedPosition),
+                (.opacity, 0.8),
+                (.moshBlend, Double(screenBlend) / Double(DatamoshNode.blendModes.count - 1))
+            ] {
+                engine.registry.setValue(value, slot: slot, code: code)
+            }
+        }
         // Every fader on the AVE-5 wipe, mid-travel, all five keys lit, ×16 and a
         // soft edge: the most work that transition's shader branch can do per pixel.
         let heaviestWipe = AVE5Wipe(keys: [.allEdges, .circle], multi: .x16, edge: .soft,
@@ -105,11 +125,13 @@ enum StressSelfQA {
         let moshNodes = engine.graph.nodes.values.compactMap { $0 as? DatamoshNode }
             .sorted { $0.identifier < $1.identifier }
         for node in moshNodes {
-            check.note("  \(node.identifier): \(node.statistics)")
+            check.note("  \(node.identifier): \(node.statistics), heals \(node.healCount)")
         }
-        let moshing = moshNodes.filter { $0.isRunning && $0.statistics.emitted > 30 }
+        let moshing = moshNodes.filter {
+            $0.isRunning && $0.statistics.emitted > 30 && $0.statistics.bloomed > 0 && $0.healCount > 0
+        }
         check.record(AssertionResult(
-            name: "every datamosh node is encoding and decoding under load",
+            name: "every datamosh node is encoding, decoding, blooming and healing on the beat under load",
             passed: moshNodes.count == 6 && moshing.count == 6,
             detail: "\(moshing.count) of \(moshNodes.count) running with frames flowing"))
 

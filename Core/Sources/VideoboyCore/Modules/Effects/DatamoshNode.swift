@@ -8,14 +8,19 @@
 //            codec's own motion compensation applied to the wrong picture.
 //  Inputs  : one texture.
 //  Outputs : the moshed picture, or the input untouched when neutral.
-//  Connects: H264LiveEncoder → MoshEngine → H264MoshDecoder; the FX panel's
-//            "Datamosh · H.264" card (codes 35B–38B, plus 02A wet/dry).
+//  Connects: H264LiveEncoder → MoshEngine → H264MoshDecoder; MoshHeal (the eased
+//            heal, heal on the beat); the "mosh layer" shader (heal shape, blend,
+//            opacity); the FX panel's "Datamosh · H.264" card (codes 35B–3EB, 01A
+//            opacity, plus 02A wet/dry — the card's switch).
 //  Extend  : a new gesture is a field on `MoshControls` and a branch in MoshEngine;
 //            this node only needs a parameter for it.
 //
 //  THE FRAME PATH (CLAUDE.md: the picture must never stutter):
-//    - Neutral (mosh and bloom at 0, or wet/dry 0) returns the input at once and
-//      holds no encoder. An idle card costs nothing.
+//    - Neutral (mosh, melt and bloom at 0, or wet/dry 0) returns the input and
+//      holds no encoder. An idle card costs nothing. Letting go eases the clean
+//      picture back in over the heal time first, then releases the encoder.
+//    - The layer pass (heal shape, blend mode, opacity) runs only while one of them
+//      is doing something; a plain full-strength mosh returns the decoded picture.
 //    - Active, the render thread only ENCODES A BLIT into one of three staging
 //      textures and submits it. The copy into the encoder's buffer and the encode
 //      call happen in that command buffer's completion handler, off the main
@@ -43,20 +48,82 @@ public final class DatamoshNode: Node, ParameterApplying {
         [
             Parameter(code: .wetDry, range: 0...1, defaultValue: 1),
             Parameter(code: .moshAmount, range: 0...1, defaultValue: 0),
+            Parameter(code: .moshMelt, range: 0...1, defaultValue: 0),
             Parameter(code: .moshBloom, range: 0...1, defaultValue: 0),
-            Parameter(code: .moshHeal, range: 0...1, defaultValue: 0),
-            Parameter(code: .moshBlocks, range: 0...1, defaultValue: 0.5)
+            Parameter(code: .moshLoop, range: 0...1, defaultValue: Self.defaultLoop),
+            Parameter(code: .moshBlocks, range: 0...1, defaultValue: 0.5),
+            Parameter(code: .moshHeal, range: 0...1, defaultValue: 0, isMomentary: true),
+            Parameter(code: .moshHealEvery, range: 0...1, defaultValue: 0),
+            Parameter(code: .moshHealTime, range: 0...1, defaultValue: Self.defaultHealTime),
+            Parameter(code: .moshHealShape, range: 0...1, defaultValue: 0),
+            Parameter(code: .opacity, range: 0...1, defaultValue: 1),
+            Parameter(code: .moshBlend, range: 0...1, defaultValue: 0)
         ]
     }
+
+    /// A four-frame loop: long enough to read as a gesture, short enough to stream.
+    public static let defaultLoop = 0.2
+    /// Half a second of easing back to clean: a graceful exit unless asked otherwise.
+    public static let defaultHealTime = 0.25
+
+    /// The blend modes the card offers, in `BlendMode` order. Key is left out: it
+    /// needs a key colour this card has no controls for.
+    public static let blendModes: [BlendMode] = BlendMode.allCases.filter { $0 != .key }
+
+    /// A blend mode's name for the card's narrow readout (the full names are for the
+    /// mixer's menu, where there is room).
+    public static func blendShortName(_ mode: BlendMode) -> String {
+        switch mode {
+        case .normal: "norm"
+        case .multiply: "mult"
+        case .screen: "scrn"
+        case .overlay: "ovly"
+        case .lighten: "light"
+        case .darken: "dark"
+        case .difference: "diff"
+        case .add: "add"
+        case .subtract: "sub"
+        case .colorDodge: "dodge"
+        case .colorBurn: "burn"
+        case .hardLight: "hard"
+        case .softLight: "soft"
+        case .key: "key"
+        }
+    }
+
+    /// The blend fader (0...1) as a mode.
+    public static func blendMode(fromNormalised value: Double) -> BlendMode {
+        blendModes[NormalisedSweep.index(value, count: blendModes.count)]
+    }
+
+    /// Macroblock size for the blocks and wipe heal shapes, in output pixels (H.264's).
+    static let healBlockSize: Float = 16
 
     // MARK: Controls (main thread)
 
     /// 0 bypasses entirely; the card's switch and wet/dry both drive this.
     public var wetDry = 1.0
     public var mosh = 0.0
+    /// Random P-frame drops, 0 none … 1 about one in three.
+    public var melt = 0.0
+    /// Share of frames that are bloom replays, 0 off … 1 every frame.
     public var bloom = 0.0
-    /// Rising through 0.5 lets one clean keyframe through.
+    /// Bloom's loop length, 0 one frame … 1 sixteen.
+    public var loop = DatamoshNode.defaultLoop
+    /// Rising through 0.5 asks for a heal (the card's button, or a MIDI note).
     public var heal = 0.0
+    /// A press latched by the registry since the last frame, however short it was.
+    public var healPressed = false
+    /// Heal on the beat, as a `MoshHealEvery` position.
+    public var healEvery = 0.0
+    /// How long a heal (and letting go) eases back to clean, 0 instant … 1 two seconds.
+    public var healTime = DatamoshNode.defaultHealTime
+    /// How the clean picture comes back, as a `MoshHealShape` position.
+    public var healShape = 0.0
+    /// How strongly the mosh lies over the clean picture.
+    public var opacity = 1.0
+    /// How the mosh combines with the clean picture, as a `blendModes` position.
+    public var blend = 0.0
     /// Encoder bitrate, 0 starved … 1 clean.
     public var blocks = 0.5
 
@@ -64,6 +131,10 @@ public final class DatamoshNode: Node, ParameterApplying {
     public private(set) var isRunning = false
     /// What the engine has done so far this run, for evidence and the overlay.
     public var statistics: MoshStatistics { shared.withLock { $0.statistics } }
+    /// Heals asked for this run (button, MIDI or beat), for evidence.
+    public private(set) var healCount = 0
+    /// How much of the clean picture is showing through right now, 0...1.
+    public var healProgress: Double { envelope.clean }
 
     private let context: MetalContext?
     private var encoder: H264LiveEncoder?
@@ -71,6 +142,10 @@ public final class DatamoshNode: Node, ParameterApplying {
     private var startingSize = (width: 0, height: 0)
     private var appliedBlocks = -1.0
     private var previousHeal = 0.0
+    private var envelope = MoshHealEnvelope()
+    private var beatTrigger = MoshBeatTrigger()
+    /// A keyframe was asked for and has not yet gone to the encoder (it was backed up).
+    private var keyframeWanted = false
 
     /// Staging textures the GPU copies the input into, cycled so one can be read
     /// on a completion thread while the next frame's blit writes another.
@@ -98,6 +173,8 @@ public final class DatamoshNode: Node, ParameterApplying {
         var controls = MoshControls()
         /// A heal was asked for and its keyframe has not come through yet.
         var healArmed = false
+        /// A healed keyframe has been decoded into `latest`.
+        var keyframeLanded = false
         var latest: ImageBuffer?
         var generation = 0
         var statistics = MoshStatistics()
@@ -117,43 +194,87 @@ public final class DatamoshNode: Node, ParameterApplying {
 
     public func render(inputs: [MTLTexture], context renderContext: RenderContext) -> MTLTexture? {
         guard let input = inputs.first else { return nil }
-        let active = wetDry > 0.001 && (mosh > 0.001 || bloom > 0.001)
-        guard active, let metal = context else {
+        // Taken on every frame, used or not: a press while the card is idle must not
+        // fire later, the moment the mosh is pushed up.
+        let pressed = healPressed || (heal >= 0.5 && previousHeal < 0.5)
+        healPressed = false
+        previousHeal = heal
+        let engaged = mosh > 0.001 || melt > 0.001 || bloom > 0.001
+        // The switch (wet/dry) is a bypass: off is off, at once. Letting the faders
+        // go is not — a running mosh eases out below before it is released.
+        guard wetDry > 0.001, let metal = context, engaged || isRunning else {
             if isRunning { stop() }
             return input
         }
 
         if !isRunning || startingSize.width != input.width || startingSize.height != input.height {
+            guard engaged else {
+                stop()
+                return input
+            }
             start(width: input.width, height: input.height, metal: metal)
         }
         // Still being created off the tick: show the input meanwhile.
-        guard let encoder else { return input }
+        guard let encoder else {
+            if !engaged { stop() }
+            return input
+        }
 
         if blocks != appliedBlocks {
             encoder.setQuality(blocks)
             appliedBlocks = blocks
         }
 
-        // Heal is an edge, not a level: crossing halfway asks for one keyframe.
-        let healNow = heal >= 0.5 && previousHeal < 0.5
-        previousHeal = heal
-        let controls = MoshControls(
-            mosh: mosh, bloomLength: MoshControls.bloomLength(fromNormalised: bloom))
-        shared.withLock {
-            $0.controls = controls
-            if healNow { $0.healArmed = true }
+        // HEAL. The button is an edge, not a level: crossing halfway is one press
+        // (latched by the registry, so a tap between frames counts). The beat is
+        // another way to press it.
+        let healFrames = MoshHealEnvelope.frames(fromNormalised: healTime)
+        let onBeat = beatTrigger.fires(
+            every: MoshHealEvery.from(normalised: healEvery), at: renderContext.musicalPosition)
+        if engaged && (pressed || onBeat) {
+            healCount += 1
+            if envelope.trigger(frames: healFrames) == .requestKeyframe { requestKeyframe() }
+        }
+        switch envelope.advance(frames: healFrames, neutral: !engaged) {
+        case .stop:
+            stop()
+            return input
+        case .requestKeyframe:
+            requestKeyframe()
+        case .none:
+            break
         }
 
-        submitForEncoding(input, encoder: encoder, forceKeyframe: healNow, metal: metal)
+        let controls = MoshControls(
+            mosh: mosh, melt: melt, bloom: bloom,
+            bloomLength: bloom > 0.001 ? MoshControls.bloomLength(fromNormalised: loop) : 0)
+        shared.withLock { $0.controls = controls }
+
+        if submitForEncoding(input, encoder: encoder, forceKeyframe: keyframeWanted, metal: metal) {
+            keyframeWanted = false
+        }
         return output(dry: input, metal: metal)
     }
 
+    /// Asks for one clean keyframe: from the encoder on the next frame that is
+    /// actually submitted, and through the engine when it arrives.
+    private func requestKeyframe() {
+        keyframeWanted = true
+        shared.withLock { $0.healArmed = true }
+    }
+
     /// Blits the input to a staging texture; the completion handler hands the bytes
-    /// to the encoder. Never waits.
-    private func submitForEncoding(_ input: MTLTexture, encoder: H264LiveEncoder, forceKeyframe: Bool, metal: MetalContext) {
-        guard encoder.framesInFlight < stagingCount else { return }
-        guard let slot = claimStaging(), let commandBuffer = metal.commandQueue.makeCommandBuffer(),
-              let blit = commandBuffer.makeBlitCommandEncoder() else { return }
+    /// to the encoder. Never waits. False when the frame was skipped (backpressure),
+    /// so a keyframe request riding on it is kept for the next one.
+    @discardableResult
+    private func submitForEncoding(_ input: MTLTexture, encoder: H264LiveEncoder, forceKeyframe: Bool, metal: MetalContext) -> Bool {
+        guard encoder.framesInFlight < stagingCount else { return false }
+        guard let slot = claimStaging() else { return false }
+        guard let commandBuffer = metal.commandQueue.makeCommandBuffer(),
+              let blit = commandBuffer.makeBlitCommandEncoder() else {
+            releaseStaging(slot)
+            return false
+        }
         let target = staging[slot]
         blit.copy(from: input, sourceSlice: 0, sourceLevel: 0,
                   sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
@@ -175,29 +296,63 @@ public final class DatamoshNode: Node, ParameterApplying {
             DispatchQueue.main.async { self?.releaseStaging(slot) }
         }
         metal.submit(commandBuffer, label: "\(identifier) mosh staging")
+        return true
     }
 
-    /// The newest decoded picture, blended by wet/dry. Before the first picture
-    /// arrives (the first frame or two after starting) the input is shown.
+    /// The newest decoded picture, laid over the clean input: healed by the envelope's
+    /// shape, combined by the blend mode, at opacity × wet/dry. Before the first
+    /// picture arrives (the first frame or two after starting) the input is shown.
     private func output(dry: MTLTexture, metal: MetalContext) -> MTLTexture? {
-        let (latest, generation) = shared.withLock { ($0.latest, $0.generation) }
+        let (latest, generation, landed) = shared.withLock { value -> (ImageBuffer?, Int, Bool) in
+            let landed = value.keyframeLanded
+            value.keyframeLanded = false
+            return (value.latest, value.generation, landed)
+        }
         if let latest, generation != shownGeneration {
             if uploader == nil { uploader = TextureUploader(context: metal, label: "\(identifier)-mosh") }
             if let uploaded = uploader?.upload(latest) { lastOutput = uploaded }
             shownGeneration = generation
         }
+        if landed { envelope.keyframeShown() }
         guard let wet = lastOutput, wet.width == dry.width, wet.height == dry.height else { return dry }
-        guard wetDry < 0.999 else { return wet }
+
+        let mode = Self.blendMode(fromNormalised: blend)
+        let strength = min(max(opacity, 0), 1) * min(max(wetDry, 0), 1)
+        let clean = envelope.clean
+        // The common case costs no pass at all.
+        if clean <= 0 && mode == .normal && strength >= 0.999 { return wet }
+        if clean >= 1 && mode == .normal { return dry }
 
         if blendTarget?.width != dry.width || blendTarget?.height != dry.height {
-            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: MetalContext.pixelFormat, width: dry.width, height: dry.height, mipmapped: false)
-            descriptor.usage = [.shaderRead, .renderTarget]
-            descriptor.storageMode = .private
-            blendTarget = metal.device.makeTexture(descriptor: descriptor)
+            blendTarget = metal.makeRenderTarget(width: dry.width, height: dry.height, label: "\(identifier)-mosh-layer")
         }
-        guard let blendTarget,
-              metal.blend(dry: dry, wet: wet, amount: wetDry, into: blendTarget, label: identifier) else { return wet }
+        guard let blendTarget else { return wet }
+
+        let descriptor = MTLRenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = blendTarget
+        descriptor.colorAttachments[0].loadAction = .dontCare
+        descriptor.colorAttachments[0].storeAction = .store
+        guard let commandBuffer = metal.commandQueue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
+            Log.error(.mosh, "\(identifier) could not encode its layer pass")
+            return wet
+        }
+        encoder.label = "\(identifier)-mosh-layer"
+        encoder.setRenderPipelineState(metal.moshLayerPipeline)
+        encoder.setFragmentTexture(dry, index: 0)
+        encoder.setFragmentTexture(wet, index: 1)
+        var params = MoshLayerParams(
+            opacity: Float(strength),
+            mode: Int32(mode.rawValue),
+            heal: Float(clean),
+            shape: Int32(MoshHealShape.from(normalised: healShape).rawValue),
+            blockSize: Self.healBlockSize,
+            // A new block pattern for every heal, so two in a row do not look alike.
+            seed: Float(healCount % 1000))
+        encoder.setFragmentBytes(&params, length: MemoryLayout<MoshLayerParams>.stride, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        metal.submit(commandBuffer, label: "\(identifier) mosh layer")
         return blendTarget
     }
 
@@ -217,6 +372,9 @@ public final class DatamoshNode: Node, ParameterApplying {
         }
         prepareStaging(width: width, height: height, metal: metal)
         appliedBlocks = -1
+        envelope.reset()
+        keyframeWanted = false
+        healCount = 0
         isRunning = true
         startingSize = (width, height)
 
@@ -246,7 +404,8 @@ public final class DatamoshNode: Node, ParameterApplying {
     }
 
     /// Releases the encoder and clears the picture. The next frame shows the input
-    /// clean — letting go of the mosh IS the heal.
+    /// clean. Reached at once from the switch, or after the release fade when the
+    /// faders are let go (MoshHealEnvelope).
     private func stop() {
         guard isRunning || encoder != nil else { return }
         encoder?.invalidate(completingPending: false)
@@ -260,6 +419,8 @@ public final class DatamoshNode: Node, ParameterApplying {
             $0.runID = run
         }
         lastOutput = nil
+        envelope.reset()
+        keyframeWanted = false
         pipeline.async { [weak self] in
             self?.decoder = nil
             self?.engine.reset()
@@ -287,6 +448,7 @@ public final class DatamoshNode: Node, ParameterApplying {
             if let picture {
                 $0.latest = picture
                 $0.generation &+= 1
+                if healed { $0.keyframeLanded = true }
             }
             $0.statistics = statistics
         }
@@ -334,10 +496,29 @@ public final class DatamoshNode: Node, ParameterApplying {
     public func applyParameters(from registry: ParamRegistry) {
         if let value = registry.value(slot: identifier, code: .wetDry) { wetDry = value }
         if let value = registry.value(slot: identifier, code: .moshAmount) { mosh = value }
+        if let value = registry.value(slot: identifier, code: .moshMelt) { melt = value }
         if let value = registry.value(slot: identifier, code: .moshBloom) { bloom = value }
+        if let value = registry.value(slot: identifier, code: .moshLoop) { loop = value }
         if let value = registry.value(slot: identifier, code: .moshHeal) { heal = value }
+        if registry.consumePress(slot: identifier, code: .moshHeal) { healPressed = true }
+        if let value = registry.value(slot: identifier, code: .moshHealEvery) { healEvery = value }
+        if let value = registry.value(slot: identifier, code: .moshHealTime) { healTime = value }
+        if let value = registry.value(slot: identifier, code: .moshHealShape) { healShape = value }
+        if let value = registry.value(slot: identifier, code: .opacity) { opacity = value }
+        if let value = registry.value(slot: identifier, code: .moshBlend) { blend = value }
         if let value = registry.value(slot: identifier, code: .moshBlocks) { blocks = value }
     }
+}
+
+/// The mosh layer shader's parameters. Layout matches `MoshLayerParams` in the Metal
+/// source: six 4-byte fields.
+private struct MoshLayerParams {
+    var opacity: Float
+    var mode: Int32
+    var heal: Float
+    var shape: Int32
+    var blockSize: Float
+    var seed: Float
 }
 
 /// A value behind a lock, for the few pieces of state that cross threads.

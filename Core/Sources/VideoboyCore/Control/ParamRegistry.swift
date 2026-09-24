@@ -22,11 +22,17 @@ public struct Parameter {
     public let range: ClosedRange<Double>
     /// Value when nothing has set it.
     public let defaultValue: Double
+    /// A press, not a level (a trigger key, a pad): the registry latches each rise
+    /// through halfway until the node takes it with `consumePress`, so a tap that
+    /// goes up and down between two frames still counts.
+    public let isMomentary: Bool
 
-    public init(code: ParamCode, range: ClosedRange<Double> = 0...1, defaultValue: Double = 0) {
+    public init(code: ParamCode, range: ClosedRange<Double> = 0...1, defaultValue: Double = 0,
+                isMomentary: Bool = false) {
         self.code = code
         self.range = range
         self.defaultValue = defaultValue
+        self.isMomentary = isMomentary
     }
 
     /// Maps a normalised 0...1 control value into this parameter's range.
@@ -102,6 +108,8 @@ public final class ParamRegistry {
     /// Slot/code pairs already reported as unresolvable, so the warning fires once
     /// rather than once per frame for as long as the stale mapping exists.
     private var unresolvedSlotsWarned: Set<String> = []
+    /// Momentary parameters pressed since their node last looked, by slot.
+    private var pendingPresses: [String: Set<ParamCode>] = [:]
 
     public init() {}
 
@@ -180,8 +188,22 @@ public final class ParamRegistry {
             return false
         }
         let clamped = min(max(value, parameter.range.lowerBound), parameter.range.upperBound)
+        if parameter.isMomentary {
+            let halfway = parameter.denormalise(0.5)
+            let previous = valuesBySlot[slot]?[code] ?? parameter.defaultValue
+            if previous < halfway && clamped >= halfway {
+                pendingPresses[slot, default: []].insert(code)
+            }
+        }
         valuesBySlot[slot]?[code] = clamped
         return true
+    }
+
+    /// Takes a momentary parameter's latched press: true once per press, however
+    /// briefly it was held — a mouse click or a drum pad can go down and up inside
+    /// one frame, and a node that only read the level would never see it.
+    public func consumePress(slot: String, code: ParamCode) -> Bool {
+        pendingPresses[slot]?.remove(code) != nil
     }
 
     // MARK: - Mappings

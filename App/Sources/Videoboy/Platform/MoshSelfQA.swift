@@ -9,7 +9,12 @@
 //            mosh fader. Cuts the A/B crossfader from A to B and captures the bus.
 //            The classic transition mosh is B's motion smeared over A's bars.
 //  Inputs  : samples/bars.dv, samples/motion.mov.
-//  Outputs : selfqa/out/mosh/app/{result.txt, clean-cut.png, moshed-cut.png}.
+//            Then the controls added for a graceful exit: the HEAL key (clicked
+//            through the window), a blocks-shaped heal caught half way, opacity and
+//            blend over the clean picture, bloom's amount, heal on the beat, and the
+//            eased release when the faders are let go.
+//  Outputs : selfqa/out/mosh/app/{result.txt, clean-cut.png, moshed-cut.png,
+//            heal-mid-blocks.png, healed.png, opacity-half.png, blend-difference.png}.
 //  Connects: MainWindowController, the "Datamosh · H.264" card (PanelSet),
 //            ShellController's routing, Engine's `fx.one.mosh` node.
 //  Extend  : a new gesture (bloom, heal) is one more click and one more capture.
@@ -125,13 +130,137 @@ enum MoshSelfQA {
             passed: cleanDiff < 6 && moshDiff > cleanDiff * 3 && moshDiff > 8,
             detail: String(format: "mean |Δ| from B's own picture: clean %.1f, moshed %.1f", cleanDiff, moshDiff)))
 
-        // 3. Letting go heals at once: mosh back to zero and the node lets go.
-        engine.registry.setValue(0, slot: Engine.moshOneSlot, code: .moshAmount)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let set: (Double, ParamCode) -> Void = { value, code in
+            engine.registry.setValue(value, slot: Engine.moshOneSlot, code: code)
+        }
+
+        // 3. The card: heal is a key now, and the new controls are all there.
+        let triggerID = "trigger|\(ParamCode.moshHeal.rawValue)|\(cardName)"
+        let healKey = find(VBOptionButton.self, named: triggerID, in: panel)
+        let healFader = find(VBFader.self, named: ParamCode.moshHeal.rawValue, in: panel)
+        let newCodes: [ParamCode] = [.moshMelt, .moshLoop, .moshHealEvery, .moshHealTime, .moshHealShape, .opacity, .moshBlend]
+        let missing = newCodes.filter { find(VBFader.self, named: $0.rawValue, in: panel) == nil }
         check.record(AssertionResult(
-            name: "pulling mosh to zero releases the encoder",
-            passed: node?.isRunning == false,
-            detail: "running \(node?.isRunning == true)"))
+            name: "heal is a key, not a fader, and the new controls are on the card",
+            passed: healKey != nil && healFader == nil && missing.isEmpty,
+            detail: "HEAL key \(healKey != nil), heal fader \(healFader != nil), missing faders: "
+                + (missing.isEmpty ? "none" : missing.map(\.rawValue).joined(separator: ", "))))
+        if let healKey, let card = cardView(containing: healKey) {
+            writePNG(of: card, to: check.artifactURL("card.png"))
+            check.note("card: \(Int(card.bounds.width))×\(Int(card.bounds.height)) pt")
+        }
+        if let healKey {
+            check.note("HEAL key: mapping slot \(healKey.mappingSlot ?? "nil"), code \(healKey.mappingCode?.rawValue ?? "nil")")
+            check.record(AssertionResult(
+                name: "the HEAL key can be learned to MIDI (Shift-click), addressed to the bus node",
+                passed: healKey.mappingSlot == Engine.moshOneSlot && healKey.mappingCode == .moshHeal,
+                detail: "slot \(healKey.mappingSlot ?? "nil")"))
+        }
+
+        // 4. A heal from the key, clicked through the window: blocks, over two
+        //    seconds, caught half way; then the keyframe lands and the picture is clean.
+        set(1, .moshHealTime)
+        set(MoshHealShape.blocks.normalisedPosition, .moshHealShape)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let healsBefore = node?.healCount ?? 0
+        let keyHit = healKey.map { click($0, at: 0.5, in: window, shell: shell) } ?? false
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+        let midProgress = node?.healProgress ?? 0
+        let mid = captureTexture(engine, Engine.moshOneSlot)
+        let midInput = captureTexture(engine, GraphTopology.subMixOne)
+        check.record(AssertionResult(
+            name: "a click on HEAL lands on it and starts an eased heal (not a jump)",
+            passed: keyHit && (node?.healCount ?? 0) == healsBefore + 1 && midProgress > 0.2 && midProgress < 0.8,
+            detail: String(format: "hit %@, heals %d → %d, clean %.2f one second into a two-second heal",
+                           keyHit ? "yes" : "no", healsBefore, node?.healCount ?? 0, midProgress)))
+        if let mid { _ = try? check.writeImage(mid, named: "heal-mid-blocks.png") }
+        RunLoop.main.run(until: Date().addingTimeInterval(1.8))
+        let healed = captureTexture(engine, Engine.moshOneSlot)
+        let healedInput = captureTexture(engine, GraphTopology.subMixOne)
+        if let healed { _ = try? check.writeImage(healed, named: "healed.png") }
+        let midDiff = (mid != nil && midInput != nil) ? meanDifference(mid!, midInput!) : 255
+        let healedDiff = (healed != nil && healedInput != nil) ? meanDifference(healed!, healedInput!) : 255
+        check.record(AssertionResult(
+            name: "after the heal the keyframe has landed: the fade is gone and the picture is B again",
+            // Not zero: while running, the output trails the input by one frame
+            // (declared latency) and B is moving footage. Moshed is ~110.
+            passed: node?.healProgress == 0 && healedDiff < 12 && healedDiff < moshDiff / 5,
+            detail: String(format: "clean %.2f; mean |Δ| from B: moshed %.1f, half way %.1f, healed %.1f",
+                           node?.healProgress ?? -1, moshDiff, midDiff, healedDiff)))
+        set(DatamoshNode.defaultHealTime, .moshHealTime)
+        set(0, .moshHealShape)
+
+        // 5. Opacity and blend over the clean picture, on a fresh mosh.
+        let full = captureCut(engine: engine, crossfade: crossfade)?.output
+        set(0, .opacity)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let none = captureTexture(engine, Engine.moshOneSlot)
+        let noneInput = captureTexture(engine, GraphTopology.subMixOne)
+        set(0.5, .opacity)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let half = captureTexture(engine, Engine.moshOneSlot)
+        let halfInput = captureTexture(engine, GraphTopology.subMixOne)
+        set(1, .opacity)
+        let differenceIndex = DatamoshNode.blendModes.firstIndex(of: .difference) ?? 0
+        set(Double(differenceIndex) / Double(DatamoshNode.blendModes.count - 1), .moshBlend)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let difference = captureTexture(engine, Engine.moshOneSlot)
+        set(0, .moshBlend)
+        if let half { _ = try? check.writeImage(half, named: "opacity-half.png") }
+        if let difference { _ = try? check.writeImage(difference, named: "blend-difference.png") }
+        let noneDiff = (none != nil && noneInput != nil) ? meanDifference(none!, noneInput!) : 255
+        let halfDiff = (half != nil && halfInput != nil) ? meanDifference(half!, halfInput!) : 255
+        let fullDiff = (full != nil && noneInput != nil) ? meanDifference(full!, noneInput!) : 0
+        let differenceFromMosh = (difference != nil && full != nil) ? meanDifference(difference!, full!) : 0
+        let differenceLevel = difference.map(meanLevel) ?? -1
+        check.record(AssertionResult(
+            name: "opacity 0 is the clean input, 0.5 sits between, Difference is its own picture",
+            passed: noneDiff < 2 && halfDiff > 2 && halfDiff < fullDiff && differenceFromMosh > 8,
+            detail: String(format: "mean |Δ| from B: opacity 1 %.1f, 0.5 %.1f, 0 %.1f; "
+                           + "Difference vs the plain mosh %.1f (mean level %.0f)",
+                           fullDiff, halfDiff, noneDiff, differenceFromMosh, differenceLevel)))
+
+        // 6. Bloom's amount does something all the way down: replays per second fall.
+        set(0.2, .moshLoop)
+        func bloomRate(_ amount: Double) -> Int {
+            set(amount, .moshBloom)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            let start = node?.statistics.bloomed ?? 0
+            RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+            return (node?.statistics.bloomed ?? 0) - start
+        }
+        let fullBloom = bloomRate(1)
+        let lowBloom = bloomRate(0.3)
+        set(0, .moshBloom)
+        check.record(AssertionResult(
+            name: "pulling bloom down slows the stream rather than doing nothing",
+            passed: fullBloom > 15 && lowBloom > 0 && Double(lowBloom) < Double(fullBloom) * 0.5,
+            detail: "replays per second: bloom 1.0 → \(fullBloom), bloom 0.3 → \(lowBloom)"))
+
+        // 7. Heal on the beat: every beat, transport running at 120.
+        set(MoshHealEvery.beat.normalisedPosition, .moshHealEvery)
+        engine.setTransportRunning(true)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let beatStart = node?.healCount ?? 0
+        RunLoop.main.run(until: Date().addingTimeInterval(2.0))
+        let beatHeals = (node?.healCount ?? 0) - beatStart
+        engine.setTransportRunning(false)
+        set(0, .moshHealEvery)
+        check.record(AssertionResult(
+            name: "heal every 1 beat heals on the beat (about four in two seconds at 120)",
+            passed: (3...5).contains(beatHeals),
+            detail: "\(beatHeals) heals in 2.0 s"))
+
+        // 8. Letting go eases out over the heal time (0.5 s by default), then the
+        //    encoder is released.
+        set(0, .moshAmount)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+        let easing = node?.isRunning == true && (node?.healProgress ?? 0) > 0
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        check.record(AssertionResult(
+            name: "pulling mosh to zero fades back to clean, then releases the encoder",
+            passed: easing && node?.isRunning == false,
+            detail: "easing after 0.15 s \(easing), running after 0.95 s \(node?.isRunning == true)"))
 
         window.orderOut(nil)
         return check.finish()
@@ -199,6 +328,58 @@ enum MoshSelfQA {
             .map { ($0.identifier!.rawValue, $0.convert(NSPoint.zero, to: panel).y) }
             .sorted { panel.isFlipped ? $0.1 < $1.1 : $0.1 > $1.1 }
             .map(\.0)
+    }
+
+    /// The effect card a control sits on: the OUTERMOST ancestor that is an arranged
+    /// view of a vertical stack (the chain's). The card's own column is a vertical
+    /// stack too, so the first match is only the control's row.
+    private static func cardView(containing view: NSView) -> NSView? {
+        var current: NSView? = view
+        var card: NSView?
+        while let candidate = current {
+            if let stack = candidate.superview as? NSStackView, stack.arrangedSubviews.contains(candidate),
+               stack.orientation == .vertical {
+                card = candidate
+            }
+            current = candidate.superview
+        }
+        return card
+    }
+
+    /// The view as it is on screen, taken by `screencapture` of its rectangle.
+    ///
+    /// The real pixels, because both offscreen routes fail on this panel:
+    /// `cacheDisplay` and `CALayer.render` each came back white with no text, no
+    /// card fill and no HEAL key. Needs Screen Recording for the app; without it the
+    /// PNG shows the desktop and the note says to look at it with that in mind.
+    private static func writePNG(of view: NSView, to url: URL) {
+        view.scrollToVisible(view.bounds)
+        guard let window = view.window, let screen = window.screen else { return }
+        window.displayIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let inWindow = view.convert(view.bounds, to: nil)
+        let onScreen = window.convertToScreen(inWindow)
+        // screencapture's -R is in points from the TOP-left of the main display.
+        let top = screen.frame.maxY - onScreen.maxY
+        let region = "\(Int(onScreen.minX)),\(Int(top)),\(Int(onScreen.width)),\(Int(onScreen.height))"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-R", region, url.path]
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            Log.error(.selfqa, "could not capture \(url.lastPathComponent): \(error)")
+        }
+    }
+
+    /// Mean of R, G and B over the picture: 0 black, 255 white.
+    private static func meanLevel(_ image: ImageBuffer) -> Double {
+        var total = 0
+        for index in stride(from: 0, to: image.pixels.count, by: 4) {
+            for channel in 0..<3 { total += Int(image.pixels[index + channel]) }
+        }
+        return Double(total) / Double(max(image.width * image.height * 3, 1))
     }
 
     private static func meanDifference(_ a: ImageBuffer, _ b: ImageBuffer) -> Double {

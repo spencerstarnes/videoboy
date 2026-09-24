@@ -86,6 +86,9 @@ enum Theme {
         /// makes the whole row twitch while a fader is being dragged, which is
         /// exactly when it needs to be readable.
         static let valueReadoutWidth: CGFloat = 32
+        /// Narrowest a trigger key on an effect card may be (the datamosh HEAL), so
+        /// it is a target a hand can find, not a word-sized sliver.
+        static let triggerKeyMinWidth: CGFloat = 64
     }
 
     // MARK: - Pulse

@@ -24,7 +24,7 @@
 //    0xA  — universal per-node parameters (opacity, enable, wet/dry)
 //    1xA  — geometry (scale, x, y, rotate)
 //    2xA  — time-domain effects (echo decay, trails)
-//    3xB  — the bitstream wedge (corruptor amount, mode, rate, seed)
+//    3xB  — the bitstream wedge (corruptor amount, mode, rate, seed; datamosh 35B–3EB)
 //    4xC  — feedback
 //    5xA  — colour controls
 //    6xA  — mixer and transport
@@ -138,14 +138,28 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     /// The corruptor's random seed, so a performance is repeatable.
     public static let corruptSeed = ParamCode(known: "34B")
     /// Datamosh: 0 clean; above 0, keyframes and cut frames never reach the decoder,
-    /// so new motion smears the old picture. Towards 1, P-frames drop too.
+    /// so new motion smears the old picture. Towards 1, smaller changes count as cuts.
     public static let moshAmount = ParamCode(known: "35B")
-    /// Datamosh bloom: 0 off; above 0, the last 1–8 P-frames replay in a loop.
+    /// Datamosh bloom: 0 off; above 0, that share of frames are replays of the loop
+    /// (1 = every frame), so the stream slows as it comes down.
     public static let moshBloom = ParamCode(known: "36B")
-    /// Datamosh heal: crossing halfway lets one clean keyframe through.
+    /// Datamosh heal: a press (crossing halfway) eases the clean picture back in over
+    /// the heal time, then lets one clean keyframe through.
     public static let moshHeal = ParamCode(known: "37B")
     /// Datamosh blocks: the encoder's bitrate. Low is starved and blocky.
     public static let moshBlocks = ParamCode(known: "38B")
+    /// Datamosh melt: ordinary P-frames dropped at random, so continuous footage melts.
+    public static let moshMelt = ParamCode(known: "39B")
+    /// Datamosh loop: how many P-frames bloom replays, 1 to 16.
+    public static let moshLoop = ParamCode(known: "3AB")
+    /// Datamosh heal on the beat: off, or every 1/16 note up to every 4 bars.
+    public static let moshHealEvery = ParamCode(known: "3BB")
+    /// Datamosh heal time: 0 instant, up to two seconds of easing back to clean.
+    public static let moshHealTime = ParamCode(known: "3CB")
+    /// Datamosh heal shape: fade, blocks, wipe, luma.
+    public static let moshHealShape = ParamCode(known: "3DB")
+    /// Datamosh blend: how the mosh combines with the clean picture under it.
+    public static let moshBlend = ParamCode(known: "3EB")
 
     // MARK: Feedback (4xC)
 
@@ -443,6 +457,12 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "36B": "bloom",
         "37B": "heal",
         "38B": "blocks",
+        "39B": "melt",
+        "3AB": "loop",
+        "3BB": "heal every",
+        "3CB": "heal time",
+        "3DB": "heal shape",
+        "3EB": "mosh blend",
         "43C": "feedback gain",
         "44C": "feedback delay",
         "51A": "contrast",
@@ -564,6 +584,12 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .moshBloom,
         .moshHeal,
         .moshBlocks,
+        .moshMelt,
+        .moshLoop,
+        .moshHealEvery,
+        .moshHealTime,
+        .moshHealShape,
+        .moshBlend,
         .feedbackGain,
         .feedbackDelayFrames,
         .feedbackZoom,

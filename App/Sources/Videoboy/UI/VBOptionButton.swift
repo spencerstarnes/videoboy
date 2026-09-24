@@ -41,6 +41,11 @@ final class VBOptionButton: NSControl {
         }
     }
 
+    /// A key that is on only while held: the action fires on the press (on) and
+    /// again on the release (off), like a pad. For triggers — the datamosh HEAL —
+    /// where firing on the way DOWN is what keeps a hit on the beat.
+    var isMomentary = false
+
     /// The colour of the lit state. Defaults to the accent; the output enable uses
     /// tally red, because that one means "on air" rather than "option selected".
     var onColour: NSColor = Theme.Color.accent
@@ -198,7 +203,7 @@ final class VBOptionButton: NSControl {
     override func mouseDown(with event: NSEvent) {
         // Command-option arms automation, the same gesture that marks a sweep on a
         // fader. A button has no range to mark, so one press is the whole gesture.
-        if event.modifierFlags.contains(.option), event.modifierFlags.contains(.command) {
+        if !isMomentary, event.modifierFlags.contains(.option), event.modifierFlags.contains(.command) {
             flipRate = isAutomated ? nil : .stepped(subdivision: .whole, frames: 1)
             return
         }
@@ -208,6 +213,10 @@ final class VBOptionButton: NSControl {
             return
         }
         guard isEnabled else { return }
+        if isMomentary {
+            trackMomentaryPress()
+            return
+        }
         isPressed = true
         needsDisplay = true
 
@@ -226,6 +235,21 @@ final class VBOptionButton: NSControl {
             isOn.toggle()
             sendAction(action, to: target)
         }
+        needsDisplay = true
+    }
+
+    /// Momentary: on (and the action) at the press, off (and the action) at the
+    /// release, wherever the pointer is by then — a pad cannot be dragged off.
+    private func trackMomentaryPress() {
+        isPressed = true
+        isOn = true
+        sendAction(action, to: target)
+        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if next.type == .leftMouseUp { break }
+        }
+        isPressed = false
+        isOn = false
+        sendAction(action, to: target)
         needsDisplay = true
     }
 
