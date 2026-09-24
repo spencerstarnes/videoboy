@@ -47,7 +47,9 @@ public enum ISFLibraryError: Error, Equatable, CustomStringConvertible, Sendable
     case parse(ISFParseError)
     /// A same-named file earlier in the precedence order wins.
     case shadowed(by: String)
-    /// A `.vs` vertex shader sits beside the file; not supported yet.
+    /// A `.vs` vertex shader that does more than the default sits beside the file;
+    /// not supported yet. (One that only calls `isf_vertShaderInit()` is ignored — see
+    /// `ISFLibrary.isPassThroughVertexShader`.)
     case needsVertexShader
 
     public var description: String {
@@ -130,8 +132,11 @@ public enum ISFLibrary {
         }
         let vertexShader = url.deletingPathExtension().appendingPathExtension("vs")
         if FileManager.default.fileExists(atPath: vertexShader.path) {
-            return ISFLibraryEntry(url: url, folder: folder, name: name, source: source,
-                                   result: .failure(.needsVertexShader))
+            let vertexSource = (try? String(contentsOf: vertexShader, encoding: .utf8)) ?? ""
+            if !isPassThroughVertexShader(vertexSource) {
+                return ISFLibraryEntry(url: url, folder: folder, name: name, source: source,
+                                       result: .failure(.needsVertexShader))
+            }
         }
         do {
             let document = try ISFDocument(source: source, name: name)
@@ -143,6 +148,31 @@ public enum ISFLibrary {
             return ISFLibraryEntry(url: url, folder: folder, name: name, source: source,
                                    result: .failure(.unreadable(error.localizedDescription)))
         }
+    }
+
+    /// Whether a `.vs` file only does what the default vertex stage already does.
+    ///
+    /// Many packs ship every shader with a `.vs` whose whole body is
+    /// `isf_vertShaderInit();` — the ISF default, which Videoboy's full-screen triangle
+    /// already is. Rejecting those as "custom vertex shader" turned whole packs into
+    /// "failed to load" for nothing. Comments and whitespace are ignored; anything
+    /// else in the body is a real vertex shader and still unsupported.
+    public static func isPassThroughVertexShader(_ source: String) -> Bool {
+        var text = source
+        // Block comments, then line comments.
+        while let open = text.range(of: "/*") {
+            guard let close = text.range(of: "*/", range: open.upperBound..<text.endIndex) else {
+                text.removeSubrange(open.lowerBound..<text.endIndex)
+                break
+            }
+            text.removeSubrange(open.lowerBound..<close.upperBound)
+        }
+        text = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line in line.range(of: "//").map { String(line[..<$0.lowerBound]) } ?? String(line) }
+            .joined()
+        let compact = text.filter { !$0.isWhitespace }
+        return compact == "voidmain(){isf_vertShaderInit();}"
+            || compact == "voidmain(void){isf_vertShaderInit();}"
     }
 
     /// Every `.fs` file below `folder`, in a stable order.
