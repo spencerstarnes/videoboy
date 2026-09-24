@@ -18,7 +18,7 @@ import Foundation
 /// Namespace for library-wide identity.
 public enum Videoboy {
     /// Semantic version of the Core library. Bumped per phase.
-    public static let version = "0.3.0"
+    public static let version = "0.4.0"
 
     /// Human-readable build banner, logged once at startup.
     public static var banner: String {

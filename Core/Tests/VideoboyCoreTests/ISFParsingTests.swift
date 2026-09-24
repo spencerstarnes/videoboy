@@ -114,6 +114,18 @@ final class ISFDocumentTests: XCTestCase {
         XCTAssertEqual(document.inputs[0].componentCount, 0)
     }
 
+    func testLineCommentsBeforeTheHeaderAreAllowed() throws {
+        let withComments = """
+        //#SaturdayShader
+        //2015-01 Example
+        //Based on something
+
+        /*{ "INPUTS": [] }*/ void main() {}
+        """
+        let document = try ISFDocument(source: withComments, name: "c")
+        XCTAssertEqual(document.kind, .generator)
+    }
+
     func testBrokenFilesSayWhatIsWrong() {
         XCTAssertThrowsError(try ISFDocument(source: "void main() {}", name: "x")) {
             XCTAssertEqual($0 as? ISFParseError, .missingHeader)

@@ -170,10 +170,10 @@ public struct ISFDocument: Equatable, Sendable {
         let source = ISFDocument.normalisingLineEndings(rawSource)
 
         // The header is the FIRST block comment and must open with `{`. Leading
-        // whitespace is tolerated; anything else before it is not ISF.
+        // whitespace and line comments are tolerated; anything else before it is not ISF.
         guard let open = source.range(of: "/*") else { throw ISFParseError.missingHeader }
         let beforeHeader = source[source.startIndex..<open.lowerBound]
-        guard beforeHeader.allSatisfy(\.isWhitespace) else { throw ISFParseError.missingHeader }
+        guard ISFDocument.isValidPreamble(beforeHeader) else { throw ISFParseError.missingHeader }
         guard let close = source.range(of: "*/", range: open.upperBound..<source.endIndex) else {
             throw ISFParseError.unterminatedHeader
         }
@@ -269,6 +269,34 @@ public struct ISFDocument: Equatable, Sendable {
         guard text.unicodeScalars.contains("\r") else { return text }
         return text.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
+    }
+
+    /// Check if the preamble before the ISF header contains only whitespace and line comments.
+    /// Many ISF files in the wild have metadata comments (like `//#SaturdayShader`) before the header.
+    private static func isValidPreamble(_ text: Substring) -> Bool {
+        var index = text.startIndex
+        while index < text.endIndex {
+            let char = text[index]
+            if char.isWhitespace {
+                index = text.index(after: index)
+                continue
+            }
+            // Check for line comment
+            if index < text.index(text.endIndex, offsetBy: -1) {
+                let next = text.index(after: index)
+                if text[index] == "/" && text[next] == "/" {
+                    // Skip to end of line
+                    while index < text.endIndex && text[index] != "\n" {
+                        index = text.index(after: index)
+                    }
+                    if index < text.endIndex { index = text.index(after: index) } // skip the newline
+                    continue
+                }
+            }
+            // Found something that's not whitespace or line comment
+            return false
+        }
+        return true
     }
 
     private static func parseInput(_ raw: [String: Any]) throws -> ISFInput {
