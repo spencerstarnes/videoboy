@@ -2685,6 +2685,134 @@ enum UISelfQA {
                 detail: "burn lit=\(burn.isOn) enabled=\(burn.isEnabled)"))
         }
 
+        // SOURCE CONTROLS. A generator's own parameters, pinned to the top of its FX
+        // panel: loaded the way a drag from the Generators tab loads it, then driven
+        // through the pinned card's fader, and checked to stay put while the chain
+        // below it scrolls. A temporary ISF folder, so the operator's library is
+        // never touched.
+        sectionSourceControls: do {
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("videoboy-source-qa-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let user = root.appendingPathComponent("user")
+            let generatorSource = """
+                /*{ "CATEGORIES": ["Generator"], "INPUTS": [
+                  { "NAME": "speed", "TYPE": "float", "DEFAULT": 1.0, "MIN": 0.0, "MAX": 4.0 },
+                  { "NAME": "rings", "TYPE": "float", "DEFAULT": 8.0, "MIN": 1.0, "MAX": 32.0 } ] }*/
+                void main() {
+                    float d = length(isf_FragNormCoord - 0.5);
+                    gl_FragColor = vec4(vec3(0.5 + 0.5 * sin(d * rings - TIME * speed)), 1.0);
+                }
+                """
+            do {
+                try FileManager.default.createDirectory(at: user, withIntermediateDirectories: true)
+                try generatorSource.write(
+                    to: user.appendingPathComponent("QA Rings.fs"), atomically: true, encoding: .utf8)
+            } catch {
+                check.note("could not write the temporary generator (\(error)); Source Controls skipped")
+                break sectionSourceControls
+            }
+            let catalog = ModuleCatalog(folders: [(ISFLibrary.builtinFolder, .builtin), (user, .user)])
+            let engine = Engine(catalog: catalog)
+            let shell = ShellView()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+            withExtendedLifetime(controller) {}
+
+            let panel = shell.grid.panels.effectsOneBody
+            func pinned() -> NSView? { panel.sourceCardViewForChecks }
+            func subtitle() -> String {
+                guard let card = pinned() else { return "no card" }
+                return Self.textFields(in: card)
+                    .first { $0.identifier?.rawValue.hasPrefix("subtitle|") == true }?.stringValue ?? "no subtitle"
+            }
+
+            guard let card = pinned() else {
+                check.record(AssertionResult(
+                    name: "the FX panel has a pinned Source Controls card", passed: false,
+                    detail: "none"))
+                break sectionSourceControls
+            }
+            let scroll = Self.firstScrollView(in: panel)
+            let insideScroll = scroll.map { card.isDescendant(of: $0) } ?? true
+            let cardTop = card.convert(card.bounds, to: panel).maxY
+            check.record(AssertionResult(
+                name: "Source Controls is glued to the top of the FX panel, outside the scrolling chain",
+                passed: !insideScroll && abs(panel.bounds.maxY - cardTop) <= 6,
+                detail: "in the scroll view: \(insideScroll); top \(Int(cardTop)) of \(Int(panel.bounds.maxY))"))
+            check.record(AssertionResult(
+                name: "it cannot be dragged, bypassed or removed",
+                passed: Self.firstDragHandle(in: card) == nil && Self.switches(in: card).isEmpty
+                    && !Self.buttons(in: card).contains { $0.title == "✕" },
+                detail: "grip \(Self.firstDragHandle(in: card) != nil), "
+                    + "switches \(Self.switches(in: card).count)"))
+
+            guard let generator = catalog.generators.first,
+                  let bodyA = shell.grid.panels.sourceBodies["A"],
+                  let bodyB = shell.grid.panels.sourceBodies["B"] else {
+                check.record(AssertionResult(
+                    name: "the temporary ISF generator is catalogued as a generator", passed: false,
+                    detail: "generators: \(catalog.generators.map(\.name)), effects: \(catalog.modules.count)"))
+                break sectionSourceControls
+            }
+            check.record(AssertionResult(
+                name: "an imported generator is sorted into Generators, not the Add menu",
+                passed: catalog.module(generator.id) == nil,
+                detail: "\(generator.name) is \(catalog.module(generator.id) == nil ? "a generator only" : "also an effect")"))
+
+            bodyA.onReferenceDropped?("isf:\(generator.id)")
+            shell.layoutSubtreeIfNeeded()
+            let isfFaders = pinned().map { Self.faders(in: $0) } ?? []
+            check.record(AssertionResult(
+                name: "loading an ISF generator into A shows its own controls on the pinned card",
+                passed: isfFaders.count == generator.controls.count && subtitle().contains("QA Rings"),
+                detail: "\(isfFaders.count) faders for \(generator.controls.count) controls; says '\(subtitle())'"))
+
+            let slot = Engine.isfGeneratorSlot(forChannel: "A")
+            if let fader = isfFaders.first, let code = fader.identifier?.rawValue,
+               let parameter = ParamCode(rawValue: code),
+               let declared = engine.graph.nodes[slot]?.parameters.first(where: { $0.code == parameter }) {
+                fader.value = 0.75
+                fader.sendAction(fader.action, to: fader.target)
+                let written = engine.registry.value(slot: slot, code: parameter) ?? -1
+                check.record(AssertionResult(
+                    name: "the pinned fader drives the generator, and Shift-click learns that slot",
+                    passed: abs(written - declared.denormalise(0.75)) < 1e-6 && fader.mappingSlot == slot,
+                    detail: "wrote \(written) (expected \(declared.denormalise(0.75))), "
+                        + "learns \(fader.mappingSlot ?? "nothing")"))
+            } else {
+                check.record(AssertionResult(
+                    name: "the pinned fader drives the generator", passed: false,
+                    detail: "no fader, or \(slot) is not in the graph"))
+            }
+
+            // A built-in pattern on B: the card follows the channel that just changed.
+            bodyB.onReferenceDropped?("generator:\(GeneratorKind.checkerboard.rawValue)")
+            shell.layoutSubtreeIfNeeded()
+            let patternFaders = pinned().map { Self.faders(in: $0) } ?? []
+            check.record(AssertionResult(
+                name: "a built-in pattern on B brings B's controls to the pinned card",
+                passed: patternFaders.count == 4 && subtitle().hasPrefix("B ·"),
+                detail: "\(patternFaders.count) faders; says '\(subtitle())'"))
+
+            // Glued: scrolling the chain leaves it exactly where it was.
+            if let scroll, let current = pinned() {
+                let before = current.convert(current.bounds, to: nil)
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: 10_000))
+                scroll.reflectScrolledClipView(scroll.contentView)
+                shell.layoutSubtreeIfNeeded()
+                let after = current.convert(current.bounds, to: nil)
+                check.record(AssertionResult(
+                    name: "scrolling the chain does not move Source Controls",
+                    passed: before == after,
+                    detail: before == after ? "unmoved at \(before)" : "\(before) → \(after)"))
+            }
+            if let image = render(view: panel) {
+                _ = try? check.writeImage(image, named: "source-controls.png")
+            }
+        }
+
         return check.finish()
     }
 
@@ -2776,6 +2904,14 @@ enum UISelfQA {
     /// it — the slot a chain fader writes to is resolved through its card's channel
     /// selector, so it is not something a test should be spelling out.
     /// The first drag handle beneath a view, for driving a reorder.
+    private static func firstScrollView(in view: NSView) -> NSScrollView? {
+        if let scroll = view as? NSScrollView { return scroll }
+        for subview in view.subviews {
+            if let found = firstScrollView(in: subview) { return found }
+        }
+        return nil
+    }
+
     private static func firstDragHandle(in view: NSView) -> DragHandleView? {
         if let handle = view as? DragHandleView { return handle }
         for subview in view.subviews {

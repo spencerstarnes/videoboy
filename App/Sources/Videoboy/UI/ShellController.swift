@@ -1481,6 +1481,9 @@ final class ShellController {
     /// The slot a card's controls currently edit — the copy its selector points at.
     private func slot(forEffect name: String, bus: Bus) -> String? {
         if name == PanelSet.corruptorCardName { return corruptorSlot(bus: bus) }
+        if name == EffectChainPanelBody.sourceCardName {
+            return engine.sourceSlot(forChannel: sourceChannel(bus: bus))
+        }
         guard let entry = entry(forCard: name, bus: bus) else { return nil }
         return EffectChain.targetedSlot(of: entry, bus: chainBus(bus))
     }
@@ -1489,6 +1492,9 @@ final class ShellController {
     private func allSlots(forEffect name: String, bus: Bus) -> [String] {
         if name == PanelSet.corruptorCardName {
             return chainBus(bus).channels.map(Engine.slot(forChannel:))
+        }
+        if name == EffectChainPanelBody.sourceCardName {
+            return [engine.sourceSlot(forChannel: sourceChannel(bus: bus))]
         }
         guard let entry = entry(forCard: name, bus: bus) else { return [] }
         return EffectChain.slots(instanceID: entry.instanceID, bus: chainBus(bus))
@@ -1538,25 +1544,8 @@ final class ShellController {
             let node = engine.chainNode(slot)
             let declared = node?.parameters ?? []
             let available = module?.isAvailable ?? false
-            let parameters: [EffectParameterModel] = (module?.controls ?? []).compactMap { control in
-                guard let parameter = declared.first(where: { $0.code == control.code }) else { return nil }
-                let value = engine.registry.value(slot: slot, code: control.code) ?? parameter.defaultValue
-                // A trigger armed on the beat by another choice on the card: that
-                // choice's values, converted to fader positions like every other.
-                let beatArm = control.beatArm.flatMap { arm -> BeatArmModel? in
-                    guard let choice = declared.first(where: { $0.code == arm.code }) else { return nil }
-                    return BeatArmModel(
-                        code: arm.code.rawValue,
-                        armedValue: choice.normalise(arm.armedValue),
-                        isArmed: { arm.isArmed(choice.denormalise($0)) })
-                }
-                return EffectParameterModel(
-                    name: control.label, code: control.code.rawValue,
-                    value: parameter.normalise(value), enabled: available,
-                    valueText: { control.valueText(parameter.denormalise($0)) },
-                    isTrigger: control.kind == .trigger,
-                    beatArm: beatArm)
-            }
+            let parameters = parameterModels(
+                controls: module?.controls ?? [], declared: declared, slot: slot, available: available)
             cards.append(EffectCardModel(
                 name: name, id: entry.instanceID,
                 badge: module?.origin.badge ?? "missing",
@@ -1575,6 +1564,107 @@ final class ShellController {
         }
         cardInstances[bus] = instances
         return cards
+    }
+
+    // MARK: - Source Controls
+
+    /// Which channel each bus's Source Controls card shows: 0 is A or C, 1 is B or D.
+    private var sourceChannelIndex: [Bus: Int] = [:]
+
+    private func sourceChannel(bus: Bus) -> String {
+        let letters = chainBus(bus).channels
+        return letters[min(max(sourceChannelIndex[bus] ?? 0, 0), letters.count - 1)]
+    }
+
+    /// Rebuilds only the pinned card, leaving the chain and its scroll alone.
+    private func refreshSourceCard(_ bus: Bus) {
+        let panel = panel(bus)
+        panel.sourceCard = makeSourceCard(bus)
+        panel.refreshMappingAddresses()
+    }
+
+    /// The pinned card for the channel its selector points at: that source's own
+    /// parameters, whatever kind of source it is.
+    ///
+    /// An ISF generator shows the controls its file declares, labelled and scaled
+    /// exactly as an ISF effect card's are. A built-in pattern shows its node's four.
+    /// A clip's speed and scrub already live on its source panel, and a camera or the
+    /// emulator has none here — those say so rather than showing an empty box.
+    private func makeSourceCard(_ bus: Bus) -> EffectCardModel {
+        let letter = sourceChannel(bus: bus)
+        let slot = engine.sourceSlot(forChannel: letter)
+        let declared = engine.graph.nodes[slot]?.parameters ?? []
+        var parameters: [EffectParameterModel] = []
+        var subtitle: String
+        var badge: String?
+
+        switch engine.channelSourceKinds[letter] ?? .file {
+        case .isfGenerator(let moduleID):
+            let module = engine.catalog.generator(moduleID)
+            subtitle = "\(letter) · \(module?.name ?? moduleID)"
+            badge = "ISF"
+            parameters = parameterModels(
+                controls: module?.controls ?? [], declared: declared, slot: slot,
+                available: module?.isAvailable ?? false)
+        case .generator:
+            subtitle = "\(letter) · \(engine.generators[letter]?.generator.displayName ?? "Generator")"
+            badge = "generator"
+            parameters = declared.map { parameter in
+                EffectParameterModel(
+                    // Phase is 12A (x) in the table, but on a pattern it is the phase
+                    // the default LFO sweeps; call it what it does here.
+                    name: parameter.code == .positionX ? "phase" : parameter.code.displayName,
+                    code: parameter.code.rawValue,
+                    value: parameter.normalise(
+                        engine.registry.value(slot: slot, code: parameter.code) ?? parameter.defaultValue),
+                    enabled: true)
+            }
+        case .file:
+            let clip = engine.sources[letter]
+            subtitle = (clip?.frameCount ?? 0) > 0
+                ? "\(letter) · \(clip?.mediaURL?.lastPathComponent ?? "clip") — speed and scrub are on its source panel"
+                : "\(letter) · empty — load a generator to control it here"
+        case .capture(let id):
+            let name = preferences.preferences.configuredSources.first(where: { $0.id == id })?.name
+            subtitle = "\(letter) · \(name ?? "live source") — no controls"
+        case .emulator:
+            subtitle = "\(letter) · emulator — its controls are on the EMU tab"
+        }
+
+        return EffectCardModel(
+            name: EffectChainPanelBody.sourceCardName, id: EffectChainPanelBody.sourceCardName,
+            badge: badge, isEnabled: true, isImplemented: true,
+            parameters: parameters,
+            channelOptions: chainBus(bus).channels,
+            initialChannelIndex: sourceChannelIndex[bus] ?? 0,
+            subtitle: subtitle)
+    }
+
+    /// Fader models for a module's controls, read from the node's declared
+    /// parameters and the registry. Shared by effect cards and Source Controls, so an
+    /// ISF generator's controls look and scale exactly as an ISF effect's do.
+    private func parameterModels(
+        controls: [ModuleControl], declared: [Parameter], slot: String, available: Bool
+    ) -> [EffectParameterModel] {
+        controls.compactMap { control in
+            guard let parameter = declared.first(where: { $0.code == control.code }) else { return nil }
+            let value = engine.registry.value(slot: slot, code: control.code) ?? parameter.defaultValue
+            // A trigger armed on the beat by another choice on the card: that
+            // choice's values, converted to fader positions like every other.
+            let beatArm = control.beatArm.flatMap { arm -> BeatArmModel? in
+                guard let choice = declared.first(where: { $0.code == arm.code }) else { return nil }
+                return BeatArmModel(
+                    code: arm.code.rawValue,
+                    armedValue: choice.normalise(arm.armedValue),
+                    isArmed: { arm.isArmed(choice.denormalise($0)) })
+            }
+            return EffectParameterModel(
+                name: control.label, code: control.code.rawValue,
+                value: parameter.normalise(value), enabled: available,
+                valueText: { control.valueText(parameter.denormalise($0)) },
+                isTrigger: control.kind == .trigger,
+                beatArm: beatArm)
+        }
     }
 
     /// The Add menu: Built-in, then each ISF category, then what failed to load.
@@ -1610,6 +1700,7 @@ final class ShellController {
     private func refreshCards(_ bus: Bus) {
         let panel = panel(bus)
         panel.setEffects(makeCards(bus))
+        panel.sourceCard = makeSourceCard(bus)
         panel.addMenuGroups = addMenuGroups(bus)
         panel.refreshMappingAddresses()
         refreshArmedSweeps()
@@ -1698,6 +1789,17 @@ final class ShellController {
             panel.onReordered = { [weak self] names in self?.chainReordered(names, bus: bus) }
             refreshCards(bus)
         }
+        // A channel pointed at a different source shows that source's controls.
+        engine.onChannelSourceChanged = { [weak self] letter in
+            guard let self else { return }
+            let bus: Bus = ChainBus.one.channels.contains(letter) ? .one : .two
+            // Follow the channel that just changed: loading a generator into B is
+            // the moment someone wants B's controls in front of them.
+            if let index = self.chainBus(bus).channels.firstIndex(of: letter) {
+                self.sourceChannelIndex[bus] = index
+            }
+            self.refreshSourceCard(bus)
+        }
         // Files added, edited or fixed in the ISF folders show up without a relaunch.
         engine.onModulesChanged = { [weak self] in self?.refreshEffectPanels() }
         engine.startWatchingModules()
@@ -1757,6 +1859,11 @@ final class ShellController {
     /// Shift-detect address on every fader in the card, the enable switch (each
     /// copy's own bypass, not a single shared one), and the fader/readout values.
     private func cardChannelChanged(_ name: String, _ index: Int, bus: Bus) {
+        if name == EffectChainPanelBody.sourceCardName {
+            sourceChannelIndex[bus] = index
+            refreshSourceCard(bus)
+            return
+        }
         if name == PanelSet.corruptorCardName {
             corruptorChannelIndex[bus] = index
         } else if let entry = entry(forCard: name, bus: bus) {

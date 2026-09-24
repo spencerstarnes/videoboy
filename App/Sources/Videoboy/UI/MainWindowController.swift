@@ -87,7 +87,7 @@ final class MainWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Videoboy"
+        window.title = "Videoboy \(Videoboy.version)"
         window.subtitle = "untitled.vbt"
         // SPEC 14.4: below this the layout drops to its narrow state rather than
         // clipping, so the window must not be allowed to shrink past it.

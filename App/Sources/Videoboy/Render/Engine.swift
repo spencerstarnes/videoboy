@@ -1165,7 +1165,12 @@ final class Engine {
         case .isfGenerator(let id): description = "ISF generator \(id)"
         }
         Log.info(.graph, "channel \(letter) now sourced from \(description)")
+        onChannelSourceChanged?(letter)
     }
+
+    /// Called after a channel is pointed at a different source, with its letter — so
+    /// the Source Controls card can show the new source's parameters.
+    var onChannelSourceChanged: ((String) -> Void)?
 
     /// Switches the clock source, starting or stopping audio analysis as needed.
     ///

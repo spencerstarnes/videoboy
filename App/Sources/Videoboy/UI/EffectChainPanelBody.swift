@@ -94,6 +94,9 @@ struct EffectCardModel {
     /// Where the selector starts: an index into `channelOptions`, or one past the
     /// end for BOTH. Must match what the controller routes to at launch.
     var initialChannelIndex = 0
+    /// A neutral line under the header — what the Source Controls card is showing
+    /// ("A · 01_Strobosphere"). `status` is for problems and is drawn in their colour.
+    var subtitle: String? = nil
 }
 
 /// Where a parameter's movement can come from, other than a hand on the fader.
@@ -147,6 +150,22 @@ final class EffectChainPanelBody: NSView {
 
     private let stack = NSStackView()
     private var cardViews: [NSView] = []
+
+    /// The title of the pinned card, which is also how its controls are addressed.
+    static let sourceCardName = "Source Controls"
+
+    /// SOURCE CONTROLS: the parameters of whatever a channel is playing — an ISF
+    /// generator's own inputs, a built-in pattern's scale and phase. Pinned ABOVE the
+    /// scrolling chain, outside it: it cannot be dragged, removed or bypassed, and it
+    /// never scrolls away, because it is not an effect in the chain but the thing the
+    /// chain is applied to. Nil draws nothing.
+    var sourceCard: EffectCardModel? {
+        didSet { rebuildSourceCard() }
+    }
+
+    /// Holds the pinned card, glued to the top of the panel.
+    private let sourceContainer = NSView()
+    private weak var sourceCardView: NSView?
 
     /// Effects folded down to their header, by name.
     ///
@@ -289,8 +308,20 @@ final class EffectChainPanelBody: NSView {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
 
+        // The pinned Source Controls card sits above the scroll view, not in it, so
+        // nothing a drag or a scroll does can move it. Empty, it takes no height.
+        sourceContainer.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(sourceContainer)
+        let emptyHeight = sourceContainer.heightAnchor.constraint(equalToConstant: 0)
+        emptyHeight.priority = .defaultLow
+        emptyHeight.isActive = true
+
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            sourceContainer.topAnchor.constraint(equalTo: topAnchor),
+            sourceContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            sourceContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            scrollView.topAnchor.constraint(equalTo: sourceContainer.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -353,7 +384,7 @@ final class EffectChainPanelBody: NSView {
         loadRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -8).isActive = true
 
         valueTexts = [:]
-        for effect in effects {
+        for effect in effects + [sourceCard].compactMap({ $0 }) {
             valueTexts[effect.name] = Dictionary(effect.parameters.map { ($0.code, $0) }, uniquingKeysWith: { first, _ in first })
         }
         for (index, effect) in effects.enumerated() {
@@ -367,7 +398,7 @@ final class EffectChainPanelBody: NSView {
     }
 
     /// Builds one effect card.
-    private func makeCard(_ effect: EffectCardModel, index: Int) -> NSView {
+    private func makeCard(_ effect: EffectCardModel, index: Int, isPinned: Bool = false) -> NSView {
         let card = NSView()
         card.wantsLayer = true
         card.layer?.backgroundColor = Theme.Color.panelFillNested.cgColor
@@ -460,7 +491,9 @@ final class EffectChainPanelBody: NSView {
             self?.toggleCollapsed(effect.name)
         }
 
-        var headerViews: [NSView] = [grip, nameLabel]
+        // A pinned card has no grip, switch or ✕: it cannot be reordered, bypassed or
+        // taken out, so offering the controls for it would be offering nothing.
+        var headerViews: [NSView] = isPinned ? [nameLabel] : [grip, nameLabel]
         headerViews.append(collapseStrip)
         if !effect.isImplemented {
             let note = Controls.label("not built", font: Theme.Font.tinyLabel,
@@ -468,8 +501,10 @@ final class EffectChainPanelBody: NSView {
             note.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             headerViews.append(note)
         }
-        headerViews.append(enableSwitch)
-        headerViews.append(removeButton)
+        if !isPinned {
+            headerViews.append(enableSwitch)
+            headerViews.append(removeButton)
+        }
         let header = Controls.row(headerViews, spacing: 4)
 
         // The badges get their own line. Spelled-out names do not fit beside a grip,
@@ -489,7 +524,9 @@ final class EffectChainPanelBody: NSView {
                 gap.widthAnchor.constraint(equalToConstant: 8).isActive = true
                 badges.append(gap)
             }
-            for source in ModulationSource.allCases {
+            // The effect-wide badges drive an effect's wet/dry, which a source does not
+            // have. Its faders are still learnable one by one with Shift-click.
+            for source in ModulationSource.allCases where !isPinned {
                 let button = Controls.mappingBadgeButton(
                     source.badge,
                     isActive: effect.activeModulation.contains(source.badge),
@@ -524,6 +561,15 @@ final class EffectChainPanelBody: NSView {
         // ---- Parameters: two lines each ----
         var rows: [NSView] = [header]
         if let modulationRow { rows.append(modulationRow) }
+        if let subtitleText = effect.subtitle {
+            let subtitle = Controls.label(subtitleText, font: Theme.Font.tinyLabel,
+                                          color: Theme.Color.textSecondary)
+            subtitle.identifier = NSUserInterfaceItemIdentifier("subtitle|\(effect.name)")
+            subtitle.lineBreakMode = .byTruncatingTail
+            subtitle.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            subtitle.toolTip = subtitleText
+            rows.append(subtitle)
+        }
         rows.append(status)
         // Adjacent triggers share ONE row of keys (MOSH beside HEAL): a pad row the
         // hand finds as a unit, and a key added next to an existing one moves
@@ -1021,13 +1067,50 @@ final class EffectChainPanelBody: NSView {
 
     // MARK: - Actions
 
+    /// A card's model and view by name — the pinned Source Controls card, or one in
+    /// the chain.
+    private func card(named name: String) -> (model: EffectCardModel, view: NSView)? {
+        if let sourceCard, sourceCard.name == name, let view = sourceCardView {
+            return (sourceCard, view)
+        }
+        guard let index = effects.firstIndex(where: { $0.name == name }),
+              cardViews.indices.contains(index + 1) else { return nil }
+        return (effects[index], cardViews[index + 1])
+    }
+
+    /// The pinned card's view, for checks that assert it stays put.
+    var sourceCardViewForChecks: NSView? { sourceCardView }
+
+    /// Rebuilds only the pinned card: a channel changing source must not reset the
+    /// chain's scroll position or a drag in progress.
+    private func rebuildSourceCard() {
+        sourceCardView?.removeFromSuperview()
+        sourceCardView = nil
+        guard let sourceCard else { return }
+        cardChannelSelection[sourceCard.name] = sourceCard.initialChannelIndex
+        valueTexts[sourceCard.name] = Dictionary(
+            sourceCard.parameters.map { ($0.code, $0) }, uniquingKeysWith: { first, _ in first })
+        let view = makeCard(sourceCard, index: -1, isPinned: true)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        sourceContainer.addSubview(view)
+        // Inset to line up with the chain's cards below (the stack's 4pt edges).
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: sourceContainer.topAnchor, constant: 4),
+            view.leadingAnchor.constraint(equalTo: sourceContainer.leadingAnchor, constant: 4),
+            view.trailingAnchor.constraint(equalTo: sourceContainer.trailingAnchor, constant: -4),
+            view.bottomAnchor.constraint(equalTo: sourceContainer.bottomAnchor)
+        ])
+        sourceCardView = view
+        onChainRebuilt?()
+    }
+
     @objc private func faderMoved(_ sender: VBFader) {
         guard let code = sender.identifier?.rawValue, let card = sender.ownerCard else { return }
         // Update the readout on the line above — on THIS card: another card can use
         // the same code.
-        if let index = effects.firstIndex(where: { $0.name == card }), cardViews.indices.contains(index + 1) {
+        if let view = self.card(named: card)?.view {
             let identifier = NSUserInterfaceItemIdentifier("value|\(code)")
-            for case let field as NSTextField in allSubviews(of: cardViews[index + 1])
+            for case let field as NSTextField in allSubviews(of: view)
             where field.identifier == identifier {
                 field.stringValue = valueTexts[card]?[code]?.text(for: sender.value) ?? String(format: "%.2f", sender.value)
             }
@@ -1072,7 +1155,7 @@ final class EffectChainPanelBody: NSView {
             collapsedEffects.insert(name)
         }
         Log.info(.app, "\(name) \(collapsedEffects.contains(name) ? "collapsed" : "expanded")")
-        rebuild()
+        if name == Self.sourceCardName { rebuildSourceCard() } else { rebuild() }
     }
 
     /// Whether an effect is folded. For the self-QA harness, which cannot click.
@@ -1086,7 +1169,9 @@ final class EffectChainPanelBody: NSView {
     /// anyone asks for after collapsing three cards by hand, and having it here means
     /// the answer is a menu item rather than a rewrite.
     func setAllCollapsed(_ collapsed: Bool) {
-        collapsedEffects = collapsed ? Set(effects.map(\.name)) : []
+        // Chain cards only; the pinned card keeps its own fold.
+        collapsedEffects = (collapsed ? Set(effects.map(\.name)) : [])
+            .union(collapsedEffects.intersection([Self.sourceCardName]))
         rebuild()
     }
 
@@ -1145,7 +1230,7 @@ final class EffectChainPanelBody: NSView {
 
     @objc private func cardChannelChanged(_ sender: NSSegmentedControl) {
         guard let name = sender.identifier?.rawValue,
-              let options = effects.first(where: { $0.name == name })?.channelOptions
+              let options = card(named: name)?.model.channelOptions
         else { return }
 
         // ONE GESTURE, THREE STATES, ALWAYS IN THE SAME ORDER.
@@ -1163,8 +1248,10 @@ final class EffectChainPanelBody: NSView {
         // to B, again to cover both. The cost is that going from BOTH back to a
         // specific channel can take two clicks instead of one. That is the right trade
         // for a control you operate without looking.
+        // Source Controls has no BOTH: two sources are two different sets of controls.
+        let states = name == Self.sourceCardName ? options.count : options.count + 1
         let previous = cardChannelSelection[name] ?? 0
-        let next = (previous + 1) % (options.count + 1)
+        let next = (previous + 1) % states
 
         cardChannelSelection[name] = next
         restyleFocus(sender, options: options, state: next)
@@ -1179,9 +1266,7 @@ final class EffectChainPanelBody: NSView {
     /// position and drop the in-flight drag-reorder state, for a change that is only
     /// ever "this fader's number is now different."
     func setDisplayedParameterValues(effectName: String, values: [String: Double]) {
-        guard let index = effects.firstIndex(where: { $0.name == effectName }),
-              cardViews.indices.contains(index + 1) else { return }
-        let card = cardViews[index + 1]
+        guard let card = card(named: effectName)?.view else { return }
 
         for (code, value) in values {
             for case let fader as VBFader in allSubviews(of: card)
@@ -1249,7 +1334,7 @@ final class EffectChainPanelBody: NSView {
     func setEffects(_ newEffects: [EffectCardModel]) {
         effects = newEffects
         for effect in newEffects { cardChannelSelection[effect.name] = effect.initialChannelIndex }
-        let names = Set(newEffects.map(\.name))
+        let names = Set(newEffects.map(\.name) + [Self.sourceCardName])
         collapsedEffects = collapsedEffects.filter { names.contains($0) }
         rebuild()
     }
