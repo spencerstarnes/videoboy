@@ -68,7 +68,10 @@ public struct ISFControl: Equatable, Sendable {
                 let names = input.type == .color ? ["r", "g", "b", "a"] : ["x", "y"]
                 for (component, suffix) in names.enumerated() where component < input.componentCount {
                     let low = input.minimum?[safe: component] ?? 0
-                    let fallbackHigh = input.type == .color ? 1.0 : max(1, (input.defaultValue[safe: component] ?? 0) * 2)
+                    // A point with no range is a position in the frame (see
+                    // `ISFInput.isFramePosition`): the fader spans it, 0 to 1.
+                    let fallbackHigh = input.type == .color || input.isFramePosition
+                        ? 1.0 : max(1, (input.defaultValue[safe: component] ?? 0) * 2)
                     let high = input.maximum?[safe: component] ?? fallbackHigh
                     result.append(ISFControl(
                         code: .isolated(inputName: "\(input.name).\(suffix)"), inputName: input.name,

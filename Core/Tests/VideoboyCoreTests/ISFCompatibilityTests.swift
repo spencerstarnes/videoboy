@@ -176,6 +176,43 @@ final class ISFCompatibilityTests: XCTestCase {
         XCTAssertEqual(Double(pixel.g), 0.25 * 255, accuracy: 2)
     }
 
+    func testALastPassIntoAFloatBufferComesOutInTheGraphsFormat() throws {
+        // Comet Tails' shape: one persistent FLOAT pass with a TARGET. Its buffer used
+        // to be handed downstream as-is — a float texture where every reader expects
+        // 8-bit — which read back as solid magenta.
+        let source = """
+            /*{ "INPUTS": [ { "NAME": "inputImage", "TYPE": "image" } ],
+                "PASSES": [ { "TARGET": "feedback", "PERSISTENT": true, "FLOAT": true } ] }*/
+            void main() { gl_FragColor = IMG_THIS_PIXEL(inputImage) * 0.5; }
+            """
+        let program = try ISFProgram.compile(source: source, name: "float-out", device: metal.device)
+        let node = ISFNode(identifier: "test.floatout", context: metal)
+        node.install(program)
+        guard let input = metal.makeTexture(
+                from: ImageBuffer(width: 64, height: 48, r: 200, g: 100, b: 50), label: "in"),
+              let output = node.render(inputs: [input], context: ISFTestSupport.context()),
+              let picture = renderer.readback(output) else { throw XCTSkip("render failed") }
+        XCTAssertEqual(output.pixelFormat, MetalContext.pixelFormat)
+        XCTAssertEqual(Double(picture.pixel(x: 32, y: 24).r), 100, accuracy: 2)
+        XCTAssertEqual(Double(picture.pixel(x: 32, y: 24).g), 50, accuracy: 2)
+    }
+
+    func testAPointWithNoRangeReachesTheShaderInPixels() throws {
+        // Vertex Manipulator's convention: no MIN/MAX, DEFAULT written 0…1, the code
+        // divides by RENDERSIZE. A point WITH a range is used as given.
+        let pixel = try centre(of: effect("""
+            void main() {
+                gl_FragColor = vec4(corner / RENDERSIZE, ranged);
+            }
+            """, inputs: """
+            { "NAME": "corner", "TYPE": "point2D", "DEFAULT": [0.25, 0.75] },
+            { "NAME": "ranged", "TYPE": "point2D", "DEFAULT": [0.5, 1.0], "MIN": [0, 0], "MAX": [1, 1] }
+            """))
+        XCTAssertEqual(Double(pixel.r), 0.25 * 255, accuracy: 2)
+        XCTAssertEqual(Double(pixel.g), 0.75 * 255, accuracy: 2)
+        XCTAssertEqual(Double(pixel.b), 0.5 * 255, accuracy: 2, "a ranged point is not scaled")
+    }
+
     func testISFVersionOnePerImageUniforms() throws {
         let pixel = try centre(of: effect("""
             void main() {

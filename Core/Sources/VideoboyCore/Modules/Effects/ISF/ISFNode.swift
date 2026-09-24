@@ -490,7 +490,21 @@ public final class ISFNode: Node, ParameterApplying {
         metal.submit(commandBuffer, label: identifier)
         framesRendered += 1
 
-        guard let wet = result else { return inputs.first }
+        guard var wet = result else { return inputs.first }
+        // A last pass that renders into a named buffer makes that buffer the output —
+        // but it may be FLOAT or sized by an expression, and everything downstream
+        // (the next node, the scopes, recording, the output) expects frames in the
+        // graph's format at the frame's size. Copy it across only when it differs;
+        // an ordinary 8-bit full-size buffer goes out as it is, at no cost.
+        if wet.pixelFormat != MetalContext.pixelFormat || wet.width != width || wet.height != height {
+            if outputTarget == nil || outputTarget?.width != width || outputTarget?.height != height {
+                outputTarget = metal.makeRenderTarget(width: width, height: height, label: "\(identifier)-out")
+            }
+            if let outputTarget,
+               metal.blend(dry: wet, wet: wet, amount: 1, into: outputTarget, label: "\(identifier) buffer out") {
+                wet = outputTarget
+            }
+        }
         guard isEffect, wetDry < 0.999, let dry = inputs.first else { return wet }
         if blendTarget == nil || blendTarget?.width != dry.width || blendTarget?.height != dry.height {
             blendTarget = metal.makeRenderTarget(width: dry.width, height: dry.height, label: "\(identifier)-wetdry")
@@ -634,7 +648,10 @@ public final class ISFNode: Node, ParameterApplying {
             case .long:
                 store(Int32(current[0].rounded()), at: offset)
             case .point2D:
-                store(SIMD2<Float>(Float(current[0]), Float(current[1])), at: offset)
+                // A frame position (no range) goes to the shader in pixels of this pass.
+                let scale = valueInputs[index].isFramePosition
+                    ? SIMD2<Float>(Float(width), Float(height)) : SIMD2<Float>(1, 1)
+                store(SIMD2<Float>(Float(current[0]), Float(current[1])) * scale, at: offset)
             case .color:
                 store(SIMD4<Float>(Float(current[0]), Float(current[1]), Float(current[2]), Float(current[3])),
                       at: offset)

@@ -78,6 +78,12 @@ public struct ISFInput: Equatable, Sendable {
 
     /// Whether this input is a picture rather than a value.
     public var isImage: Bool { type == .image || type == .audio || type == .audioFFT || type == .cube }
+
+    /// A `point2D` with no MIN or MAX: a position in the frame, which VDMX hands the
+    /// shader in PIXELS while the file's DEFAULT is written 0…1. Vidvox's own Vertex
+    /// Manipulator divides such points by RENDERSIZE and defaults them to the frame's
+    /// corners; every point that declares a range is used as given.
+    public var isFramePosition: Bool { type == .point2D && minimum == nil && maximum == nil }
 }
 
 /// One render pass. A file with no `PASSES` has exactly one, rendering to output.

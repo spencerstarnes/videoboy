@@ -106,26 +106,34 @@ final class ISFFolderTrialTests: XCTestCase {
                     name: entry.name, device: metal.device)
                 let node = ISFNode(identifier: "trial.\(entry.name)", context: metal)
                 node.install(program)
-                let context = RenderContext(frameIndex: 30, presentationTime: 1.0, musicalPosition: nil)
-                // One warm-up render, then a timed one: the first pays for pipeline setup.
-                _ = node.render(inputs: [input, second], context: context)
-                metal.waitForIdle()
-                let start = CFAbsoluteTimeGetCurrent()
-                let output = node.render(inputs: [input, second], context: context)
-                metal.waitForIdle()
-                let milliseconds = (CFAbsoluteTimeGetCurrent() - start) * 1000
+                // Twelve frames at the content rate: trails and feedback need several to
+                // build up, and a frame 0 that is legitimately plain says nothing.
+                var output: MTLTexture?
+                var milliseconds = 0.0
+                for frame in 0..<12 {
+                    let context = RenderContext(
+                        frameIndex: frame, presentationTime: 1.0 + Double(frame) / 29.97,
+                        musicalPosition: nil)
+                    let start = CFAbsoluteTimeGetCurrent()
+                    output = node.render(inputs: [input, second], context: context)
+                    metal.waitForIdle()
+                    // The last frame is timed: the first pays for pipeline setup.
+                    milliseconds = (CFAbsoluteTimeGetCurrent() - start) * 1000
+                }
                 guard let output, let picture = renderer.readback(output) else {
                     check.record(AssertionResult(name: "\(entry.name) renders", passed: false, detail: "no output"))
                     continue
                 }
                 _ = try? check.writeImage(picture, named: "\(entry.name).png")
                 let drawn = FrameAssertions.signalPresent(picture, varianceThreshold: 1.0)
+                let middle = picture.pixel(x: picture.width / 2, y: picture.height / 2)
                 check.record(AssertionResult(
                     name: "\(entry.name) compiles and draws",
                     passed: drawn,
                     detail: String(format: "%@, %d controls, %.2f ms at 720x480%@",
                                    "\(document.kind)", ISFControl.controls(for: document).count,
-                                   milliseconds, drawn ? "" : " — frame is flat")))
+                                   milliseconds,
+                                   drawn ? "" : " — frame is flat, rgba \(middle.r) \(middle.g) \(middle.b) \(middle.a)")))
             } catch {
                 check.record(AssertionResult(
                     name: "\(entry.name) compiles", passed: false, detail: "\(error)"))
