@@ -154,6 +154,23 @@ final class VBOptionButton: NSControl {
         return SweepRate.beatsPerCycle(flipRate) != nil
     }
 
+    /// For a momentary key whose beat automation lives in a parameter of its own
+    /// rather than in `flipRate` — the datamosh HEAL, which "heal every" fires inside
+    /// the graph on the frame's own beat. Option-Command-click calls this instead of
+    /// pressing the key; the owner flips that parameter and sets `isArmedOnBeat`.
+    var onBeatArmToggled: (() -> Void)?
+
+    /// Lit with the automated outline because its parameter fires it on the beat.
+    var isArmedOnBeat = false {
+        didSet {
+            guard isArmedOnBeat != oldValue else { return }
+            needsDisplay = true
+        }
+    }
+
+    /// Whether Option-Command-click means something on this key.
+    var acceptsBeatArming: Bool { onFlipRateChanged != nil || onBeatArmToggled != nil }
+
     /// Lit while Shift is held and this key can be learned.
     var isDetectHighlighted = false {
         didSet {
@@ -203,9 +220,15 @@ final class VBOptionButton: NSControl {
     override func mouseDown(with event: NSEvent) {
         // Command-option arms automation, the same gesture that marks a sweep on a
         // fader. A button has no range to mark, so one press is the whole gesture.
-        if !isMomentary, event.modifierFlags.contains(.option), event.modifierFlags.contains(.command) {
-            flipRate = isAutomated ? nil : .stepped(subdivision: .whole, frames: 1)
-            return
+        if event.modifierFlags.contains(.option), event.modifierFlags.contains(.command) {
+            if !isMomentary {
+                flipRate = isAutomated ? nil : .stepped(subdivision: .whole, frames: 1)
+                return
+            }
+            if let onBeatArmToggled, isEnabled {
+                onBeatArmToggled()
+                return
+            }
         }
         if event.modifierFlags.contains(.shift),
            let slot = mappingSlot, let code = mappingCode {
@@ -288,7 +311,7 @@ final class VBOptionButton: NSControl {
 
         // An automated key carries the same purple an animating fader does, so
         // "this is moving on its own" looks the same wherever it appears.
-        if isAutomated {
+        if isAutomated || isArmedOnBeat {
             Theme.Color.sweepMark.setStroke()
             let outline = NSBezierPath(
                 roundedRect: bounds.insetBy(dx: 1, dy: 1),

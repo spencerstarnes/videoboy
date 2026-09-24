@@ -43,11 +43,24 @@ struct EffectParameterModel {
     /// A trigger (`ModuleControlKind.trigger`): drawn as a momentary key, not a fader.
     /// 1 while held, 0 on release — the same two values a MIDI note sends.
     var isTrigger = false
+    /// For a trigger that can be armed on the beat (`ModuleBeatArm`): which choice
+    /// on the same card fires it, in 0...1 fader positions.
+    var beatArm: BeatArmModel? = nil
 
     /// The readout for a fader position.
     func text(for value: Double) -> String {
         valueText?(value) ?? String(format: "%.2f", value)
     }
+}
+
+/// How Option-Command-click arms a trigger key on the beat, in fader positions.
+struct BeatArmModel {
+    /// The code of the choice on the same card that fires the trigger ("heal every").
+    let code: String
+    /// Where arming puts that choice's fader the first time.
+    let armedValue: Double
+    /// Whether a fader position means "firing on the beat".
+    let isArmed: (Double) -> Bool
 }
 
 /// One effect card in a chain.
@@ -512,9 +525,22 @@ final class EffectChainPanelBody: NSView {
         var rows: [NSView] = [header]
         if let modulationRow { rows.append(modulationRow) }
         rows.append(status)
+        // Adjacent triggers share ONE row of keys (MOSH beside HEAL): a pad row the
+        // hand finds as a unit, and a key added next to an existing one moves
+        // nothing below it on the card.
+        var pendingTriggers: [EffectParameterModel] = []
         for parameter in effect.parameters {
+            if parameter.isTrigger {
+                pendingTriggers.append(parameter)
+                continue
+            }
+            if !pendingTriggers.isEmpty {
+                rows.append(makeTriggerRow(pendingTriggers, card: effect.name))
+                pendingTriggers = []
+            }
             rows.append(contentsOf: makeParameterRows(parameter, card: effect.name))
         }
+        if !pendingTriggers.isEmpty { rows.append(makeTriggerRow(pendingTriggers, card: effect.name)) }
 
         // Collapsing hides everything below the header. The header stays because it
         // carries the switch and the ✕ — a folded effect must still be reachable
@@ -565,17 +591,31 @@ final class EffectChainPanelBody: NSView {
         return (parts[1], parts[2])
     }
 
-    /// One line for a trigger: its name and code, then a key to hit.
+    /// One line for a run of triggers: their names and codes, then a key for each,
+    /// right-aligned in catalog order.
     ///
-    /// A KEY, not a fader. A trigger does one thing when it is pressed; a fader for it
+    /// KEYS, not faders. A trigger does one thing when it is pressed; a fader for it
     /// read as a level ("heal 0.62?") and had to be dragged across halfway and back
-    /// to fire twice. The key is a pad: on while held, and it learns a MIDI note with
+    /// to fire twice. Each key is a pad: on while held, and it learns a MIDI note with
     /// Shift-click like CUT and FADE do.
-    private func makeTriggerRow(_ parameter: EffectParameterModel, card: String) -> [NSView] {
+    private func makeTriggerRow(_ triggers: [EffectParameterModel], card: String) -> NSView {
+        let enabled = triggers.contains(where: \.enabled)
+        // One key: its name and code, like every other row. Several: the keys carry
+        // the names, so the label is just their codes in key order — the part a
+        // mapping needs, and short enough not to truncate beside two keys.
+        let text = triggers.count == 1
+            ? "\(triggers[0].name)·\(triggers[0].code)"
+            : triggers.map(\.code).joined(separator: " ")
         let label = Controls.monoLabel(
-            "\(parameter.name)·\(parameter.code)",
-            color: parameter.enabled ? Theme.Color.textSecondary : Theme.Color.textTertiary
-        )
+            text, color: enabled ? Theme.Color.textSecondary : Theme.Color.textTertiary)
+        label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let keys = triggers.map { makeTriggerKey($0, card: card) }
+        return Controls.row([label, Controls.spacer()] + keys, spacing: 5)
+    }
+
+    /// One trigger's key.
+    private func makeTriggerKey(_ parameter: EffectParameterModel, card: String) -> VBOptionButton {
         let key = VBOptionButton(title: parameter.name.uppercased(), onColour: Theme.Color.accent)
         key.isMomentary = true
         key.isTall = true
@@ -583,18 +623,76 @@ final class EffectChainPanelBody: NSView {
         key.target = self
         key.action = #selector(triggerPressed(_:))
         key.identifier = NSUserInterfaceItemIdentifier(Self.triggerIdentifier(code: parameter.code, card: card))
-        key.toolTip = "\(parameter.name.capitalized) — hold Shift and click to learn a MIDI note"
+        key.toolTip = "\(parameter.name.capitalized) · \(parameter.code) — hold Shift and click to learn a MIDI note"
         if let code = ParamCode(rawValue: parameter.code) {
             key.mappingCode = code
             key.mappingSlot = mappingSlotForParameter?(card, code)
         }
+        if let arm = parameter.beatArm {
+            key.toolTip = (key.toolTip ?? "")
+                + ". Option-Command-click to fire it on the beat, at the rate "
+                + "\(valueTexts[card]?[arm.code]?.name ?? arm.code) sets; again to stop"
+            key.isArmedOnBeat = arm.isArmed(valueTexts[card]?[arm.code]?.value ?? 0)
+            key.onBeatArmToggled = { [weak self] in
+                self?.toggleBeatArm(trigger: parameter.code, card: card)
+            }
+        }
         key.widthAnchor.constraint(greaterThanOrEqualToConstant: Theme.Metrics.triggerKeyMinWidth).isActive = true
-        return [Controls.row([label, Controls.spacer(), key], spacing: 5)]
+        return key
+    }
+
+    /// The rate each armed trigger last had, by "card|trigger code", so disarming and
+    /// arming again comes back at the rate the performer chose rather than the default.
+    private var lastBeatArmValue: [String: Double] = [:]
+
+    /// Option-Command-click on a trigger key: flips the choice that fires it on the
+    /// beat between off and a rate.
+    ///
+    /// Goes through the choice's own FADER, exactly as a drag would — so its readout,
+    /// the registry, a saved template and a MIDI mapping on it all see the same value
+    /// — and the key's outline then follows the fader (`refreshBeatArmedKeys`).
+    private func toggleBeatArm(trigger: String, card: String) {
+        guard let arm = valueTexts[card]?[trigger]?.beatArm,
+              let index = effects.firstIndex(where: { $0.name == card }),
+              cardViews.indices.contains(index + 1) else { return }
+        guard let fader = allSubviews(of: cardViews[index + 1])
+            .compactMap({ $0 as? VBFader })
+            .first(where: { $0.identifier?.rawValue == arm.code }) else {
+            Log.warn(.app, "\(card): no \(arm.code) fader to arm \(trigger) on the beat")
+            return
+        }
+        let memory = "\(card)|\(trigger)"
+        if arm.isArmed(fader.value) {
+            lastBeatArmValue[memory] = fader.value
+            // The choice's first position is "off" (ModuleBeatArm).
+            fader.value = 0
+        } else {
+            fader.value = lastBeatArmValue[memory] ?? arm.armedValue
+        }
+        faderMoved(fader)
+        Log.info(.app, "\(card): \(trigger) \(arm.isArmed(fader.value) ? "armed" : "disarmed") on the beat")
+    }
+
+    /// Lights the automated outline on each trigger key whose beat choice is on.
+    /// Called whenever a card's values change for any reason — a drag, ⌥⌘-click,
+    /// a reset, a channel switch — so the outline can never disagree with the fader.
+    private func refreshBeatArmedKeys(card: String) {
+        guard let models = valueTexts[card],
+              let index = effects.firstIndex(where: { $0.name == card }),
+              cardViews.indices.contains(index + 1) else { return }
+        let views = allSubviews(of: cardViews[index + 1])
+        for case let key as VBOptionButton in views {
+            guard let (code, _) = Self.triggerAddress(key.identifier?.rawValue),
+                  let arm = models[code]?.beatArm,
+                  let fader = views.compactMap({ $0 as? VBFader })
+                    .first(where: { $0.identifier?.rawValue == arm.code }) else { continue }
+            key.isArmedOnBeat = arm.isArmed(fader.value)
+        }
     }
 
     /// The two lines for one parameter: badges/name/value, then a full-width fader.
     private func makeParameterRows(_ parameter: EffectParameterModel, card: String) -> [NSView] {
-        if parameter.isTrigger { return makeTriggerRow(parameter, card: card) }
+        if parameter.isTrigger { return [makeTriggerRow([parameter], card: card)] }
         // Line 1 — name with its param code, and the current value. No badge column:
         // it said the same three things on every row of every card, and Shift-click
         // maps a parameter without needing a control of its own.
@@ -935,6 +1033,7 @@ final class EffectChainPanelBody: NSView {
             }
         }
         onParameterChanged?(card, code, sender.value)
+        refreshBeatArmedKeys(card: card)
     }
 
     /// A trigger key went down (1) or came up (0).
@@ -1094,6 +1193,7 @@ final class EffectChainPanelBody: NSView {
                 label.stringValue = valueTexts[effectName]?[code]?.text(for: value) ?? String(format: "%.2f", value)
             }
         }
+        refreshBeatArmedKeys(card: effectName)
     }
 
     /// Sets a card's enable switch directly, for when what it should show changed

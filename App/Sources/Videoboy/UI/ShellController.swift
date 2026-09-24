@@ -1465,11 +1465,21 @@ final class ShellController {
             let parameters: [EffectParameterModel] = (module?.controls ?? []).compactMap { control in
                 guard let parameter = declared.first(where: { $0.code == control.code }) else { return nil }
                 let value = engine.registry.value(slot: slot, code: control.code) ?? parameter.defaultValue
+                // A trigger armed on the beat by another choice on the card: that
+                // choice's values, converted to fader positions like every other.
+                let beatArm = control.beatArm.flatMap { arm -> BeatArmModel? in
+                    guard let choice = declared.first(where: { $0.code == arm.code }) else { return nil }
+                    return BeatArmModel(
+                        code: arm.code.rawValue,
+                        armedValue: choice.normalise(arm.armedValue),
+                        isArmed: { arm.isArmed(choice.denormalise($0)) })
+                }
                 return EffectParameterModel(
                     name: control.label, code: control.code.rawValue,
                     value: parameter.normalise(value), enabled: available,
                     valueText: { control.valueText(parameter.denormalise($0)) },
-                    isTrigger: control.kind == .trigger)
+                    isTrigger: control.kind == .trigger,
+                    beatArm: beatArm)
             }
             cards.append(EffectCardModel(
                 name: name, id: entry.instanceID,

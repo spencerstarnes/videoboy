@@ -33,6 +33,29 @@ public enum ModuleControlKind: Equatable, Sendable {
     case trigger
 }
 
+/// How a trigger is armed to fire on the beat by itself: another control on the
+/// same card, a choice of how often, that the node already fires the trigger on.
+///
+/// Option-Command-click on the trigger's key flips that choice between off (its
+/// FIRST position, which must mean off) and a rate — the gesture that arms CUT and
+/// FADE to tap on the beat — so there is ONE
+/// beat state per trigger, and it is timed by the node on the frame's own musical
+/// position rather than by the UI's clock.
+public struct ModuleBeatArm {
+    /// The choice that fires the trigger on the beat ("heal every").
+    public let code: ParamCode
+    /// What arming sets it to when it has not been armed before, in its own units.
+    public let armedValue: Double
+    /// Whether a value of the choice (its own units) means "firing on the beat".
+    public let isArmed: (Double) -> Bool
+
+    public init(code: ParamCode, armedValue: Double, isArmed: @escaping (Double) -> Bool) {
+        self.code = code
+        self.armedValue = armedValue
+        self.isArmed = isArmed
+    }
+}
+
 /// One fader on a card.
 public struct ModuleControl {
     public let label: String
@@ -40,13 +63,17 @@ public struct ModuleControl {
     public let kind: ModuleControlKind
     /// What the readout says for a value in the parameter's own units.
     public let valueText: (Double) -> String
+    /// For a trigger that can be armed on the beat, how. Nil for everything else.
+    public let beatArm: ModuleBeatArm?
 
     public init(label: String, code: ParamCode, kind: ModuleControlKind = .continuous,
-                valueText: @escaping (Double) -> String = { String(format: "%.2f", $0) }) {
+                valueText: @escaping (Double) -> String = { String(format: "%.2f", $0) },
+                beatArm: ModuleBeatArm? = nil) {
         self.label = label
         self.code = code
         self.kind = kind
         self.valueText = valueText
+        self.beatArm = beatArm
     }
 }
 
@@ -244,8 +271,18 @@ public final class ModuleCatalog {
                     ModuleControl(label: "loop", code: .moshLoop,
                                   valueText: { "\(MoshControls.bloomLength(fromNormalised: $0))fr" }),
                     ModuleControl(label: "blocks", code: .moshBlocks),
+                    // Two keys, one row (adjacent triggers share one — see the FX
+                    // panel): MOSH, held for full mosh, then HEAL.
+                    ModuleControl(label: "mosh", code: .moshHold, kind: .trigger,
+                                  valueText: { $0 >= 0.5 ? "mosh" : "—" }),
+                    // Option-Command-click HEAL arms "heal every" at one beat (or the
+                    // rate it last had), and again turns it off.
                     ModuleControl(label: "heal", code: .moshHeal, kind: .trigger,
-                                  valueText: { $0 >= 0.5 ? "heal" : "—" }),
+                                  valueText: { $0 >= 0.5 ? "heal" : "—" },
+                                  beatArm: ModuleBeatArm(
+                                    code: .moshHealEvery,
+                                    armedValue: MoshHealEvery.beat.normalisedPosition,
+                                    isArmed: { MoshHealEvery.from(normalised: $0) != .off })),
                     ModuleControl(label: "heal every", code: .moshHealEvery, kind: .choice,
                                   valueText: { MoshHealEvery.from(normalised: $0).shortName }),
                     ModuleControl(label: "heal time", code: .moshHealTime,

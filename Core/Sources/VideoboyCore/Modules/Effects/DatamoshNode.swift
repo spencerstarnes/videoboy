@@ -57,7 +57,8 @@ public final class DatamoshNode: Node, ParameterApplying {
             Parameter(code: .moshHealTime, range: 0...1, defaultValue: Self.defaultHealTime),
             Parameter(code: .moshHealShape, range: 0...1, defaultValue: 0),
             Parameter(code: .opacity, range: 0...1, defaultValue: 1),
-            Parameter(code: .moshBlend, range: 0...1, defaultValue: 0)
+            Parameter(code: .moshBlend, range: 0...1, defaultValue: 0),
+            Parameter(code: .moshHold, range: 0...1, defaultValue: 0, isMomentary: true)
         ]
     }
 
@@ -126,6 +127,14 @@ public final class DatamoshNode: Node, ParameterApplying {
     public var blend = 0.0
     /// Encoder bitrate, 0 starved … 1 clean.
     public var blocks = 0.5
+    /// The MOSH key: at or above 0.5 while it is held (the card's key or a MIDI note).
+    public var hold = 0.0
+    /// A MOSH press latched by the registry since the last frame, so a tap shorter
+    /// than a frame still moshes for one.
+    public var holdPressed = false
+
+    /// Whether the MOSH key is holding the node at full mosh this frame.
+    public var isHeld: Bool { hold >= 0.5 || holdPressed }
 
     /// Whether an encoder is running. Read by the debug overlay and the self-QA.
     public private(set) var isRunning = false
@@ -199,7 +208,15 @@ public final class DatamoshNode: Node, ParameterApplying {
         let pressed = healPressed || (heal >= 0.5 && previousHeal < 0.5)
         healPressed = false
         previousHeal = heal
-        let engaged = mosh > 0.001 || melt > 0.001 || bloom > 0.001
+        // MOSH held is full mosh, whatever the faders say: every frame a replay of
+        // the captured loop, so the picture streams at once with no cut needed, and
+        // keyframes and cuts dropped. Let go, the faders are back in charge — at zero
+        // that is the same eased exit as pulling them down.
+        let held = isHeld
+        holdPressed = false
+        let moshNow = held ? 1 : mosh
+        let bloomNow = held ? 1 : bloom
+        let engaged = moshNow > 0.001 || melt > 0.001 || bloomNow > 0.001
         // The switch (wet/dry) is a bypass: off is off, at once. Letting the faders
         // go is not — a running mosh eases out below before it is released.
         guard wetDry > 0.001, let metal = context, engaged || isRunning else {
@@ -246,8 +263,8 @@ public final class DatamoshNode: Node, ParameterApplying {
         }
 
         let controls = MoshControls(
-            mosh: mosh, melt: melt, bloom: bloom,
-            bloomLength: bloom > 0.001 ? MoshControls.bloomLength(fromNormalised: loop) : 0)
+            mosh: moshNow, melt: melt, bloom: bloomNow,
+            bloomLength: bloomNow > 0.001 ? MoshControls.bloomLength(fromNormalised: loop) : 0)
         shared.withLock { $0.controls = controls }
 
         if submitForEncoding(input, encoder: encoder, forceKeyframe: keyframeWanted, metal: metal) {
@@ -507,6 +524,8 @@ public final class DatamoshNode: Node, ParameterApplying {
         if let value = registry.value(slot: identifier, code: .opacity) { opacity = value }
         if let value = registry.value(slot: identifier, code: .moshBlend) { blend = value }
         if let value = registry.value(slot: identifier, code: .moshBlocks) { blocks = value }
+        if let value = registry.value(slot: identifier, code: .moshHold) { hold = value }
+        if registry.consumePress(slot: identifier, code: .moshHold) { holdPressed = true }
     }
 }
 

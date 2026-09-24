@@ -94,6 +94,13 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
       keyframe; heal on the beat (1/16 … 4 bars); letting go eases out; opacity and
       blend mode over the clean input. Codes 39B–3EB + 01A. `selfqa mosh` 14/14,
       stress holds 29.97 with all six nodes healing on the beat.
+- [x] **Datamosh: MOSH key, HEAL on the beat by ⌥⌘** (owner request, 2026-09-24).
+      MOSH (3FB) is a hold: full mosh while held whatever the faders say (every frame
+      a bloom replay, keyframes and cuts dropped), so it moshes moving footage with
+      no cut; let go, back to the faders, easing to clean if they are at zero. It
+      shares HEAL's row, so nothing on the card moved. Option-Command-click HEAL arms
+      "heal every" (1 beat, or the rate last chosen) and again turns it off; the key
+      wears the automated outline while it is on. `selfqa mosh` 23/23.
 - [~] Clean Core Text character generator + period preset (SPEC §18.1). Core node done
       and pixel-tested (fill, outline, shadow, kerning/tracking/leading, alignment,
       position/anchor, scale, title-safe clamp, roll/crawl clock-synced, period

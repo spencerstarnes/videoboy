@@ -24,7 +24,7 @@
 //    0xA  — universal per-node parameters (opacity, enable, wet/dry)
 //    1xA  — geometry (scale, x, y, rotate)
 //    2xA  — time-domain effects (echo decay, trails)
-//    3xB  — the bitstream wedge (corruptor amount, mode, rate, seed; datamosh 35B–3EB)
+//    3xB  — the bitstream wedge (corruptor amount, mode, rate, seed; datamosh 35B–3FB)
 //    4xC  — feedback
 //    5xA  — colour controls
 //    6xA  — mixer and transport
@@ -160,6 +160,10 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     public static let moshHealShape = ParamCode(known: "3DB")
     /// Datamosh blend: how the mosh combines with the clean picture under it.
     public static let moshBlend = ParamCode(known: "3EB")
+    /// Datamosh MOSH key: a hold. While held the node moshes at full whatever the
+    /// faders say (every frame a bloom replay, keyframes and cuts dropped); let go,
+    /// it returns to the faders, easing back to clean if they are at zero.
+    public static let moshHold = ParamCode(known: "3FB")
 
     // MARK: Feedback (4xC)
 
@@ -463,6 +467,7 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "3CB": "heal time",
         "3DB": "heal shape",
         "3EB": "mosh blend",
+        "3FB": "mosh hold",
         "43C": "feedback gain",
         "44C": "feedback delay",
         "51A": "contrast",
@@ -590,6 +595,7 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .moshHealTime,
         .moshHealShape,
         .moshBlend,
+        .moshHold,
         .feedbackGain,
         .feedbackDelayFrames,
         .feedbackZoom,

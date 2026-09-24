@@ -249,10 +249,15 @@ enum StressSelfQA {
             let evenHold = Int(refreshesPerFrame.rounded())
             // A preview that showed nothing is not "evenly paced" — it is unmeasured,
             // and must say so rather than skip the assertion.
+            // Why a preview might show nothing: a window on another Space, or covered
+            // by a full-screen app, is not visible, and previews skip drawing then.
+            let visible = window.occlusionState.contains(.visible)
+            check.note("main window: visible \(visible), on the active Space \(window.isOnActiveSpace)")
             check.record(AssertionResult(
                 name: "the program preview presented frames while the wipes moved",
                 passed: shown.count > 10,
-                detail: "\(shown.count) frames shown"))
+                detail: "\(shown.count) frames shown; window visible \(visible), "
+                    + "on the active Space \(window.isOnActiveSpace)"))
             if abs(refreshesPerFrame - Double(evenHold)) < 0.05, shown.count > 10 {
                 let even = held[evenHold] ?? 0
                 let intervals = shown.count - 1

@@ -616,6 +616,75 @@ final class DatamoshNodeTests: XCTestCase {
         XCTAssertFalse(node.isRunning)
     }
 
+    func testATapOfTheMoshKeyBetweenTwoFramesStillMoshesForOne() {
+        let registry = ParamRegistry()
+        let node = DatamoshNode(identifier: "fx", context: nil)
+        registry.register(slot: "fx", parameters: node.parameters)
+        registry.setValue(1, slot: "fx", code: .moshHold)
+        registry.setValue(0, slot: "fx", code: .moshHold)   // released before any frame
+        node.applyParameters(from: registry)
+        XCTAssertTrue(node.isHeld, "the tap is latched, so it moshes for a frame")
+        node.applyParameters(from: registry)
+        XCTAssertTrue(node.isHeld, "not consumed until a frame renders")
+    }
+
+    func testHoldingMoshMoshesContinuousFootageWithNoCutThenEasesOutOnRelease() throws {
+        guard let metal = MetalContext.shared else { throw XCTSkip("no Metal") }
+        let motion = try clip("motion.mov", count: 60)
+        let node = DatamoshNode(identifier: "test.mosh.hold", context: metal)
+        let uploader = TextureUploader(context: metal, label: "test-hold")
+        let readback = try XCTUnwrap(OffscreenRenderer(context: metal))
+        // Every fader at zero: only the key is asking for anything.
+        func step(_ index: Int) throws -> MTLTexture? {
+            let input = try XCTUnwrap(uploader.upload(motion[index % motion.count]))
+            let rendered = node.render(inputs: [input], context: RenderContext(
+                frameIndex: index, presentationTime: Double(index) / 29.97, musicalPosition: nil))
+            metal.waitForIdle()
+            RunLoop.main.run(until: Date().addingTimeInterval(1.0 / 29.97))
+            return rendered
+        }
+        _ = try step(0)
+        XCTAssertFalse(node.isRunning, "idle before the key")
+
+        node.hold = 1
+        var picture: ImageBuffer?
+        for index in 1..<45 {
+            if let rendered = try step(index), index == 44 { picture = readback.readback(rendered) }
+        }
+        XCTAssertTrue(node.isRunning)
+        XCTAssertGreaterThan(node.statistics.bloomed, 20, "held, the loop replays: \(node.statistics)")
+        let moshed = try XCTUnwrap(picture)
+        let source = motion[43]
+        var total = 0
+        for index in stride(from: 0, to: min(moshed.pixels.count, source.pixels.count), by: 4) {
+            total += abs(Int(moshed.pixels[index]) - Int(source.pixels[index]))
+        }
+        let difference = Double(total) / Double(moshed.width * moshed.height)
+        XCTAssertGreaterThan(difference, 8, "a mosh with no cut in the footage (diff \(difference))")
+
+        // Let go with the faders at zero: the same eased exit as pulling them down.
+        node.hold = 0
+        var releaseFrames = 0
+        while node.isRunning && releaseFrames < 100 {
+            _ = try step(100 + releaseFrames)
+            releaseFrames += 1
+        }
+        XCTAssertEqual(releaseFrames, MoshHealEnvelope.frames(fromNormalised: DatamoshNode.defaultHealTime),
+                       "released after the heal time, not at once")
+    }
+
+    func testHealIsArmedOnTheBeatThroughHealEvery() throws {
+        let card = try XCTUnwrap(ModuleCatalog.nativeModules().first { $0.id == ModuleCatalog.ID.datamosh })
+        let heal = try XCTUnwrap(card.controls.first { $0.code == .moshHeal })
+        let arm = try XCTUnwrap(heal.beatArm, "HEAL can be armed on the beat")
+        XCTAssertEqual(arm.code, .moshHealEvery)
+        XCTAssertEqual(MoshHealEvery.from(normalised: arm.armedValue), .beat)
+        XCTAssertFalse(arm.isArmed(0), "heal every off is not armed")
+        XCTAssertTrue(arm.isArmed(MoshHealEvery.bar.normalisedPosition))
+        XCTAssertTrue(card.controls.contains { $0.code == .moshHold && $0.kind == .trigger },
+                      "the MOSH key is on the card")
+    }
+
     func testTheSwitchAndAnInstantHealTimeStillLetGoAtOnce() throws {
         guard let metal = MetalContext.shared else { throw XCTSkip("no Metal") }
         let node = DatamoshNode(identifier: "test.mosh.instant", context: metal)

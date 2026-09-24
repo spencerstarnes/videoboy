@@ -144,10 +144,10 @@ final class DetectSession {
         if let key = view as? VBOptionButton {
             let mappable = key.mappingSlot != nil && key.mappingCode != nil
             key.isDetectHighlighted = isArmed && mappable
-            // Only CUT/FADE/BEAT answer to ⌘⌥ — `onFlipRateChanged` is set solely by
-            // `wireButtonTapRate`, so a plain toggle like AUTO or Safe never pulses
-            // for a gesture it has no rate key to show.
-            key.isSweepArming = isSweepArming && key.onFlipRateChanged != nil
+            // Only keys that can be armed on the beat answer to ⌘⌥ — CUT/FADE/BEAT
+            // (`wireButtonTapRate`) and the datamosh HEAL (`onBeatArmToggled`) — so a
+            // plain toggle like AUTO or Safe never pulses for a gesture it ignores.
+            key.isSweepArming = isSweepArming && key.acceptsBeatArming
             if mappable && key.onDetectRequested == nil {
                 key.onDetectRequested = { [weak self] slot, code in
                     // A key learns a KEY. Notes only.

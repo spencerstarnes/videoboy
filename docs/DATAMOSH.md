@@ -12,7 +12,8 @@ live, on anything: a clip, a camera, a whole bus.
 | **bloom** | 36B | 0 = off. The share of frames that are replays of the loop: 1 = every frame (full stream, live frames held back), 0.5 = every other frame, with live motion in between. **Pulling it down slows the stream** instead of doing nothing until 0. |
 | **loop** | 3AB | How many P-frames bloom replays: 1 to 16. Short = one push, over and over; long = a wobble. |
 | **blocks** | 38B | Encoder bitrate. Low = starved: big blocks, heavier smear. High = finer. |
-| **HEAL** | 37B | A key, not a fader. Press it: the clean picture eases back in over the **heal time**, in the **heal shape**, and then one clean keyframe comes through. The screen already shows clean by then, so the reset is invisible and the mosh starts again from the clean picture. Shift-click to learn a MIDI note. A tap between frames still counts. |
+| **MOSH** | 3FB | A key, and a **hold**. While it is held the card moshes at full whatever the faders say: every frame is a replay of the loop, and keyframes and cuts are dropped, so moving footage streams at once, no cut needed. Let go and the faders are back in charge: at zero, the mosh eases back to clean over the heal time, in the heal shape. Shift-click to learn a MIDI note (note on = press, note off = release). A tap between frames still moshes for one. |
+| **HEAL** | 37B | A key, not a fader. Press it: the clean picture eases back in over the **heal time**, in the **heal shape**, and then one clean keyframe comes through. The screen already shows clean by then, so the reset is invisible and the mosh starts again from the clean picture. Shift-click to learn a MIDI note. A tap between frames still counts. **Option-Command-click** arms it on the beat: it sets **heal every** to 1 beat (or the rate it last had) and the key wears the purple automated outline; Option-Command-click again turns it off. A plain click still heals once, at once. |
 | **heal every** | 3BB | Heal on the beat: off, 1/16, 1/8, 1 beat, 2 beats, 1 bar, 2 bars, 4 bars. Transport has to be running. |
 | **heal time** | 3CB | 0 = instant (a hard reset, the old behaviour) … 2 s. Default 0.5 s. Also sets how long **letting go** takes (see below). |
 | **heal shape** | 3DB | How clean comes back: **fade** (dissolve), **blocks** (16×16 macroblocks at random, like intra refresh), **wipe** (macroblock rows from the top, like a refresh sweep), **luma** (brightest first). |
@@ -24,11 +25,15 @@ push **mosh** up, then cut or fade A → B. B's motion drags A's picture around 
 heal. On **A** or **B** instead, the card moshes that channel alone, so changing the clip
 in that channel moshes one clip into the next.
 
+**Mosh on demand:** hold **MOSH**. Nothing else needs to be up; the key starts the
+encoder itself (the first frame or two show the input while it spins up), and letting
+go eases back out. With the card already running, the mosh starts on the next frame.
+
 **Getting out gracefully:**
 - **Pull the faders down.** With mosh, melt and bloom all at 0, the clean picture eases
   back in over the heal time (in the heal shape) and *then* the encoder is released.
   Push back up during the fade and the mosh comes back from where it was.
-- **Hit HEAL**, or let **heal every** do it on the beat. A long heal time with **blocks**
+- **Hit HEAL**, or let **heal every** do it on the beat (Option-Command-click HEAL). A long heal time with **blocks**
   looks like the codec repairing itself.
 - **Bring bloom down** to slow a stream before you heal it.
 - The card's **switch** is still a hard bypass: off is off, at once.

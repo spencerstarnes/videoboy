@@ -13,14 +13,18 @@
 //            through the window), a blocks-shaped heal caught half way, opacity and
 //            blend over the clean picture, bloom's amount, heal on the beat, and the
 //            eased release when the faders are let go.
+//            Then the MOSH key, HELD through the window with every fader at zero,
+//            and HEAL armed on the beat with Option-Command-click.
 //  Outputs : selfqa/out/mosh/app/{result.txt, clean-cut.png, moshed-cut.png,
-//            heal-mid-blocks.png, healed.png, opacity-half.png, blend-difference.png}.
+//            heal-mid-blocks.png, healed.png, opacity-half.png, blend-difference.png,
+//            mosh-held.png, card.png, card-heal-armed.png}.
 //  Connects: MainWindowController, the "Datamosh · H.264" card (PanelSet),
 //            ShellController's routing, Engine's `fx.one.mosh` node.
 //  Extend  : a new gesture (bloom, heal) is one more click and one more capture.
 //
 
 import AppKit
+import ImageIO
 import VideoboyCore
 
 enum MoshSelfQA {
@@ -262,6 +266,135 @@ enum MoshSelfQA {
             passed: easing && node?.isRunning == false,
             detail: "easing after 0.15 s \(easing), running after 0.95 s \(node?.isRunning == true)"))
 
+        // 9. The MOSH key: on HEAL's row, and HELD through the window with every
+        //    fader at zero — the key alone makes the mosh, on continuous footage.
+        let moshKey = find(VBOptionButton.self,
+                           named: "trigger|\(ParamCode.moshHold.rawValue)|\(cardName)", in: panel)
+        if let moshKey, let healKey {
+            check.record(AssertionResult(
+                name: "the MOSH key sits on HEAL's row, left of it: no row added, nothing below moved",
+                passed: moshKey.superview === healKey.superview && moshKey.frame.maxX <= healKey.frame.minX,
+                detail: "MOSH \(NSStringFromRect(moshKey.frame)), HEAL \(NSStringFromRect(healKey.frame))"))
+            check.record(AssertionResult(
+                name: "the MOSH key can be learned to MIDI (Shift-click), addressed to the bus node",
+                passed: moshKey.mappingSlot == Engine.moshOneSlot && moshKey.mappingCode == .moshHold,
+                detail: "slot \(moshKey.mappingSlot ?? "nil"), code \(moshKey.mappingCode?.rawValue ?? "nil")"))
+            if let card = cardView(containing: healKey) {
+                writePNG(of: card, to: check.artifactURL("card.png"))
+            }
+
+            var duringHold = (running: false, bloomed: 0, difference: 0.0)
+            var heldPicture: ImageBuffer?
+            let wasRunning = node?.isRunning == true
+            let held = hold(moshKey, for: 1.5, sampleAfter: 1.2, in: window, shell: shell) {
+                let output = captureTexture(engine, Engine.moshOneSlot)
+                let input = captureTexture(engine, GraphTopology.subMixOne)
+                heldPicture = output
+                duringHold = (node?.isRunning == true, node?.statistics.bloomed ?? 0,
+                              (output != nil && input != nil) ? meanDifference(output!, input!) : 0)
+            }
+            if let heldPicture { _ = try? check.writeImage(heldPicture, named: "mosh-held.png") }
+            check.record(AssertionResult(
+                name: "holding MOSH (every fader at zero) moshes moving footage with no cut",
+                passed: held && !wasRunning && duringHold.running && duringHold.bloomed > 15
+                    && duringHold.difference > 8,
+                detail: String(format: "hit %@, idle before %@, 1.2 s in: running %@, %d replays, mean |Δ| from B %.1f",
+                               held ? "yes" : "no", wasRunning ? "no" : "yes",
+                               duringHold.running ? "yes" : "no", duringHold.bloomed, duringHold.difference)))
+            RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+            let releaseEasing = node?.isRunning == true && (node?.healProgress ?? 0) > 0
+            RunLoop.main.run(until: Date().addingTimeInterval(0.9))
+            let holdValue = engine.registry.value(slot: Engine.moshOneSlot, code: .moshHold) ?? -1
+            check.record(AssertionResult(
+                name: "letting go of MOSH eases back to clean, then releases the encoder",
+                passed: holdValue == 0 && releaseEasing && node?.isRunning == false,
+                detail: "key value \(holdValue), easing after 0.15 s \(releaseEasing), "
+                    + "running after 1.05 s \(node?.isRunning == true)"))
+        } else {
+            check.record(AssertionResult(
+                name: "the MOSH key is on the Datamosh card", passed: false,
+                detail: "MOSH \(moshKey != nil), HEAL \(healKey != nil)"))
+        }
+
+        // 10. HEAL armed on the beat: Option-Command-click, through the window.
+        let healEveryFader = find(VBFader.self, named: ParamCode.moshHealEvery.rawValue, in: panel)
+        if let healKey, let healEveryFader {
+            let everyNow: () -> MoshHealEvery = {
+                MoshHealEvery.from(normalised: engine.registry.value(
+                    slot: Engine.moshOneSlot, code: .moshHealEvery) ?? 0)
+            }
+            let detect = controller.shellController?.detectSession
+            detect?.setSweepArming(true)
+            let pulsing = healKey.isSweepArming && !(moshKey?.isSweepArming ?? false)
+            detect?.setSweepArming(false)
+            check.record(AssertionResult(
+                name: "holding ⌥⌘ pulses HEAL (it can be armed) and not MOSH",
+                passed: pulsing,
+                detail: "HEAL \(healKey.isSweepArming || pulsing), MOSH \(moshKey?.isSweepArming ?? false)"))
+
+            let healsBefore = node?.healCount ?? 0
+            let armHit = click(healKey, at: 0.5, in: window, shell: shell, modifiers: [.command, .option])
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+            let armedEvery = everyNow()
+            check.record(AssertionResult(
+                name: "⌥⌘-click on HEAL arms heal every at 1 beat, lights the outline, and does not heal",
+                passed: armHit && armedEvery == .beat && healKey.isArmedOnBeat
+                    && (node?.healCount ?? 0) == healsBefore
+                    && MoshHealEvery.from(normalised: healEveryFader.value) == .beat,
+                detail: "hit \(armHit ? "yes" : "no"), heal every \(armedEvery.displayName), "
+                    + "outline \(healKey.isArmedOnBeat), fader \(MoshHealEvery.from(normalised: healEveryFader.value).displayName), "
+                    + "heals \(healsBefore) → \(node?.healCount ?? 0)"))
+
+            if let card = cardView(containing: healKey) {
+                writePNG(of: card, to: check.artifactURL("card-heal-armed.png"))
+            }
+
+            set(0.5, .moshAmount)
+            engine.setTransportRunning(true)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+            let beatStart = node?.healCount ?? 0
+            RunLoop.main.run(until: Date().addingTimeInterval(2.0))
+            let armedHeals = (node?.healCount ?? 0) - beatStart
+            engine.setTransportRunning(false)
+            check.record(AssertionResult(
+                name: "armed, the mosh heals on every beat (about four in two seconds at 120)",
+                passed: (3...5).contains(armedHeals), detail: "\(armedHeals) heals in 2.0 s"))
+
+            // The performer picks a slower rate on the card's own fader, disarms, and
+            // arms again: it comes back at the rate they chose.
+            healEveryFader.value = MoshHealEvery.bar.normalisedPosition
+            healEveryFader.sendAction(healEveryFader.action, to: healEveryFader.target)
+            let outlineAtBar = healKey.isArmedOnBeat
+            let disarmHit = click(healKey, at: 0.5, in: window, shell: shell, modifiers: [.command, .option])
+            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+            let disarmed = everyNow()
+            let outlineOff = !healKey.isArmedOnBeat
+            let rearmHit = click(healKey, at: 0.5, in: window, shell: shell, modifiers: [.command, .option])
+            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+            let rearmed = everyNow()
+            check.record(AssertionResult(
+                name: "⌥⌘-click again disarms (heal every off, outline off); again re-arms at the rate last chosen",
+                passed: outlineAtBar && disarmHit && disarmed == .off && outlineOff
+                    && rearmHit && rearmed == .bar && healKey.isArmedOnBeat,
+                detail: "outline at 1 bar \(outlineAtBar); disarmed → \(disarmed.displayName), outline off \(outlineOff); "
+                    + "re-armed → \(rearmed.displayName), outline \(healKey.isArmedOnBeat)"))
+
+            // A plain click still heals once, right away — arming did not take it over.
+            let plainBefore = node?.healCount ?? 0
+            _ = click(healKey, at: 0.5, in: window, shell: shell)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+            check.record(AssertionResult(
+                name: "a plain click on an armed HEAL still heals once, at once",
+                passed: (node?.healCount ?? 0) == plainBefore + 1,
+                detail: "heals \(plainBefore) → \(node?.healCount ?? 0)"))
+            _ = click(healKey, at: 0.5, in: window, shell: shell, modifiers: [.command, .option])
+            set(0, .moshAmount)
+        } else {
+            check.record(AssertionResult(
+                name: "HEAL and its heal-every fader are on the card", passed: false,
+                detail: "HEAL \(healKey != nil), heal every \(healEveryFader != nil)"))
+        }
+
         window.orderOut(nil)
         return check.finish()
     }
@@ -285,9 +418,44 @@ enum MoshSelfQA {
         return OffscreenRenderer()?.readback(texture)
     }
 
+    /// Holds a real mouse down on `view`'s centre for `seconds`, running `during` part
+    /// way through. Returns whether hit-testing delivered it to `view`.
+    ///
+    /// The mouse-up is posted by a timer in the COMMON modes, so it fires inside the
+    /// key's own tracking loop — as does the render clock (a `.common` display link),
+    /// which is what keeps the picture moving while a key is held.
+    private static func hold(
+        _ view: NSView, for seconds: TimeInterval, sampleAfter: TimeInterval,
+        in window: NSWindow, shell: ShellView, during: @escaping () -> Void
+    ) -> Bool {
+        view.scrollToVisible(view.bounds)
+        shell.layoutSubtreeIfNeeded()
+        let point = view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
+        guard let hit = shell.hitTest(shell.convert(point, from: nil)),
+              hit === view || hit.isDescendant(of: view) else { return false }
+        func event(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                               timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil,
+                               eventNumber: 0, clickCount: 1, pressure: 1)
+        }
+        guard let down = event(.leftMouseDown), let up = event(.leftMouseUp) else { return false }
+        let sample = Timer(timeInterval: sampleAfter, repeats: false) { _ in during() }
+        let release = Timer(timeInterval: seconds, repeats: false) { _ in
+            NSApp.postEvent(up, atStart: false)
+        }
+        RunLoop.main.add(sample, forMode: .common)
+        RunLoop.main.add(release, forMode: .common)
+        window.sendEvent(down)   // returns when the key's tracking loop sees the up
+        return true
+    }
+
     /// Sends a real mouse down/up through the window at `fraction` across `view`.
     /// Returns whether hit-testing delivered it to `view` (or a view inside it).
-    private static func click(_ view: NSView, at fraction: CGFloat, in window: NSWindow, shell: ShellView) -> Bool {
+    private static func click(
+        _ view: NSView, at fraction: CGFloat, in window: NSWindow, shell: ShellView,
+        modifiers: NSEvent.ModifierFlags = []
+    ) -> Bool {
         view.scrollToVisible(view.bounds)
         shell.layoutSubtreeIfNeeded()
         let local = NSPoint(x: view.bounds.minX + view.bounds.width * fraction, y: view.bounds.midY)
@@ -295,7 +463,7 @@ enum MoshSelfQA {
         guard let hit = shell.hitTest(shell.convert(point, from: nil)),
               hit === view || hit.isDescendant(of: view) else { return false }
         func event(_ type: NSEvent.EventType) -> NSEvent? {
-            NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+            NSEvent.mouseEvent(with: type, location: point, modifierFlags: modifiers,
                                timestamp: ProcessInfo.processInfo.systemUptime,
                                windowNumber: window.windowNumber, context: nil,
                                eventNumber: 0, clickCount: 1, pressure: 1)
@@ -346,31 +514,51 @@ enum MoshSelfQA {
         return card
     }
 
-    /// The view as it is on screen, taken by `screencapture` of its rectangle.
+    /// The view as it is on screen, cropped from `screencapture` of its WINDOW.
     ///
     /// The real pixels, because both offscreen routes fail on this panel:
     /// `cacheDisplay` and `CALayer.render` each came back white with no text, no
-    /// card fill and no HEAL key. Needs Screen Recording for the app; without it the
-    /// PNG shows the desktop and the note says to look at it with that in mind.
+    /// card fill and no HEAL key. The window rather than a screen rectangle, so
+    /// anything else covering it (the performer is often using the Mac while this
+    /// runs) is not what gets captured. Needs Screen Recording for the app; without
+    /// it the PNG is blank and the note says to look at it with that in mind.
     private static func writePNG(of view: NSView, to url: URL) {
         view.scrollToVisible(view.bounds)
-        guard let window = view.window, let screen = window.screen else { return }
+        guard let window = view.window else { return }
         window.displayIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
-        let inWindow = view.convert(view.bounds, to: nil)
-        let onScreen = window.convertToScreen(inWindow)
-        // screencapture's -R is in points from the TOP-left of the main display.
-        let top = screen.frame.maxY - onScreen.maxY
-        let region = "\(Int(onScreen.minX)),\(Int(top)),\(Int(onScreen.width)),\(Int(onScreen.height))"
+        let whole = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("videoboy-window-\(window.windowNumber).png")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        process.arguments = ["-x", "-R", region, url.path]
+        process.arguments = ["-x", "-o", "-l", "\(window.windowNumber)", whole.path]
         do {
             try process.run()
             process.waitUntilExit()
         } catch {
             Log.error(.selfqa, "could not capture \(url.lastPathComponent): \(error)")
+            return
         }
+        defer { try? FileManager.default.removeItem(at: whole) }
+        guard let source = CGImageSourceCreateWithURL(whole as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            Log.error(.selfqa, "could not read the window capture for \(url.lastPathComponent)")
+            return
+        }
+        // The capture is the window's frame at its backing scale; crop to the view,
+        // measured from the frame's top-left (window coordinates are bottom-left).
+        let scale = CGFloat(image.width) / window.frame.width
+        let inWindow = view.convert(view.bounds, to: nil)
+        let crop = CGRect(x: inWindow.minX * scale,
+                          y: (window.frame.height - inWindow.maxY) * scale,
+                          width: inWindow.width * scale, height: inWindow.height * scale)
+        guard let card = image.cropping(to: crop.integral),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            Log.error(.selfqa, "could not crop \(url.lastPathComponent)")
+            return
+        }
+        CGImageDestinationAddImage(destination, card, nil)
+        CGImageDestinationFinalize(destination)
     }
 
     /// Mean of R, G and B over the picture: 0 black, 255 white.
