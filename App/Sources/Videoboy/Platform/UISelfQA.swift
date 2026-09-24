@@ -2813,6 +2813,79 @@ enum UISelfQA {
             }
         }
 
+        // ISF TRANSITIONS on a crossfader, through the transition key's own menu: the
+        // file is listed, choosing it puts it on the A/B mix, the fader drives its
+        // progress, and a built-in pattern takes the move back.
+        sectionISFTransition: do {
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("videoboy-transition-qa-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let user = root.appendingPathComponent("user")
+            do {
+                try FileManager.default.createDirectory(at: user, withIntermediateDirectories: true)
+                try """
+                    /*{ "INPUTS": [ { "NAME": "startImage", "TYPE": "image" },
+                                    { "NAME": "endImage", "TYPE": "image" },
+                                    { "NAME": "progress", "TYPE": "float", "DEFAULT": 0.0 } ] }*/
+                    void main() {
+                        gl_FragColor = vec4(progress, 1.0 - progress, 0.0, 1.0);
+                    }
+                    """.write(to: user.appendingPathComponent("QA Ramp.fs"), atomically: true, encoding: .utf8)
+            } catch {
+                check.note("could not write the temporary transition; skipped")
+                break sectionISFTransition
+            }
+            let catalog = ModuleCatalog(folders: [(ISFLibrary.builtinFolder, .builtin), (user, .user)])
+            let engine = Engine(catalog: catalog)
+            let shell = ShellView()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+            withExtendedLifetime(controller) {}
+
+            guard let key = shell.grid.panels.faderABBody.transitionButton,
+                  let module = catalog.transitions.first else {
+                check.record(AssertionResult(
+                    name: "an ISF transition is catalogued as a transition", passed: false,
+                    detail: "transitions: \(catalog.transitions.map(\.name))"))
+                break sectionISFTransition
+            }
+            let submenu = key.makeMenu().items.first { $0.title == "ISF Transitions" }?.submenu
+            check.record(AssertionResult(
+                name: "the transition key lists ISF transitions",
+                passed: submenu?.items.contains { $0.title == "QA Ramp" } == true,
+                detail: "submenu: \(submenu?.items.map(\.title) ?? [])"))
+
+            key.chooseISF(module.id)
+            let node = engine.isfTransitions[GraphTopology.subMixOne]?.node
+            let deadline = Date().addingTimeInterval(10)
+            while node?.state == .compiling, Date() < deadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            }
+            // Both sides need a picture, or the crossfade has nothing to move between.
+            let clip = RepoPaths.samples.appendingPathComponent("motion.dv")
+            _ = engine.load(url: clip, intoChannel: "A")
+            _ = engine.load(url: clip, intoChannel: "B")
+            engine.registry.setValue(0.8, slot: GraphTopology.subMixOne, code: .crossfadeAB)
+            let context = RenderContext(frameIndex: 0, presentationTime: 0, musicalPosition: nil)
+            var picture: ImageBuffer?
+            if let metal = MetalContext.shared, let renderer = OffscreenRenderer(context: metal),
+               let texture = engine.evaluateGraph(context: context)[GraphTopology.subMixOne] {
+                picture = renderer.readback(texture)
+            }
+            let red = picture.map { Int($0.pixel(x: $0.width / 2, y: $0.height / 2).r) } ?? -1
+            check.record(AssertionResult(
+                name: "choosing it draws the A/B move, with the fader as its progress",
+                passed: node?.state == .ready && abs(red - Int(0.8 * 255)) <= 3,
+                detail: "state \(String(describing: node?.state)), red \(red) at fader 0.8"))
+
+            key.choose(.dissolve)
+            check.record(AssertionResult(
+                name: "a built-in pattern takes the move back",
+                passed: engine.isfTransitions[GraphTopology.subMixOne] == nil && key.isfTransitionID == nil,
+                detail: "ISF transition still set: \(engine.isfTransitions[GraphTopology.subMixOne] != nil)"))
+        }
+
         return check.finish()
     }
 

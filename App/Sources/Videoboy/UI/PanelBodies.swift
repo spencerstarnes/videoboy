@@ -1005,6 +1005,8 @@ final class FaderPanelBody: NSView {
 
     /// Called when this bus's transition pattern changes.
     var onTransitionChanged: ((Transition) -> Void)?
+    /// An ISF transition was chosen for this fader (its module id), or nil.
+    var onISFTransitionChanged: ((String?) -> Void)?
 
     /// The pattern key on the LEFT of the transport cluster — the partner of the
     /// blend key on the right. Readable so self-QA can drive it the way a click does.
@@ -1221,6 +1223,10 @@ final class FaderPanelBody: NSView {
         }
         transitionKey.onAVE5PanelRequested = { [weak self] anchor in
             self?.onAVE5PanelRequested?(anchor)
+        }
+        transitionKey.onISFTransitionChosen = { [weak self] id in
+            Log.info(.graph, "ISF transition set to \(id ?? "none")")
+            self?.onISFTransitionChanged?(id)
         }
         self.transitionButton = transitionKey
 

@@ -60,6 +60,20 @@ final class VBTransitionButton: NSControl, AuditableControl {
     /// clicked — or just chosen from the menu.
     var onAVE5PanelRequested: ((NSView) -> Void)?
 
+    /// ISF transitions the menu offers, by module id and name. Set by the shell from
+    /// the catalogue; the menu is built on demand, so a new file shows next time.
+    var isfTransitions: [(id: String, name: String)] = []
+    /// The ISF transition drawing this fader's move, or nil for the built-in pattern.
+    var isfTransitionID: String? {
+        didSet {
+            guard isfTransitionID != oldValue else { return }
+            updateTooltip()
+            needsDisplay = true
+        }
+    }
+    /// An ISF transition was picked (its id), or a built-in pattern was (nil).
+    var onISFTransitionChosen: ((String?) -> Void)?
+
     private var isHovering = false {
         didSet {
             guard isHovering != oldValue else { return }
@@ -94,6 +108,12 @@ final class VBTransitionButton: NSControl, AuditableControl {
     }
 
     private func updateTooltip() {
+        if let id = isfTransitionID {
+            let name = isfTransitions.first { $0.id == id }?.name ?? id
+            toolTip = "Transition: \(name) (ISF). The fader drives its progress; FADE, "
+                + "CUT, sweeps and MIDI all follow it."
+            return
+        }
         if transition == .ave5 {
             toolTip = "Transition: AVE-5 (\(ave5.shape.displayName)). Click for the wipe "
                 + "block — pattern keys, MULTI, ONE-WAY, REVERSE and the positioner."
@@ -118,7 +138,7 @@ final class VBTransitionButton: NSControl, AuditableControl {
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
         isPressed = true
-        if transition == .ave5, let onAVE5PanelRequested {
+        if isfTransitionID == nil, transition == .ave5, let onAVE5PanelRequested {
             onAVE5PanelRequested(self)
         } else {
             popOutMenu(at: convert(event.locationInWindow, from: nil))
@@ -144,12 +164,42 @@ final class VBTransitionButton: NSControl, AuditableControl {
                     action: #selector(transitionPicked(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = pattern.rawValue
-                item.state = pattern == transition ? .on : .off
+                item.state = (isfTransitionID == nil && pattern == transition) ? .on : .off
                 item.image = Self.menuImage(for: pattern)
                 menu.addItem(item)
             }
         }
+        // Every ISF transition in the library, in a submenu of its own: there can be
+        // dozens, and the built-in patterns must stay one move away.
+        if !isfTransitions.isEmpty {
+            menu.addItem(.separator())
+            let holder = NSMenuItem(title: "ISF Transitions", action: nil, keyEquivalent: "")
+            let submenu = NSMenu(title: "ISF Transitions")
+            for entry in isfTransitions {
+                let item = NSMenuItem(
+                    title: entry.name, action: #selector(isfTransitionPicked(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = entry.id
+                item.state = entry.id == isfTransitionID ? .on : .off
+                submenu.addItem(item)
+            }
+            holder.submenu = submenu
+            holder.state = isfTransitionID == nil ? .off : .on
+            menu.addItem(holder)
+        }
         return menu
+    }
+
+    /// Chooses an ISF transition as if it had been picked from the menu.
+    func chooseISF(_ id: String) {
+        isfTransitionID = id
+        onISFTransitionChosen?(id)
+        sendAction(action, to: target)
+    }
+
+    @objc private func isfTransitionPicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        chooseISF(id)
     }
 
     /// Pops the menu out at the pointer, as VBBlendButton does and for the same
@@ -162,6 +212,11 @@ final class VBTransitionButton: NSControl, AuditableControl {
     /// Chooses a pattern as if it had been picked from the menu. Used by the menu
     /// and by self-QA, so the check exercises the same path a click does.
     func choose(_ pattern: Transition) {
+        // A built-in pattern takes the move back from any ISF transition.
+        if isfTransitionID != nil {
+            isfTransitionID = nil
+            onISFTransitionChosen?(nil)
+        }
         transition = pattern
         onTransitionChosen?(pattern)
         sendAction(action, to: target)
@@ -217,7 +272,16 @@ final class VBTransitionButton: NSControl, AuditableControl {
 
         NSGraphicsContext.saveGraphicsState()
         frame.addClip()
-        Self.drawPictogram(transition, in: body, ink: ink, ave5: ave5)
+        if isfTransitionID != nil {
+            // An ISF transition has no fixed shape to draw; the key says what it is.
+            let attributes: [NSAttributedString.Key: Any] = [.font: Theme.Font.tinyLabel, .foregroundColor: ink]
+            let text = "ISF" as NSString
+            let size = text.size(withAttributes: attributes)
+            text.draw(at: NSPoint(x: body.midX - size.width / 2, y: body.midY - size.height / 2),
+                      withAttributes: attributes)
+        } else {
+            Self.drawPictogram(transition, in: body, ink: ink, ave5: ave5)
+        }
         NSGraphicsContext.restoreGraphicsState()
     }
 

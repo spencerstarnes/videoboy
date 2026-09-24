@@ -1338,6 +1338,13 @@ final class ShellController {
             bus.body.onAVE5PanelRequested = { [weak self] anchor in
                 self?.toggleAVE5Panel(slot: bus.slot, anchor: anchor)
             }
+            bus.body.onISFTransitionChanged = { [weak self] id in
+                guard let self else { return }
+                if !self.engine.setISFTransition(id, onMix: bus.slot) {
+                    bus.body.transitionButton?.isfTransitionID = nil
+                }
+                if id != nil, self.ave5Panel?.slot == bus.slot { self.closeAVE5Panel() }
+            }
             bus.body.onFade = { [weak self] rate in
                 guard let self else { return }
                 // Fade always fades. Beat only decides when it starts.
@@ -1711,6 +1718,16 @@ final class ShellController {
         refreshCards(.one)
         refreshCards(.two)
         refreshISFGeneratorLists()
+        refreshISFTransitionLists()
+    }
+
+    /// Puts the catalogue's ISF transitions in each crossfader's transition menu.
+    private func refreshISFTransitionLists() {
+        let entries = engine.catalog.transitions.map { (id: $0.id, name: $0.name) }
+        let panels = shell.grid.panels
+        for body in [panels.faderABBody, panels.faderCDBody, panels.faderOneTwoBody] {
+            body.transitionButton?.isfTransitions = entries
+        }
     }
 
     // MARK: - ISF generators (ISF-PLAN M9)
@@ -1804,6 +1821,7 @@ final class ShellController {
         engine.onModulesChanged = { [weak self] in self?.refreshEffectPanels() }
         engine.startWatchingModules()
         refreshISFGeneratorLists()
+        refreshISFTransitionLists()
 
         // ISF modules compile off the render path; a card says "compiling…" until its
         // program arrives, and why, if it never does.

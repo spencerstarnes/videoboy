@@ -669,6 +669,23 @@ public final class ISFNode: Node, ParameterApplying {
         return blackTexture
     }
 
+    // MARK: - As a crossfader transition
+
+    /// Draws an ISF transition between two pictures at `progress` (0 = all start,
+    /// 1 = all end), as a crossfader does. Its image inputs are matched by name —
+    /// `startImage` gets `start`, `endImage` gets `end` — whatever order the file
+    /// declares them in. Nil until the program has compiled.
+    public func renderTransition(
+        start: MTLTexture, end: MTLTexture, progress: Double, context renderContext: RenderContext
+    ) -> MTLTexture? {
+        guard state == .ready, let document = declaredDocument else { return nil }
+        if document.valueInputs.contains(where: { $0.name == "progress" }) {
+            setValue(min(max(progress, 0), 1), forInput: "progress")
+        }
+        let inputs = document.imageInputs.map { $0.name == "endImage" ? end : start }
+        return render(inputs: inputs, context: renderContext)
+    }
+
     // MARK: - Imported cube maps
 
     /// Six square faces as a cube texture, uploaded once. RGBA rows, as ImageBuffer

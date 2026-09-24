@@ -96,6 +96,11 @@ public final class CrossfadeNode: Node {
     /// Which pattern the fader's travel follows. Dissolve is what it always did.
     public var transition: Transition = .dissolve
 
+    /// An ISF transition to draw the move with instead of `transition`, or nil.
+    /// While it compiles, the ordinary transition stands in, so choosing one never
+    /// blanks the mix.
+    public var isfTransition: ISFNode?
+
     /// The AVE-5 wipe block's state, used when `transition` is `.ave5`.
     public var ave5 = AVE5Wipe()
 
@@ -184,6 +189,12 @@ public final class CrossfadeNode: Node {
         let sourceA = inputs[0]
         let sourceB = inputs[1]
 
+        if let isfTransition,
+           let drawn = isfTransition.renderTransition(
+            start: sourceA, end: sourceB, progress: position, context: renderContext) {
+            return drawn
+        }
+
         // Reuse the render target across frames: SPEC 1 forbids per-frame allocation
         // in the render loop.
         if target == nil || target?.width != renderContext.width || target?.height != renderContext.height {
@@ -255,6 +266,8 @@ public final class CrossfadeNode: Node {
         if let value = registry.value(slot: identifier, code: .transition) {
             transition = Transition.from(normalised: value)
         }
+        // The ISF transition's own controls are registered under its identifier.
+        isfTransition?.applyParameters(from: registry)
         ave5 = AVE5Wipe { registry.value(slot: identifier, code: $0) }
         if let value = registry.value(slot: identifier, code: .layerOpacity) {
             layerOpacity = value

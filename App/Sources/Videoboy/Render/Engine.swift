@@ -449,6 +449,42 @@ final class Engine {
         return true
     }
 
+    // MARK: - ISF transitions on the crossfaders
+
+    /// The ISF transition on each crossfader, by the crossfade's slot, and the module
+    /// it came from (for hot reload).
+    private(set) var isfTransitions: [String: (moduleID: String, node: ISFNode)] = [:]
+
+    /// Draws a crossfader's move with an ISF transition, or back to its built-in
+    /// pattern with nil. The node is owned by the crossfade, not added to the graph:
+    /// it is how that one node draws, not a stage anything else reads.
+    @discardableResult
+    func setISFTransition(_ moduleID: String?, onMix slot: String) -> Bool {
+        let fader: CrossfadeNode? = switch slot {
+        case GraphTopology.subMixOne: subMixOne
+        case GraphTopology.subMixTwo: subMixTwo
+        case GraphTopology.primary: primary
+        default: nil
+        }
+        guard let fader else { return false }
+        guard let moduleID else {
+            fader.isfTransition = nil
+            isfTransitions.removeValue(forKey: slot)
+            Log.info(.isf, "\(slot) is back on its built-in transition")
+            return true
+        }
+        guard let module = catalog.transition(moduleID),
+              let node = module.makeNode(identifier: "\(slot).isf", context: metal) as? ISFNode else {
+            Log.warn(.isf, "no ISF transition '\(moduleID)'")
+            return false
+        }
+        registry.register(slot: node.identifier, parameters: node.parameters)
+        fader.isfTransition = node
+        isfTransitions[slot] = (moduleID, node)
+        Log.info(.isf, "\(slot) now moves with ISF transition \(module.name)")
+        return true
+    }
+
     /// Which ISF generator each channel was given, for hot reload.
     private var isfGeneratorModules: [String: String] = [:]
 
@@ -530,6 +566,17 @@ final class Engine {
                       name: url.deletingPathExtension().lastPathComponent,
                       resourceDirectory: url.deletingLastPathComponent())
             registry.register(slot: node.identifier, parameters: node.parameters)
+            reloaded += 1
+        }
+        for (_, entry) in isfTransitions {
+            guard let url = catalog.transition(entry.moduleID)?.fileURL?.standardizedFileURL,
+                  let source = sources[url],
+                  source.fragment != entry.node.sourceText || source.vertex != entry.node.vertexSourceText
+            else { continue }
+            entry.node.load(source: source.fragment, vertexSource: source.vertex,
+                            name: url.deletingPathExtension().lastPathComponent,
+                            resourceDirectory: url.deletingLastPathComponent())
+            registry.register(slot: entry.node.identifier, parameters: entry.node.parameters)
             reloaded += 1
         }
         Log.info(.isf, "ISF folders changed: \(catalog.modules.count) modules, \(catalog.unavailable.count) unavailable, \(reloaded) live copies reloaded")

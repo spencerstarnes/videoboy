@@ -15,8 +15,8 @@
 //  Extend  : a native module is one entry in `nativeModules` — name, controls,
 //            factory. An ISF module needs nothing here: drop the file in a folder.
 //
-//  ISF effects only. ISF generators become sources (the Asset Browser's Generators
-//  tab), and transitions are for a later push; neither belongs in an effect chain.
+//  ISF effects only in the chain. ISF generators become sources (the Asset Browser's
+//  Generators tab) and ISF transitions become crossfader transitions (`transitions`).
 //
 
 import Foundation
@@ -147,6 +147,9 @@ public final class ModuleCatalog {
     /// Asset Browser's Generators tab and each channel's source menu offer them
     /// (ISF-PLAN M9). Their factory makes an ISFNode that renders at project size.
     public private(set) var generators: [ModuleDescriptor] = []
+    /// ISF transitions (startImage, endImage, progress), for the crossfaders'
+    /// transition key — not effects, and not sources.
+    public private(set) var transitions: [ModuleDescriptor] = []
 
     /// Where ISF modules are looked for, in precedence order.
     public let folders: [(URL, ISFLibraryEntry.Folder)]
@@ -174,6 +177,7 @@ public final class ModuleCatalog {
         var available = ModuleCatalog.nativeModules()
         var failed: [ModuleDescriptor] = []
         var sources: [ModuleDescriptor] = []
+        var fades: [ModuleDescriptor] = []
         let builtinNames: [String: (id: String, title: String)] = [
             "Transform": (ID.transform, "Transform"),
             "Colour": (ID.colour, "Colour"),
@@ -199,6 +203,11 @@ public final class ModuleCatalog {
                         id: id, title: title, origin: origin, document: document, entry: entry, problem: nil))
                     continue
                 }
+                if document.kind == .transition {
+                    fades.append(ModuleCatalog.isfDescriptor(
+                        id: id, title: title, origin: origin, document: document, entry: entry, problem: nil))
+                    continue
+                }
                 guard document.kind == .effect else { continue }
                 let descriptor = ModuleCatalog.isfDescriptor(
                     id: id, title: title, origin: origin, document: document, entry: entry, problem: nil)
@@ -213,6 +222,12 @@ public final class ModuleCatalog {
         }
         unavailable = failed.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         generators = sources.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        transitions = fades.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Looks up an ISF transition by ID.
+    public func transition(_ id: String) -> ModuleDescriptor? {
+        transitions.first { $0.id == id }
     }
 
     /// Looks up an ISF generator by ID.
