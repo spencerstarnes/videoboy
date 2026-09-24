@@ -13,6 +13,8 @@
 #           analog      — the composite codec, echo and feedback chain (no hardware)
 #           blend       — every layer blend mode over real pictures (no hardware)
 #           transitions — every crossfader wipe/slide/iris pattern, plus the UI key (no hardware)
+#           ave5 — the AVE-5 wipe block: the manual's table, live DV, and the popover in a
+#                  real window (keys by hit-test, Shift-learn, MIDI key, pitch bend)
 #           displays    — what displays exist and what mode they offer
 #           output      — the borderless output window on the HDMI card (needs hardware)
 #           loopback    — capture the DVC100 and write metrics.json (needs hardware)
@@ -67,6 +69,7 @@ case "$CHECK" in
   analog)    run_app_check analog ;;
   blend)     run_app_check blend ;;
   transitions) run_app_check transitions ;;
+  ave5)      run_app_check ave5 ;;
   calibrate) run_app_check calibrate ;;
   stream)    run_app_check stream ;;
   record)    run_app_check record ;;
@@ -92,6 +95,7 @@ case "$CHECK" in
     run_app_check analog
     run_app_check blend
     run_app_check transitions
+    run_app_check ave5
     run_app_check stream
     run_app_check record
     run_app_check audit
@@ -100,5 +104,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, stream, record, audit, shaders, isf, stress, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, isf, stress, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

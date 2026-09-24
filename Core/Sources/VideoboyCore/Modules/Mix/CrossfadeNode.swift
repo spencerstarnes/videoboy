@@ -11,11 +11,15 @@
 //  Extend  : a new blend mode is a case in `BlendMode` plus a branch in the shader;
 //            a new wipe is a case in `Transition` plus a branch in `transitionMask`.
 //            Either way the node does not change, and it is still ONE draw.
+//            (The AVE-5 transition is the exception that proves it: its block state
+//            rides in the same parameter block and it is still the same one draw.)
 //
 //  Parameters (SPEC 13): one of 61A / 62A / 63A depending on which bus this is,
 //  plus 65A blend mode, 66A layer opacity, 61F transition pattern, and 6xE (61E/62E/63E) for the key
 //  colour/threshold/edge — read and sent every frame like the others, but only
-//  acted on by the shader when blendMode is `.key`.
+//  acted on by the shader when blendMode is `.key`. 62F–69F are the AVE-5 wipe
+//  block's state and 61G–6AG its momentary key presses (ShellController consumes
+//  those); both only matter when the transition is AVE-5.
 //
 
 import Foundation
@@ -33,6 +37,17 @@ private struct BlendParams {
     var keyThreshold: Float
     var keyEdge: Float
     var transition: Int32
+    // AVE-5 wipe block (only read when transition is AVE-5). All 4-byte scalars, in
+    // the same order as the Metal struct, so the two layouts cannot drift.
+    var ave5Keys: Int32
+    var ave5Tiles: Int32
+    var ave5Edge: Int32
+    var ave5Reversed: Int32
+    var ave5CentreX: Float
+    var ave5CentreY: Float
+    var ave5BorderR: Float
+    var ave5BorderG: Float
+    var ave5BorderB: Float
 }
 
 /// Mixes two inputs by a single position parameter.
@@ -69,7 +84,7 @@ public final class CrossfadeNode: Node {
             Parameter(code: .cutToLeftTrigger, range: 0...1, defaultValue: 0),
             Parameter(code: .cutToRightTrigger, range: 0...1, defaultValue: 0),
             Parameter(code: .transition, range: 0...1, defaultValue: 0)
-        ]
+        ] + AVE5Wipe.parameters + AVE5Wipe.triggerParameters
     }
 
     /// 0 is entirely input 0, 1 is entirely input 1.
@@ -81,6 +96,34 @@ public final class CrossfadeNode: Node {
     /// Which pattern the fader's travel follows. Dissolve is what it always did.
     public var transition: Transition = .dissolve
 
+    /// The AVE-5 wipe block's state, used when `transition` is `.ave5`.
+    public var ave5 = AVE5Wipe()
+
+    /// ONE-WAY's memory of which way the lever last travelled end to end.
+    ///
+    /// Latched at the ENDS, not on every change of direction: the hardware keeps
+    /// the wipe's direction for the trip back from B, and a hand that wobbles
+    /// mid-travel should retrace the edge, not flip the pattern under it. True once
+    /// the fader has reached B, false once it has reached A.
+    private(set) var isReturningFromB = false
+
+    /// Whether the AVE-5 pattern is drawn reversed this frame: REVERSE, flipped
+    /// again by ONE-WAY on the trip back. ONE-WAY's return trip IS a reverse wipe
+    /// — B leaves by the edge it came in from — so the two compose as an XOR.
+    public var ave5DrawsReversed: Bool {
+        ave5.reverse != (ave5.oneWay && isReturningFromB)
+    }
+
+    /// Updates the ONE-WAY latch from the fader position. Called once per render.
+    func updateOneWayLatch() {
+        // Within half a percent of an end counts as reaching it: a MIDI fader's
+        // top value is 127/127 but a hand-dragged one can stop a hair short.
+        if position >= 0.995 {
+            isReturningFromB = true
+        } else if position <= 0.005 {
+            isReturningFromB = false
+        }
+    }
     /// Per-layer opacity of the upper layer.
     public var layerOpacity: Double = 1.0
 
@@ -165,6 +208,8 @@ public final class CrossfadeNode: Node {
         encoder.setFragmentTexture(sourceA, index: 0)
         encoder.setFragmentTexture(sourceB, index: 1)
         let key = Self.keyRGB(keyColourValue)
+        updateOneWayLatch()
+        let border = ave5.backColour.rgb
         // 0.6 is the scaling note from `keyThreshold`'s declaration: RGB distance
         // tops out at sqrt(3) ≈ 1.73 for two fully opposite colours, and a useful
         // key threshold lives in a small fraction of that — 0.6 gives the fader its
@@ -179,7 +224,17 @@ public final class CrossfadeNode: Node {
             keyB: Float(key.b),
             keyThreshold: Float(min(max(keyThreshold, 0), 1) * 0.6),
             keyEdge: Float(min(max(keyEdge, 0), 1) * 0.6),
-            transition: Int32(transition.rawValue)
+            transition: Int32(transition.rawValue),
+            ave5Keys: Int32(ave5.keys.rawValue),
+            ave5Tiles: Int32(ave5.multi.tilesPerSide),
+            ave5Edge: Int32(ave5.edge.rawValue),
+            ave5Reversed: ave5DrawsReversed ? 1 : 0,
+            // The joystick only moves the Ⓟ patterns; everything else stays centred.
+            ave5CentreX: Float(ave5.isPositionable ? ave5.positionX : 0.5),
+            ave5CentreY: Float(ave5.isPositionable ? ave5.positionY : 0.5),
+            ave5BorderR: Float(border.r),
+            ave5BorderG: Float(border.g),
+            ave5BorderB: Float(border.b)
         )
         encoder.setFragmentBytes(&params, length: MemoryLayout<BlendParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
@@ -200,6 +255,7 @@ public final class CrossfadeNode: Node {
         if let value = registry.value(slot: identifier, code: .transition) {
             transition = Transition.from(normalised: value)
         }
+        ave5 = AVE5Wipe { registry.value(slot: identifier, code: $0) }
         if let value = registry.value(slot: identifier, code: .layerOpacity) {
             layerOpacity = value
         }

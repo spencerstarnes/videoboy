@@ -32,11 +32,12 @@ final class TransitionTests: XCTestCase {
     /// Same rule as BlendMode: the raw value is the shader's index and what a saved
     /// sweep resolves to. If this fails, old settings now wipe differently.
     func testRawValuesAreTheShaderContractAndMustNotMove() {
-        XCTAssertEqual(Transition.allCases.map(\.rawValue), Array(0...11))
+        XCTAssertEqual(Transition.allCases.map(\.rawValue), Array(0...12))
         XCTAssertEqual(Transition.dissolve.rawValue, 0)
         XCTAssertEqual(Transition.wipeHorizontal.rawValue, 1)
         XCTAssertEqual(Transition.iris.rawValue, 7)
         XCTAssertEqual(Transition.interlaceVertical.rawValue, 11)
+        XCTAssertEqual(Transition.ave5.rawValue, 12)
     }
 
     func testEveryTransitionRoundTripsThroughItsSweepPosition() {

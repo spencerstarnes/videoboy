@@ -118,6 +118,41 @@ enum Theme {
         static let cornerRadius: CGFloat = 3
     }
 
+    // MARK: - AVE-5 wipe block
+    //
+    // The popover laid out like the WJ-AVE5's WIPE MODE block: a legend above each
+    // key, an orange lamp in the key's corner. Keys are a little smaller than the
+    // bus keys — nine of them share a popover, and they are pressed between moves,
+    // not during one.
+    enum AVE5 {
+        static let keyWidth: CGFloat = 46
+        static let keyHeight: CGFloat = 22
+        /// The pictogram or word printed above each key.
+        static let legendHeight: CGFloat = 14
+        static let legendGap: CGFloat = 3
+        static let keyCornerRadius: CGFloat = 3
+        static let lampDiameter: CGFloat = 6
+        static let lampInset: CGFloat = 6
+        /// Between keys in the block, both ways.
+        static let keySpacing: CGFloat = 10
+        /// Around the popover's content.
+        static let padding: CGFloat = 12
+        /// Between the key block and the positioner.
+        static let groupSpacing: CGFloat = 16
+        /// The positioner pad: 4:3, the picture's own shape.
+        static let padWidth: CGFloat = 120
+        static let padHeight: CGFloat = 90
+        static let padDotDiameter: CGFloat = 9
+        /// The lamp on the hardware is an orange LED.
+        static let lamp = NSColor(srgbRed: 1.0, green: 0.45, blue: 0.12, alpha: 1)
+        static let lampOff = NSColor(white: 0.30, alpha: 1)
+        static let keyCap = NSColor(white: 0.13, alpha: 1)
+        static let keyCapPressed = NSColor(white: 0.20, alpha: 1)
+        /// Legend ink: the light panel print, and the dark half of a pictogram (A).
+        static let legendLight = NSColor(white: 0.86, alpha: 1)
+        static let legendDark = NSColor(white: 0.18, alpha: 1)
+    }
+
     // MARK: - Bar spacing
     //
     // Cocoa's guidance: related controls sit close, unrelated groups sit apart. The

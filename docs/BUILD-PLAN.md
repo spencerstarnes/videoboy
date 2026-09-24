@@ -162,6 +162,30 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
       through its own menu item and the picture read back, key fits at all three
       breakpoints). Not yet: soft-edge/border width on wipes, and no registry→key sync
       when `61F` is moved by MIDI (the blend key has the same gap).
+- [x] AVE-5 wipe transition — added 2026-09-23. A 13th transition, `Transition.ave5`,
+      emulating the Panasonic WJ-AVE5's WIPE MODE block from its operating manual
+      (WIPE PATTERNS table p.5; controls 5–10, 53, 54; procedure pp.12–13). Five
+      pattern keys that COMBINE (A|B, B|A, A/B, B/A, circle → the table's 31 rows),
+      MULTI (×4 → ×16 → off), WIPE edge (normal → border → soft), BACK COLOUR (8,
+      stepped), ONE-WAY, REVERSE, CUT when no key is lit, and the joystick
+      positioner on the three Ⓟ patterns. P-IN-P is drawn disabled (out of scope).
+      Core: `AVE5Wipe` (state + press semantics + a CPU twin of the field), params
+      `62F–69F` (state) and a new `6xG` family `61G–6AG` (momentary key presses, like
+      68A–6BA), and MIDI pitch bend as a control source (a keyboard joystick's X).
+      Shader: one more branch in the existing blend draw — no new pass or wait.
+      UI: with AVE-5 armed, the fader's transition key draws the lit pattern and
+      opens a popover laid out like the hardware block, plus an XY positioner with
+      X/Y faders; every key and both faders are Shift-learnable (the popover is
+      added to `DetectSession` as an extra root). Evidence: `AVE5WipeTests` (25:
+      every key combination × MULTI × edge × REVERSE pure at both ends; shader vs
+      CPU twin 0 disagreeing pixels over 192 combinations); `scripts/selfqa.sh
+      ave5` (`selfqa/out/phase-4/ave5/`: the manual's table rendered row for row,
+      live DV, the popover in a real window driven by hit-test, Shift-learn, a
+      learned MIDI key, pitch bend); `selfqa stress` now arms AVE-5 on all three
+      faders — worst tick 16.3–16.4 ms vs 16.2 ms baseline. Approximate: the two
+      table rows the manual shows as textured photographs (A|B+B|A+circle,
+      A/B+B/A+circle). Adding the 13th case shifts where an old `61F` value lands
+      from Push Vertical up by one stop (transitions shipped the same day).
 - [ ] Optional: expose PRIMARY (and the wedge sources) over Syphon so the app can also feed VDMX/TouchDesigner rigs.
 
 ## Backlog notes / deferred ideas

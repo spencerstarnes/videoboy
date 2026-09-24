@@ -68,6 +68,19 @@ enum StressSelfQA {
         for slot in [Engine.moshOneSlot, Engine.moshTwoSlot] {
             engine.registry.setValue(0.5, slot: slot, code: .moshAmount)
         }
+        // Every fader on the AVE-5 wipe, mid-travel, all five keys lit, ×16 and a
+        // soft edge: the most work that transition's shader branch can do per pixel.
+        let heaviestWipe = AVE5Wipe(keys: [.allEdges, .circle], multi: .x16, edge: .soft,
+                                    positionX: 0.4, positionY: 0.6)
+        for (slot, fader) in [(GraphTopology.subMixOne, ParamCode.crossfadeAB),
+                              (GraphTopology.subMixTwo, .crossfadeCD),
+                              (GraphTopology.primary, .crossfadeOneTwo)] {
+            engine.registry.setValue(Transition.ave5.normalisedPosition, slot: slot, code: .transition)
+            for (code, value) in heaviestWipe.parameterValues {
+                engine.registry.setValue(value, slot: slot, code: code)
+            }
+            engine.registry.setValue(0.5, slot: slot, code: fader)
+        }
         engine.setTransportRunning(true)
 
         // Warm-up pays for texture allocation and shader compilation; not a show.

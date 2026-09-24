@@ -29,7 +29,8 @@
 //    5xA  — colour controls
 //    6xA  — mixer and transport
 //    6xF  — crossfader transition pattern (wipes, slides, pushes, iris — same
-//           mixer family, same reason as 6xE)
+//           mixer family, same reason as 6xE), then the AVE-5 wipe block's state
+//    6xG  — AVE-5 wipe block key PRESSES (momentary, like 68A–6BA)
 //    6xE  — genlock/chroma key (6xA's nine slots are already spoken for; this
 //           extends the same mixer family rather than starting a new number range,
 //           because a key is a property of a composite exactly like blend mode is)
@@ -253,6 +254,47 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     /// iris, split, interlace — as a 0...1 sweep across `Transition.allCases`.
     public static let transition = ParamCode(known: "61F")
 
+    // MARK: AVE-5 wipe block — state (62F–69F)
+    //
+    // The WJ-AVE5's WIPE MODE block (AVE5Wipe.swift), read when `transition` is AVE-5.
+    // These are the block's STATE — what is lit — so a template saves them and a
+    // knob can sweep them. Pressing a key from MIDI goes through the 6xG codes below
+    // instead, because a press toggles or cycles and a note can only say 1 then 0.
+
+    /// Which of the five pattern keys are lit, as a 0...1 sweep over the 32 combinations.
+    public static let ave5Keys = ParamCode(known: "62F")
+    /// MULTI: off, ×4, ×16.
+    public static let ave5Multi = ParamCode(known: "63F")
+    /// WIPE: normal, border, soft edge.
+    public static let ave5Edge = ParamCode(known: "64F")
+    /// ONE-WAY, above the halfway point.
+    public static let ave5OneWay = ParamCode(known: "65F")
+    /// REVERSE, above the halfway point.
+    public static let ave5Reverse = ParamCode(known: "66F")
+    /// BACK COLOUR, a sweep over the eight colours.
+    public static let ave5BackColour = ParamCode(known: "67F")
+    /// Joystick positioner, left to right. 0.5 is the centre. A keyboard's pitch
+    /// bend lands here naturally.
+    public static let ave5PositionX = ParamCode(known: "68F")
+    /// Joystick positioner, top to bottom. 0.5 is the centre.
+    public static let ave5PositionY = ParamCode(known: "69F")
+
+    // MARK: AVE-5 wipe block — key presses (6xG)
+    //
+    // Momentary, like CUT and FADE: a learned MIDI key writes 1, ShellController
+    // presses the key once and puts the value back to 0.
+
+    public static let ave5PressFromRight = ParamCode(known: "61G")
+    public static let ave5PressFromLeft = ParamCode(known: "62G")
+    public static let ave5PressFromBottom = ParamCode(known: "63G")
+    public static let ave5PressFromTop = ParamCode(known: "64G")
+    public static let ave5PressCircle = ParamCode(known: "65G")
+    public static let ave5PressMulti = ParamCode(known: "66G")
+    public static let ave5PressWipe = ParamCode(known: "67G")
+    public static let ave5PressOneWay = ParamCode(known: "68G")
+    public static let ave5PressReverse = ParamCode(known: "69G")
+    public static let ave5PressBackColour = ParamCode(known: "6AG")
+
     // MARK: Composite emulation (7xA)
 
     public static let compositeCrawl = ParamCode(known: "71A")
@@ -426,6 +468,24 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "62E": "key threshold",
         "63E": "key edge",
         "61F": "transition",
+        "62F": "AVE-5 pattern keys",
+        "63F": "AVE-5 multi",
+        "64F": "AVE-5 wipe edge",
+        "65F": "AVE-5 one-way",
+        "66F": "AVE-5 reverse",
+        "67F": "AVE-5 back colour",
+        "68F": "AVE-5 position X",
+        "69F": "AVE-5 position Y",
+        "61G": "AVE-5 A|B key",
+        "62G": "AVE-5 B|A key",
+        "63G": "AVE-5 A/B key",
+        "64G": "AVE-5 B/A key",
+        "65G": "AVE-5 circle key",
+        "66G": "AVE-5 MULTI key",
+        "67G": "AVE-5 WIPE key",
+        "68G": "AVE-5 ONE-WAY key",
+        "69G": "AVE-5 REVERSE key",
+        "6AG": "AVE-5 BACK COLOUR key",
         "71A": "dot crawl",
         "72A": "chroma bleed",
         "73A": "TBC wobble",
@@ -532,6 +592,24 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .keyThreshold,
         .keyEdge,
         .transition,
+        .ave5Keys,
+        .ave5Multi,
+        .ave5Edge,
+        .ave5OneWay,
+        .ave5Reverse,
+        .ave5BackColour,
+        .ave5PositionX,
+        .ave5PositionY,
+        .ave5PressFromRight,
+        .ave5PressFromLeft,
+        .ave5PressFromBottom,
+        .ave5PressFromTop,
+        .ave5PressCircle,
+        .ave5PressMulti,
+        .ave5PressWipe,
+        .ave5PressOneWay,
+        .ave5PressReverse,
+        .ave5PressBackColour,
         .compositeCrawl,
         .chromaBleed,
         .tbcWobble,

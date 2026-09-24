@@ -54,6 +54,9 @@ public enum ControlSource: Equatable, Codable, Sendable {
     case midiControlChange(channel: UInt8, controller: UInt8)
     /// A MIDI Note, used as a momentary or toggle.
     case midiNote(channel: UInt8, note: UInt8)
+    /// MIDI Pitch Bend on a channel — the X axis of most keyboards' joystick, and the
+    /// pitch wheel. Centre (8192 of 16383) arrives as 0.5.
+    case midiPitchBend(channel: UInt8)
     /// An OSC address pattern.
     case osc(address: String)
     /// An audio-reactivity tap: RMS, a frequency band, or onset flags.
@@ -64,6 +67,7 @@ public enum ControlSource: Equatable, Codable, Sendable {
         switch self {
         case .midiControlChange(let channel, let controller): "midi cc \(channel + 1)/\(controller)"
         case .midiNote(let channel, let note): "midi note \(channel + 1)/\(note)"
+        case .midiPitchBend(let channel): "midi pitch bend \(channel + 1)"
         case .osc(let address): "osc \(address)"
         case .audioReactivity(let tap): "audio \(tap)"
         }

@@ -30,6 +30,15 @@ final class ShellController {
     /// Shift-to-detect. Exposed so the self-QA render can arm it.
     private(set) var detectSession: DetectSession?
 
+    /// The AVE-5 wipe block's popover, while one is open, and the bus it edits.
+    /// One at a time: it is opened from a fader's key, and a second fader's block
+    /// replaces the first rather than stacking up over the window.
+    private(set) var ave5Popover: NSPopover?
+    private(set) var ave5Panel: AVE5WipePanelController?
+    /// What each bus's transition key last drew, so the per-frame refresh redraws
+    /// only on a change.
+    private var ave5OnKeys: [String: AVE5Wipe] = [:]
+
     /// Channel letters in the order their previews appear.
     private static let channels = ["A", "B", "C", "D"]
 
@@ -1229,6 +1238,14 @@ final class ShellController {
             bus.body.onTransitionChanged = { [weak self] transition in
                 self?.engine.registry.setValue(
                     transition.normalisedPosition, slot: bus.slot, code: .transition)
+                // Leaving AVE-5 closes its block: it would be editing a wipe that
+                // is no longer the one the fader follows.
+                if transition != .ave5, self?.ave5Panel?.slot == bus.slot {
+                    self?.closeAVE5Panel()
+                }
+            }
+            bus.body.onAVE5PanelRequested = { [weak self] anchor in
+                self?.toggleAVE5Panel(slot: bus.slot, anchor: anchor)
             }
             bus.body.onFade = { [weak self] rate in
                 guard let self else { return }
@@ -1847,7 +1864,127 @@ final class ShellController {
                 }
                 Log.info(.midi, "\(code.displayName) fired on \(bus.slot) from a mapping")
             }
+            // The AVE-5 block's keys: a press each, on the edge, exactly like CUT.
+            for key in AVE5Wipe.Key.allCases {
+                guard let value = engine.registry.value(slot: bus.slot, code: key.triggerCode),
+                      value > 0.5 else { continue }
+                engine.registry.setValue(0, slot: bus.slot, code: key.triggerCode)
+                pressAVE5(key, slot: bus.slot)
+            }
         }
+    }
+
+    // MARK: - The AVE-5 wipe block
+    //
+    // The registry is the block's only state (62F–69F on each bus's slot): a click,
+    // a learned MIDI key and a template all write there, and the popover, the key's
+    // pictogram and the shader all read from there. So nothing can disagree about
+    // which keys are lit.
+
+    /// The fader buses, for the AVE-5 block's per-bus bookkeeping.
+    private var ave5Buses: [(body: FaderPanelBody, slot: String)] {
+        [
+            (shell.grid.panels.faderABBody, GraphTopology.subMixOne),
+            (shell.grid.panels.faderCDBody, GraphTopology.subMixTwo),
+            (shell.grid.panels.faderOneTwoBody, GraphTopology.primary)
+        ]
+    }
+
+    /// A bus's AVE-5 block, as the registry holds it.
+    func ave5State(slot: String) -> AVE5Wipe {
+        AVE5Wipe { engine.registry.value(slot: slot, code: $0) }
+    }
+
+    /// Presses one key of a bus's block — what a click on the popover and a learned
+    /// MIDI key both come down to.
+    func pressAVE5(_ key: AVE5Wipe.Key, slot: String) {
+        var state = ave5State(slot: slot)
+        state.press(key)
+        writeAVE5(state, slot: slot)
+        Log.info(.graph, "AVE-5 \(key.legend) on \(slot): \(state.shape.displayName)"
+            + (state.multi == .off ? "" : " \(state.multi.label)")
+            + (state.edge == .normal ? "" : ", \(state.edge.label.lowercased()) edge"))
+    }
+
+    /// Moves a bus's positioner.
+    func positionAVE5(x: Double, y: Double, slot: String) {
+        engine.registry.setValue(x, slot: slot, code: .ave5PositionX)
+        engine.registry.setValue(y, slot: slot, code: .ave5PositionY)
+        refreshAVE5()
+    }
+
+    private func writeAVE5(_ state: AVE5Wipe, slot: String) {
+        for (code, value) in state.parameterValues {
+            engine.registry.setValue(value, slot: slot, code: code)
+        }
+        refreshAVE5()
+    }
+
+    /// Brings the keys' pictograms and the open popover up to date with the
+    /// registry. Every frame, because MIDI can change the block at any time; it
+    /// costs eight dictionary reads per bus and redraws only on a change.
+    private func refreshAVE5() {
+        for bus in ave5Buses {
+            let state = ave5State(slot: bus.slot)
+            if ave5OnKeys[bus.slot] != state {
+                ave5OnKeys[bus.slot] = state
+                bus.body.setAVE5(state)
+            }
+        }
+        if let panel = ave5Panel {
+            panel.show(ave5State(slot: panel.slot))
+        }
+    }
+
+    /// Opens the block for a bus, or closes it when it is already open for that bus.
+    ///
+    /// Application-defined rather than transient: a transient popover closes on the
+    /// next click outside it, and the next click is the fader — the whole point is
+    /// to set the keys and then play the wipe with the block still in view.
+    func toggleAVE5Panel(slot: String, anchor: NSView) {
+        if ave5Panel?.slot == slot {
+            closeAVE5Panel()
+            return
+        }
+        closeAVE5Panel()
+        // A popover needs its anchor on screen. Headless checks build the shell
+        // with no window; say so rather than raise.
+        guard anchor.window != nil else {
+            Log.info(.graph, "AVE-5 block not shown for \(slot): the key is not in a window")
+            return
+        }
+        let panel = AVE5WipePanelController(slot: slot)
+        panel.onPress = { [weak self] key in self?.pressAVE5(key, slot: slot) }
+        panel.onPositionChanged = { [weak self] x, y in self?.positionAVE5(x: x, y: y, slot: slot) }
+        panel.onChooseTransition = { [weak self] _ in
+            guard let self else { return }
+            let body = self.ave5Buses.first { $0.slot == slot }?.body
+            body?.transitionButton?.showMenu()
+        }
+        panel.onClose = { [weak self] in self?.closeAVE5Panel() }
+        panel.show(ave5State(slot: slot))
+
+        let popover = NSPopover()
+        popover.behavior = .applicationDefined
+        popover.animates = false
+        popover.contentViewController = panel
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        ave5Popover = popover
+        ave5Panel = panel
+        // The popover is its own window: without this, Shift would light every key
+        // in the main window and none of these.
+        detectSession?.addRoot(panel.view)
+        Log.info(.graph, "AVE-5 block open for \(slot)")
+    }
+
+    /// Closes the block if it is open.
+    func closeAVE5Panel() {
+        if let panel = ave5Panel {
+            detectSession?.removeRoot(panel.view)
+        }
+        ave5Popover?.close()
+        ave5Popover = nil
+        ave5Panel = nil
     }
 
     /// Drives the sweeps once, for checks that step the graph by hand rather than
@@ -2535,6 +2672,7 @@ final class ShellController {
         driveSweeps(from: engine)
         fireActionTriggers(from: engine)
         flipAutomatedButtons(from: engine)
+        refreshAVE5()
 
         // The status and transport readouts are cheap, but not free; once a second is
         // plenty for a human reading them, and it keeps text redraw off the hot path.

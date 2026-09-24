@@ -41,7 +41,15 @@ final class DetectSession {
     private(set) var isArmed = false
 
     private weak var root: NSView?
+    /// Views outside the main window that hold mappable controls — the AVE-5 wipe
+    /// block's popover is its own window, and a tree walk from the shell never
+    /// reaches it. Weak, so a closed popover drops out on its own.
+    private var extraRoots: [WeakView] = []
     private var monitor: Any?
+
+    private struct WeakView {
+        weak var view: NSView?
+    }
 
     init(root: NSView) {
         self.root = root
@@ -63,8 +71,25 @@ final class DetectSession {
 
     /// Re-applies the current state, for controls built after the key went down.
     func refresh() {
-        guard let root else { return }
-        apply(to: root)
+        if let root { apply(to: root) }
+        extraRoots.removeAll { $0.view == nil }
+        for extra in extraRoots {
+            if let view = extra.view { apply(to: view) }
+        }
+    }
+
+    /// Includes a view outside the main window, such as a popover's content, in
+    /// what Shift lights. Applied at once, so its controls are wired even if Shift
+    /// is already held when it opens.
+    func addRoot(_ view: NSView) {
+        guard !extraRoots.contains(where: { $0.view === view }) else { return }
+        extraRoots.append(WeakView(view: view))
+        apply(to: view)
+    }
+
+    /// The inverse of `addRoot`.
+    func removeRoot(_ view: NSView) {
+        extraRoots.removeAll { $0.view === view || $0.view == nil }
     }
 
     /// Arms or disarms without a key press, for the self-QA render.

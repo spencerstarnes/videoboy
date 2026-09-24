@@ -90,6 +90,15 @@ final class MIDIAndPlaybackTests: XCTestCase {
         XCTAssertEqual(off.source, .midiNote(channel: 2, note: 60))
         XCTAssertEqual(off.value, 0, accuracy: 1e-9)
 
+        // Pitch Bend, channel 2: a keyboard joystick's X axis. LSB then MSB.
+        let bendLeft: UInt32 = (0x2 << 28) | (0xE1 << 16) | (0 << 8) | 0
+        let bendCentre: UInt32 = (0x2 << 28) | (0xE1 << 16) | (0 << 8) | 64
+        let bendRight: UInt32 = (0x2 << 28) | (0xE1 << 16) | (127 << 8) | 127
+        XCTAssertEqual(MIDIInput.decode(word: bendLeft)?.source, .midiPitchBend(channel: 1))
+        XCTAssertEqual(try! XCTUnwrap(MIDIInput.decode(word: bendLeft)).value, 0, accuracy: 1e-9)
+        XCTAssertEqual(try! XCTUnwrap(MIDIInput.decode(word: bendCentre)).value, 0.5, accuracy: 1e-3)
+        XCTAssertEqual(try! XCTUnwrap(MIDIInput.decode(word: bendRight)).value, 1, accuracy: 1e-9)
+
         // A message type this app does not act on is ignored, not guessed at.
         XCTAssertNil(MIDIInput.decode(word: (0x2 << 28) | (0xD0 << 16)))
     }

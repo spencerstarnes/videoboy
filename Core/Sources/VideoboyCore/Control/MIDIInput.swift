@@ -281,8 +281,13 @@ public final class MIDIInput {
 
     /// Decodes one Universal MIDI Packet word into a `ControlEvent`.
     ///
-    /// Only the two message types that make sense as control surfaces are handled:
-    /// Control Change and Note On. Everything else is ignored rather than guessed at.
+    /// Only the message types that make sense as control surfaces are handled:
+    /// Control Change, Note On/Off and Pitch Bend. Everything else is ignored rather
+    /// than guessed at.
+    ///
+    /// Pitch Bend is here for keyboard joysticks: on most keyboards the stick's X
+    /// axis IS pitch bend, and without it the AVE-5 positioner could only learn the
+    /// Y axis (usually a CC).
     static func decode(word: UInt32) -> ControlEvent? {
         // Message type 2 in the top nibble is a MIDI 1.0 channel voice message.
         let messageType = UInt8((word >> 28) & 0xF)
@@ -304,6 +309,12 @@ public final class MIDIInput {
         case 0x80:
             // Note Off is the same address at zero, so a mapped note releases cleanly.
             return ControlEvent(source: .midiNote(channel: channel, note: data1), value: 0)
+        case 0xE0:
+            // 14 bits, least significant 7 first. 16383 is full scale, so the
+            // stick's resting centre (8192) lands a hair above 0.5 — close enough
+            // that nothing downstream can tell.
+            let bend = (Int(data2) << 7) | Int(data1)
+            return ControlEvent(source: .midiPitchBend(channel: channel), value: Double(bend) / 16383.0)
         default:
             return nil
         }

@@ -62,6 +62,13 @@ public enum Transition: Int, CaseIterable, Codable, Sendable {
     case interlaceHorizontal = 10
     /// Alternate vertical bands wipe in opposite directions, down and up.
     case interlaceVertical = 11
+    /// The Panasonic WJ-AVE5's WIPE MODE block: five pattern keys that combine,
+    /// MULTI, ONE-WAY, REVERSE, border/soft edges and a joystick positioner. The
+    /// pattern is whatever the block's keys add up to — see AVE5Wipe.swift.
+    ///
+    /// Added after the first twelve, so a 61F value saved before it existed lands
+    /// one step off from the middle of the range up (the sweep has one more stop).
+    case ave5 = 12
 
     /// Name shown in the menu and the tooltip.
     public var displayName: String {
@@ -78,6 +85,7 @@ public enum Transition: Int, CaseIterable, Codable, Sendable {
         case .splitVertical: "Split Vertical"
         case .interlaceHorizontal: "Interlace Horizontal"
         case .interlaceVertical: "Interlace Vertical"
+        case .ave5: "AVE-5"
         }
     }
 
@@ -91,7 +99,8 @@ public enum Transition: Int, CaseIterable, Codable, Sendable {
         [.slideHorizontal, .slideVertical],
         [.pushHorizontal, .pushVertical],
         [.iris, .splitHorizontal, .splitVertical],
-        [.interlaceHorizontal, .interlaceVertical]
+        [.interlaceHorizontal, .interlaceVertical],
+        [.ave5]
     ]
 
     /// Selects a transition from a 0...1 parameter (code `61F`).

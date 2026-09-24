@@ -999,6 +999,14 @@ final class FaderPanelBody: NSView {
     func setTransition(_ transition: Transition) {
         transitionButton?.transition = transition
     }
+
+    /// Called, with the transition key as anchor, to open the AVE-5 wipe block.
+    var onAVE5PanelRequested: ((NSView) -> Void)?
+
+    /// Shows the AVE-5 block's state on the transition key.
+    func setAVE5(_ state: AVE5Wipe) {
+        transitionButton?.ave5 = state
+    }
     private var leftName = ""
     private var rightName = ""
 
@@ -1195,6 +1203,9 @@ final class FaderPanelBody: NSView {
         transitionKey.onTransitionChosen = { [weak self] transition in
             Log.info(.graph, "transition set to \(transition.displayName)")
             self?.onTransitionChanged?(transition)
+        }
+        transitionKey.onAVE5PanelRequested = { [weak self] anchor in
+            self?.onAVE5PanelRequested?(anchor)
         }
         self.transitionButton = transitionKey
 

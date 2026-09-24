@@ -612,6 +612,16 @@ enum ShaderSource {
         float keyThreshold;  // RGB distance below which a pixel is "the background"
         float keyEdge;       // width of the soft transition past that distance
         int transition;      // which pattern the fader's move follows — see Transition.swift
+        // The AVE-5 wipe block (AVE5Wipe.swift), read only when transition is 12.
+        int ave5Keys;        // lit pattern keys, AVE5Wipe.PatternKeys bits
+        int ave5Tiles;       // MULTI: tiles per side, 1 / 2 / 4
+        int ave5Edge;        // WIPE: 0 normal, 1 border, 2 soft
+        int ave5Reversed;    // REVERSE, flipped again by ONE-WAY on the trip back
+        float ave5CentreX;   // joystick positioner, 0...1 within a tile
+        float ave5CentreY;
+        float ave5BorderR;   // BACK COLOUR, for the border edge
+        float ave5BorderG;
+        float ave5BorderB;
     };
 
     static inline float3 blendChannelwise(int mode, float3 base, float3 blend) {
@@ -789,6 +799,169 @@ enum ShaderSource {
         return s;
     }
 
+    /* The Panasonic WJ-AVE5's wipe generator. AVE5Wipe.swift has the manual's table
+     * and how its five keys combine; this is that, per pixel.
+     *
+     * Every combination is one scalar FIELD over the screen: 0 where B arrives first,
+     * 1 where it arrives last. The fader is a threshold swept through it, so the
+     * contract every other transition keeps still holds — nothing at t = 0,
+     * everything at t = 1, whatever keys are lit, wherever the joystick is.
+     *
+     *   an edge key       a ramp across its axis
+     *   both of an axis   the ramp folded at the centre (B opens from the middle)
+     *   no circle         the LARGER of the two axes  → boxes
+     *   with circle       the SUM of the two axes     → diagonals, triangles, diamond
+     *   circle alone      distance from the centre    → a round circle
+     *
+     * Each field is divided by its largest value over the tile's corners, edge
+     * midpoints and centre (every field here is piecewise linear or a distance,
+     * folded only at the middle, so its maximum is at one of those nine points), which is what lets the joystick push a
+     * circle off-centre and still have it cover the screen exactly at the end of
+     * travel.
+     */
+
+    // Pattern key bits — must match AVE5Wipe.PatternKeys.
+    constant int kAVE5FromRight = 1;
+    constant int kAVE5FromLeft = 2;
+    constant int kAVE5FromBottom = 4;
+    constant int kAVE5FromTop = 8;
+    constant int kAVE5Circle = 16;
+    // How far past each end the threshold travels, in field units, so a border or a
+    // soft edge has fully left the screen at both ends of the fader.
+    constant float kAVE5EdgeReach = 0.05;
+    // Half the border band's width, in field units. Inside the reach above, so the
+    // band is off-screen at both ends too.
+    constant float kAVE5BorderHalfWidth = 0.025;
+    // The circle's zigzag edge (manual p.3, note 7: "the edge of the hard and border
+    // wipe in the circle wipe mode will be a zigzag"). The hardware's circle is
+    // computed on a coarse horizontal clock; 90 steps across the line — 8 output
+    // pixels at 720 across — matches the stair-step drawn in the manual. A count
+    // across the line rather than a pixel size, because the hardware's clock is
+    // tied to the line, not to whatever resolution this renders at.
+    constant float kAVE5ZigzagColumns = 90.0;
+    // Where a field can peak: the tile's four corners, its four edge midpoints, and
+    // its centre (the textured diamond row peaks there).
+    constant float2 kAVE5ReachProbes[9] = {
+        float2(0.0, 0.0), float2(1.0, 0.0), float2(0.0, 1.0), float2(1.0, 1.0),
+        float2(0.5, 0.0), float2(0.5, 1.0), float2(0.0, 0.5), float2(1.0, 0.5),
+        float2(0.5, 0.5)
+    };
+    // Width, in output pixels, of the column pairs the vertical textured pattern
+    // alternates on — the same reason as kInterlaceBandPixels: single columns turn
+    // to chroma mush through the composite codec.
+    constant float kAVE5TextureColumnPixels = 4.0;
+
+    /// One axis's ramp: 0 where B arrives first, 1 where it arrives last, or -1
+    /// when neither of that axis's keys is lit.
+    static inline float ave5Axis(bool fromHighSide, bool fromLowSide, float q, float centre) {
+        if (fromHighSide && fromLowSide) { return 2.0 * abs(q - centre); }
+        if (fromHighSide) { return 1.0 - q; }
+        if (fromLowSide) { return q; }
+        return -1.0;
+    }
+
+    /// The field before normalising. `q` is the position in the tile (0...1, y
+    /// down), `c` the joystick centre in the same space.
+    static inline float ave5RawField(int keys, float2 q, float2 c, float aspect, float2 pixel) {
+        bool circle = (keys & kAVE5Circle) != 0;
+        float ax = ave5Axis((keys & kAVE5FromRight) != 0, (keys & kAVE5FromLeft) != 0, q.x, c.x);
+        float ay = ave5Axis((keys & kAVE5FromBottom) != 0, (keys & kAVE5FromTop) != 0, q.y, c.y);
+        bool hasX = ax >= 0.0;
+        bool hasY = ay >= 0.0;
+        if (!circle) {
+            if (hasX && hasY) { return max(ax, ay); }
+            return hasX ? ax : ay;
+        }
+        if (!hasX && !hasY) { return length((q - c) * float2(aspect, 1.0)); }
+        if (hasX && hasY) { return ax + ay; }
+        // One axis plus the circle. The unlit axis still reaches the adder as a fold
+        // at half strength: that is the difference the table draws between the
+        // chevron (A|B + circle) and the triangle (A|B + A/B + B/A + circle).
+        bool xFolded = (keys & (kAVE5FromRight | kAVE5FromLeft)) == (kAVE5FromRight | kAVE5FromLeft);
+        bool yFolded = (keys & (kAVE5FromBottom | kAVE5FromTop)) == (kAVE5FromBottom | kAVE5FromTop);
+        if (hasX) {
+            float other = 2.0 * abs(q.y - 0.5);
+            if (!xFolded) { return ax + 0.5 * other; }
+            // Textured (A|B + B|A + circle). The table draws A as a dark bowtie with
+            // B arriving top and bottom, hatched with horizontal lines — under MULTI
+            // those meet across the tile edges as lemons pointed left and right.
+            // Even lines: the hourglass; odd lines: plain bands from the top and
+            // bottom edges. Where the two disagree is the hatching. An
+            // approximation: the manual photographs these, it does not explain them.
+            bool odd = (int(floor(pixel.y)) & 1) == 1;
+            return odd ? (1.0 - other) : ax + (1.0 - other);
+        }
+        float other = 2.0 * abs(q.x - 0.5);
+        if (!yFolded) { return ay + 0.5 * other; }
+        // Textured (A/B + B/A + circle). The table draws A shrinking to a dark
+        // diamond while B comes in from the corners, hatched with vertical lines.
+        // Even columns: B from the corners; odd: B from the left and right edges.
+        bool oddColumn = (int(floor(pixel.x / kAVE5TextureColumnPixels)) & 1) == 1;
+        return oddColumn ? (1.0 - other) : (2.0 - ay - other);
+    }
+
+    struct AVE5Sample {
+        float alpha;   // how much of B is here, 0...1
+        float border;  // how much of the border colour is laid over it, 0...1
+    };
+
+    static inline AVE5Sample ave5Mask(constant BlendParams &p, float t, float2 uv,
+                                      float2 pixel, float2 size) {
+        AVE5Sample s;
+        s.alpha = 0.0;
+        s.border = 0.0;
+        int keys = p.ave5Keys & 31;
+        bool reversed = p.ave5Reversed != 0;
+        // REVERSE: B arrives where A would have stayed — the forward pattern at the
+        // mirrored fader position, inverted. Both ends are still the pure sources.
+        float tt = reversed ? 1.0 - t : t;
+
+        if (keys == 0) {
+            // No pattern key lit is the manual's CUT (p.13, 8-1): the picture
+            // switches at the middle of the lever's travel.
+            s.alpha = tt >= 0.5 ? 1.0 : 0.0;
+        } else {
+            float aspect = size.x / max(size.y, 1.0);
+            float2 at = uv;
+            if (keys == kAVE5Circle && p.ave5Edge != 2) {
+                at.x = (floor(uv.x * kAVE5ZigzagColumns) + 0.5) / kAVE5ZigzagColumns;
+            }
+            float tiles = float(max(p.ave5Tiles, 1));
+            float2 scaled = at * tiles;
+            float2 cell = floor(scaled);
+            float2 q = scaled - cell;
+            // Under MULTI the table draws the four diagonals mirrored top-to-bottom
+            // on alternate rows of tiles — a zigzag rather than a repeat.
+            int xKeys = keys & (kAVE5FromRight | kAVE5FromLeft);
+            int yKeys = keys & (kAVE5FromBottom | kAVE5FromTop);
+            bool diagonal = (keys & kAVE5Circle) != 0
+                && (xKeys == kAVE5FromRight || xKeys == kAVE5FromLeft)
+                && (yKeys == kAVE5FromBottom || yKeys == kAVE5FromTop);
+            if (diagonal && (int(cell.y) & 1) == 1) { q.y = 1.0 - q.y; }
+
+            float2 c = float2(p.ave5CentreX, p.ave5CentreY);
+            float field = ave5RawField(keys, q, c, aspect, pixel);
+            float reach = 1e-4;
+            for (int i = 0; i < 9; i++) {
+                reach = max(reach, ave5RawField(keys, kAVE5ReachProbes[i], c, aspect, pixel));
+            }
+            field /= reach;
+
+            float threshold = tt * (1.0 + 2.0 * kAVE5EdgeReach) - kAVE5EdgeReach;
+            if (p.ave5Edge == 2) {
+                s.alpha = 1.0 - smoothstep(threshold - kAVE5EdgeReach,
+                                           threshold + kAVE5EdgeReach, field);
+            } else {
+                s.alpha = field < threshold ? 1.0 : 0.0;
+                if (p.ave5Edge == 1 && abs(field - threshold) < kAVE5BorderHalfWidth) {
+                    s.border = 1.0;
+                }
+            }
+        }
+        if (reversed) { s.alpha = 1.0 - s.alpha; }
+        return s;
+    }
+
     fragment float4 composite_blend_fragment(VertexOut in [[stage_in]],
                                              texture2d<float> baseLayer [[texture(0)]],
                                              texture2d<float> blendLayer [[texture(1)]],
@@ -800,6 +973,24 @@ enum ShaderSource {
         // source has arrived, and the blend mode colours what has arrived by the
         // same mid-travel triangle the dissolve uses below — so Normal is a clean
         // wipe and both fader ends are still the two sources untouched.
+        // The AVE-5 wipe block. Its own branch rather than a case of transitionMask:
+        // it has border and soft edges, so "arrived" is an amount, not a yes/no.
+        if (p.transition == 12) {
+            float2 size = float2(baseLayer.get_width(), baseLayer.get_height());
+            AVE5Sample s = ave5Mask(p, t, in.uv, in.position.xy, size);
+            float3 base = baseLayer.sample(linearSampler, in.uv).rgb;
+            if (s.alpha <= 0.0 && s.border <= 0.0) { return float4(base, 1.0); }
+            float3 blend = blendLayer.sample(linearSampler, in.uv).rgb;
+            float3 raw = (p.mode == 13)
+                ? keyComposite(base, blend, float3(p.keyR, p.keyG, p.keyB), p.keyThreshold, p.keyEdge)
+                : blendChannelwise(p.mode, base, blend);
+            float weight = 1.0 - abs(2.0 * t - 1.0);
+            float3 arrived = mix(blend, clamp(raw, 0.0, 1.0), weight);
+            float3 result = mix(base, arrived, s.alpha);
+            result = mix(result, float3(p.ave5BorderR, p.ave5BorderG, p.ave5BorderB), s.border);
+            return float4(clamp(result, 0.0, 1.0), 1.0);
+        }
+
         if (p.transition != 0) {
             float aspect = float(baseLayer.get_width()) / max(float(baseLayer.get_height()), 1.0);
             TransitionSample s = transitionMask(p.transition, t, in.uv, in.position.xy, aspect);

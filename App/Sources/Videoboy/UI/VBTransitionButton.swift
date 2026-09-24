@@ -6,7 +6,9 @@
 //            SHAPE the move takes — dissolve, wipe, slide, push, iris, split,
 //            interlace. Click it and the patterns pop out under the pointer.
 //  Inputs  : a click, and the current transition.
-//  Outputs : `onTransitionChosen`.
+//  Outputs : `onTransitionChosen`, and `onAVE5PanelRequested` — with AVE-5 armed a
+//            click opens the AVE-5 wipe block instead of the menu (the block's
+//            "Transitions…" button, `showMenu`, is the way back out).
 //  Connects: FaderPanelBody, Transition (whose menu grouping this shows).
 //  Extend  : a new pattern needs a case in `drawPictogram` — the switch is
 //            exhaustive, so the compiler will say so.
@@ -44,6 +46,20 @@ final class VBTransitionButton: NSControl, AuditableControl {
     /// Called when a pattern is chosen from the menu.
     var onTransitionChosen: ((Transition) -> Void)?
 
+    /// The AVE-5 wipe block's state, drawn on the key when AVE-5 is armed — the
+    /// pattern the keys add up to, so the key says which wipe is lit.
+    var ave5 = AVE5Wipe() {
+        didSet {
+            guard ave5 != oldValue, transition == .ave5 else { return }
+            updateTooltip()
+            needsDisplay = true
+        }
+    }
+
+    /// Called, with this key as the anchor, when AVE-5 is armed and the key is
+    /// clicked — or just chosen from the menu.
+    var onAVE5PanelRequested: ((NSView) -> Void)?
+
     private var isHovering = false {
         didSet {
             guard isHovering != oldValue else { return }
@@ -78,6 +94,11 @@ final class VBTransitionButton: NSControl, AuditableControl {
     }
 
     private func updateTooltip() {
+        if transition == .ave5 {
+            toolTip = "Transition: AVE-5 (\(ave5.shape.displayName)). Click for the wipe "
+                + "block — pattern keys, MULTI, ONE-WAY, REVERSE and the positioner."
+            return
+        }
         toolTip = "Transition: \(transition.displayName). The shape the move takes "
             + "as the fader travels — FADE, CUT, sweeps and MIDI all follow it."
     }
@@ -97,8 +118,18 @@ final class VBTransitionButton: NSControl, AuditableControl {
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
         isPressed = true
-        popOutMenu(at: convert(event.locationInWindow, from: nil))
+        if transition == .ave5, let onAVE5PanelRequested {
+            onAVE5PanelRequested(self)
+        } else {
+            popOutMenu(at: convert(event.locationInWindow, from: nil))
+        }
         isPressed = false
+    }
+
+    /// Pops the pattern menu out below the key — the AVE-5 block's way back to the
+    /// other transitions, since with AVE-5 armed a click opens the block instead.
+    func showMenu() {
+        popOutMenu(at: NSPoint(x: bounds.midX, y: bounds.midY))
     }
 
     /// The pattern menu, grouped by family, each item carrying its pictogram.
@@ -134,6 +165,9 @@ final class VBTransitionButton: NSControl, AuditableControl {
         transition = pattern
         onTransitionChosen?(pattern)
         sendAction(action, to: target)
+        // Choosing AVE-5 from the menu opens its block straight away: the block is
+        // where the pattern is actually chosen.
+        if pattern == .ave5 { onAVE5PanelRequested?(self) }
     }
 
     @objc private func transitionPicked(_ sender: NSMenuItem) {
@@ -183,13 +217,15 @@ final class VBTransitionButton: NSControl, AuditableControl {
 
         NSGraphicsContext.saveGraphicsState()
         frame.addClip()
-        Self.drawPictogram(transition, in: body, ink: ink)
+        Self.drawPictogram(transition, in: body, ink: ink, ave5: ave5)
         NSGraphicsContext.restoreGraphicsState()
     }
 
     /// Draws a pattern half-way through its move: filled is where the incoming
     /// source has arrived. AppKit's y axis points UP, so "the top" is `maxY`.
-    static func drawPictogram(_ pattern: Transition, in body: NSRect, ink: NSColor) {
+    static func drawPictogram(
+        _ pattern: Transition, in body: NSRect, ink: NSColor, ave5: AVE5Wipe = AVE5Wipe()
+    ) {
         ink.setFill()
         let midX = body.midX
         let midY = body.midY
@@ -252,6 +288,46 @@ final class VBTransitionButton: NSControl, AuditableControl {
                     let y = fromStart ? midY : body.minY
                     NSRect(x: x, y: y, width: stripSize, height: body.height / 2).fill()
                 }
+            }
+        case .ave5:
+            drawAVE5Pictogram(ave5, in: body, ink: ink)
+        }
+    }
+
+    /// Cells across the AVE-5 pictogram. Coarse on purpose: a 4:3 grid this size
+    /// reads every pattern in the table, ×16 included, and it is redrawn only when
+    /// the block changes.
+    private static let ave5Columns = 24
+    private static let ave5Rows = 18
+
+    /// The block's pattern part-way through the move, sampled from the same field
+    /// the shader draws (`AVE5Wipe.arrives`), so the key cannot show a different
+    /// shape from the picture. 40% rather than half-way so a cut — which switches
+    /// AT half-way — shows as not yet taken rather than as a full key.
+    private static func drawAVE5Pictogram(_ block: AVE5Wipe, in body: NSRect, ink: NSColor) {
+        if block.keys.isEmpty {
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 8, weight: .bold), .foregroundColor: ink
+            ]
+            let label = "CUT" as NSString
+            let size = label.size(withAttributes: attributes)
+            label.draw(at: NSPoint(x: body.midX - size.width / 2, y: body.midY - size.height / 2),
+                       withAttributes: attributes)
+            return
+        }
+        let cellWidth = body.width / CGFloat(ave5Columns)
+        let cellHeight = body.height / CGFloat(ave5Rows)
+        for row in 0..<ave5Rows {
+            for column in 0..<ave5Columns {
+                let u = (Double(column) + 0.5) / Double(ave5Columns)
+                let v = (Double(row) + 0.5) / Double(ave5Rows)
+                guard block.arrives(u: u, v: v, progress: 0.4, aspect: 4.0 / 3.0,
+                                    reversed: block.reverse,
+                                    pixel: (Double(column), Double(row))) else { continue }
+                // Row 0 is the TOP of the picture; AppKit's y points up.
+                NSRect(x: body.minX + CGFloat(column) * cellWidth,
+                       y: body.maxY - CGFloat(row + 1) * cellHeight,
+                       width: cellWidth + 0.5, height: cellHeight + 0.5).fill()
             }
         }
     }
