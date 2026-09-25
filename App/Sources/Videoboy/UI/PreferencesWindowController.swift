@@ -97,7 +97,7 @@ final class PreferencesWindowController: NSWindowController {
     var sourceList: SourceListView?
     var shaderList: ISFModuleListView?
     /// The Data Burn pane's sample line, redrawn whenever the style changes.
-    var dataBurnSample: NSImageView?
+    var dataBurnSample: NSView?
     /// Builds the Shaders pane's list. Replaced by the self-QA so it scans and imports
     /// into temporary folders, never the operator's own ISF library.
     var makeShaderList: () -> ISFModuleListView = { ISFModuleListView() }

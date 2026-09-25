@@ -249,11 +249,13 @@ extension PreferencesWindowController {
             selected: backings.firstIndex(of: style.backing) ?? 0,
             target: self, action: #selector(dataBurnBackingChanged(_:)))
 
-        let sample = NSImageView()
+        // A plain layer, not an NSImageView: it is a picture, not a control, and an
+        // image view is an enabled control with no action — what the audit forbids.
+        let sample = NSView()
         sample.translatesAutoresizingMaskIntoConstraints = false
-        sample.imageScaling = .scaleNone
         sample.wantsLayer = true
         sample.layer?.backgroundColor = Theme.Color.previewEmpty.cgColor
+        sample.layer?.contentsGravity = .center
         sample.widthAnchor.constraint(equalToConstant: 420).isActive = true
         sample.heightAnchor.constraint(equalToConstant: 90).isActive = true
         dataBurnSample = sample
@@ -286,10 +288,10 @@ extension PreferencesWindowController {
                 style: store.preferences.dataBurnStyle,
                 frameHeight: Int(DataBurnRenderer.referenceFrameHeight)),
               let cgImage = image.makeCGImage() else {
-            sample.image = nil
+            sample.layer?.contents = nil
             return
         }
-        sample.image = NSImage(cgImage: cgImage, size: NSSize(width: image.width, height: image.height))
+        sample.layer?.contents = cgImage
     }
 
     private func updateDataBurnStyle(_ change: (inout DataBurnStyle) -> Void) {
