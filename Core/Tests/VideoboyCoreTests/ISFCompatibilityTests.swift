@@ -62,6 +62,26 @@ final class ISFCompatibilityTests: XCTestCase {
         XCTAssertEqual(Double(pixel.g), 0.5 * 255, accuracy: 2, "v.t is still y")
     }
 
+    func testALocalWithNoInitializerStartsAtZero() throws {
+        // Vidvox's Diagonal Blur: `vec4 returnMe;` then `returnMe = returnMe + …`.
+        // GL drivers hand back zero; Metal left garbage, and the file drew noise.
+        // The array, the second declarator and the struct field must all start at
+        // zero too, and the field declaration inside the struct must be left alone.
+        let pixel = try centre(of: effect("""
+            struct Pair { float a; float b; };
+            void main() {
+                vec4 sum;
+                float weights[2], extra;
+                Pair pair;
+                for (int i = 0; i < 4; ++i) { sum = sum + IMG_THIS_PIXEL(inputImage) / 4.0; }
+                gl_FragColor = vec4(sum.r + weights[1] + extra + pair.b, sum.g, sum.b, 1.0);
+            }
+            """))
+        XCTAssertEqual(Double(pixel.r), 100, accuracy: 2, "four quarters of the plate, from zero")
+        XCTAssertEqual(Double(pixel.g), 150, accuracy: 2)
+        XCTAssertEqual(Double(pixel.b), 200, accuracy: 2)
+    }
+
     func testAnInitializerReadsTheOuterNameAsGLSLScopesIt() throws {
         // `float distance = distance(…)` calls the function; `vec4 inputImage_ =
         // IMG_THIS_PIXEL(inputImage)`-style shadowing reads the image.

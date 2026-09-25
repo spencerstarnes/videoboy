@@ -54,6 +54,8 @@
 //      `isf_swizzle<N>(p, 0, 2)`, a temporary that writes back when the call ends —
 //      Metal cannot bind a reference to a swizzle, GLSL copies in and out
 //
+//    - a local declared with no initializer (`vec4 sum;`) gets `{}`: GL drivers
+//      hand back zero and files rely on it; Metal hands back garbage
 //    - `matN(` → `isf_matN(` (mixed scalar/vector arguments, as GLSL allows)
 //    - `a.xz *= m;` → `a.xz = a.xz * (m);` (Metal cannot bind a swizzle to `*=`)
 //    - a top-level `uniform T x;` the header does not declare becomes a member that
@@ -777,6 +779,7 @@ public enum ISFMetalGenerator {
         // Pass 3: rules that need the whole body.
         let typeWords = typeNames.union(["void"]).union(structNames(tokens))
         renameSelfReferencingDeclarations(&tokens, typeWords: typeWords)
+        zeroInitialiseLocals(&tokens, typeWords: typeWords)
         rewriteSwizzleCompoundMultiply(&tokens)
         rewriteSwizzleArguments(&tokens, functions: inoutFunctions, typeWords: typeWords)
 
@@ -1002,6 +1005,81 @@ public enum ISFMetalGenerator {
                     tokens[significant[cursor]].text = renamed
                 }
                 cursor += 1
+            }
+        }
+    }
+
+    /// `vec4 sum;` inside a function → `vec4 sum{};` — a local with no initializer
+    /// starts at zero.
+    ///
+    /// GLSL leaves such a local undefined, but every GL driver an ISF author tests on
+    /// hands back zero, and real files depend on it: Vidvox's Diagonal Blur declares
+    /// `vec4 returnMe;` and then accumulates `returnMe = returnMe + …`. Metal really
+    /// does leave the register holding whatever was there, so that file rendered as
+    /// full-frame coloured noise. `{}` value-initialises every GLSL type — scalar,
+    /// vector, matrix, array or struct — to zero. Globals need no rule: they are
+    /// members of the shader struct, which is aggregate-initialised, so they are zeroed
+    /// already.
+    static func zeroInitialiseLocals(_ tokens: inout [GLSLToken], typeWords: Set<String>) {
+        let declarable = typeWords.subtracting(["void"])
+        for item in topLevelItems(tokens) {
+            let significant = item.filter { !tokens[$0].isTrivia && tokens[$0].kind != .preprocessor }
+            func text(_ position: Int) -> String {
+                position >= 0 && position < significant.count ? tokens[significant[position]].text : ""
+            }
+            // Function definitions only: the first `{` follows the parameter list's `)`.
+            guard let open = significant.indices.first(where: { text($0) == "{" }),
+                  text(open - 1) == ")" else { continue }
+
+            // Braces opened by `struct Name {` inside the body: their fields are not locals.
+            var structDepths: [Bool] = []
+            var parenDepth = 0
+            var position = open
+            while position < significant.count {
+                let current = text(position)
+                switch current {
+                case "{":
+                    structDepths.append(text(position - 2) == "struct" || text(position - 1) == "struct")
+                case "}":
+                    _ = structDepths.popLast()
+                case "(":
+                    parenDepth += 1
+                case ")":
+                    parenDepth -= 1
+                default:
+                    break
+                }
+                let previous = text(position - 1)
+                let startsStatement = position > open && parenDepth == 0
+                    && (previous == ";" || previous == "{" || previous == "}")
+                guard startsStatement, structDepths.last == false,
+                      declarable.contains(current), position + 1 < significant.count,
+                      tokens[significant[position + 1]].kind == .identifier
+                else {
+                    position += 1
+                    continue
+                }
+                // Walk the declarators to the `;`. Each one without an `=` gets `{}`
+                // after its last token — the name, or the `]` of an array length.
+                var cursor = position + 1
+                var depth = 0
+                var hasInitialiser = false
+                while cursor < significant.count {
+                    let t = text(cursor)
+                    if t == "(" || t == "[" || t == "{" { depth += 1 }
+                    if t == ")" || t == "]" || t == "}" { depth -= 1 }
+                    if depth < 0 { break }
+                    if depth == 0, t == "=" { hasInitialiser = true }
+                    if depth == 0, t == "," || t == ";" {
+                        if !hasInitialiser {
+                            tokens[significant[cursor - 1]].text += "{}"
+                        }
+                        hasInitialiser = false
+                        if t == ";" { break }
+                    }
+                    cursor += 1
+                }
+                position = cursor + 1
             }
         }
     }
