@@ -1608,6 +1608,7 @@ final class ShellController {
         let declared = engine.graph.nodes[slot]?.parameters ?? []
         var parameters: [EffectParameterModel] = []
         var subtitle: String
+        var detail: String?
         var badge: String?
 
         switch engine.channelSourceKinds[letter] ?? .file {
@@ -1631,16 +1632,29 @@ final class ShellController {
                         engine.registry.value(slot: slot, code: parameter.code) ?? parameter.defaultValue),
                     enabled: true)
             }
+        // Every line below is short enough for the narrow FX column: it used to read
+        // "A · bars.dv — speed and scrub are on its sour…". The file name and the
+        // explanation go in the tooltip. The line does not wrap instead, because a
+        // second line would push the whole chain down whenever a clip was loaded.
         case .file:
             let clip = engine.sources[letter]
-            subtitle = (clip?.frameCount ?? 0) > 0
-                ? "\(letter) · \(clip?.mediaURL?.lastPathComponent ?? "clip") — speed and scrub are on its source panel"
-                : "\(letter) · empty — load a generator to control it here"
+            if (clip?.frameCount ?? 0) > 0 {
+                subtitle = "\(letter) · clip — speed & scrub on \(letter)'s panel"
+                detail = "\(letter) is playing \(clip?.mediaURL?.lastPathComponent ?? "a clip"). A clip's "
+                    + "speed and scrub are on its source panel. Load a generator into \(letter) "
+                    + "to control it here."
+            } else {
+                subtitle = "\(letter) · empty — load a generator"
+                detail = "Nothing is loaded into \(letter). Load a generator into it — from the "
+                    + "Generators tab — and its controls appear here."
+            }
         case .capture(let id):
             let name = preferences.preferences.configuredSources.first(where: { $0.id == id })?.name
-            subtitle = "\(letter) · \(name ?? "live source") — no controls"
+            subtitle = "\(letter) · live — no controls"
+            detail = "\(letter) is showing \(name ?? "a live source"), which has no controls here."
         case .emulator:
-            subtitle = "\(letter) · emulator — its controls are on the EMU tab"
+            subtitle = "\(letter) · emulator — see EMU tab"
+            detail = "\(letter) is showing the emulator. Its controls are on the asset browser's EMU tab."
         }
 
         return EffectCardModel(
@@ -1649,7 +1663,7 @@ final class ShellController {
             parameters: parameters,
             channelOptions: chainBus(bus).channels,
             initialChannelIndex: sourceChannelIndex[bus] ?? 0,
-            subtitle: subtitle)
+            subtitle: subtitle, subtitleDetail: detail ?? subtitle)
     }
 
     /// Fader models for a module's controls, read from the node's declared

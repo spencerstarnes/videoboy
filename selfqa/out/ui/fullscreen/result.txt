@@ -1,17 +1,24 @@
 check:    ui/fullscreen
 verdict:  PASS
-when:     2026-09-25T15:36:02Z
+when:     2026-09-25T23:52:19Z
 core:     0.4.1
 
 notes:
-  generators whose thumbnail is black at every moment tried: 18 — Solid Colour, 01_Strobosphere, 21_Cosplay, 33_CrossGrid, Audio Waveform Shape, Bordered Box, Circle Trails, Color History, Color Organ Polyphonic, Digital Clock, Doodler, Etch-a-Sketch, FFT Filled Waveform, FFT Spectrogram, Histogram Viewer, kali electromagnetic politics, Radial Spectrogram, Random Shape
+  generators labelled 'starts black': 7 — Solid Colour, Circle Trails, Color Organ Polyphonic, Etch-a-Sketch, Histogram Viewer, Radial Spectrogram, Random Shape
   window 1920x1055 on BenQ PD3200U at 2.0x
-  ticks with FILE/TC off: 120, mean 8.7 ms, worst 26.8 ms
+  ticks with FILE/TC off: 120, mean 8.7 ms, worst 18.7 ms
   Diagonal Blur added to the A/B chain: switch on
 
-assertions (122/122 passed):
+assertions (129/129 passed):
+  PASS  every generator thumbnail is ready within 30 s of launch — ready after 12.6 s
   PASS  every generator has a thumbnail — 146 generators; without a picture: none
+  PASS  no generator tile is plain black — every tile is a picture or says it starts black
   PASS  every generator tile on screen shows its picture — 56 tiles; blank: none
+  PASS  A/B FX: the Source Controls line shows whole (empty) — 'A · empty — load a generator' needs 140pt, has 231pt
+  PASS  C/D FX: the Source Controls line shows whole (empty) — 'C · empty — load a generator' needs 140pt, has 231pt
+  PASS  A/B FX: the Source Controls line shows whole (a clip loaded) — 'B · clip — speed & scrub on B's panel' needs 179pt, has 231pt
+  PASS  C/D FX: the Source Controls line shows whole (a clip loaded) — 'D · clip — speed & scrub on D's panel' needs 181pt, has 231pt
+  PASS  every clip in the library shows a duration — bars.dv 0:04, motion.dv 0:06, motion.m2v 0:07, motion.mov 0:06
   PASS  Fit: submix1 WFM draws inside its preview — preview (0,0 462x293), scope (319,11 123x87), data hidden
   PASS  submix1 after WFM: picture behind the scope at 1.0 — picture opacity 1.0
   PASS  Fit: submix1 RGB draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
@@ -123,7 +130,7 @@ assertions (122/122 passed):
   PASS  Centre: submix2 TC draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (261,241 154x30)
   PASS  Centre: submix2 OVER draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (261,241 154x30)
   PASS  Centre: submix2 L3 draws inside its preview — preview (0,0 462x293), scope (29,17 404x87), data (261,241 154x30)
-  PASS  FILE + TC on all three monitors keeps the worst tick under 25 ms — 121 ticks, mean 8.9 ms (8.7 off), worst 13.8 ms (26.8 off)
+  PASS  FILE + TC on all three monitors keeps the worst tick under 25 ms — 120 ticks, mean 9.0 ms (8.7 off), worst 13.7 ms (18.7 off)
   PASS  source A: every control shows whole and unobstructed — 13 controls in (0,0 245x156)
   PASS  source B: every control shows whole and unobstructed — 13 controls in (0,0 245x156)
   PASS  source C: every control shows whole and unobstructed — 13 controls in (0,0 245x156)

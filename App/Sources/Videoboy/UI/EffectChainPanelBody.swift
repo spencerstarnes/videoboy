@@ -97,6 +97,9 @@ struct EffectCardModel {
     /// A neutral line under the header — what the Source Controls card is showing
     /// ("A · 01_Strobosphere"). `status` is for problems and is drawn in their colour.
     var subtitle: String? = nil
+    /// The whole story behind `subtitle`, as its tooltip. The line itself is kept
+    /// short enough to fit the narrow FX column; this is where the detail goes.
+    var subtitleDetail: String? = nil
 }
 
 /// Where a parameter's movement can come from, other than a hand on the fader.
@@ -567,7 +570,7 @@ final class EffectChainPanelBody: NSView {
             subtitle.identifier = NSUserInterfaceItemIdentifier("subtitle|\(effect.name)")
             subtitle.lineBreakMode = .byTruncatingTail
             subtitle.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            subtitle.toolTip = subtitleText
+            subtitle.toolTip = effect.subtitleDetail ?? subtitleText
             rows.append(subtitle)
         }
         rows.append(status)

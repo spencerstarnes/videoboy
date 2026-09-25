@@ -51,9 +51,18 @@ enum FullScreenSelfQA {
             tabs.selectedSegment = index
             tabs.sendAction(tabs.action, to: tabs.target)
             // Opened straight after launch, while the ISF generators are still
-            // compiling, so their pictures arrive into tiles already on screen —
-            // the case that used to leave them blank.
-            settle(6)
+            // compiling, so their pictures arrive into tiles already on screen.
+            // They are rendered a sliver at a time so the show never stutters; this
+            // measures how long the whole folder takes.
+            let began = Date()
+            settle(1)
+            while !GeneratorThumbnails.shared.isIdle, Date().timeIntervalSince(began) < 60 { settle(0.25) }
+            let took = Date().timeIntervalSince(began)
+            check.record(AssertionResult(
+                name: "every generator thumbnail is ready within 30 s of launch",
+                passed: GeneratorThumbnails.shared.isIdle && took < 30,
+                detail: String(format: "ready after %.1f s", took)))
+            settle(0.5)
             capture(window, "generators-tab", check)
             let items = browserBody.browser.fixedItems ?? []
             let missing = items.filter { $0.thumbnail == nil }.map(\.name)
@@ -62,13 +71,22 @@ enum FullScreenSelfQA {
                 passed: !items.isEmpty && missing.isEmpty,
                 detail: "\(items.count) generators; without a picture: "
                     + (missing.isEmpty ? "none" : missing.joined(separator: ", "))))
+            let startsBlack = items.filter { item in
+                item.thumbnail.map { GeneratorThumbnails.shared.isStartsBlackTile($0) } ?? false
+            }.map(\.name)
             let black = items.filter { item in
                 guard let image = item.thumbnail,
+                      !GeneratorThumbnails.shared.isStartsBlackTile(image),
                       let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return false }
                 return Self.isBlack(cg)
             }.map(\.name)
-            check.note("generators whose thumbnail is black at every moment tried: \(black.count)"
-                + (black.isEmpty ? "" : " — " + black.joined(separator: ", ")))
+            check.note("generators labelled 'starts black': \(startsBlack.count)"
+                + (startsBlack.isEmpty ? "" : " — " + startsBlack.joined(separator: ", ")))
+            check.record(AssertionResult(
+                name: "no generator tile is plain black",
+                passed: black.isEmpty,
+                detail: black.isEmpty ? "every tile is a picture or says it starts black"
+                    : "plain black: " + black.joined(separator: ", ")))
             let tiles = HoverScrubView.all(in: browserBody)
                 .filter { !$0.isHiddenOrHasHiddenAncestor && $0.item != nil }
             let blank = tiles.filter { $0.item?.thumbnail != nil && !$0.hasDecodedFrame }
@@ -82,6 +100,7 @@ enum FullScreenSelfQA {
         check.note("window \(Int(window.frame.width))x\(Int(window.frame.height)) on "
             + "\(screen.localizedName) at \(screen.backingScaleFactor)x")
 
+        checkSourceControlsLine(panels, "empty", check)
         let clips = ["A": "bars.dv", "B": "motion.dv", "C": "motion.m2v", "D": "motion.mov"]
         for (letter, name) in clips.sorted(by: { $0.key < $1.key }) {
             let url = RepoPaths.samples.appendingPathComponent(name)
@@ -93,6 +112,20 @@ enum FullScreenSelfQA {
         engine.setTransportRunning(true)
         settle(2)
         capture(window, "base", check)
+        checkSourceControlsLine(panels, "a clip loaded", check)
+
+        // Every clip in the library has a length — measured in the background for
+        // the ones that arrived without one (the MPEG and QuickTime samples have no
+        // frame count in the manifest, exactly as an imported clip has none).
+        let library = browserBody.browser.model
+        let clipsWithFiles = library.items.filter { $0.url.map { !$0.hasDirectoryPath } ?? false }
+        let unmeasured = clipsWithFiles.filter { ($0.duration ?? 0) <= 0 }.map(\.name)
+        check.record(AssertionResult(
+            name: "every clip in the library shows a duration",
+            passed: !clipsWithFiles.isEmpty && unmeasured.isEmpty,
+            detail: unmeasured.isEmpty
+                ? clipsWithFiles.map { "\($0.name) \($0.durationText)" }.joined(separator: ", ")
+                : "no duration: " + unmeasured.joined(separator: ", ")))
 
         // ── Every scope key on every composite ─────────────────────────────────
         //
@@ -314,6 +347,25 @@ enum FullScreenSelfQA {
 
     // MARK: - Helpers
 
+    /// The line under Source Controls in both FX panels must show whole — it read
+    /// "A · bars.dv — speed and scrub are on its sour…".
+    private static func checkSourceControlsLine(_ panels: PanelSet, _ state: String, _ check: SelfQACheck) {
+        let id = "subtitle|\(EffectChainPanelBody.sourceCardName)"
+        for (name, body) in [("A/B FX", panels.effectsOneBody as NSView), ("C/D FX", panels.effectsTwoBody)] {
+            guard let line = all(NSTextField.self, in: body).first(where: { $0.identifier?.rawValue == id }) else {
+                check.record(AssertionResult(
+                    name: "\(name): the Source Controls line exists (\(state))", passed: false, detail: "not found"))
+                continue
+            }
+            body.layoutSubtreeIfNeeded()
+            let needs = line.intrinsicContentSize.width
+            check.record(AssertionResult(
+                name: "\(name): the Source Controls line shows whole (\(state))",
+                passed: needs <= line.frame.width + 0.5,
+                detail: "'\(line.stringValue)' needs \(Int(needs))pt, has \(Int(line.frame.width))pt"))
+        }
+    }
+
     /// Lets the display link run.
     private static func settle(_ seconds: TimeInterval) {
         RunLoop.main.run(until: Date().addingTimeInterval(seconds))
@@ -375,7 +427,7 @@ enum FullScreenSelfQA {
         return String(describing: type(of: view))
     }
 
-    /// True when a picture's mean brightness is under 6 of 255.
+    /// True when under 0.2% of a picture's pixels are lit — the thumbnailer's own test.
     private static func isBlack(_ image: CGImage) -> Bool {
         let width = image.width, height = image.height
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
@@ -388,11 +440,12 @@ enum FullScreenSelfQA {
             return true
         }
         guard drawn else { return false }
-        var total = 0
-        for index in stride(from: 0, to: pixels.count, by: 4) {
-            total += Int(pixels[index]) + Int(pixels[index + 1]) + Int(pixels[index + 2])
+        var lit = 0
+        for index in stride(from: 0, to: pixels.count, by: 4)
+        where max(pixels[index], pixels[index + 1], pixels[index + 2]) > 24 {
+            lit += 1
         }
-        return Double(total) / Double(width * height * 3) < 6
+        return Double(lit) < 0.002 * Double(width * height)
     }
 
     private static func describe(_ rect: CGRect) -> String {

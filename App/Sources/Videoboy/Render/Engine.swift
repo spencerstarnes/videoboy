@@ -1015,6 +1015,10 @@ final class Engine {
             // Re-register: a source that has just been given a file exposes the same
             // codes, but doing this keeps the swap path exercised and honest.
             registry.register(slot: node.identifier, parameters: node.parameters)
+            // A file into a channel that already played files changes no source KIND,
+            // so nothing else says so — and Source Controls went on reading
+            // "A · empty" with a clip playing.
+            onChannelSourceChanged?(letter)
         }
         return loaded
     }
@@ -1027,6 +1031,7 @@ final class Engine {
     func unload(channel letter: String) -> Bool {
         guard let node = sources[letter] else { return false }
         node.unload()
+        onChannelSourceChanged?(letter)
         return true
     }
 

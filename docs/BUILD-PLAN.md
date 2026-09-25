@@ -387,10 +387,17 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   nothing (opaque scope image) and a corner scope dimmed the whole picture; Centre no
   longer applies to the three composite monitors; the source FIT key moved to the
   panel's title bar; ISF locals with no initializer start at zero (Diagonal Blur drew
-  noise); generator stills retry later moments when black. Still open:
-  - 18 of 146 generator thumbnails are black at every moment tried — audio-driven ones
-    (FFT, Audio Waveform Shape, Color Organ), draw-with-the-mouse ones (Doodler,
-    Etch-a-Sketch), accumulators (Circle Trails, Color History), and a few whose
-    defaults are simply black (Solid Colour, 01_Strobosphere, 33_CrossGrid).
-  - The FX panel's Source Controls line truncates ("…speed and scrub are on its sour…").
-  - The library's Duration column is "—" for every imported clip (see above).
+  noise); generator stills retry later moments when black. Followed up the same day:
+  - Durations: every imported clip is measured in the background (`ClipDecoders`,
+    the same decoder choice playback uses; DV from its size) and the column fills in.
+  - Source Controls: each line is short enough for the column, the whole story in its
+    tooltip; loading or ejecting a clip now refreshes it (it went on saying "empty").
+  - Generator thumbnails: 11 of the 18 black ones now show a picture (half-SD render,
+    build-up frames, later moments, a private test tone). The 7 that are genuinely
+    black at their defaults — Solid Colour, Circle Trails (point starts at the
+    corner), Color Organ (no notes on), Etch-a-Sketch, Histogram Viewer (needs a
+    picture), Radial Spectrogram, Random Shape (the file divides by RENDERSIZE twice)
+    — say "starts black" instead of looking broken. Rendered a sliver per 50 ms so
+    launch and hot reload never cost a frame; the whole folder is ready in ~13 s.
+  - Still open: at the 1460pt layout the longest Source Controls line ("D · clip —
+    speed & scrub on D's panel", 181pt) may truncate; it fits at full screen (231pt).

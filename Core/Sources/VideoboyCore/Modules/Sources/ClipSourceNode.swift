@@ -421,17 +421,9 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             return true
         }
 
-        switch url.pathExtension.lowercased() {
-        case "dv":
-            decoder = try? DVClipDecoder(url: url)
-        case "m2v", "mpg", "mpeg", "ts", "m2t", "m2ts", "vob":
-            // The MPEG families go through the bitstream decoder rather than
-            // AVFoundation, which could also play them but hands back finished
-            // pictures with no seam to damage. The wedge needs the packet.
-            decoder = MPEGStreamDecoder(url: url) ?? AVFClipDecoder(url: url)
-        default:
-            decoder = AVFClipDecoder(url: url)
-        }
+        // DV to the DV decoder, the MPEG families to the bitstream decoder (the wedge
+        // needs the packet), everything else to AVFoundation — see ClipDecoders.
+        decoder = ClipDecoders.open(url)
 
         guard let decoder, decoder.frameCount > 0 else {
             Log.error(.dv, "\(identifier) could not load \(url.lastPathComponent)")

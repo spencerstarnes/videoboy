@@ -218,6 +218,7 @@ final class LibraryModel {
 
     func setItems(_ newItems: [LibraryItem]) {
         items = newItems
+        fillDurations()
         notify()
     }
 
@@ -248,6 +249,7 @@ final class LibraryModel {
         guard !fresh.isEmpty else { return [] }
         items.append(contentsOf: fresh)
         for bin in Set(fresh.compactMap(\.bin)) { emptyBins.remove(bin) }
+        fillDurations()
         notify()
         return fresh.map(\.id)
     }
@@ -300,6 +302,64 @@ final class LibraryModel {
         for id in ids { marks[id] = nil }
         guard items.count != before else { return }
         notify()
+    }
+
+    // MARK: - Durations
+    //
+    // An imported clip arrives with no length: the Duration column read "—" for every
+    // one of them. Measuring means opening the file, which is I/O, so it happens on a
+    // background queue and the column fills in as each answer comes back. Measured
+    // once per FILE — the same clip in three bins is asked about once.
+
+    /// Lengths already measured, by standardised path.
+    private var measuredDurations: [String: Double] = [:]
+    /// Paths being measured now, or found unreadable — not asked about again.
+    private var askedPaths: Set<String> = []
+    private let durationQueue = DispatchQueue(label: "videoboy.library.durations", qos: .utility)
+
+    /// Fills every entry it already knows the length of, and sends the rest to be
+    /// measured. Does not notify: its callers do, once.
+    private func fillDurations() {
+        var toMeasure: [URL] = []
+        for index in items.indices where items[index].duration == nil {
+            guard let url = items[index].url, !url.hasDirectoryPath else { continue }
+            let path = url.standardizedFileURL.path
+            if let seconds = measuredDurations[path] {
+                items[index].duration = seconds
+            } else if askedPaths.insert(path).inserted {
+                toMeasure.append(url)
+            }
+        }
+        guard !toMeasure.isEmpty else { return }
+        durationQueue.async { [weak self] in
+            for url in toMeasure {
+                let seconds = ClipDecoders.duration(of: url)
+                // Through the run loop, not the main queue: the self-QA drives the app
+                // from a nested `RunLoop.run` inside a main-queue block, which never
+                // drains a second main-queue block.
+                let main = CFRunLoopGetMain()
+                CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
+                    self?.recordDuration(seconds, for: url)
+                }
+                CFRunLoopWakeUp(main)
+            }
+        }
+    }
+
+    private func recordDuration(_ seconds: Double?, for url: URL) {
+        guard let seconds, seconds > 0 else {
+            Log.warn(.app, "no duration for \(url.lastPathComponent); the list shows —")
+            return
+        }
+        let path = url.standardizedFileURL.path
+        measuredDurations[path] = seconds
+        fillDurations()
+        notify()
+    }
+
+    /// The length of a file, if it has been measured. For the self-QA.
+    func measuredDuration(for url: URL) -> Double? {
+        measuredDurations[url.standardizedFileURL.path]
     }
 
     // MARK: - Marks
