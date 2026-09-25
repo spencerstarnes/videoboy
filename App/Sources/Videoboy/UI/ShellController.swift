@@ -223,9 +223,14 @@ final class ShellController {
         // its own, set from its own panel. The three composites follow the preference
         // and have no key, because everything reaching them is already 720x480.
         for body in panels.sourceBodies.values { body.setFill(fill) }
-        panels.subMixOneBody.preview.fillMode = fill
-        panels.subMixTwoBody.preview.fillMode = fill
-        panels.programBody.preview.fillMode = fill
+        // Never Centre on a composite. Its picture is always 720x480 and its monitor
+        // is always smaller, so Centre there is a crop of the middle of what goes to
+        // air — and a source's fill key writing Centre as the default for fresh
+        // sources silently did that to all three monitors on the next launch.
+        let compositeFill: PreviewFill = fill == .centre ? .fit : fill
+        panels.subMixOneBody.preview.fillMode = compositeFill
+        panels.subMixTwoBody.preview.fillMode = compositeFill
+        panels.programBody.preview.fillMode = compositeFill
         Log.info(.render, "picture fill is now \(fill.displayName)")
     }
 
@@ -1951,7 +1956,7 @@ final class ShellController {
         body.setScopeSelection(selection)
 
         if !selection.isShowing {
-            body.preview.setScopeImage(nil, dimsPicture: false)
+            body.preview.setScopeImage(nil)
         }
         updateBurn(for: slot, selection: selection, body: body)
 
@@ -1987,7 +1992,7 @@ final class ShellController {
         if selection.isBurnedIn {
             // The monitor now shows the burned picture; its own scope layer on top
             // would draw the instrument twice. `updateScopes` keeps it off.
-            body.preview.setScopeImage(nil, dimsPicture: false)
+            body.preview.setScopeImage(nil)
         }
     }
 
@@ -2556,11 +2561,16 @@ final class ShellController {
                 burn.placement = selection.placement
                 burn.dimming = selection.isOverlaid ? 0 : 1
                 burn.setOverlay(scope)
-                composite.body.preview.setScopeImage(nil, dimsPicture: false)
+                composite.body.preview.setScopeImage(nil)
             } else {
                 composite.body.preview.scopePlacement = selection.placement
+                // Core's rule, the one the burn follows: a corner scope has its own
+                // box and leaves the picture alone; over black hides the picture.
+                // Only a scope drawn over the picture has its black keyed out — the
+                // corner keeps its box, and over black there is nothing to see through.
                 composite.body.preview.setScopeImage(
-                    scope, dimsPicture: selection.isOverlaid)
+                    scope, pictureOpacity: Float(1 - selection.pictureDimming),
+                    keysOutBlack: selection.isOverlaid && selection.placement != .corner)
             }
         }
     }
@@ -3043,6 +3053,10 @@ final class ShellController {
 
         updateTallies(from: engine)
         updateScopes(from: engine)
+        // FILE / TC on the monitors. Written with DATA BURN and never called, so the
+        // two keys lit and drew nothing unless the burn was on. Cheap when idle: it
+        // redraws only when a line changes.
+        updateMonitorData(from: engine)
         updateBeatLights(from: engine)
         fireActionTriggers(from: engine)
         flipAutomatedButtons(from: engine)

@@ -346,7 +346,12 @@ final class HoverScrubView: NSView {
 
     var item: LibraryItem? {
         didSet {
-            guard item?.id != oldValue?.id || item?.url != oldValue?.url else { return }
+            // A generator's picture can arrive AFTER its tile: ISF generators compile
+            // in the background and the tab is rebuilt when each is ready — into the
+            // SAME reused cells, with the same id and a new thumbnail. Comparing only
+            // id and URL would throw that picture away.
+            guard item?.id != oldValue?.id || item?.url != oldValue?.url
+                    || item?.thumbnail !== oldValue?.thumbnail else { return }
             // A recycled thumbnail must not show the last clip's picture for a moment.
             scrubPosition = nil
             frameImage = item?.url == nil ? item?.thumbnail : nil

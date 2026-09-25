@@ -299,17 +299,25 @@ final class MetalPreviewView: NSView {
         // the preview shows and what SEND puts on air cannot drift apart. The rect is
         // given with its origin at the TOP, as a picture is described; this layer's
         // coordinates run the other way, hence the flip.
+        //
+        // Placed on the part of the picture that is VISIBLE, not on the picture. Fill
+        // and Centre make the picture larger than this view and let the view crop it;
+        // a scope placed on the whole picture was cropped with it — at Centre a
+        // 720x480 picture in a ~460-point monitor lost a third of every trace off the
+        // edges. A scope is a readout of the picture, not part of it, so it must
+        // always be whole.
+        let visible = frame.intersection(bounds).isNull ? bounds : frame.intersection(bounds)
         let rect = scopePlacement.rect
         scopeLayer.frame = CGRect(
-            x: frame.minX + frame.width * rect.x,
-            y: frame.maxY - frame.height * (rect.y + rect.height),
-            width: frame.width * rect.width,
-            height: frame.height * rect.height)
+            x: visible.minX + visible.width * rect.x,
+            y: visible.maxY - visible.height * (rect.y + rect.height),
+            width: visible.width * rect.width,
+            height: visible.height * rect.height)
         dataLayer.frame = CGRect(
-            x: frame.minX + frame.width * dataRect.x,
-            y: frame.maxY - frame.height * (dataRect.y + dataRect.height),
-            width: frame.width * dataRect.width,
-            height: frame.height * dataRect.height)
+            x: visible.minX + visible.width * dataRect.x,
+            y: visible.maxY - visible.height * (dataRect.y + dataRect.height),
+            width: visible.width * dataRect.width,
+            height: visible.height * dataRect.height)
         overlayLayer.frame = frame
         // The tally gets the VIEW's bounds, not the picture's.
         //
@@ -377,6 +385,12 @@ final class MetalPreviewView: NSView {
             : Theme.Color.textTertiary.withAlphaComponent(0.45)
     }
 
+    /// Where the scope and the NAME / TC block are drawn, in this view's coordinates,
+    /// or nil while hidden. For the self-QA.
+    var scopeFrameForChecks: CGRect? { scopeLayer.isHidden ? nil : scopeLayer.frame }
+    var dataFrameForChecks: CGRect? { dataLayer.isHidden ? nil : dataLayer.frame }
+    var pictureOpacityForChecks: Float { metalLayer?.opacity ?? 0 }
+
     /// Where the scope sits on the picture.
     ///
     /// Was a bool for "corner or not". Placement now has three answers and the third —
@@ -440,8 +454,17 @@ final class MetalPreviewView: NSView {
         CATransaction.commit()
     }
 
-    func setScopeImage(_ image: ImageBuffer?, dimsPicture: Bool) {
-        guard let image, let cgImage = image.makeCGImage() else {
+    ///
+    /// - Parameters:
+    ///   - pictureOpacity: how much of the picture shows behind — 1 untouched, 0 black.
+    ///     `ScopeSelection.pictureDimming` decides it, the same number DATA BURN uses.
+    ///   - keysOutBlack: true when the scope is drawn OVER the picture. A scope image
+    ///     is traces on black; laid on as it is, the black is an opaque sheet and the
+    ///     picture behind never shows, which made OVER a key that did nothing. Keyed,
+    ///     black is transparent and the trace is screened on, as the burn does it.
+    func setScopeImage(_ image: ImageBuffer?, pictureOpacity: Float = 1, keysOutBlack: Bool = false) {
+        guard let image,
+              let cgImage = (keysOutBlack ? Self.keyedOutBlack(image) : image).makeCGImage() else {
             scopeLayer.isHidden = true
             scopeLayer.contents = nil
             metalLayer?.opacity = 1
@@ -449,9 +472,26 @@ final class MetalPreviewView: NSView {
         }
         scopeLayer.contents = cgImage
         scopeLayer.isHidden = false
-        // Over a picture the scope needs the picture held back, or the trace is lost
-        // in it. Over black there is nothing to hold back.
-        metalLayer?.opacity = dimsPicture ? 0.35 : 0.0
+        metalLayer?.opacity = pictureOpacity
+    }
+
+    /// The same image with each pixel's alpha set to its brightest channel.
+    ///
+    /// The buffer is premultiplied, so a colour no brighter than its alpha is already
+    /// valid: black becomes clear, a full-brightness trace stays opaque, and the dim
+    /// graticule becomes a faint line. Composited that way it is the screen blend the
+    /// burn node uses. A few hundred thousand bytes, a few times a second, off the
+    /// frame path's GPU work — scopes refresh at about six a second.
+    private static func keyedOutBlack(_ image: ImageBuffer) -> ImageBuffer {
+        var pixels = image.pixels
+        pixels.withUnsafeMutableBufferPointer { buffer in
+            var index = 0
+            while index + 3 < buffer.count {
+                buffer[index + 3] = max(buffer[index], buffer[index + 1], buffer[index + 2])
+                index += ImageBuffer.bytesPerPixel
+            }
+        }
+        return ImageBuffer(width: image.width, height: image.height, pixels: pixels)
     }
 
     /// Shows a NAME / TC block at `rect` (0...1 of the picture, origin top left), or

@@ -72,14 +72,15 @@ final class SourcePanelBody: NSView {
     /// The playhead strip. Always visible, and the scrubbing surface.
     private(set) weak var miniPlayBar: VBMiniPlayBar?
 
-    /// This source's fill key.
-    private weak var fillKey: VBOptionButton?
+    /// This source's fill key. It lives in the panel's HEADER, not on the picture —
+    /// `PanelSet` puts it there — so nothing in the body refers to its position.
+    let fillKey = VBOptionButton(title: PreviewFill.fit.displayName.uppercased())
 
     /// How this source's picture fills its window.
     private var previewFill: PreviewFill = .fit {
         didSet {
             preview.fillMode = previewFill
-            fillKey?.setTitle(previewFill.displayName.uppercased())
+            fillKey.setTitle(previewFill.displayName.uppercased())
         }
     }
 
@@ -356,13 +357,19 @@ final class SourcePanelBody: NSView {
         // meant a 16:9 clip on A and a 4:3 clip on B could not be framed differently —
         // and the one place you are looking when you notice a clip is the wrong shape
         // is the panel showing it.
-        let fillKey = VBOptionButton(title: PreviewFill.fit.displayName.uppercased())
-        fillKey.toolTip = "How this source's picture fills its window. Click to cycle."
+        //
+        // In the panel's HEADER, not on this row. As the last key on the hover row it
+        // was the first thing squeezed off the end — FIT is narrow, STRETCH and CENTRE
+        // are not, and Eject is wider than Load — and in a short panel the row rose
+        // into the record lamp and auto-play glyph in the picture's top corner. The
+        // header's right end is empty, always visible, and never over the picture.
+        fillKey.isCompact = true
+        fillKey.toolTip = "How this source's picture fills its window: Fit, Fill, "
+            + "Stretch or Centre. Click to cycle; Control-click to go back."
         fillKey.target = self
         fillKey.action = #selector(fillCycled)
-        self.fillKey = fillKey
 
-        let sourceRow = Controls.row([load, generatorPopUp, stepButton, fillKey, Controls.spacer()],
+        let sourceRow = Controls.row([load, generatorPopUp, stepButton, Controls.spacer()],
                                      spacing: 4)
         sourceRow.translatesAutoresizingMaskIntoConstraints = false
 
@@ -709,7 +716,7 @@ final class PreviewPanelBody: NSView {
                     .burn, title: "DATA\nBURN", colour: Theme.Color.tallyOnAir,
                     tooltip: "Burn the scopes, names and timecode INTO this sub-mix's "
                         + "picture, so they go to air whenever this sub-mix is in the "
-                        + "programme mix. Font and style: Settings → Outputs."))
+                        + "programme mix. Font and style: Settings → Data Burn."))
             }
 
             // The send glyph, then everything else pushed right. One spacer, so the

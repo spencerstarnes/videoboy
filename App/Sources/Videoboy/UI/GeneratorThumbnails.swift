@@ -44,10 +44,17 @@ final class GeneratorThumbnails {
 
     private lazy var renderer = OffscreenRenderer()
 
-    private var context: RenderContext {
+    /// Later moments to try when the still frame comes out black — a strobe between
+    /// flashes, a shape that has not grown in yet. A tile of solid black says nothing
+    /// about what the generator makes.
+    private static let fallbackFrames = [15, 90, 150, 300]
+    /// Mean brightness (0...255) below which a still counts as black.
+    private static let blackLevel = 6.0
+
+    private func context(frame: Int) -> RenderContext {
         RenderContext(
-            frameIndex: Self.stillFrame,
-            presentationTime: Double(Self.stillFrame) / 29.97,
+            frameIndex: frame,
+            presentationTime: Double(frame) / 29.97,
             musicalPosition: nil,
             width: Self.width, height: Self.height)
     }
@@ -89,11 +96,33 @@ final class GeneratorThumbnails {
 
     // MARK: - Rendering
 
+    /// The still at `stillFrame`, or — if that is black — the brightest of a few
+    /// later moments. A generator that is black at all of them keeps a black tile,
+    /// which is then the truth about its defaults.
     private func render(_ node: Node) -> NSImage? {
-        guard let texture = node.render(inputs: [], context: context),
-              let buffer = renderer?.readback(texture),
-              let cgImage = buffer.makeCGImage() else { return nil }
+        var best: (buffer: ImageBuffer, brightness: Double)?
+        for frame in [Self.stillFrame] + Self.fallbackFrames {
+            guard let texture = node.render(inputs: [], context: context(frame: frame)),
+                  let buffer = renderer?.readback(texture) else { continue }
+            let brightness = Self.meanBrightness(buffer)
+            if brightness > (best?.brightness ?? -1) { best = (buffer, brightness) }
+            if brightness >= Self.blackLevel { break }
+        }
+        guard let buffer = best?.buffer, let cgImage = buffer.makeCGImage() else { return nil }
         return NSImage(cgImage: cgImage, size: NSSize(width: buffer.width, height: buffer.height))
+    }
+
+    /// Mean of R, G and B over the whole still, 0...255.
+    private static func meanBrightness(_ buffer: ImageBuffer) -> Double {
+        var total = 0
+        buffer.pixels.withUnsafeBufferPointer { bytes in
+            var index = 0
+            while index + 2 < bytes.count {
+                total += Int(bytes[index]) + Int(bytes[index + 1]) + Int(bytes[index + 2])
+                index += ImageBuffer.bytesPerPixel
+            }
+        }
+        return Double(total) / Double(max(buffer.width * buffer.height * 3, 1))
     }
 
     /// Checks the compiling ISF nodes a few times a second until none are left.

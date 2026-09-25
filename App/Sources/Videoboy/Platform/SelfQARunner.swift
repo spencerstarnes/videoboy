@@ -70,6 +70,8 @@ enum SelfQARunner {
             verdict = LibrarySelfQA.run()
         case "isf":
             verdict = ISFSelfQA.run()
+        case "fullscreen":
+            verdict = FullScreenSelfQA.run()
         default:
             Log.error(.selfqa, "unknown check '\(check)' (try: loopback, displays, ui, playback, output, analog, calibrate, blend, transitions, ave5, stream, record, audit, shaders, isf, stress, push-fade, mosh)")
             return 2

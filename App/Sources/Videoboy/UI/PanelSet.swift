@@ -86,6 +86,10 @@ final class PanelSet {
         sourceB = PanelView(title: "Source: B", bus: .one, body: bodyB)
         sourceC = PanelView(title: "Source: C", bus: .two, body: bodyC)
         sourceD = PanelView(title: "Source: D", bus: .two, body: bodyD)
+        // Each source's fill key sits at the right end of its own title bar.
+        for (panel, body) in [(sourceA, bodyA), (sourceB, bodyB), (sourceC, bodyC), (sourceD, bodyD)] {
+            panel.setHeaderAccessory(body.fillKey)
+        }
 
         // MARK: Previews
         // Subtitles state the fixed routing, which never remaps (SPEC 2).

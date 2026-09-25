@@ -378,3 +378,19 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
   overflowed there too, and at 1000pt as well — it now fits at 1000pt and 1460pt, which
   `selfqa ui` asserts ("every key under … fits"); narrow is logged as a note. A real fix
   is a second row, or moving OVER/L3 behind a right-click, at narrow widths only.
+
+- **Full-screen sweep, 2026-09-25** (`scripts/selfqa.sh fullscreen`: the real window at
+  1920x1055, four channels playing, every scope key pressed and photographed, hovered
+  sources, every browser tab; evidence in `selfqa/out/ui/fullscreen/`). Fixed that day:
+  scopes and FILE/TC placed on the visible picture (they overflowed at Fill/Centre);
+  FILE/TC never drew on the monitors (`updateMonitorData` was never called); OVER did
+  nothing (opaque scope image) and a corner scope dimmed the whole picture; Centre no
+  longer applies to the three composite monitors; the source FIT key moved to the
+  panel's title bar; ISF locals with no initializer start at zero (Diagonal Blur drew
+  noise); generator stills retry later moments when black. Still open:
+  - 18 of 146 generator thumbnails are black at every moment tried — audio-driven ones
+    (FFT, Audio Waveform Shape, Color Organ), draw-with-the-mouse ones (Doodler,
+    Etch-a-Sketch), accumulators (Circle Trails, Color History), and a few whose
+    defaults are simply black (Solid Colour, 01_Strobosphere, 33_CrossGrid).
+  - The FX panel's Source Controls line truncates ("…speed and scrub are on its sour…").
+  - The library's Duration column is "—" for every imported clip (see above).

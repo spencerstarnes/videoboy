@@ -50,6 +50,8 @@ final class PanelView: NSView {
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let busDot = NSView()
     private let bodyContainer = NSView()
+    /// The header's contents, left to right; `setHeaderAccessory` appends to it.
+    private var headerRow: NSStackView?
     private var bodyHeightWhenCollapsed: NSLayoutConstraint?
 
     /// The view filling the panel body.
@@ -169,6 +171,7 @@ final class PanelView: NSView {
         busDot.isHidden = bus.dotColor == nil
 
         let row = NSStackView(views: [chevron, busDot, titleLabel, NSView(), subtitleLabel])
+        headerRow = row
         row.orientation = .horizontal
         row.spacing = Theme.Metrics.controlSpacing
         row.alignment = .centerY
@@ -216,6 +219,16 @@ final class PanelView: NSView {
             body.trailingAnchor.constraint(equalTo: bodyContainer.trailingAnchor),
             body.bottomAnchor.constraint(equalTo: bodyContainer.bottomAnchor)
         ])
+    }
+
+    /// Puts a control at the trailing end of the header.
+    ///
+    /// For a setting that belongs to the whole panel and must always be reachable —
+    /// the header is never covered by the picture or by a hover overlay. The control
+    /// sits above the header's collapse button, so a click on it is its own.
+    func setHeaderAccessory(_ accessory: NSView) {
+        accessory.setContentCompressionResistancePriority(.required, for: .horizontal)
+        headerRow?.addArrangedSubview(accessory)
     }
 
     // MARK: - Collapsing
