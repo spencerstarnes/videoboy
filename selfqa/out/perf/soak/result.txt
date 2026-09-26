@@ -1,40 +1,40 @@
 check:    perf/soak
 verdict:  PASS
-when:     2026-09-26T15:58:39Z
+when:     2026-09-26T19:30:18Z
 core:     0.4.5
 
 notes:
   clips: bars.dv, motion.dv, motion.m2v, motion.mov
-  58 ticks over 14 ms; costliest part in each: source.a ×29, source.b ×16, source.d ×8, source.c ×3, gpu fence ×1, ui/onFrame ×1
-    28.27 ms: source.b 12.74, source.a 9.06, gpu fence 1.68, source.d 1.46, source.c 1.22, fx.b.mosh 0.24
-    24.64 ms: source.a 9.27, source.b 8.70, source.d 1.58, gpu fence 1.56, source.c 1.37, fx.a.mosh 0.25
-    24.47 ms: source.a 9.24, source.b 8.39, gpu fence 1.60, source.d 1.51, source.c 1.46, ui/onFrame 0.26
-    24.44 ms: source.a 8.97, source.b 8.68, source.d 1.63, gpu fence 1.56, source.c 1.38, ui/onFrame 0.31
-    23.93 ms: source.a 9.33, source.b 8.06, gpu fence 1.55, source.d 1.52, source.c 1.24, ui/onFrame 0.32
-    22.53 ms: source.a 12.89, ui/onFrame 3.63, gpu fence 1.51, source.d 1.43, source.c 1.23, fx.c.mosh 0.22
-    22.12 ms: source.a 13.29, source.b 2.06, source.d 1.68, gpu fence 1.63, source.c 1.28, ui/onFrame 0.26
-    21.80 ms: source.b 10.66, ui/onFrame 3.39, source.a 1.82, gpu fence 1.47, source.c 1.35, source.d 1.15
-    20.69 ms: source.a 12.78, gpu fence 1.60, source.d 1.47, source.b 1.39, source.c 1.20, ui/onFrame 0.27
-    20.25 ms: source.a 11.90, gpu fence 1.74, source.d 1.70, source.b 1.52, source.c 1.33, ui/onFrame 0.27
-  action cut: 22×, mean 0.09 ms, worst 0.12 ms
-  action drop clip: 22×, mean 9.47 ms, worst 13.53 ms
+  12 ticks over 14 ms; costliest part in each: gpu fence ×8, source.a ×4
+    23.54 ms: gpu fence 19.09, ui/onFrame 0.31, fx.d.feedback 0.26, source.d 0.26, fx.d.mosh 0.23, fx.a.mosh 0.22
+    21.45 ms: gpu fence 18.76, ui/onFrame 0.26, fx.b.mosh 0.20, fx.a.mosh 0.20, fx.c.mosh 0.19, fx.d.mosh 0.17
+    21.43 ms: gpu fence 18.58, ui/onFrame 0.28, fx.a.mosh 0.21, source.a 0.19, fx.b.mosh 0.19, fx.two.mosh 0.18
+    19.21 ms: gpu fence 16.30, ui/onFrame 0.25, fx.a.mosh 0.22, fx.b.mosh 0.22, fx.d.mosh 0.19, source.d 0.19
+    18.86 ms: gpu fence 15.91, ui/onFrame 0.30, fx.a.mosh 0.20, fx.b.mosh 0.19, source.a 0.19, fx.two.mosh 0.19
+    18.82 ms: gpu fence 15.81, ui/onFrame 0.26, fx.a.mosh 0.22, fx.b.mosh 0.20, source.a 0.19, fx.d.mosh 0.19
+    16.91 ms: gpu fence 13.91, ui/onFrame 0.32, fx.a.mosh 0.22, fx.b.mosh 0.21, fx.d.mosh 0.19, fx.c.mosh 0.19
+    16.90 ms: gpu fence 13.88, ui/onFrame 0.31, fx.b.mosh 0.22, fx.a.mosh 0.21, fx.d.mosh 0.19, source.a 0.19
+    15.58 ms: source.a 5.66, source.b 5.49, gpu fence 2.27, ui/onFrame 0.51, fx.c.mosh 0.26, source.c 0.20
+    15.53 ms: source.a 5.66, ui/onFrame 4.12, gpu fence 3.39, source.b 0.26, fx.c.mosh 0.22, fx.d.mosh 0.21
+  action cut: 22×, mean 0.09 ms, worst 0.14 ms
+  action drop clip: 22×, mean 8.47 ms, worst 13.67 ms
   action effect off/on: 21×, mean 0.01 ms, worst 0.01 ms
-  action eject + reload: 21×, mean 14.50 ms, worst 22.21 ms
+  action eject + reload: 21×, mean 12.87 ms, worst 20.61 ms
   action fade: 21×, mean 0.01 ms, worst 0.03 ms
   action scope key: 21×, mean 0.09 ms, worst 0.13 ms
   action swap A/B: 21×, mean 0.05 ms, worst 0.07 ms
-  5.0 min, 149 actions, 8991 frames = 29.97/s, 0 dropped, 47 ticks over 16 ms, worst 28.27 ms
-  footprint 446 → 392 MB (settled 389, +1.08 MB/min); gpu 160 → 136 MB (+0.00 MB/min)
-  threads 22 → 20 (max 23); file descriptors 10 → 10 (max 11)
-  tick mean first window 8.79 ms, last window 9.23 ms
+  5.0 min, 149 actions, 8991 frames = 29.97/s, 0 dropped, 8 ticks over 16 ms, worst 23.54 ms
+  footprint 466 → 400 MB (settled 405, -1.98 MB/min); gpu 169 → 141 MB (+0.00 MB/min)
+  threads 25 → 24 (max 27); file descriptors 11 → 11 (max 12)
+  tick mean first window 6.98 ms, last window 6.50 ms
 
 assertions (9/9 passed):
   PASS  the soak holds the 29.97 content rate — 29.97 frames/s
-  PASS  no tick over one SD frame in the whole soak — worst 28.27 ms, 47 ticks over 16 ms
+  PASS  no tick over one SD frame in the whole soak — worst 23.54 ms, 8 ticks over 16 ms
   PASS  under 0.1% of refreshes dropped across the soak — 0 of 8991
-  PASS  memory footprint is flat once settled (under 2 MB/min) — +1.08 MB/min from minute 2.0
+  PASS  memory footprint is flat once settled (under 2 MB/min) — -1.98 MB/min from minute 2.0
   PASS  GPU allocation is flat once settled (under 1 MB/min) — +0.00 MB/min
-  PASS  clip swaps leave no threads behind — 23 settled → 20
-  PASS  clip swaps leave no file handles open — 10 settled → 10
-  PASS  the tick does not get slower over the show — 8.79 → 9.23 ms
-  PASS  no performer action blocks the main thread for longer than a frame — worst: eject + reload 22.21 ms
+  PASS  clip swaps leave no threads behind — 25 settled → 24
+  PASS  clip swaps leave no file handles open — 11 settled → 11
+  PASS  the tick does not get slower over the show — 6.98 → 6.50 ms
+  PASS  no performer action blocks the main thread for longer than a frame — worst: eject + reload 20.61 ms

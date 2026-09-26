@@ -49,6 +49,34 @@ enum ShaderSource {
         return source.sample(linearSampler, in.uv);
     }
 
+    // A source picture placed inside the canvas: fitted, filled or stretched, and
+    // turned upright. `origin`/`size` are the picture's rectangle in canvas UV; outside
+    // it is black, which is what goes to air. `quarterTurns` rotates clockwise for
+    // display (a phone's portrait clip is stored landscape with a rotation flag).
+    struct FitParams {
+        float2 origin;
+        float2 size;
+        int quarterTurns;
+    };
+
+    fragment float4 fit_fragment(VertexOut in [[stage_in]],
+                                 texture2d<float> source [[texture(0)]],
+                                 constant FitParams &params [[buffer(0)]]) {
+        float2 d = (in.uv - params.origin) / params.size;
+        if (d.x < 0.0 || d.x > 1.0 || d.y < 0.0 || d.y > 1.0) {
+            return float4(0.0, 0.0, 0.0, 1.0);
+        }
+        float2 s = d;
+        switch (params.quarterTurns & 3) {
+            case 1: s = float2(d.y, 1.0 - d.x); break;
+            case 2: s = float2(1.0 - d.x, 1.0 - d.y); break;
+            case 3: s = float2(1.0 - d.y, d.x); break;
+            default: break;
+        }
+        constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+        return source.sample(linearSampler, s);
+    }
+
     // ---------------------------------------------------------------------------
     // NTSC composite codec (SPEC 9).
     //
@@ -1151,6 +1179,8 @@ public final class MetalContext {
     public let feedbackPipeline: MTLRenderPipelineState
     /// The datamosh laid over its clean input: heal shape, blend mode, opacity.
     public let moshLayerPipeline: MTLRenderPipelineState
+    /// Places a source picture inside the canvas (`CanvasFit`).
+    public let fitPipeline: MTLRenderPipelineState
 
     /// The pixel format used everywhere in the graph. BGRA8 matches what CoreVideo
     /// hands back from capture and what a `CAMetalLayer` wants to present, so the
@@ -1198,7 +1228,8 @@ public final class MetalContext {
               let colour = makePipeline(vertex: "fullscreen_vertex", fragment: "colour_fragment"),
               let transform = makePipeline(vertex: "fullscreen_vertex", fragment: "transform_fragment"),
               let feedback = makePipeline(vertex: "fullscreen_vertex", fragment: "feedback_fragment"),
-              let moshLayer = makePipeline(vertex: "fullscreen_vertex", fragment: "mosh_layer_fragment") else {
+              let moshLayer = makePipeline(vertex: "fullscreen_vertex", fragment: "mosh_layer_fragment"),
+              let fit = makePipeline(vertex: "fullscreen_vertex", fragment: "fit_fragment") else {
             return nil
         }
 
@@ -1216,6 +1247,7 @@ public final class MetalContext {
         self.transformPipeline = transform
         self.feedbackPipeline = feedback
         self.moshLayerPipeline = moshLayer
+        self.fitPipeline = fit
         Log.info(.render, "Metal ready on \(device.name)")
     }
 

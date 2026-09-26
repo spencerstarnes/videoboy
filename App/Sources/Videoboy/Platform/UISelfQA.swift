@@ -344,15 +344,28 @@ enum UISelfQA {
             // so the render shows the filmstrip working rather than one poster frame
             // repeated.
             let thumbnails = HoverScrubView.all(in: shell)
+            ClipThumbnails.shared.invalidate()
+            let scrubStart = CACurrentMediaTime()
             for (index, thumbnail) in thumbnails.enumerated() {
                 thumbnail.scrub(to: Double(index % 5) / 4.0)
             }
+            let scrubMs = (CACurrentMediaTime() - scrubStart) * 1000
             thumbnails.first?.setInOut(inPoint: 0.25, outPoint: 0.75)
+            // Hovering never waits for a decode (audit 09-26 R1): twelve scrubs of cold
+            // thumbnails return at once, and the pictures arrive a moment later.
+            check.record(AssertionResult(
+                name: "scrubbing cold thumbnails never blocks the main thread",
+                passed: scrubMs < 10,
+                detail: String(format: "%d scrubs in %.2f ms", thumbnails.count, scrubMs)))
 
+            let arrivalDeadline = Date().addingTimeInterval(3)
+            while thumbnails.contains(where: { !$0.hasDecodedFrame }), Date() < arrivalDeadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            }
             let decoded = thumbnails.filter(\.hasDecodedFrame).count
             check.record(AssertionResult(
                 name: "library thumbnails decode real frames",
-                passed: decoded > 0,
+                passed: decoded == thumbnails.count && decoded > 0,
                 detail: "\(decoded) of \(thumbnails.count) thumbnails have a picture"
             ))
 

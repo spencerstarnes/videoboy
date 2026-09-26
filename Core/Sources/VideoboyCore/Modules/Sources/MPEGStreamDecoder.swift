@@ -54,8 +54,22 @@ public final class MPEGStreamDecoder: ClipDecoding {
     /// The damage the current decode run is using.
     private var activeDamage = MPEGCorruptionSettings.inert
 
-    public init?(url: URL) {
+    /// The canvas frames are sized for, or nil to decode at the stream's own size.
+    private let canvas: CanvasGeometry?
+    /// The size swscale produces. Decided when the stream opens, from its parameters,
+    /// so nothing about the clip changes once decoding moves off the main thread.
+    private var outputSize: (width: Int, height: Int)?
+
+    /// Upright display shape: the stream's sample aspect ratio, else the SD rule.
+    /// Set once, at open.
+    public private(set) var displayAspectRatio: Double?
+
+    /// - Parameter canvas: when given, swscale scales each frame to what this canvas
+    ///   needs (`CanvasGeometry.decodeSize`) in the same pass that converts it to RGBA —
+    ///   free, where scaling afterwards meant carrying full HD through the graph.
+    public init?(url: URL, canvas: CanvasGeometry? = nil) {
         self.url = url
+        self.canvas = canvas
 
         var format: UnsafeMutablePointer<AVFormatContext>?
         guard avformat_open_input(&format, url.path, nil, nil) >= 0, let format else {
@@ -99,6 +113,24 @@ public final class MPEGStreamDecoder: ClipDecoding {
 
         let rate = av_q2d(stream.pointee.avg_frame_rate)
         frameRate = rate > 0 ? rate : StandardDefinition.frameRate
+
+        // SHAPE AND OUTPUT SIZE, from the stream's parameters.
+        let codedWidth = Int(stream.pointee.codecpar.pointee.width)
+        let codedHeight = Int(stream.pointee.codecpar.pointee.height)
+        if codedWidth > 0, codedHeight > 0 {
+            var aspect = CanvasGeometry.displayAspect(width: codedWidth, height: codedHeight)
+            let sample = stream.pointee.codecpar.pointee.sample_aspect_ratio
+            if sample.num > 0, sample.den > 0, sample.num != sample.den {
+                aspect = Double(codedWidth) * Double(sample.num) / (Double(codedHeight) * Double(sample.den))
+            }
+            displayAspectRatio = aspect
+            var size = (width: codedWidth, height: codedHeight)
+            if let canvas {
+                let wanted = canvas.decodeSize(sourceAspect: aspect, nativeSize: (codedWidth, codedHeight))
+                if wanted.width < codedWidth || wanted.height < codedHeight { size = wanted }
+            }
+            outputSize = size
+        }
 
         if stream.pointee.nb_frames > 0 {
             frameCount = Int(stream.pointee.nb_frames)
@@ -266,16 +298,20 @@ public final class MPEGStreamDecoder: ClipDecoding {
         let height = Int(frame.pointee.height)
         guard width > 0, height > 0 else { return nil }
 
-        if scaler == nil {
+        // A stream whose parameters gave no size decodes at its own.
+        if outputSize == nil { outputSize = (width, height) }
+        if scaler == nil, let size = outputSize {
             scaler = sws_getContext(
                 Int32(width), Int32(height), AVPixelFormat(rawValue: frame.pointee.format),
-                Int32(width), Int32(height), AV_PIX_FMT_RGBA,
+                Int32(size.width), Int32(size.height), AV_PIX_FMT_RGBA,
                 Int32(SWS_BILINEAR.rawValue), nil, nil, nil
             )
         }
-        guard let scaler else { return nil }
+        guard let scaler, let outputSize else { return nil }
+        let outputWidth = outputSize.width
+        let outputHeight = outputSize.height
 
-        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        var pixels = [UInt8](repeating: 255, count: outputWidth * outputHeight * 4)
         let converted: Int32 = pixels.withUnsafeMutableBytes { raw -> Int32 in
             guard let base = raw.baseAddress else { return -1 }
             var sourcePlanes: [UnsafePointer<UInt8>?] = [
@@ -289,13 +325,13 @@ public final class MPEGStreamDecoder: ClipDecoding {
             var destinationPlanes: [UnsafeMutablePointer<UInt8>?] = [
                 base.assumingMemoryBound(to: UInt8.self), nil, nil, nil
             ]
-            var destinationStride: [Int32] = [Int32(width * 4), 0, 0, 0]
+            var destinationStride: [Int32] = [Int32(outputWidth * 4), 0, 0, 0]
             return sws_scale(
                 scaler, &sourcePlanes, &sourceStride, 0, Int32(height),
                 &destinationPlanes, &destinationStride)
         }
         guard converted > 0 else { return nil }
-        return ImageBuffer(width: width, height: height, pixels: pixels)
+        return ImageBuffer(width: outputWidth, height: outputHeight, pixels: pixels)
     }
 
     private func store(_ image: ImageBuffer, at index: Int) {

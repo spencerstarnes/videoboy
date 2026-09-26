@@ -15,6 +15,7 @@
 
 import AppKit
 import Darwin
+import Metal
 import VideoboyCore
 
 enum DecodeBenchSelfQA {
@@ -31,7 +32,8 @@ enum DecodeBenchSelfQA {
 
         let budget = 1000.0 / StandardDefinition.frameRate
         var csv = "file,open_ms,first_frame_ms,steady_mean_ms,steady_worst_ms,frame_w,frame_h,decoder_mb,thumb_cold_ms,thumb_mb_per_clip\n"
-        var overBudget: [String] = []
+        var slowOpens: [String] = []
+        var slowDecodes: [String] = []
         for url in urls {
             let name = url.lastPathComponent
             let memoryBefore = footprintMB()
@@ -46,13 +48,19 @@ enum DecodeBenchSelfQA {
             node.isPlaying = true
             var frameMs: [Double] = []
             var size = (0, 0)
+            var last: MTLTexture?
             for frame in 0..<150 {
                 let context = RenderContext(frameIndex: frame, presentationTime: 0, musicalPosition: nil)
                 t = CACurrentMediaTime()
                 let texture = node.render(inputs: [], context: context)
                 MetalContext.shared?.waitForIdle()
                 frameMs.append((CACurrentMediaTime() - t) * 1000)
-                if let texture { size = (texture.width, texture.height) }
+                if let texture { size = (texture.width, texture.height); last = texture }
+            }
+            // The frame as it ENTERS the graph, so framing and rotation can be seen.
+            if let last, let metal = MetalContext.shared,
+               let image = OffscreenRenderer(context: metal)?.readback(last) {
+                try? check.writeImage(image, named: "\(name).png")
             }
             let decoderMB = footprintMB() - memoryBefore
             let first = frameMs.first ?? 0
@@ -77,10 +85,12 @@ enum DecodeBenchSelfQA {
                           name, openMs, first, steadyMean, steadyWorst, size.0, size.1, decoderMB, thumbMs, thumbMB)
             check.note(String(format: "%@: open %.1f ms, first frame %.1f ms, steady %.2f ms (worst %.1f), %dx%d, decoder ~%.0f MB, cold thumbnail %.1f ms",
                               name, openMs, first, steadyMean, steadyWorst, size.0, size.1, decoderMB, thumbMs))
-            // One channel's steady decode must leave room for three more plus the effects.
-            if steadyWorst > budget / 4 || openMs + first > budget || thumbMs > budget {
-                overBudget.append(name)
-            }
+            // Since 0.4.6 decoding and thumbnails run OFF the main thread (ClipPrefetcher,
+            // ClipThumbnails.request). What still costs the main thread is OPENING a
+            // clip (a load is synchronous), and the decode must still keep up: four
+            // channels' steady decode has to fit alongside each other in one frame.
+            if openMs > budget { slowOpens.append(String(format: "%@ %.0f ms", name, openMs)) }
+            if steadyMean > budget / 4 { slowDecodes.append(String(format: "%@ %.1f ms", name, steadyMean)) }
         }
         do {
             try csv.write(to: check.artifactURL("decode.csv"), atomically: true, encoding: .utf8)
@@ -88,10 +98,16 @@ enum DecodeBenchSelfQA {
             Log.error(.selfqa, "could not write decode.csv: \(error)")
         }
         check.record(AssertionResult(
-            name: "every clip opens, decodes and thumbnails inside the main thread's frame budget",
-            passed: overBudget.isEmpty,
-            detail: overBudget.isEmpty ? "\(urls.count) clips within budget"
-                : "over budget: " + overBudget.joined(separator: ", ")))
+            name: "every clip decodes fast enough for four channels to share a frame",
+            passed: slowDecodes.isEmpty,
+            detail: slowDecodes.isEmpty ? "\(urls.count) clips under a quarter frame"
+                : "too slow: " + slowDecodes.joined(separator: ", ")))
+        check.record(AssertionResult(
+            name: "every clip opens within one frame on the main thread",
+            passed: slowOpens.isEmpty,
+            detail: slowOpens.isEmpty ? "\(urls.count) clips"
+                : "slow to open: " + slowOpens.joined(separator: ", ")
+                    + " (long .m2v files count their pictures at open — stored in the catalog from 0.4.7)"))
         return check.finish()
     }
 

@@ -22,6 +22,7 @@
 #           soak        — stress for minutes with performer actions; memory, GPU, threads,
 #                         fds and slow-tick attribution (VIDEOBOY_SOAK_MINUTES, _CLIPS)
 #           decode      — per-file decode cost on the main thread (VIDEOBOY_BENCH_CLIPS)
+#           bars        — a 16:9 clip: black bars in the graph, caution stripes in its monitor
 #           fullscreen  — the real window at full-screen size: every scope key, hovered
 #                         sources, the Generators tab, photographed
 #           push-fade   — clips in A and C, Push on the centre fader, FADE and a sweep:
@@ -94,6 +95,8 @@ case "$CHECK" in
   soak)      run_app_check soak ;;
   # Per-file decode cost on the main thread; VIDEOBOY_BENCH_CLIPS adds real footage.
   decode)    run_app_check decode ;;
+  # A 16:9 clip (VIDEOBOY_BARS_CLIP): black bars on air, striped in the monitor.
+  bars)      run_app_check bars ;;
   push-fade) run_app_check push-fade ;;
   # The real window at the main screen's full size, all four channels playing, every
   # scope key pressed and photographed. Needs a GUI session; opt-in like stress.
@@ -123,5 +126,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, bars, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

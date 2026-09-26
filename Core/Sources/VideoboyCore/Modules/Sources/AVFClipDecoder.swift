@@ -20,6 +20,7 @@
 //  decoded frames are kept to make short steps and ping-pong turns free.
 //
 
+import Accelerate
 import AVFoundation
 import CoreVideo
 import Foundation
@@ -66,8 +67,20 @@ public final class AVFClipDecoder: ClipDecoding {
     private var cache: [Int: ImageBuffer] = [:]
     private var cacheOrder: [Int] = []
 
+    /// Upright display shape, from the stored raster, its pixel aspect and rotation.
+    public let displayAspectRatio: Double?
+    /// Clockwise quarter turns from the stored raster to upright.
+    public let quarterTurns: Int
+    /// The size frames are decoded at (stored orientation), or nil for the file's own.
+    /// VideoToolbox scales during decode, which is nearly free; the alternative was
+    /// copying 8 MB 1080p frames through the CPU and scaling them in the graph.
+    private let decodeSize: (width: Int, height: Int)?
+
     /// Opens a clip, or fails if it has no readable video track.
-    public init?(url: URL) {
+    ///
+    /// - Parameter canvas: when given, frames are decoded no larger than this canvas
+    ///   needs (`CanvasGeometry.decodeSize`); nil decodes at the file's own size.
+    public init?(url: URL, canvas: CanvasGeometry? = nil) {
         let asset = AVURLAsset(url: url)
         // Synchronous loading: this runs when a clip is loaded, not per frame, and
         // the source panel is waiting for a yes or no answer.
@@ -88,9 +101,42 @@ public final class AVFClipDecoder: ClipDecoding {
         }
         self.frameCount = max(Int((duration * self.frameRate).rounded()), 1)
 
+        // ORIENTATION AND SHAPE. The stored raster is what the reader hands back; the
+        // track's transform says how to turn it upright, and its format description
+        // may carry a pixel aspect ratio (anamorphic footage).
+        let transform = track.preferredTransform
+        let angle = atan2(Double(transform.b), Double(transform.a))
+        let turns = ((Int((angle / (Double.pi / 2)).rounded()) % 4) + 4) % 4
+        let stored = (width: Int(track.naturalSize.width), height: Int(track.naturalSize.height))
+        var storedAspect = CanvasGeometry.displayAspect(width: stored.width, height: stored.height)
+        if let description = track.formatDescriptions.first,
+           let pixelAspect = CMFormatDescriptionGetExtension(
+               description as! CMFormatDescription,
+               extensionKey: kCMFormatDescriptionExtension_PixelAspectRatio) as? [String: Any],
+           let horizontal = (pixelAspect[kCMFormatDescriptionKey_PixelAspectRatioHorizontalSpacing as String] as? NSNumber)?.doubleValue,
+           let vertical = (pixelAspect[kCMFormatDescriptionKey_PixelAspectRatioVerticalSpacing as String] as? NSNumber)?.doubleValue,
+           horizontal > 0, vertical > 0, abs(horizontal - vertical) > 0.001, stored.height > 0 {
+            storedAspect = Double(stored.width) * horizontal / (Double(stored.height) * vertical)
+        }
+        let uprightAspect = turns % 2 == 1 ? 1 / storedAspect : storedAspect
+        self.quarterTurns = turns
+        self.displayAspectRatio = uprightAspect
+
+        if let canvas, stored.width > 0, stored.height > 0 {
+            let uprightNative = turns % 2 == 1 ? (stored.height, stored.width) : (stored.width, stored.height)
+            let upright = canvas.decodeSize(sourceAspect: uprightAspect, nativeSize: uprightNative)
+            let size = turns % 2 == 1 ? (width: upright.height, height: upright.width) : (width: upright.width, height: upright.height)
+            // Only ever smaller: decoding larger than the file adds nothing.
+            self.decodeSize = (size.width < stored.width || size.height < stored.height) ? size : nil
+        } else {
+            self.decodeSize = nil
+        }
+
         Log.info(.dv, "opened \(url.lastPathComponent): \(frameCount) frames at "
             + String(format: "%.2f", self.frameRate) + " fps, "
-            + "\(Int(track.naturalSize.width))x\(Int(track.naturalSize.height))")
+            + "\(Int(track.naturalSize.width))x\(Int(track.naturalSize.height))"
+            + (decodeSize.map { ", decoded at \($0.width)x\($0.height)" } ?? "")
+            + (quarterTurns != 0 ? ", turned \(quarterTurns * 90)°" : ""))
 
         guard restartReader(atFrame: 0) else { return nil }
     }
@@ -172,9 +218,13 @@ public final class AVFClipDecoder: ClipDecoding {
         }
         // BGRA because that is what Metal and ImageBuffer both want; letting
         // AVFoundation convert is faster and more correct than doing it here.
-        let settings: [String: Any] = [
+        var settings: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
         ]
+        if let decodeSize {
+            settings[kCVPixelBufferWidthKey as String] = decodeSize.width
+            settings[kCVPixelBufferHeightKey as String] = decodeSize.height
+        }
         let trackOutput = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
         trackOutput.alwaysCopiesSampleData = false
         guard newReader.canAdd(trackOutput) else { return false }
@@ -203,30 +253,33 @@ public final class AVFClipDecoder: ClipDecoding {
     }
 
     /// Copies a BGRA pixel buffer into an RGBA `ImageBuffer`.
+    ///
+    /// One vImage permute (SIMD) rather than a per-pixel Swift loop: the loop cost
+    /// ~5 ms on a 1080p frame, on the main thread, every frame (audit F3).
     private static func imageBuffer(from pixelBuffer: CVPixelBuffer) -> ImageBuffer? {
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
-        let stride = CVPixelBufferGetBytesPerRow(pixelBuffer)
         guard let base = CVPixelBufferGetBaseAddress(pixelBuffer), width > 0, height > 0
         else { return nil }
 
-        let source = base.assumingMemoryBound(to: UInt8.self)
-        var pixels = [UInt8](repeating: 255, count: width * height * 4)
-        for y in 0..<height {
-            let row = y * stride
-            let destinationRow = y * width * 4
-            for x in 0..<width {
-                let sourceOffset = row + x * 4
-                let destination = destinationRow + x * 4
-                // BGRA to RGBA.
-                pixels[destination] = source[sourceOffset + 2]
-                pixels[destination + 1] = source[sourceOffset + 1]
-                pixels[destination + 2] = source[sourceOffset]
-                pixels[destination + 3] = source[sourceOffset + 3]
-            }
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let result: vImage_Error = pixels.withUnsafeMutableBytes { destination in
+            var source = vImage_Buffer(
+                data: base, height: vImagePixelCount(height), width: vImagePixelCount(width),
+                rowBytes: CVPixelBufferGetBytesPerRow(pixelBuffer))
+            var target = vImage_Buffer(
+                data: destination.baseAddress, height: vImagePixelCount(height),
+                width: vImagePixelCount(width), rowBytes: width * 4)
+            // BGRA → RGBA: output channel i takes input channel map[i].
+            let map: [UInt8] = [2, 1, 0, 3]
+            return vImagePermuteChannels_ARGB8888(&source, &target, map, vImage_Flags(kvImageNoFlags))
+        }
+        guard result == kvImageNoError else {
+            Log.error(.dv, "vImage could not convert a decoded frame (\(result))")
+            return nil
         }
         return ImageBuffer(width: width, height: height, pixels: pixels)
     }

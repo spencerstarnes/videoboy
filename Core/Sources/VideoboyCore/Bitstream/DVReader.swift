@@ -45,13 +45,18 @@ public final class DVReader {
 
     /// Opens a raw DV file and works out its standard from the size.
     ///
-    /// The whole file is read into memory. A DV file is about 3.5 MB per second, so a
-    /// few minutes fits comfortably, and having the bytes resident is what lets the
-    /// corruptor and the scrubber jump around without I/O in the render path.
+    /// The file is MEMORY-MAPPED where that is safe, not read in. DV is ~3.6 MB a
+    /// second, so reading it in cost ~2 GB of RAM per channel for a ten-minute tape
+    /// capture (audit/proposal 09-26) — fatal on an 8 GB Mac. Mapped, the system
+    /// pages frames in as they are touched and drops them under pressure.
+    ///
+    /// `.mappedIfSafe`, not `.alwaysMapped`: a mapped file that vanishes (an unplugged
+    /// drive, a dropped network share) takes the process down with SIGBUS. Foundation
+    /// maps only files it judges safe and reads the rest in, as before.
     public init(url: URL) throws {
         self.url = url
         do {
-            self.data = try Data(contentsOf: url)
+            self.data = try Data(contentsOf: url, options: .mappedIfSafe)
         } catch {
             throw ReaderError.unreadable(url, error)
         }

@@ -488,13 +488,24 @@ final class HoverScrubView: NSView {
     ///
     /// `ClipThumbnails` quantises and caches, so following the pointer asks for the
     /// same dozen frames over and over and decodes each only once.
+    ///
+    /// Never waits: a frame not yet decoded arrives on a later run-loop turn, and only
+    /// if this view still shows the same clip and still wants that position — so a
+    /// quick sweep across a tile, or a recycled cell, cannot land a stale picture.
     private func loadFrame(at position: Double) {
         guard let url = item?.url else { return }
-        guard let buffer = ClipThumbnails.shared.frame(for: url, at: position) else { return }
-        guard let cgImage = buffer.makeCGImage() else { return }
-        frameImage = NSImage(
-            cgImage: cgImage, size: NSSize(width: buffer.width, height: buffer.height))
+        wantedPosition = position
+        ClipThumbnails.shared.request(for: url, at: position) { [weak self] buffer in
+            guard let self, self.item?.url == url, self.wantedPosition == position,
+                  let buffer, let cgImage = buffer.makeCGImage() else { return }
+            self.frameImage = NSImage(
+                cgImage: cgImage, size: NSSize(width: buffer.width, height: buffer.height))
+            self.needsDisplay = true
+        }
     }
+
+    /// The position most recently asked for, so an older answer arriving late is ignored.
+    private var wantedPosition: Double?
 
     /// I, O and X while hovering, as FCP does. Returns false for any other key.
     @discardableResult

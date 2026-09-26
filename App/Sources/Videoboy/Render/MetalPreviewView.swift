@@ -31,7 +31,12 @@ final class MetalPreviewView: NSView {
     /// time, out of phase with the tick — ~35 presents/s for 30 frames, which a
     /// moving wipe edge showed as judder. `draw(_:)` still presents on a resize or
     /// an unhide, which AppKit dirties the view for by itself.
-    var texture: MTLTexture?
+    ///
+    /// Going from nothing to a picture (or back) asks for LAYOUT, not display: the
+    /// striped bars depend on whether there is a picture, and layout never presents.
+    var texture: MTLTexture? {
+        didSet { if (texture == nil) != (oldValue == nil) { needsLayout = true } }
+    }
 
     /// Draws the action-safe and title-safe rectangles over the picture (SPEC 11).
     var showsSafeZones = false {
@@ -74,6 +79,18 @@ final class MetalPreviewView: NSView {
     /// The tally glow: a red neon line inside the picture's edge, whose brightness is
     /// HOW MUCH OF THIS SOURCE IS ON AIR.
     private let tallyLayer = CAShapeLayer()
+
+    /// Caution-striped bars, drawn over the picture's bars and around a picture that
+    /// does not fill the monitor. Static layers, rebuilt only when the shape changes —
+    /// nothing per frame.
+    private let barsLayer = CALayer()
+
+    /// Where the picture sits inside the texture (unit rectangle, origin top-left),
+    /// when the texture carries bars of its own — a 16:9 clip fitted into the 4:3
+    /// canvas. Nil when the texture is all picture.
+    var pictureRect: CGRect? {
+        didSet { if pictureRect != oldValue { needsLayout = true } }
+    }
 
     /// The scope image drawn over the picture, when scopes are on for this preview.
     private let scopeLayer = CALayer()
@@ -124,6 +141,7 @@ final class MetalPreviewView: NSView {
             metalLayer.contentsScale = 1.0
             layer?.addSublayer(metalLayer)
             self.metalLayer = metalLayer
+            layer?.addSublayer(barsLayer)
         } else {
             Log.warn(.render, "preview '\(caption)' has no Metal device; showing empty state only")
         }
@@ -280,9 +298,12 @@ final class MetalPreviewView: NSView {
         // 4:3 for the previews, so Fit and Fill agree and there is nothing to see —
         // the modes earn their keep on material that is not 4:3 and on the output
         // window, where the display decides the shape.
-        let sourceSize = CGSize(
-            width: CGFloat(StandardDefinition.width),
-            height: CGFloat(StandardDefinition.height))
+        //
+        // By DISPLAY shape, not pixel count: an SD raster is 720×480 pixels but is
+        // shown 4:3. Placing it by its pixel count drew every preview 12.5% too wide.
+        let canvas = CanvasGeometry.standardDefinition
+        let sourceSize = CGSize(width: canvas.displayAspect * CGFloat(canvas.height),
+                                height: CGFloat(canvas.height))
         let placed = fillMode.rect(sourceSize: sourceSize, in: bounds.size)
         let frame = NSRect(
             x: placed.origin.x, y: placed.origin.y,
@@ -319,6 +340,7 @@ final class MetalPreviewView: NSView {
             width: visible.width * dataRect.width,
             height: visible.height * dataRect.height)
         overlayLayer.frame = frame
+        updateBars(pictureFrame: frame)
         // The tally gets the VIEW's bounds, not the picture's.
         //
         // The picture is often cropped by the fill mode — taller or wider than what is
@@ -329,6 +351,88 @@ final class MetalPreviewView: NSView {
         updateTally()
         updateOverlays()
     }
+
+    /// Rebuilds the striped bars over the texture's own bars (from `pictureRect`).
+    ///
+    /// Only a PICTURE's bars are striped — a clip that is not the canvas's shape. The
+    /// margin a monitor panel leaves around a correctly shaped picture is not a bar
+    /// and keeps the plain empty fill; striping it put stripes on every monitor. When
+    /// the canvas itself can be other than 4:3 (0.4.11), its margin joins these.
+    private func updateBars(pictureFrame frame: NSRect) {
+        barsLayer.frame = bounds
+        var rects: [CGRect] = []
+        if texture != nil {
+            // Unit rect is top-down; layers are bottom-up.
+            if let picture = pictureRect {
+                let inner = CGRect(
+                    x: frame.minX + frame.width * picture.minX,
+                    y: frame.maxY - frame.height * picture.maxY,
+                    width: frame.width * picture.width,
+                    height: frame.height * picture.height)
+                rects += [
+                    CGRect(x: frame.minX, y: inner.maxY, width: frame.width, height: frame.maxY - inner.maxY),
+                    CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: inner.minY - frame.minY),
+                    CGRect(x: frame.minX, y: inner.minY, width: inner.minX - frame.minX, height: inner.height),
+                    CGRect(x: inner.maxX, y: inner.minY, width: frame.maxX - inner.maxX, height: inner.height)
+                ].map { $0.intersection(bounds) }
+            }
+        }
+        let bars = rects.filter { !$0.isNull && $0.width >= 1 && $0.height >= 1 }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        barsLayer.sublayers = bars.map { rect in
+            let bar = CALayer()
+            bar.frame = rect.integral
+            bar.backgroundColor = Self.stripePattern
+            return bar
+        }
+        CATransaction.commit()
+    }
+
+    /// The striped bars currently shown, in view coordinates. For self-QA.
+    var barRectsForChecks: [CGRect] { barsLayer.sublayers?.map(\.frame) ?? [] }
+
+    /// The striped bars alone, rendered to an image. For self-QA: Core Animation draws
+    /// plain layers into a bitmap faithfully, unlike the Metal layer beside them.
+    func renderBarsForChecks() -> ImageBuffer? {
+        let width = Int(bounds.width), height = Int(bounds.height)
+        guard width > 0, height > 0,
+              let context = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        barsLayer.render(in: context)
+        guard let data = context.data else { return nil }
+        // A bitmap context's memory starts at the TOP row, as ImageBuffer does.
+        let bytes = Array(UnsafeBufferPointer(start: data.assumingMemoryBound(to: UInt8.self), count: width * height * 4))
+        return ImageBuffer(width: width, height: height, pixels: bytes)
+    }
+
+    /// Diagonal caution stripes, grey on dark grey, as a tiling pattern colour.
+    private static let stripePattern: CGColor = {
+        let stripe = Theme.Metrics.barStripeWidth
+        let period = stripe * 2
+        let tile = NSImage(size: NSSize(width: period, height: period), flipped: false) { rect in
+            Theme.Color.barStripeDark.setFill()
+            rect.fill()
+            Theme.Color.barStripeLight.setFill()
+            // A band rising at 45°, repeated one period either side so the tile's
+            // edges meet their neighbours without a seam.
+            for offset in [-period, 0, period] {
+                let band = NSBezierPath()
+                band.move(to: NSPoint(x: offset, y: 0))
+                band.line(to: NSPoint(x: offset + stripe, y: 0))
+                band.line(to: NSPoint(x: offset + stripe + period, y: period))
+                band.line(to: NSPoint(x: offset + period, y: period))
+                band.close()
+                band.fill()
+            }
+            return true
+        }
+        return NSColor(patternImage: tile).cgColor
+    }()
 
     /// Rebuilds the safe-zone and overscan outlines for the current picture area.
     ///

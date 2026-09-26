@@ -93,7 +93,7 @@ enum LibrarySelfQA {
         iconView(check, window: window, shell: shell, library: library, model: model, board: board)
         listView(check, window: window, shell: shell, library: library, model: model)
         columnView(check, window: window, shell: shell, library: library, model: model)
-        otherPanels(check, window: window, shell: shell, panels: panels)
+        otherPanels(check, window: window, shell: shell, panels: panels, engine: controller.engine)
 
         if tableClicksBypassed {
             check.note("list and column row clicks: hit-tested through the window, then applied with "
@@ -480,7 +480,7 @@ enum LibrarySelfQA {
     // MARK: - The other two panels
 
     private static func otherPanels(
-        _ check: SelfQACheck, window: NSWindow, shell: ShellView, panels: PanelSet
+        _ check: SelfQACheck, window: NSWindow, shell: ShellView, panels: PanelSet, engine: Engine
     ) {
         // The same library: bins made on the left are on the right.
         check.record(AssertionResult(
@@ -537,10 +537,19 @@ enum LibrarySelfQA {
                 let operation = sourceC.draggingEntered(drop)
                 let accepted = sourceC.performDragOperation(drop)
                 pump(0.2)
+                // The first generator tile may be built in ("generator:") or an ISF
+                // generator ("isf:") — and "accepted" alone is not "loaded": the
+                // channel must actually be playing from that kind of generator now.
+                let isISF = reference?.hasPrefix("isf:") == true
+                let isBuiltIn = reference?.hasPrefix("generator:") == true
+                let playingFrom = engine.sourceSlot(forChannel: "C")
+                let expectedSlot = isISF ? Engine.isfGeneratorSlot(forChannel: "C")
+                                         : Engine.generatorSlot(forChannel: "C")
                 check.record(AssertionResult(
                     name: "a generator dragged from the asset browser loads on the source it is dropped on",
-                    passed: reference?.hasPrefix("generator:") == true && operation == .copy && accepted,
-                    detail: "carried \(reference ?? "nothing"), \(operation == .copy ? "accepted" : "refused")"))
+                    passed: (isISF || isBuiltIn) && operation == .copy && accepted && playingFrom == expectedSlot,
+                    detail: "carried \(reference ?? "nothing"), \(operation == .copy ? "accepted" : "refused"), "
+                        + "C now plays from \(playingFrom)"))
             } else {
                 check.record(AssertionResult(
                     name: "a generator dragged from the asset browser loads on the source it is dropped on",

@@ -1,12 +1,12 @@
-1790438562.222 INFO [app] Videoboy Core 0.4.5 (6 flags on)
-1790438562.280 INFO [selfqa] running self-QA check 'soak'
-1790438562.282 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-soak-prefs.json; using defaults
-1790438562.323 WARN [isf] '/Users/spencerstarnes/Library/Application Support/Videoboy/ISF/Vidvox/Bloom.fs' is hidden by '/Users/spencerstarnes/Library/Application Support/Videoboy/ISF/Ethereios/bloom.fs'
-1790438562.413 INFO [render] Metal ready on Apple M1 Max
-1790438562.413 INFO [param] slot 'burn.one' now exposes 0 params (0 values carried, 0 dropped)
-1790438562.413 INFO [param] slot 'source.emu' now exposes 20 params (0 values carried, 0 dropped)
-1790438562.413 INFO [param] slot 'mix.primary' now exposes 30 params (0 values carried, 0 dropped)
-1790438562.413 INFO [param] slot 'data.program' now exposes 6 params (0 values carried, 0 dropped)
-1790438562.413 INFO [param] slot 'fx.program.composite' now exposes 9 params (0 values carried, 0 dropped)
-1790438562.413 INFO [param] slot 'burn.two' now exposes 0 params (0 values carried, 0 dropped)
-1790438562.413 INFO [param] slot 'data.two' now exposes 6 params (0 values carried, 0 dropped)
+1790451042.601 INFO [app] Videoboy Core 0.4.5 (6 flags on)
+1790451042.661 INFO [selfqa] running self-QA check 'soak'
+1790451042.664 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-soak-prefs.json; using defaults
+1790451042.711 WARN [isf] '/Users/spencerstarnes/Library/Application Support/Videoboy/ISF/Vidvox/Bloom.fs' is hidden by '/Users/spencerstarnes/Library/Application Support/Videoboy/ISF/Ethereios/bloom.fs'
+1790451042.806 INFO [render] Metal ready on Apple M1 Max
+1790451042.806 INFO [param] slot 'generator.b' now exposes 4 params (0 values carried, 0 dropped)
+1790451042.806 INFO [param] slot 'generator.d' now exposes 4 params (0 values carried, 0 dropped)
+1790451042.806 INFO [param] slot 'source.testpattern' now exposes 1 params (0 values carried, 0 dropped)
+1790451042.806 INFO [param] slot 'source.c' now exposes 7 params (0 values carried, 0 dropped)
+1790451042.806 INFO [param] slot 'burn.one' now exposes 0 params (0 values carried, 0 dropped)
+1790451042.806 INFO [param] slot 'mix.primary' now exposes 30 params (0 values carried, 0 dropped)
+1790451042.806 INFO [param] slot 'source.emu' now exposes 20 params (0 values carried, 0 dropped)

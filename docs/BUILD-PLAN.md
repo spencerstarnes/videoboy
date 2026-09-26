@@ -203,6 +203,23 @@ Each is independent and `[FLAG]`-gated. Pull one only when prioritized.
       from Push Vertical up by one stop (transitions shipped the same day).
 - [ ] Optional: expose PRIMARY (and the wedge sources) over Syphon so the app can also feed VDMX/TouchDesigner rigs.
 
+## 0.4.6–0.4.11 — Import, modes, any canvas (owner-approved 2026-09-26)
+
+Plan of record: `docs/PROPOSAL-2026-09-26.md` (decisions table at its top). Each phase is
+feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `stress`/`soak`.
+
+- [x] **0.4.6 Phase 0 — decode fixes** (done 2026-09-26; results in `docs/AUDIT-2026-09-26.md`) (audit 09-26 F1–F5, F6, R1–R2): DV memory-mapped;
+      AVF decoded at canvas size without the per-pixel loop; reused CPU buffers; per-source
+      background prefetch ring (loop wraps and loads off the tick); staggered scopes;
+      off-main thumbnails with an LRU cap. Gate: HD soak (`VIDEOBOY_SOAK_CLIPS`) with no tick
+      over one frame.
+- [ ] **0.4.7 Phase 1** — SQLite catalog, background import job, contextual status bar.
+- [ ] **0.4.8 Phase 2** — mode bar (⌘1 Import · ⌘2 VJ · ⌘3 Settings), Settings mode, setup assistant.
+- [ ] **0.4.9 Phase 3** — Import mode (Lightroom model; Add/Move/Copy).
+- [ ] **0.4.10 Phase 4** — Copy + Optimize, linked optimized media (LGPL ffmpeg helper).
+- [ ] **0.4.11 Phase 5** — any resolution and frame rate (`ProjectFormat`).
+- [ ] **0.5.0** — tags (proposal appendix A).
+
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)
 

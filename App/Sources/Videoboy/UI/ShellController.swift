@@ -2538,7 +2538,6 @@ final class ShellController {
     /// benefit a person could see. Roughly six times a second is plenty.
     private func updateScopes(from engine: Engine) {
         scopeRefreshCounter += 1
-        guard scopeRefreshCounter % Self.scopeRefreshInterval == 0 else { return }
         guard let renderer = offscreenRenderer else { return }
 
         let panels = shell.grid.panels
@@ -2551,7 +2550,12 @@ final class ShellController {
             (panels.programBody, GraphTopology.primary, Engine.outputSlot)
         ]
 
-        for composite in composites {
+        // STAGGERED: each scope refreshes every `scopeRefreshInterval` frames as
+        // before, but on its OWN frame — sub-mix one on 0, two on 1, programme on 2.
+        // All three on the same frame put three GPU readbacks and three CPU composes
+        // into one tick (data-burn p95 12.8 ms vs 6.6, audit 09-26 F6).
+        for (offset, composite) in composites.enumerated() {
+            guard scopeRefreshCounter % Self.scopeRefreshInterval == offset else { continue }
             let selection = scopeSelections[composite.slot] ?? ScopeSelection()
             guard selection.isShowing else { continue }
 
@@ -3003,6 +3007,10 @@ final class ShellController {
             // the one window that should have shown it stayed blank.
             let slot = engine.sourceSlot(forChannel: letter)
             panels.sourceBodies[letter]?.preview.texture = engine.texture(for: slot)
+            // A clip that is not the canvas's shape carries bars; the monitor stripes them.
+            let clip = engine.sources[letter]
+            panels.sourceBodies[letter]?.preview.pictureRect =
+                clip?.identifier == slot ? clip?.picturePlacement : nil
             panels.sourceBodies[letter]?.preview.present(at: showAt)
             // The scrub track follows playback, so it reads as a position indicator
             // as well as a control.

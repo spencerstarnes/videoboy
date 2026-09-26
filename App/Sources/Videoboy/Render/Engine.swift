@@ -797,6 +797,12 @@ final class Engine {
         guard displayLink == nil else { return }
         clockView = view
         attachDisplayLink()
+        // LIVE: a frame not decoded ahead may hold its channel for a tick rather than
+        // delay the whole frame (`ClipSourceNode.missWaitLimit`). Fallback to the old
+        // always-wait behaviour: VIDEOBOY_BLOCKING_DECODE=1.
+        if ProcessInfo.processInfo.environment["VIDEOBOY_BLOCKING_DECODE"] != "1" {
+            for node in sources.values { node.missWaitLimit = Engine.liveMissWaitLimit }
+        }
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification, object: nil, queue: .main
         ) { [weak self] note in
@@ -831,9 +837,15 @@ final class Engine {
         Log.info(.render, "render clock on '\(screen.localizedName)'")
     }
 
+    /// How long the live tick waits for a frame that was not decoded ahead: long
+    /// enough for a DV decode after a beat reseed (~2 ms), short enough that four
+    /// channels missing at once still fit the frame.
+    static let liveMissWaitLimit: TimeInterval = 0.005
+
     func stop() {
         displayLink?.invalidate()
         displayLink = nil
+        for node in sources.values { node.missWaitLimit = nil }
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         screenObserver = nil
         if let liveActivity { ProcessInfo.processInfo.endActivity(liveActivity) }

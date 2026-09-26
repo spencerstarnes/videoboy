@@ -24,11 +24,16 @@ public enum ClipDecoders {
     public static let mpegExtensions: Set<String> = ["m2v", "mpg", "mpeg", "ts", "m2t", "m2ts", "vob"]
 
     /// Opens a video file with the decoder playback uses for it, or nil.
-    public static func open(_ url: URL) -> ClipDecoding? {
+    ///
+    /// - Parameter canvas: decode no larger than this canvas needs; nil for full size.
+    ///   DV is always SD and ignores it.
+    public static func open(_ url: URL, canvas: CanvasGeometry? = nil) -> ClipDecoding? {
         let ext = url.pathExtension.lowercased()
         if ext == "dv" { return try? DVClipDecoder(url: url) }
-        if mpegExtensions.contains(ext) { return MPEGStreamDecoder(url: url) ?? AVFClipDecoder(url: url) }
-        return AVFClipDecoder(url: url)
+        if mpegExtensions.contains(ext) {
+            return MPEGStreamDecoder(url: url, canvas: canvas) ?? AVFClipDecoder(url: url, canvas: canvas)
+        }
+        return AVFClipDecoder(url: url, canvas: canvas)
     }
 
     /// A clip's length in seconds, or nil when it cannot be read.

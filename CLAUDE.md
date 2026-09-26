@@ -5,6 +5,8 @@ Auto-loaded every session. Keep this short. Operational detail lives in `@docs/B
 ## What this is
 **Videoboy** — a native macOS app for live analog-style video mixing (product/bundle name: Videoboy). The competitive core ("the wedge") is **musical, playable manipulation of compressed video bitstreams** (DV / MPEG-family) output cleanly to SD (480i) for an analog chain. Everything else is supporting cast. This is NOT a general VJ tool and must not grow into one.
 
+**Canvas (amended 2026-09-26, owner-approved — `docs/PROPOSAL-2026-09-26.md`):** the project canvas is selectable — SD NTSC 720×480, SD PAL 720×576, HD 1920×1080, square 1080×1080, vertical 1080×1920; 23.976–30 fps. **SD NTSC 29.97 is the default and the reference canvas.** The wedge and a clean SD analog output stay first-class and are never degraded to serve another canvas. The import/modes/optimize/catalog work in that proposal is in scope, in its phase order (Phase 0 = decode fixes, 0.4.6).
+
 ## Current focus
 The clickable-app milestone is done and the human is actively performing with and testing the app. Work on what they ask, verify it yourself with the self-QA harness before reporting, and keep the scope guard: the bitstream wedge + clean SD output come first. When unsure whether something is in scope, it isn't. (Autonomous build-plan runs still follow the workflow rules below.)
 
@@ -62,10 +64,7 @@ The rules that follow from that:
   times the whole display-link tick (graph + UI) under full load on a release build.
   The graph-only check in `selfqa ui` cannot see UI or presentation stalls — it missed a
   halved frame rate. Never time a debug build.
-- **Budget is 33.4 ms at 29.97.** Measured 2026-09-23, full load (4 channels incl. two
-  DV decodes + MPEG-2 + MOV, every channel and bus effect, corruption): **29.97 fps,
-  0 dropped, mean 6.2 ms, worst ~19–25 ms** (the worst is a main-thread decode spike —
-  `docs/AUDIT-2026-09-23.md` P5). Headroom is the safety margin, not spare capacity.
+- **Budget is one frame at the project rate — 33.4 ms at 29.97.** Measure on real HD footage too (`VIDEOBOY_SOAK_CLIPS`, `selfqa decode`): the SD fixtures hide decode cost. Measured 0.4.6 (2026-09-26), full load: SD fixtures **mean 6.2 ms, worst ~7 ms**; 10-min soak on 2× 1080p H.264 + ProRes + DV **0 dropped, 0 ticks over 16 ms, worst 16.5 ms, memory flat**. Remaining occasional stall: the GPU fence (~8 per 5 min, up to 19 ms, cause open — `docs/AUDIT-2026-09-26.md`). Headroom is the safety margin, not spare capacity.
 - **Nothing expensive on the render path.** No allocation per frame where a cached
   buffer will do, no CPU pixel loops (`ImageBuffer(width:height:r:g:b:)`, not
   `setPixel` in a loop), no synchronous file or network I/O, ever.
@@ -81,6 +80,7 @@ The rules that follow from that:
   `waitUntilCompleted()` in a node: one queue orders everything, and the engine fences
   ONCE per frame (`waitForIdle`). Only a CPU readback waits (on its own buffer). Per-pass
   waits cost ~11 ms/frame. Fallback switch: `VIDEOBOY_SYNC_EVERY_PASS=1`.
+- **Decoding never happens on the tick.** Each clip decodes ahead on its own queue (`ClipPrefetcher`); the live tick waits at most 5 ms for a frame it did not get ahead of, then holds its previous picture (`Engine.liveMissWaitLimit`; fallback `VIDEOBOY_BLOCKING_DECODE=1`). Sources are decoded no larger than the canvas needs and fitted to it on the GPU (`CanvasFit`); nothing enters the graph at HD.
 - **Per-frame CPU pictures go through `TextureUploader`** (reused, double-buffered,
   SIMD swizzle), never `makeTexture(from:)`, which allocates — 165 MB/s at full load.
 - **In-window previews never wait for vsync** (`displaySyncEnabled = false`) and skip
@@ -106,7 +106,7 @@ The rules that follow from that:
 `selfqa ui` calls `mouseDown` directly: it skips hit-testing, first-click activation and real modifier delivery. For anything the human clicks, also check the real app (`scripts/run.sh`) — route checks through `hitTest`, and assert that new UI never moves existing controls (a performer's hands are on them).
 
 ## Layout is fixed
-SPEC §14 is normative and `docs/mockups/layout-v6.html` is the visual source of truth — open it before writing any UI code. Do not redesign the arrangement, do not substitute a simpler shell, do not use floating/movable windows. Use real AppKit controls (NSPopUpButton, NSSegmentedControl, NSSwitch, NSSlider, NSCollectionView); don't hand-roll replacements.
+Inside VJ mode, SPEC §14 is normative and `docs/mockups/layout-v6.html` is the visual source of truth. The window also gets a bottom mode bar (Import / VJ / Settings, ⌘1–⌘3) merged with the status strip (proposal §4) — open it before writing any UI code. Do not redesign the arrangement, do not substitute a simpler shell, do not use floating/movable windows. Use real AppKit controls (NSPopUpButton, NSSegmentedControl, NSSwitch, NSSlider, NSCollectionView); don't hand-roll replacements.
 
 ## Guardrails
 - Licensing: build/vendor FFmpeg as **LGPL** (no GPL components) since the app is distributed. If a GPL component would be pulled in, STOP and report. libretro emulator cores (later phases) are GPL → run **out-of-process**, never linked.

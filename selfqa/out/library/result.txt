@@ -1,7 +1,7 @@
 check:    library
 verdict:  PASS
-when:     2026-09-24T06:01:24Z
-core:     0.3.0
+when:     2026-09-26T19:20:27Z
+core:     0.4.5
 
 notes:
   app active false, window key false — ⌘-keys are sent up the first responder's chain (the Edit menu's own route needs a key window)
@@ -44,6 +44,6 @@ assertions (36/36 passed):
   PASS  the C/D library shows the same bins — Keepers, Reel A, Reel B
   PASS  in every panel and view, the scrolling areas fill the panel top to bottom — C/D and the browser in all three views, A/B in column
   PASS  the asset browser's tab strip is on the tab it is showing — strip on Clips, showing Clips
-  PASS  a generator dragged from the asset browser loads on the source it is dropped on — carried generator:3, accepted
-  PASS  re-showing a 250-item library takes less than one frame — 8.4 ms
+  PASS  a generator dragged from the asset browser loads on the source it is dropped on — carried isf:isf.01_Strobosphere, accepted, C now plays from generator.isf.c
+  PASS  re-showing a 250-item library takes less than one frame — 7.2 ms
   PASS  no toolbar control moved through every view, bin and selection change — 6 controls where they were

@@ -194,6 +194,17 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// the only thing that differs between a .dv and a .mov here — the playhead, the
     /// loop modes, the musical stepping and the in/out points are the same code.
     public private(set) var clipDecoder: ClipDecoding?
+    /// Decodes ahead of the playhead, off the main thread. Owns every DECODE of
+    /// `clipDecoder`; the node reads only the decoder's fixed facts directly.
+    public private(set) var prefetcher: ClipPrefetcher?
+
+    /// Installs a freshly opened decoder and starts decoding its first frames at once,
+    /// so the first render after a load usually finds frame 0 ready.
+    private func install(_ decoder: ClipDecoding?) {
+        clipDecoder = decoder
+        prefetcher = decoder.map { ClipPrefetcher(decoder: $0, label: identifier) }
+        prefetcher?.prefetch(Array(0..<min(4, decoder?.frameCount ?? 0)), damage: effectiveCorruption)
+    }
     /// The file's own path, for templates and the panel title.
     public private(set) var mediaURL: URL?
 
@@ -261,6 +272,32 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     private var texture: MTLTexture?
     /// Reused, double-buffered upload target — no allocation per frame.
     private var uploader: TextureUploader?
+    /// Places a picture that is not canvas-shaped into the canvas (reused target).
+    private var fitter: CanvasFit?
+
+    /// How long the LIVE tick may wait for a frame that was not decoded ahead. Nil
+    /// waits as long as it takes, which offline renders and the self-QA need (every
+    /// render shows exactly the frame asked for). The engine sets a few milliseconds
+    /// while the display link runs: a slower decode — the first frame of a freshly
+    /// opened HD file — holds the channel's previous picture for a tick instead of
+    /// delaying the whole frame.
+    public var missWaitLimit: TimeInterval?
+
+    /// Where the clip's picture sits in the canvas (unit rectangle, origin top-left),
+    /// or nil when it fills the canvas exactly. The previews use it to mark the bars
+    /// as bars rather than as picture.
+    public private(set) var picturePlacement: CGRect?
+
+    /// The canvas decoders size their frames for. Set before `load`; the project
+    /// canvas becomes a setting in 0.4.11, and this is where it will arrive.
+    public var decodeCanvas = CanvasGeometry.standardDefinition
+
+    /// How a picture that is not the canvas's shape is placed in it: the whole picture
+    /// with black bars (`fit`, Resolve's default), cropped to fill, or stretched. The
+    /// bars are part of the picture that goes to air, so they are black.
+    public var framing: PreviewFill = .fit {
+        didSet { if framing != oldValue { textureFrameIndex = -1 } }
+    }
     /// Frame index the current texture was produced from; avoids redundant decodes.
     private var textureFrameIndex = -1
     /// The last corruption settings the texture was produced with, for the same reason.
@@ -282,6 +319,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// What travels is the clip and where it had got to.
     public struct LoadedClip {
         var decoder: ClipDecoding?
+        var prefetcher: ClipPrefetcher?
         var mediaURL: URL?
         var playheadFrame: Double
         var timing: PlaybackTiming
@@ -297,6 +335,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     public func takeLoadedClip() -> LoadedClip {
         let clip = LoadedClip(
             decoder: clipDecoder,
+            prefetcher: prefetcher,
             mediaURL: mediaURL,
             playheadFrame: playheadFrame,
             timing: timing,
@@ -308,6 +347,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             lastImage: lastImage
         )
         clipDecoder = nil
+        prefetcher = nil
         mediaURL = nil
         isPlaying = false
         return clip
@@ -321,6 +361,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// the frame path, which is exactly the thing audit C2 was about.
     public func adopt(_ clip: LoadedClip) {
         clipDecoder = clip.decoder
+        prefetcher = clip.prefetcher
         mediaURL = clip.mediaURL
         playheadFrame = clip.playheadFrame
         timing = clip.timing
@@ -392,11 +433,11 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             decoder = try? ImageSequenceDecoder(folder: url)
             guard let decoder, decoder.frameCount > 0 else {
                 Log.error(.dv, "\(identifier) found no images in \(url.lastPathComponent)")
-                self.clipDecoder = nil
+                install(nil)
                 self.mediaURL = nil
                 return false
             }
-            self.clipDecoder = decoder
+            install(decoder)
             self.mediaURL = url
             self.playheadFrame = 0
 
@@ -423,16 +464,16 @@ public final class ClipSourceNode: Node, DataEffectProvider {
 
         // DV to the DV decoder, the MPEG families to the bitstream decoder (the wedge
         // needs the packet), everything else to AVFoundation — see ClipDecoders.
-        decoder = ClipDecoders.open(url)
+        decoder = ClipDecoders.open(url, canvas: decodeCanvas)
 
         guard let decoder, decoder.frameCount > 0 else {
             Log.error(.dv, "\(identifier) could not load \(url.lastPathComponent)")
-            self.clipDecoder = nil
+            install(nil)
             self.mediaURL = nil
             return false
         }
 
-        self.clipDecoder = decoder
+        install(decoder)
         self.mediaURL = url
         self.playheadFrame = 0
         self.isPlayingBackwards = false
@@ -464,7 +505,8 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// Playback stops too. A source with nothing in it that still reports itself as
     /// playing would leave the transport lit for a deck holding no tape.
     public func unload() {
-        clipDecoder = nil
+        install(nil)
+        picturePlacement = nil
         mediaURL = nil
         playheadFrame = 0
         isPlaying = false
@@ -515,51 +557,105 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         // The ends are the in and out points when there are any, and the ends of the
         // file when there are not. Everything below is written against these two
         // numbers so there is one set of rules rather than a trimmed variant of each.
-        let first = Double(rangeFirstFrame(playbackRange))
-        let lastFrame = Double(rangeLastFrame(playbackRange))
-        let span = lastFrame - first + 1
+        let step = Self.step(
+            position: playheadFrame, backwards: isPlayingBackwards, by: frames,
+            first: Double(rangeFirstFrame(playbackRange)),
+            last: Double(rangeLastFrame(playbackRange)), mode: loopMode)
+        playheadFrame = step.position
+        isPlayingBackwards = step.backwards
 
-        playheadFrame += isPlayingBackwards ? -frames : frames
+        // ONE SHOT stops on its end and asks what next — unless something is
+        // listening, in which case it may put the next clip in (see `onReachedEnd`).
+        // Only ONE SHOT asks: loop and ping-pong already have an answer for what
+        // happens at the end, and a playlist that overrode them would quietly take
+        // the shuttle key's meaning away.
+        switch step.ended {
+        case .none:
+            break
+        case .atOut:
+            isPlaying = false
+            Log.info(.dv, "\(identifier) reached the end of its clip (one shot)")
+            onReachedEnd?()
+        case .atIn:
+            // Running backwards into the in point is equally "finished".
+            isPlaying = false
+            onReachedEnd?()
+        }
+    }
 
-        switch loopMode {
+    /// Where a one-shot playhead stopped, if it did.
+    enum StepEnd { case none, atOut, atIn }
+
+    /// One playhead step with the loop rules applied — and no side effects, so the
+    /// live advance and the prefetcher's prediction of the next frames are the SAME
+    /// arithmetic and cannot disagree about where a loop wraps or a ping-pong turns.
+    static func step(
+        position: Double, backwards: Bool, by frames: Double,
+        first: Double, last: Double, mode: LoopMode
+    ) -> (position: Double, backwards: Bool, ended: StepEnd) {
+        let span = last - first + 1
+        var position = position + (backwards ? -frames : frames)
+        var backwards = backwards
+        switch mode {
         case .loop:
             // Wrap at both ends: playing backwards past the in point comes round to
             // the out point.
-            if playheadFrame >= first + span {
-                playheadFrame -= span
-            } else if playheadFrame < first {
-                playheadFrame += span
+            if position >= first + span {
+                position -= span
+            } else if position < first {
+                position += span
             }
+            return (position, backwards, .none)
 
         case .pingPong:
             // Turn around rather than wrap. The overshoot is reflected back so the
             // motion stays smooth at the turn instead of pausing on the end frame.
-            if playheadFrame >= lastFrame {
-                playheadFrame = max(lastFrame - (playheadFrame - lastFrame), first)
-                isPlayingBackwards = true
-            } else if playheadFrame <= first {
-                playheadFrame = first + (first - playheadFrame)
-                isPlayingBackwards = false
+            if position >= last {
+                position = max(last - (position - last), first)
+                backwards = true
+            } else if position <= first {
+                position = first + (first - position)
+                backwards = false
             }
+            return (position, backwards, .none)
 
         case .oneShot:
-            // Stop on the out point and stay there — unless something is listening,
-            // in which case it may put the next clip in (see `onReachedEnd`). Only
-            // ONE SHOT asks: loop and ping-pong already have an answer for what
-            // happens at the end, and a playlist that overrode them would quietly
-            // take the shuttle key's meaning away.
-            if playheadFrame >= lastFrame {
-                playheadFrame = lastFrame
-                isPlaying = false
-                Log.info(.dv, "\(identifier) reached the end of its clip (one shot)")
-                onReachedEnd?()
-            } else if playheadFrame < first {
-                // Running backwards into the in point is equally "finished".
-                playheadFrame = first
-                isPlaying = false
-                onReachedEnd?()
-            }
+            if position >= last { return (last, backwards, .atOut) }
+            if position < first { return (first, backwards, .atIn) }
+            return (position, backwards, .none)
         }
+    }
+
+    /// The frame indices playback will ask for next, in order — what the prefetcher
+    /// decodes ahead. Empty while paused: a held frame needs nothing new.
+    private func predictedIndices(after current: Int, decoder: ClipDecoding) -> [Int] {
+        guard isPlaying, frameCount > 0 else { return [] }
+        let frames: Double
+        let count: Int
+        switch timing {
+        case .continuous:
+            frames = (decoder.frameRate / StandardDefinition.frameRate) * playbackSpeed
+            count = 5
+        case .stepped(_, let stepFrames, _):
+            frames = Double(stepFrames)
+            count = 2
+        }
+        guard frames > 0 else { return [] }
+        let first = Double(rangeFirstFrame(playbackRange))
+        let last = Double(rangeLastFrame(playbackRange))
+        var position = playheadFrame
+        var backwards = isPlayingBackwards
+        var indices: [Int] = []
+        for _ in 0..<(count * 2) where indices.count < count {
+            let next = Self.step(position: position, backwards: backwards, by: frames,
+                                 first: first, last: last, mode: loopMode)
+            position = next.position
+            backwards = next.backwards
+            let index = wrappedIndex(Int(position))
+            if index != current, indices.last != index { indices.append(index) }
+            if next.ended != .none { break }
+        }
+        return indices
     }
 
     /// Moves the playhead to a 0...1 position (the shuttle scrub).
@@ -628,10 +724,26 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         // cache happened to miss anyway.
         let damage = effectiveCorruption
         if frameIndex == textureFrameIndex && damage == textureCorruption, texture != nil {
+            prefetcher?.prefetch(predictedIndices(after: frameIndex, decoder: clipDecoder), damage: damage)
             return texture
         }
 
-        guard let image = clipDecoder.image(at: frameIndex, corruption: damage) else {
+        // Whatever happens below, keep the next frames decoding ahead of the playhead.
+        defer {
+            prefetcher?.prefetch(predictedIndices(after: frameIndex, decoder: clipDecoder), damage: damage)
+        }
+        let fetched: ImageBuffer?
+        if let limit = missWaitLimit, let prefetcher {
+            switch prefetcher.image(at: frameIndex, damage: damage, waitingAtMost: limit) {
+            case .ready(let image): fetched = image
+            // Not decoded yet: keep showing what is on screen; it lands next tick.
+            case .pending: return texture
+            case .failed: fetched = nil
+            }
+        } else {
+            fetched = prefetcher?.image(at: frameIndex, damage: damage)
+        }
+        guard let image = fetched else {
             // A frame that will not decode at all keeps the previous picture on
             // screen rather than flashing black.
             //
@@ -654,10 +766,36 @@ public final class ClipSourceNode: Node, DataEffectProvider {
 
         lastImage = image
         if uploader == nil { uploader = TextureUploader(context: metal, label: identifier) }
-        texture = uploader?.upload(image) ?? texture
+        if let uploaded = uploader?.upload(image) {
+            texture = conformed(uploaded, decoder: clipDecoder, metal: metal, renderContext: renderContext)
+        }
         textureFrameIndex = frameIndex
         textureCorruption = damage
         return texture
+    }
+
+    /// The uploaded picture as the canvas needs it: untouched when it already is the
+    /// canvas's size and shape (DV on an SD canvas — the common case costs nothing),
+    /// otherwise fitted, upright, by one GPU pass.
+    private func conformed(
+        _ uploaded: MTLTexture, decoder: ClipDecoding, metal: MetalContext, renderContext: RenderContext
+    ) -> MTLTexture? {
+        let canvas = CanvasGeometry(width: renderContext.width, height: renderContext.height)
+        let aspect = decoder.displayAspectRatio
+            ?? CanvasGeometry.displayAspect(width: uploaded.width, height: uploaded.height)
+        if CanvasFit.isIdentity(texture: uploaded, sourceAspect: aspect,
+                                quarterTurns: decoder.quarterTurns, canvas: canvas) {
+            picturePlacement = nil
+            return uploaded
+        }
+        let placed = canvas.placement(sourceAspect: aspect, framing: framing)
+        let unit = CGRect(x: CGFloat(placed.origin.x), y: CGFloat(placed.origin.y),
+                          width: CGFloat(placed.size.x), height: CGFloat(placed.size.y))
+        // Nil when the picture covers the whole canvas (fill, stretch): no bars.
+        picturePlacement = unit.contains(CGRect(x: 0, y: 0, width: 1, height: 1)) ? nil : unit
+        if fitter == nil { fitter = CanvasFit(context: metal, label: identifier) }
+        return fitter?.fit(uploaded, sourceAspect: aspect, quarterTurns: decoder.quarterTurns,
+                           framing: framing, canvas: canvas) ?? uploaded
     }
 
     /// Renders one frame without a Metal device, for headless self-QA.
@@ -665,8 +803,8 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// Same read/corrupt/decode path as `render`, stopping before the GPU upload, so
     /// a test can assert on pixels with no window server present.
     public func renderToImage(frameIndex requestedIndex: Int) -> ImageBuffer? {
-        guard let clipDecoder else { return nil }
-        return clipDecoder.image(at: wrappedIndex(requestedIndex), corruption: effectiveCorruption)
+        guard let prefetcher else { return nil }
+        return prefetcher.image(at: wrappedIndex(requestedIndex), damage: effectiveCorruption)
     }
 
     /// Applies parameter values from the registry. Called once per frame by the app,

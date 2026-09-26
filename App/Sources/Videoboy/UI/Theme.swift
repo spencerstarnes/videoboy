@@ -25,6 +25,8 @@ enum Theme {
     // expected. Changing these numbers is how that happens.
 
     enum Metrics {
+        /// Width of one caution stripe on a preview's bars, measured across the bar.
+        static let barStripeWidth: CGFloat = 5
         /// Corner radius of a panel box.
         ///
         /// Tighter than the mockup's 8: SPEC 14.4 says the mockup's radii are larger
@@ -509,6 +511,12 @@ enum Theme {
 
         /// Fill behind a video preview that has no source yet.
         static let previewEmpty = NSColor(white: 0.07, alpha: 1)
+
+        /// Caution stripes on a preview's bars — where the picture is not 4:3, or not
+        /// the canvas's shape. Grey, not black, so a bar can never be mistaken for a
+        /// dark picture. Previews only: what goes to air stays black.
+        static let barStripeLight = NSColor(white: 0.42, alpha: 1)
+        static let barStripeDark = NSColor(white: 0.22, alpha: 1)
 
         /// The fader's unfilled slot.
         static let faderTrack = NSColor(white: 0, alpha: 0.45)

@@ -41,6 +41,20 @@ public protocol ClipDecoding: AnyObject {
     ///   codecs whose family is not `.none`. Ignored by the others, which is why they
     ///   report `.none` — so nothing offers the control in the first place.
     func image(at index: Int, corruption: CorruptionSettings) -> ImageBuffer?
+
+    /// The picture's display shape (width over height, upright), when the file says
+    /// something the decoded pixel count does not — a pixel aspect ratio, or a
+    /// rotation. Nil means "read it off the decoded raster" (`CanvasGeometry`).
+    var displayAspectRatio: Double? { get }
+
+    /// Clockwise quarter turns needed to show the decoded raster upright. A phone's
+    /// portrait clip is stored landscape with a rotation flag.
+    var quarterTurns: Int { get }
+}
+
+public extension ClipDecoding {
+    var displayAspectRatio: Double? { nil }
+    var quarterTurns: Int { 0 }
 }
 
 /// DV: the wedge's home. Damages DIF blocks before handing them to the decoder.
