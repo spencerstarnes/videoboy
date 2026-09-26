@@ -1,0 +1,62 @@
+INFO [selfqa] soak 0.5 min: 508 MB, gpu 138 MB, 15 thr, 11 fd, 899 fr, worst 20.1 ms
+INFO [selfqa] soak 1.0 min: 480 MB, gpu 138 MB, 21 thr, 9 fd, 899 fr, worst 19.3 ms
+INFO [selfqa] soak 1.5 min: 496 MB, gpu 138 MB, 22 thr, 11 fd, 899 fr, worst 20.3 ms
+INFO [selfqa] soak 2.0 min: 493 MB, gpu 138 MB, 23 thr, 10 fd, 900 fr, worst 19.7 ms
+INFO [selfqa] soak 2.5 min: 475 MB, gpu 138 MB, 20 thr, 10 fd, 899 fr, worst 19.3 ms
+INFO [selfqa] soak 3.0 min: 500 MB, gpu 138 MB, 24 thr, 9 fd, 899 fr, worst 25.5 ms
+INFO [selfqa] soak 3.5 min: 531 MB, gpu 138 MB, 19 thr, 9 fd, 899 fr, worst 24.6 ms
+INFO [selfqa] soak 4.0 min: 479 MB, gpu 138 MB, 20 thr, 9 fd, 899 fr, worst 22.0 ms
+INFO [selfqa] soak 4.5 min: 530 MB, gpu 138 MB, 23 thr, 10 fd, 899 fr, worst 24.1 ms
+INFO [selfqa] soak 5.0 min: 511 MB, gpu 138 MB, 21 thr, 10 fd, 899 fr, worst 21.0 ms
+INFO [selfqa] soak 5.5 min: 565 MB, gpu 136 MB, 26 thr, 10 fd, 899 fr, worst 17.4 ms
+INFO [selfqa] soak 6.0 min: 512 MB, gpu 136 MB, 23 thr, 9 fd, 899 fr, worst 19.1 ms
+INFO [selfqa] soak 6.5 min: 534 MB, gpu 136 MB, 21 thr, 9 fd, 899 fr, worst 26.1 ms
+INFO [selfqa] soak 7.0 min: 485 MB, gpu 138 MB, 18 thr, 10 fd, 900 fr, worst 24.1 ms
+INFO [selfqa] soak 7.5 min: 492 MB, gpu 138 MB, 19 thr, 10 fd, 899 fr, worst 20.4 ms
+INFO [selfqa] soak 8.0 min: 487 MB, gpu 138 MB, 15 thr, 11 fd, 899 fr, worst 19.4 ms
+INFO [selfqa] soak 8.5 min: 477 MB, gpu 138 MB, 23 thr, 9 fd, 899 fr, worst 20.7 ms
+INFO [selfqa] soak 9.0 min: 483 MB, gpu 138 MB, 21 thr, 11 fd, 899 fr, worst 21.7 ms
+INFO [selfqa] soak 9.5 min: 484 MB, gpu 138 MB, 22 thr, 10 fd, 899 fr, worst 20.3 ms
+INFO [selfqa] soak 10.0 min: 492 MB, gpu 138 MB, 21 thr, 9 fd, 899 fr, worst 20.4 ms
+INFO [selfqa] soak 10.5 min: 479 MB, gpu 138 MB, 22 thr, 9 fd, 899 fr, worst 25.7 ms
+INFO [selfqa] soak 11.0 min: 501 MB, gpu 138 MB, 18 thr, 9 fd, 899 fr, worst 20.0 ms
+INFO [selfqa] soak 11.5 min: 476 MB, gpu 138 MB, 16 thr, 9 fd, 899 fr, worst 21.1 ms
+INFO [selfqa] soak 12.0 min: 501 MB, gpu 138 MB, 23 thr, 10 fd, 900 fr, worst 20.0 ms
+INFO [selfqa] soak 12.5 min: 475 MB, gpu 138 MB, 23 thr, 10 fd, 899 fr, worst 19.9 ms
+INFO [selfqa] soak 13.0 min: 501 MB, gpu 138 MB, 24 thr, 10 fd, 899 fr, worst 19.1 ms
+INFO [selfqa] soak 13.5 min: 522 MB, gpu 138 MB, 20 thr, 10 fd, 899 fr, worst 21.3 ms
+INFO [selfqa] soak 14.0 min: 509 MB, gpu 138 MB, 22 thr, 9 fd, 899 fr, worst 26.8 ms
+INFO [selfqa] soak 14.5 min: 505 MB, gpu 138 MB, 16 thr, 10 fd, 899 fr, worst 24.9 ms
+INFO [selfqa] soak 15.0 min: 517 MB, gpu 138 MB, 18 thr, 10 fd, 898 fr, worst 62.0 ms
+INFO [selfqa] soak 15.5 min: 498 MB, gpu 138 MB, 17 thr, 11 fd, 900 fr, worst 20.5 ms
+INFO [selfqa] soak 16.0 min: 489 MB, gpu 138 MB, 24 thr, 9 fd, 899 fr, worst 18.5 ms
+INFO [selfqa] soak 16.5 min: 490 MB, gpu 138 MB, 23 thr, 11 fd, 899 fr, worst 19.6 ms
+INFO [selfqa] soak 17.0 min: 487 MB, gpu 138 MB, 21 thr, 10 fd, 900 fr, worst 20.7 ms
+INFO [selfqa] soak 17.5 min: 511 MB, gpu 138 MB, 23 thr, 9 fd, 899 fr, worst 23.3 ms
+INFO [selfqa] soak 18.0 min: 523 MB, gpu 138 MB, 20 thr, 9 fd, 899 fr, worst 27.9 ms
+INFO [selfqa] soak 18.5 min: 505 MB, gpu 138 MB, 17 thr, 10 fd, 899 fr, worst 21.8 ms
+INFO [selfqa] soak 19.0 min: 491 MB, gpu 138 MB, 20 thr, 9 fd, 899 fr, worst 22.4 ms
+INFO [selfqa] soak 19.5 min: 517 MB, gpu 138 MB, 25 thr, 10 fd, 899 fr, worst 19.1 ms
+INFO [selfqa] soak 20.0 min: 501 MB, gpu 138 MB, 20 thr, 10 fd, 899 fr, worst 19.2 ms
+INFO [selfqa] perf/soak: action cut: 86×, mean 0.09 ms, worst 0.13 ms
+INFO [selfqa] perf/soak: action drop clip: 86×, mean 10.79 ms, worst 15.21 ms
+INFO [selfqa] perf/soak: action effect off/on: 86×, mean 0.01 ms, worst 0.01 ms
+INFO [selfqa] perf/soak: action eject + reload: 85×, mean 16.06 ms, worst 25.84 ms
+INFO [selfqa] perf/soak: action fade: 86×, mean 0.01 ms, worst 0.03 ms
+INFO [selfqa] perf/soak: action scope key: 85×, mean 0.09 ms, worst 0.16 ms
+INFO [selfqa] perf/soak: action swap A/B: 85×, mean 0.05 ms, worst 0.08 ms
+INFO [selfqa] perf/soak: 20.0 min, 599 actions, 35964 frames = 29.97/s, 1 dropped, 186 ticks over 16 ms, worst 62.02 ms
+INFO [selfqa] perf/soak: footprint 514 → 501 MB (settled 493, +0.45 MB/min); gpu 141 → 138 MB (+0.00 MB/min)
+INFO [selfqa] perf/soak: threads 24 → 20 (max 26); file descriptors 10 → 10 (max 11)
+INFO [selfqa] perf/soak: tick mean first window 8.87 ms, last window 9.34 ms
+INFO [selfqa] perf/soak: PASS  the soak holds the 29.97 content rate — 29.97 frames/s
+ERROR [selfqa] perf/soak: FAIL  no tick over one SD frame in the whole soak — worst 62.02 ms, 186 ticks over 16 ms
+INFO [selfqa] perf/soak: PASS  under 0.1% of refreshes dropped across the soak — 1 of 35964
+INFO [selfqa] perf/soak: PASS  memory footprint is flat once settled (under 2 MB/min) — +0.45 MB/min from minute 2.0
+INFO [selfqa] perf/soak: PASS  GPU allocation is flat once settled (under 1 MB/min) — +0.00 MB/min
+INFO [selfqa] perf/soak: PASS  clip swaps leave no threads behind — 23 settled → 20
+INFO [selfqa] perf/soak: PASS  clip swaps leave no file handles open — 10 settled → 10
+INFO [selfqa] perf/soak: PASS  the tick does not get slower over the show — 8.87 → 9.34 ms
+INFO [selfqa] perf/soak: PASS  no performer action blocks the main thread for longer than a frame — worst: eject + reload 25.84 ms
+INFO [selfqa] soak holding 180 s for leaks, pid 36826
+INFO [selfqa] perf/soak: FAIL -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/soak/result.txt

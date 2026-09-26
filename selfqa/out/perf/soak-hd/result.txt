@@ -1,0 +1,72 @@
+check:    perf/soak
+verdict:  FAIL
+when:     2026-09-26T16:01:57Z
+core:     0.4.5
+
+notes:
+  clips: hd-h264.mp4, hd-prores.mov, hd-h264-b.mp4, motion.dv
+  5397 ticks over 14 ms; costliest part in each: source.d ×1920, source.c ×1292, source.b ×1128, source.a ×835, gpu fence ×222
+    77.06 ms: source.a 28.77, source.b 28.15, source.d 5.84, source.c 5.67, gpu fence 2.73, fx.d.mosh 1.13
+    64.96 ms: source.b 27.61, source.d 22.54, gpu fence 2.70, fx.a.mosh 2.42, source.a 1.96, source.c 1.74
+    62.40 ms: source.b 28.65, source.a 14.83, source.c 5.12, source.d 4.98, gpu fence 2.66, fx.a.mosh 1.35
+    55.33 ms: source.a 28.37, source.c 5.29, gpu fence 5.18, source.d 5.05, fx.b.mosh 2.68, fx.a.mosh 1.74
+    55.12 ms: source.b 29.23, source.d 5.46, source.c 4.94, fx.a.mosh 3.07, fx.b.mosh 2.82, gpu fence 2.58
+    54.68 ms: source.c 27.45, source.d 5.66, source.a 5.04, source.b 4.80, ui/onFrame 3.44, gpu fence 2.80
+    53.84 ms: source.b 28.50, source.d 5.75, source.c 4.96, fx.a.mosh 3.23, gpu fence 2.74, fx.b.mosh 1.84
+    49.71 ms: source.d 27.59, gpu fence 5.33, source.a 5.16, source.c 5.06, source.b 1.53, fx.a.mosh 1.13
+    49.56 ms: source.c 28.32, source.d 6.79, source.b 5.12, gpu fence 2.96, source.a 1.52, fx.b.mosh 1.08
+    49.23 ms: source.a 26.17, source.c 5.57, gpu fence 4.30, fx.a.mosh 3.23, source.b 2.51, fx.b.mosh 2.32
+  action cut: 13×, mean 0.08 ms, worst 0.11 ms
+  action drop clip: 13×, mean 16.30 ms, worst 30.22 ms
+  action effect off/on: 13×, mean 0.00 ms, worst 0.01 ms
+  action eject + reload: 13×, mean 17.51 ms, worst 28.85 ms
+  action fade: 13×, mean 0.01 ms, worst 0.03 ms
+  action scope key: 12×, mean 0.08 ms, worst 0.11 ms
+  action swap A/B: 12×, mean 0.05 ms, worst 0.06 ms
+  3.0 min, 89 actions, 5397 frames = 29.98/s, 2 dropped, 5397 ticks over 16 ms, worst 77.06 ms
+  footprint 1714 → 645 MB (settled 720, -75.59 MB/min); gpu 446 → 320 MB (-92.05 MB/min)
+  threads 27 → 23 (max 29); file descriptors 11 → 11 (max 11)
+  tick mean first window 29.22 ms, last window 20.86 ms
+
+assertions (8/9 passed):
+  PASS  the soak holds the 29.97 content rate — 29.98 frames/s
+  FAIL  no tick over one SD frame in the whole soak — worst 77.06 ms, 5397 ticks over 16 ms
+  PASS  under 0.1% of refreshes dropped across the soak — 2 of 5397
+  PASS  memory footprint is flat once settled (under 2 MB/min) — -75.59 MB/min from minute 2.0
+  PASS  GPU allocation is flat once settled (under 1 MB/min) — -92.05 MB/min
+  PASS  clip swaps leave no threads behind — 27 settled → 23
+  PASS  clip swaps leave no file handles open — 11 settled → 11
+  PASS  the tick does not get slower over the show — 29.22 → 20.86 ms
+  PASS  no performer action blocks the main thread for longer than a frame — worst: drop clip 30.22 ms
+
+recent log:
+  1790438517.036 INFO [selfqa] perf/soak:   77.06 ms: source.a 28.77, source.b 28.15, source.d 5.84, source.c 5.67, gpu fence 2.73, fx.d.mosh 1.13
+  1790438517.036 INFO [selfqa] perf/soak:   64.96 ms: source.b 27.61, source.d 22.54, gpu fence 2.70, fx.a.mosh 2.42, source.a 1.96, source.c 1.74
+  1790438517.036 INFO [selfqa] perf/soak:   62.40 ms: source.b 28.65, source.a 14.83, source.c 5.12, source.d 4.98, gpu fence 2.66, fx.a.mosh 1.35
+  1790438517.036 INFO [selfqa] perf/soak:   55.33 ms: source.a 28.37, source.c 5.29, gpu fence 5.18, source.d 5.05, fx.b.mosh 2.68, fx.a.mosh 1.74
+  1790438517.036 INFO [selfqa] perf/soak:   55.12 ms: source.b 29.23, source.d 5.46, source.c 4.94, fx.a.mosh 3.07, fx.b.mosh 2.82, gpu fence 2.58
+  1790438517.036 INFO [selfqa] perf/soak:   54.68 ms: source.c 27.45, source.d 5.66, source.a 5.04, source.b 4.80, ui/onFrame 3.44, gpu fence 2.80
+  1790438517.036 INFO [selfqa] perf/soak:   53.84 ms: source.b 28.50, source.d 5.75, source.c 4.96, fx.a.mosh 3.23, gpu fence 2.74, fx.b.mosh 1.84
+  1790438517.036 INFO [selfqa] perf/soak:   49.71 ms: source.d 27.59, gpu fence 5.33, source.a 5.16, source.c 5.06, source.b 1.53, fx.a.mosh 1.13
+  1790438517.036 INFO [selfqa] perf/soak:   49.56 ms: source.c 28.32, source.d 6.79, source.b 5.12, gpu fence 2.96, source.a 1.52, fx.b.mosh 1.08
+  1790438517.036 INFO [selfqa] perf/soak:   49.23 ms: source.a 26.17, source.c 5.57, gpu fence 4.30, fx.a.mosh 3.23, source.b 2.51, fx.b.mosh 2.32
+  1790438517.037 INFO [selfqa] perf/soak: action cut: 13×, mean 0.08 ms, worst 0.11 ms
+  1790438517.037 INFO [selfqa] perf/soak: action drop clip: 13×, mean 16.30 ms, worst 30.22 ms
+  1790438517.037 INFO [selfqa] perf/soak: action effect off/on: 13×, mean 0.00 ms, worst 0.01 ms
+  1790438517.037 INFO [selfqa] perf/soak: action eject + reload: 13×, mean 17.51 ms, worst 28.85 ms
+  1790438517.037 INFO [selfqa] perf/soak: action fade: 13×, mean 0.01 ms, worst 0.03 ms
+  1790438517.037 INFO [selfqa] perf/soak: action scope key: 12×, mean 0.08 ms, worst 0.11 ms
+  1790438517.037 INFO [selfqa] perf/soak: action swap A/B: 12×, mean 0.05 ms, worst 0.06 ms
+  1790438517.039 INFO [selfqa] perf/soak: 3.0 min, 89 actions, 5397 frames = 29.98/s, 2 dropped, 5397 ticks over 16 ms, worst 77.06 ms
+  1790438517.039 INFO [selfqa] perf/soak: footprint 1714 → 645 MB (settled 720, -75.59 MB/min); gpu 446 → 320 MB (-92.05 MB/min)
+  1790438517.039 INFO [selfqa] perf/soak: threads 27 → 23 (max 29); file descriptors 11 → 11 (max 11)
+  1790438517.039 INFO [selfqa] perf/soak: tick mean first window 29.22 ms, last window 20.86 ms
+  1790438517.039 INFO [selfqa] perf/soak: PASS  the soak holds the 29.97 content rate — 29.98 frames/s
+  1790438517.039 ERROR [selfqa] perf/soak: FAIL  no tick over one SD frame in the whole soak — worst 77.06 ms, 5397 ticks over 16 ms
+  1790438517.039 INFO [selfqa] perf/soak: PASS  under 0.1% of refreshes dropped across the soak — 2 of 5397
+  1790438517.039 INFO [selfqa] perf/soak: PASS  memory footprint is flat once settled (under 2 MB/min) — -75.59 MB/min from minute 2.0
+  1790438517.039 INFO [selfqa] perf/soak: PASS  GPU allocation is flat once settled (under 1 MB/min) — -92.05 MB/min
+  1790438517.039 INFO [selfqa] perf/soak: PASS  clip swaps leave no threads behind — 27 settled → 23
+  1790438517.039 INFO [selfqa] perf/soak: PASS  clip swaps leave no file handles open — 11 settled → 11
+  1790438517.039 INFO [selfqa] perf/soak: PASS  the tick does not get slower over the show — 29.22 → 20.86 ms
+  1790438517.039 INFO [selfqa] perf/soak: PASS  no performer action blocks the main thread for longer than a frame — worst: drop clip 30.22 ms

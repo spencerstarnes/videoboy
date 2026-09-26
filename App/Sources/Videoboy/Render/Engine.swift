@@ -851,6 +851,12 @@ final class Engine {
     var graphCostsForChecks: [Double]?
     /// Total milliseconds spent in each node's `render`, while a check profiles.
     var nodeCostsForChecks: [String: Double]?
+    /// Ticks over `spikeThresholdForChecks` ms, each with its costliest parts (nodes,
+    /// plus "gpu fence" and "ui/onFrame"), while a check sets this non-nil.
+    var spikesForChecks: [(tickMs: Double, parts: [(String, Double)])]?
+    var spikeThresholdForChecks = 14.0
+    /// This tick's per-node costs; kept only while `spikesForChecks` is non-nil.
+    private var tickPartsForChecks: [String: Double] = [:]
 
     /// The interval the display link is actually firing at, in seconds.
     private(set) var refreshInterval: Double = 0
@@ -891,6 +897,13 @@ final class Engine {
         defer {
             if rendered, tickCostsForChecks != nil {
                 tickCostsForChecks?.append((CACurrentMediaTime() - tickStart) * 1000)
+            }
+            if rendered, spikesForChecks != nil {
+                let tickMs = (CACurrentMediaTime() - tickStart) * 1000
+                if tickMs > spikeThresholdForChecks {
+                    let parts = tickPartsForChecks.sorted { $0.value > $1.value }.prefix(6)
+                    spikesForChecks?.append((tickMs, Array(parts)))
+                }
             }
         }
         let now = link.timestamp
@@ -936,7 +949,11 @@ final class Engine {
             graphCostsForChecks?.append((CACurrentMediaTime() - graphStart) * 1000)
         }
         frameIndex += 1
+        let uiStart = spikesForChecks != nil ? CACurrentMediaTime() : 0
         onFrame?(self)
+        if spikesForChecks != nil {
+            tickPartsForChecks["ui/onFrame", default: 0] += (CACurrentMediaTime() - uiStart) * 1000
+        }
     }
 
     /// Pushes every node's parameters from the registry into the node.
@@ -975,7 +992,9 @@ final class Engine {
         // being overwritten as this frame is built.
         if !feedbackSends.isEmpty { applyFeedbackSends() }
         var produced: [String: MTLTexture] = [:]
-        let profiling = nodeCostsForChecks != nil
+        let attributing = spikesForChecks != nil
+        if attributing { tickPartsForChecks = [:] }
+        let profiling = nodeCostsForChecks != nil || attributing
         for identifier in graph.evaluationOrder(from: Engine.outputSlot) {
             guard let node = graph.nodes[identifier] else { continue }
             let inputs = graph.inputs(of: identifier).compactMap { produced[$0] }
@@ -984,12 +1003,18 @@ final class Engine {
                 produced[identifier] = texture
             }
             if profiling {
-                nodeCostsForChecks?[identifier, default: 0] += (CACurrentMediaTime() - start) * 1000
+                let ms = (CACurrentMediaTime() - start) * 1000
+                nodeCostsForChecks?[identifier, default: 0] += ms
+                if attributing { tickPartsForChecks[identifier, default: 0] += ms }
             }
         }
         // ONE wait per frame, not one per pass (see `MetalContext.submit`): every
         // texture in `produced` is finished by the time anything reads it.
+        let fenceStart = attributing ? CACurrentMediaTime() : 0
         metal?.waitForIdle()
+        if attributing {
+            tickPartsForChecks["gpu fence", default: 0] += (CACurrentMediaTime() - fenceStart) * 1000
+        }
         return produced
     }
 

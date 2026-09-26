@@ -19,6 +19,9 @@
 #           output      — the borderless output window on the HDMI card (needs hardware)
 #           loopback    — capture the DVC100 and write metrics.json (needs hardware)
 #           stress      — real window, live display link, all 4 channels + every effect
+#           soak        — stress for minutes with performer actions; memory, GPU, threads,
+#                         fds and slow-tick attribution (VIDEOBOY_SOAK_MINUTES, _CLIPS)
+#           decode      — per-file decode cost on the main thread (VIDEOBOY_BENCH_CLIPS)
 #           fullscreen  — the real window at full-screen size: every scope key, hovered
 #                         sources, the Generators tab, photographed
 #           push-fade   — clips in A and C, Push on the centre fader, FADE and a sweep:
@@ -86,6 +89,11 @@ case "$CHECK" in
   # Opens a real window on the main display and runs the live display link under full
   # load for ~10 s. Needs a logged-in GUI session, so it is opt-in, not part of `all`.
   stress)    run_app_check stress ;;
+  # stress for minutes, with performer actions, watching memory/GPU/threads/fds.
+  # VIDEOBOY_SOAK_MINUTES sets the length (default 10). Opt-in like stress.
+  soak)      run_app_check soak ;;
+  # Per-file decode cost on the main thread; VIDEOBOY_BENCH_CLIPS adds real footage.
+  decode)    run_app_check decode ;;
   push-fade) run_app_check push-fade ;;
   # The real window at the main screen's full size, all four channels playing, every
   # scope key pressed and photographed. Needs a GUI session; opt-in like stress.
@@ -115,5 +123,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

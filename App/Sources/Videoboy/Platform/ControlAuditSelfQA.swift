@@ -62,6 +62,17 @@ enum ControlAuditSelfQA {
         }
     }
 
+    /// Every fader beneath a view, with the panel it sits in.
+    private static func faderControls(in view: NSView, panel: String) -> [(String, VBFader)] {
+        let panelName = (view as? PanelView)?.title ?? panel
+        var found: [(String, VBFader)] = []
+        if let fader = view as? VBFader {
+            found.append(("\(panelName)/\(fader.identifier?.rawValue ?? "unnamed")", fader))
+        }
+        for subview in view.subviews { found += faderControls(in: subview, panel: panelName) }
+        return found
+    }
+
     /// One control found in the tree.
     private struct Finding {
         let panel: String
@@ -88,8 +99,10 @@ enum ControlAuditSelfQA {
         let controller = ShellController(shell: shell, engine: engine)
         shell.frame = NSRect(x: 0, y: 0, width: 1460, height: 912)
         shell.layoutSubtreeIfNeeded()
-        // Keep the controller alive for the walk; it owns the wiring being audited.
-        withExtendedLifetime(controller) {}
+        // Keep the controller alive for the WHOLE audit; it owns the wiring being
+        // audited, and controls hold their targets weakly. A bare
+        // `withExtendedLifetime(controller) {}` here only held it to this line.
+        defer { withExtendedLifetime(controller) {} }
 
         var findings: [Finding] = []
         collect(from: shell, panel: "window", into: &findings)
@@ -178,6 +191,36 @@ enum ControlAuditSelfQA {
                 : "\(unmappable.count) of \(faders.count) have no mapping address: "
                     + unmappable.map(\.label).joined(separator: ", ")
         ))
+
+        // EVERY FADER MOVES ITS PARAMETER. "Has an action" is not "does something":
+        // each enabled, mappable fader is moved through its own action — the path a
+        // drag takes — and the engine's value at the fader's mapping address must
+        // change. A fader that moves and changes nothing is a dead control that the
+        // wiring check above cannot see.
+        var inert: [String] = []
+        var moved = 0
+        for (label, fader) in faderControls(in: shell, panel: "window")
+        where fader.isEnabled {
+            guard let slot = fader.mappingSlot, let code = fader.mappingCode else { continue }
+            let before = engine.registry.value(slot: slot, code: code)
+            let span = fader.maximum - fader.minimum
+            let target = fader.value - fader.minimum < span / 2
+                ? fader.minimum + span * 0.8 : fader.minimum + span * 0.2
+            fader.value = target
+            fader.sendAction(fader.action, to: fader.target)
+            let after = engine.registry.value(slot: slot, code: code)
+            if after == nil || after == before {
+                inert.append("\(label) → \(slot)/\(code) stayed \(before.map { String(format: "%.3f", $0) } ?? "unregistered")")
+            } else {
+                moved += 1
+            }
+        }
+        check.record(AssertionResult(
+            name: "every enabled fader changes the parameter it is mapped to",
+            passed: inert.isEmpty && moved > 0,
+            detail: inert.isEmpty
+                ? "\(moved) faders moved, every one changed the engine"
+                : "\(inert.count) inert: " + inert.joined(separator: "; ")))
 
         // Every switch must AGREE WITH THE ENGINE at launch. A control that says off
         // while the thing it controls is on is worse than a dead control: the picture
