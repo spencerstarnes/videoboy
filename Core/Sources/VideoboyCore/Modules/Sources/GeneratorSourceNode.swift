@@ -78,6 +78,9 @@ public enum GeneratorKind: Int, CaseIterable, Codable, Sendable {
     case plasma = 9
     case halftone = 10
     case scanlines = 11
+    /// The track playing in Apple Music / Spotify: title, artist, artwork, progress.
+    /// Drawn on the CPU (NowPlayingRenderer), not by the generator shader.
+    case nowPlaying = 12
 
     public var displayName: String {
         switch self {
@@ -93,6 +96,7 @@ public enum GeneratorKind: Int, CaseIterable, Codable, Sendable {
         case .plasma: "Difference Clouds"
         case .halftone: "Halftone Dots"
         case .scanlines: "Scanlines"
+        case .nowPlaying: "Now Playing"
         }
     }
 
@@ -112,7 +116,16 @@ public final class GeneratorSourceNode: Node {
     public let latencyInFrames = 0
 
     public var parameters: [Parameter] {
-        [
+        if generator == .nowPlaying {
+            return [
+                Parameter(code: .opacity, range: 0...1, defaultValue: 1),
+                Parameter(code: .nowPlayingTemplate, range: 0...1, defaultValue: 0),
+                Parameter(code: .nowPlayingOnChange, range: 0...1, defaultValue: 0),
+                Parameter(code: .nowPlayingHold, range: 1...30, defaultValue: 6),
+                Parameter(code: .nowPlayingProgress, range: 0...1, defaultValue: 1)
+            ]
+        }
+        return [
             Parameter(code: .opacity, range: 0...1, defaultValue: 1),
             Parameter(code: .scale, range: 0...1, defaultValue: 0.5),
             // Phase is what an LFO drives to animate the pattern — a checkerboard
@@ -136,6 +149,18 @@ public final class GeneratorSourceNode: Node {
     private let context: MetalContext?
     private var target: MTLTexture?
 
+    // Now Playing: what was last drawn, so the card is redrawn only when something
+    // visible changed (track, progress in 1% steps, look, fade step).
+    public var nowPlayingTemplate: NowPlayingTemplate = .lowerThird
+    public var nowPlayingOnChange = false
+    public var nowPlayingHold = 6.0
+    public var nowPlayingShowsProgress = true
+    /// Where the track comes from; the shared hub in the app, a private one in tests.
+    public var nowPlayingHub = NowPlayingHub.shared
+    private var uploader: TextureUploader?
+    private var nowPlayingTexture: MTLTexture?
+    private var lastDrawnKey: String?
+
     public init(identifier: String, context: MetalContext? = MetalContext.shared) {
         self.identifier = identifier
         self.context = context
@@ -148,6 +173,7 @@ public final class GeneratorSourceNode: Node {
 
     public func render(inputs: [MTLTexture], context renderContext: RenderContext) -> MTLTexture? {
         guard let metal = context else { return nil }
+        if generator == .nowPlaying { return renderNowPlaying(metal, renderContext) }
 
         let width = renderContext.width
         let height = renderContext.height
@@ -187,8 +213,38 @@ public final class GeneratorSourceNode: Node {
         return target
     }
 
+    /// The Now Playing card: redrawn on the CPU only when what it shows changed, and
+    /// uploaded through the reused `TextureUploader` (never `makeTexture(from:)`).
+    private func renderNowPlaying(_ metal: MetalContext, _ renderContext: RenderContext) -> MTLTexture? {
+        let snapshot = nowPlayingHub.snapshot()
+        let visibility = NowPlayingVisibility(holdSeconds: nowPlayingHold, onlyOnTrackChange: nowPlayingOnChange)
+        let opacity = snapshot.track == nil && nowPlayingOnChange
+            ? 0 : visibility.opacity(secondsSinceChange: renderContext.presentationTime - snapshot.changedAt)
+        let progressStep = Int(((snapshot.track?.progress ?? 0) * 100).rounded())
+        let key = "\(snapshot.generation)|\(progressStep)|\(nowPlayingTemplate.rawValue)|\(Int(opacity * 32))|"
+            + "\(nowPlayingShowsProgress)|\(renderContext.width)x\(renderContext.height)"
+        if key == lastDrawnKey, let nowPlayingTexture { return nowPlayingTexture }
+        let image = NowPlayingRenderer.render(
+            snapshot.track, status: snapshot.status, template: nowPlayingTemplate,
+            opacity: opacity, showsProgress: nowPlayingShowsProgress,
+            width: renderContext.width, height: renderContext.height)
+        if uploader == nil { uploader = TextureUploader(context: metal, label: identifier) }
+        nowPlayingTexture = uploader?.upload(image)
+        lastDrawnKey = key
+        return nowPlayingTexture
+    }
+
     /// Pulls settings from the registry.
     public func applyParameters(from registry: ParamRegistry) {
+        if generator == .nowPlaying {
+            if let value = registry.value(slot: identifier, code: .nowPlayingTemplate) {
+                nowPlayingTemplate = NowPlayingTemplate.from(normalised: value)
+            }
+            if let value = registry.value(slot: identifier, code: .nowPlayingOnChange) { nowPlayingOnChange = value > 0.5 }
+            if let value = registry.value(slot: identifier, code: .nowPlayingHold) { nowPlayingHold = value }
+            if let value = registry.value(slot: identifier, code: .nowPlayingProgress) { nowPlayingShowsProgress = value > 0.5 }
+            return
+        }
         if let value = registry.value(slot: identifier, code: .scale) { scale = value }
         if let value = registry.value(slot: identifier, code: .positionX) { phase = value }
         if let value = registry.value(slot: identifier, code: .contrast) { amount = value }

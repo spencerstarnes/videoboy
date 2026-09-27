@@ -78,6 +78,8 @@ enum SelfQARunner {
             verdict = OptimizeSelfQA.run()
         case "template":
             verdict = TemplateSelfQA.run()
+        case "now-playing":
+            verdict = NowPlayingSelfQA.run()
         case "push-fade":
             verdict = PushFadeSelfQA.run()
         case "mosh":

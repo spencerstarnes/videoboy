@@ -1,0 +1,8 @@
+check:    perf/now-playing
+verdict:  PASS
+when:     2026-09-27T22:41:18Z
+core:     0.4.10
+
+assertions (2/2 passed):
+  PASS  Now Playing is a generator a channel can show, with its own controls — A is Optional(Videoboy.ChannelSourceKind.generator), kind Now Playing
+  PASS  every look draws the track (Lower Third, Ticker, Card) — 3 of 3 looks drew a picture

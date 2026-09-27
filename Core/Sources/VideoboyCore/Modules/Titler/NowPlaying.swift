@@ -169,3 +169,40 @@ public struct NowPlayingVisibility: Equatable, Sendable {
         return 0
     }
 }
+
+
+/// Where the live now-playing answer lives: written by whichever adapter is running
+/// (Apple Music, Spotify — App side, off the main thread), read by the Now Playing
+/// generator on the render path. Locked, and cheap to read every frame.
+public final class NowPlayingHub: @unchecked Sendable {
+
+    public static let shared = NowPlayingHub()
+
+    private let lock = NSLock()
+    private var _track: NowPlayingTrack?
+    private var _changedAt: Double = 0
+    private var _status = "Not connected"
+    private var _generation = 0
+
+    public init() {}
+
+    /// Publishes what is playing now (nil when nothing is). A different track restarts
+    /// the on-change fade.
+    public func publish(_ track: NowPlayingTrack?, status: String, at time: Double) {
+        lock.lock(); defer { lock.unlock() }
+        let different = track.map { $0.isDifferentTrack(from: _track) } ?? (_track != nil)
+        if different { _changedAt = time }
+        if track != _track || track?.progress != _track?.progress || status != _status || different {
+            _generation += 1
+        }
+        _track = track
+        _status = status
+    }
+
+    /// A consistent view: the track, when it changed, the source's status, and a
+    /// counter that moves whenever anything worth redrawing did.
+    public func snapshot() -> (track: NowPlayingTrack?, changedAt: Double, status: String, generation: Int) {
+        lock.lock(); defer { lock.unlock() }
+        return (_track, _changedAt, _status, _generation)
+    }
+}

@@ -29,6 +29,7 @@
 #           ab-roll     — A/B ROLL + ADV: four combinations by real keys, BEAT, MIDI, budget
 #           optimize    — Copy + Optimize (0.4.10): helper process, link, fallback, cancel
 #           template    — Save / New / Open the whole show round-trips (audit L1)
+#           now-playing — the Now Playing generator on a channel, each look as a PNG
 #           fullscreen  — the real window at full-screen size: every scope key, hovered
 #                         sources, the Generators tab, photographed
 #           push-fade   — clips in A and C, Push on the centre fader, FADE and a sweep:
@@ -116,6 +117,7 @@ case "$CHECK" in
   # Save / New / Open the whole show (audit L1): chains, values, mappings, clock,
   # channels, and the controls repainted. Real window.
   template)  run_app_check template ;;
+  now-playing) run_app_check now-playing ;;
   # Copy + Optimize (0.4.10): the helper process, catalog link, playback fallback,
   # cancel, and a live show beside it. Real window; opt-in.
   optimize)  VIDEOBOY_FLAGS="${VIDEOBOY_FLAGS:+$VIDEOBOY_FLAGS,}modeBar" run_app_check optimize ;;
@@ -149,5 +151,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, bars, import, modes, import-mode, ab-roll, optimize, template, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, bars, import, modes, import-mode, ab-roll, optimize, template, now-playing, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

@@ -936,7 +936,19 @@ final class ShellController {
             return
         }
         engine.generators[letter]?.generator = kind
+        // A kind's parameters differ (Now Playing has its own), so the slot is
+        // registered afresh and the Source Controls card rebuilt for them.
+        if let node = engine.generators[letter] {
+            engine.registry.register(slot: node.identifier, parameters: node.parameters)
+        }
         engine.setChannelSource(.generator, channel: letter)
+        refreshSourceCard(["A", "B"].contains(letter) ? .one : .two)
+        if kind == .nowPlaying {
+            // Asks macOS for Automation access the first time — only when someone
+            // actually puts Now Playing on a channel, never at launch.
+            NowPlayingWatcher.shared.start()
+            return
+        }
 
         // A slow ramp on phase by default: it drifts on the bar rather than
         // strobing, which is the sane starting point. The shape and rate are

@@ -173,7 +173,8 @@ final class GeneratorTests: XCTestCase {
         // Raw values are the shader contract.
         XCTAssertEqual(GeneratorKind.solid.rawValue, 0)
         XCTAssertEqual(GeneratorKind.scanlines.rawValue, 11)
-        XCTAssertEqual(GeneratorKind.allCases.count, 12)
+        XCTAssertEqual(GeneratorKind.nowPlaying.rawValue, 12)
+        XCTAssertEqual(GeneratorKind.allCases.count, 13)
     }
 
     /// An LFO driving a generator's phase is the headline use from SPEC 6A.

@@ -32,6 +32,8 @@
 	<string>NSApplication</string>
 	<!-- Required. The DVC100 loopback presents as a camera; without this string
 	     macOS terminates the process the moment capture is requested. -->
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Videoboy reads the track playing in Music or Spotify (title, artist, album, artwork, progress) for the Now Playing generator. It never controls playback.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Videoboy reads the DVC100 capture device to verify the analog video signal it is sending out, and to use live capture as a video source.</string>
 	<key>NSMicrophoneUsageDescription</key>

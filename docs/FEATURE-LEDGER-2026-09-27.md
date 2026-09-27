@@ -26,7 +26,7 @@ the AVE-5 wipe, codes 6AA/6BA and bus-key learn. Nothing is lost.
 |---|---|
 | **Mode bar, Settings mode, setup assistant, Import mode, Copy + Optimize** (0.4.8–0.4.10) | Built and tested; behind `VIDEOBOY_FLAGS=modeBar`, off by default. Needs a person to click through it before it's switched on. |
 | **DV bitstream corruptor, bus data stage, NTSC/DV output emulation** | Built; switched OFF by your decision (2026-09-17: "remove until we can reconceptualise… no DV hardware to test"). `VIDEOBOY_FLAGS=bitstreamCorruptor,busDataStage,outputSignalEmulation` brings them back. |
-| **Now Playing overlay** (Apple Music title / album art / progress, templates, fade on track change) | The model and templates are in Core (`NowPlaying.swift`); no live adapter. It needs the macOS Automation permission granted at the keyboard. Engine DJ: researched only (`docs/NOW-PLAYING-SOURCES.md`), not built. |
+| ~~**Now Playing overlay**~~ — **built later on 2026-09-27 as a generator** (Music + Spotify, three looks, fade on change, `selfqa now-playing`). Was: | The model and templates are in Core (`NowPlaying.swift`); no live adapter. It needs the macOS Automation permission granted at the keyboard. Engine DJ: researched only (`docs/NOW-PLAYING-SOURCES.md`), not built. |
 | **Native Core Text titler** (character generator) | Core node built and pixel-tested; nothing in the app reaches it (audit L4: wire it or delete it). |
 | ~~**Patch save/load**~~ | **Done later on 2026-09-27:** File ▸ New / Open / Open Recent / Save / Save As, a real Save in the quit prompt, auto-save, `selfqa template`. Still open: the FX panels' single-chain preset keys. |
 | **Calibrated feedback latency** | `selfqa calibrate` measures it; nothing applies it (audit L2). |

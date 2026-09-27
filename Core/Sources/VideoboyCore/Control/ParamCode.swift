@@ -242,6 +242,17 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     /// Toggles ADV on this sub-mix: a source leaving air loads its next clip.
     public static let advanceToggleTrigger = ParamCode(known: "6DA")
 
+    // MARK: Now Playing generator (7xH)
+
+    /// Which look: 0 slab, 0.5 ticker, 1 card (`NowPlayingTemplate`).
+    public static let nowPlayingTemplate = ParamCode(known: "71H")
+    /// Above 0.5: show only around a track change (fade in, hold, fade out).
+    public static let nowPlayingOnChange = ParamCode(known: "72H")
+    /// Seconds held on screen after a track change, 1...30.
+    public static let nowPlayingHold = ParamCode(known: "73H")
+    /// Above 0.5: draw the progress bar.
+    public static let nowPlayingProgress = ParamCode(known: "74H")
+
     // MARK: Genlock/chroma key (6xE)
     //
     // A composite's key is a property of THAT composite, the same way blend mode and
@@ -494,6 +505,10 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "6BA": "cut to right",
         "6CA": "A/B roll",
         "6DA": "advance",
+        "71H": "now playing look",
+        "72H": "now playing on change only",
+        "73H": "now playing hold",
+        "74H": "now playing progress bar",
         "65A": "blend mode",
         "66A": "layer opacity",
         "61E": "key colour",
@@ -629,6 +644,10 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .cutToRightTrigger,
         .rollToggleTrigger,
         .advanceToggleTrigger,
+        .nowPlayingTemplate,
+        .nowPlayingOnChange,
+        .nowPlayingHold,
+        .nowPlayingProgress,
         .keyColour,
         .keyThreshold,
         .keyEdge,
