@@ -38,6 +38,12 @@ final class ImportJob {
 
     let urls: [URL]
     let bin: String?
+    /// Add, Move or Copy (Import mode). Move and Copy run first, on this job's queue.
+    let method: ImportMethod
+    /// Where Move and Copy put the files.
+    let destination: URL?
+    /// Files the transfer could not move or copy, for the caller's notice.
+    private(set) var transferFailures: [String] = []
 
     /// Called on the main thread with each progress update.
     var onProgress: ((ImportProgress) -> Void)?
@@ -50,9 +56,11 @@ final class ImportJob {
     private let lock = NSLock()
     private var cancelled = false
 
-    init(urls: [URL], intoBin bin: String?) {
+    init(urls: [URL], intoBin bin: String?, method: ImportMethod = .add, destination: URL? = nil) {
         self.urls = urls
         self.bin = bin
+        self.method = method
+        self.destination = destination
     }
 
     /// Stops between files. What has been added stays added.
@@ -84,6 +92,29 @@ final class ImportJob {
             onMain("import.progress") { [weak self] in self?.onProgress?(snapshot) }
         }
 
+        // TRANSFER (Move/Copy), before anything is cataloged: the library records the
+        // files where they END UP.
+        var sources = urls
+        if method.usesDestination {
+            progress.stage = .transferring
+            progress.transferLabel = method == .move ? "MOVING" : "COPYING"
+            progress.found = urls.count
+            publish(force: true)
+            let moved = FileTransfer.transfer(
+                urls, method: method, to: destination, isCancelled: { isCancelled }
+            ) { name in
+                progress.current = name
+                progress.read += 1
+                publish()
+            }
+            sources = moved.urls
+            transferFailures = moved.failures
+            progress.unreadable += moved.failures
+            progress.found = 0
+            progress.read = 0
+            progress.stage = .scanning
+        }
+
         // SCAN, adding clips to the library in batches as they are found.
         var pending: [LibraryItem] = []
         var lastBatch = Date()
@@ -96,7 +127,7 @@ final class ImportJob {
             onMainSync { added += library.add(batch, measuresDurations: false).count }
         }
         publish(force: true)
-        let scan = ImportScan.scan(urls, intoBin: bin, isCancelled: { isCancelled }) { candidate in
+        let scan = ImportScan.scan(sources, intoBin: bin, isCancelled: { isCancelled }) { candidate in
             progress.count(candidate)
             pending.append(Self.item(for: candidate))
             if Date().timeIntervalSince(lastBatch) >= Self.scanBatchInterval { handOver() }

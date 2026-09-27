@@ -96,6 +96,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var pluginsLocationPath: String?
     /// True once the setup assistant has been finished (or skipped) once.
     public var setupCompleted: Bool = false
+    /// Import mode's Favorites: folders the person pinned, by path (macOS has no
+    /// public API for Finder's own sidebar).
+    public var importFavorites: [String] = []
 
     // MARK: Defaults for new work
 
@@ -202,6 +205,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         optimizedMediaLocationPath = decode(.optimizedMediaLocationPath, nil as String?)
         pluginsLocationPath = decode(.pluginsLocationPath, nil as String?)
         setupCompleted = decode(.setupCompleted, false)
+        importFavorites = decode(.importFavorites, [String]())
         autoSave = decode(.autoSave, AutoSaveCadence.never)
         defaultClockSource = decode(.defaultClockSource, "Internal")
         defaultSubdivision = decode(.defaultSubdivision, "1/4")

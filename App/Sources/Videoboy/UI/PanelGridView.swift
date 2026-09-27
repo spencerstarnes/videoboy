@@ -153,6 +153,10 @@ final class PanelGridView: NSView {
     var previewsCovered = false {
         didSet {
             guard previewsCovered != oldValue else { return }
+            // The layer, not the view: hiding the VIEW re-lays-out 1,300 controls on
+            // unhide (22–35 ms per switch, measured); hiding its layer only stops the
+            // covered grid being composited.
+            layer?.isHidden = previewsCovered
             func walk(_ view: NSView) {
                 if let preview = view as? MetalPreviewView { preview.isCovered = previewsCovered }
                 view.subviews.forEach(walk)

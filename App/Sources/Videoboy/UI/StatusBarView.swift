@@ -198,6 +198,13 @@ final class StatusBarView: NSView {
         importSegment.isHidden = false
         let total = max(progress.found, 1)
         switch progress.stage {
+        case .transferring:
+            importTitle.attributedStringValue = Self.title("square.and.arrow.down", progress.transferLabel, Theme.Color.accent)
+            importCount.stringValue = "\(progress.read) / \(progress.found)"
+            importBar.stopAnimation(nil)
+            importBar.isIndeterminate = false
+            importBar.maxValue = Double(total)
+            importBar.doubleValue = Double(progress.read)
         case .scanning:
             importTitle.attributedStringValue = Self.title("square.and.arrow.down", "IMPORTING", Theme.Color.accent)
             importCount.stringValue = "\(progress.found) found"

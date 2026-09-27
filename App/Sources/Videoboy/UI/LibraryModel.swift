@@ -318,6 +318,12 @@ final class LibraryModel {
         catalog?.saveEmptyBins(emptyBins)
     }
 
+    /// The standardised path of every clip's file — handed to Import mode's background
+    /// queue, which works out DUP badges from it (paths are cached, so this is cheap).
+    func filePaths() -> [String] {
+        items.compactMap { pathKey($0) }
+    }
+
     /// The measured frame count for a file, when the library has one — handed to the
     /// decoder so a long MPEG stream is not counted again on load.
     func frameCount(forPath path: String) -> Int? {

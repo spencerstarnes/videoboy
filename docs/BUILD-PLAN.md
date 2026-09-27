@@ -231,6 +231,13 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
 - **F9: open clips off the main thread.** Eject + reload blocks the main thread for up to
   50 ms with 4K HEVC (12-min HD soak, BUGHUNT step 2). Write-up is in BUGHUNT.
 - **Catalog backup off the launch path** (BUGHUNT S1 follow-up).
+- **`selfqa import` drops 1 refresh** in most runs: a 54 ms main-thread stretch about
+  0.33 s into a 1,000-clip drop. Reproduced on 3e710a2, so it predates 0.4.9. Needs a
+  `sample` profile.
+- **Import mode, still to do:** write I/O marks set on an Import tile to the catalog;
+  J/K/L and frame step in the viewer.
+- 0.4.8 and 0.4.9 need a person's click-through with `VIDEOBOY_FLAGS=modeBar` before
+  their boxes are ticked (see docs/BLOCKED.md).
 
 - **The genlock key's colour/threshold/edge (6xE) have no visible fader.** Added
   2026-09-22 alongside `BlendMode.key` — see the Phase 4+ emulated-titler entry

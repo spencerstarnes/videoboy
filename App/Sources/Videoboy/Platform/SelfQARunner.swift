@@ -70,6 +70,8 @@ enum SelfQARunner {
             verdict = ImportSelfQA.run()
         case "modes":
             verdict = ModeBarSelfQA.run()
+        case "import-mode":
+            verdict = ImportModeSelfQA.run()
         case "push-fade":
             verdict = PushFadeSelfQA.run()
         case "mosh":

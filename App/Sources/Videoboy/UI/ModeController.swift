@@ -31,6 +31,10 @@ final class ModeController: NSObject {
     /// Set by the owner: the setup assistant's "run again" and the preview fill.
     var onRunSetupAssistant: (() -> Void)?
     var onPreviewFillChanged: ((PreviewFill) -> Void)?
+    /// Runs an Import-mode import (the shell's background ImportJob). Set by the owner.
+    var onImport: ((_ urls: [URL], _ method: ImportMethod, _ destination: URL?, _ bin: String?) -> Void)?
+    /// Import mode's view, once built — for self-QA.
+    var importViewForChecks: ImportModeView? { importView }
     /// Called after every switch (menu check marks).
     var onModeChanged: ((AppMode) -> Void)?
 
@@ -106,7 +110,13 @@ final class ModeController: NSObject {
         case .vj:
             return nil
         case .importMedia:
-            if importView == nil { importView = ImportModeView() }
+            if importView == nil {
+                let view = ImportModeView(store: store, library: shell.grid.panels.library)
+                view.onImport = { [weak self] urls, method, destination, bin in
+                    self?.onImport?(urls, method, destination, bin)
+                }
+                importView = view
+            }
             return importView
         case .settings:
             if settings == nil {

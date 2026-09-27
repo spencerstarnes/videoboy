@@ -555,12 +555,13 @@ final class ShellController {
     /// - Parameter bin: where the drop or paste landed. Nil is the top level, where a
     ///   folder's shape on disk becomes bins; into a bin, everything is filed in THAT
     ///   bin, because bins are one level deep and the person chose where it goes.
-    private func addToLibrary(_ urls: [URL], library: LibraryPanelBody, intoBin bin: String? = nil) {
+    private func addToLibrary(_ urls: [URL], library: LibraryPanelBody, intoBin bin: String? = nil,
+                              method: ImportMethod = .add, destination: URL? = nil) {
         // A BACKGROUND JOB, not a loop here: walking folders, reading posters and
         // measuring clips on the main thread froze the window on large drops and
         // looked like a crash (audit 09-26 R1–R3). Clips appear in the library as they
         // are found; the status bar reports when the import is big enough to worry about.
-        let job = ImportJob(urls: urls, intoBin: bin)
+        let job = ImportJob(urls: urls, intoBin: bin, method: method, destination: destination)
         job.isLive = { [weak self] in self?.engine.transport.isRunning ?? false }
         job.onProgress = { [weak self] progress in self?.showImportProgress(progress) }
         job.onFinished = { [weak self, weak job] progress in
@@ -624,6 +625,12 @@ final class ShellController {
     /// library would.
     func importFiles(_ urls: [URL]) {
         addToLibrary(urls, library: shell.grid.panels.libraryOneBody)
+    }
+
+    /// Import mode's Import button: Add, Move or Copy, into a bin, as a background job.
+    func importFiles(_ urls: [URL], method: ImportMethod, destination: URL?, bin: String?) {
+        addToLibrary(urls, library: shell.grid.panels.libraryOneBody, intoBin: bin,
+                     method: method, destination: destination)
     }
 
     /// Imports running now — for self-QA.

@@ -131,6 +131,9 @@ final class MainWindowController: NSWindowController {
                 self?.shellController?.setPreviewFill(fill)
             }
             modes.onRunSetupAssistant = { [weak self] in self?.runSetupAssistant() }
+            modes.onImport = { [weak self] urls, method, destination, bin in
+                self?.shellController?.importFiles(urls, method: method, destination: destination, bin: bin)
+            }
             modeController = modes
         }
         // The render clock follows the display this window is on, so moving the

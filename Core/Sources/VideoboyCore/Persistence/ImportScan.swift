@@ -124,6 +124,8 @@ public enum ImportScan {
 public struct ImportProgress: Equatable, Sendable {
 
     public enum Stage: Equatable, Sendable {
+        /// Moving or copying files to the destination first (Import mode's Move/Copy).
+        case transferring
         /// Walking folders; `found` grows.
         case scanning
         /// Measuring clips (length, frame count); `read` grows.
@@ -139,6 +141,8 @@ public struct ImportProgress: Equatable, Sendable {
     }
 
     public var stage: Stage = .scanning
+    /// What the transferring stage is called: "COPYING" or "MOVING".
+    public var transferLabel = "COPYING"
     /// Clips found so far.
     public var found = 0
     /// Clips measured so far.
