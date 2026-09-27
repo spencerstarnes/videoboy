@@ -1,7 +1,7 @@
 check:    library
 verdict:  PASS
-when:     2026-09-26T19:20:27Z
-core:     0.4.5
+when:     2026-09-27T04:52:06Z
+core:     0.4.7
 
 notes:
   app active false, window key false — ⌘-keys are sent up the first responder's chain (the Edit menu's own route needs a key window)
@@ -45,5 +45,5 @@ assertions (36/36 passed):
   PASS  in every panel and view, the scrolling areas fill the panel top to bottom — C/D and the browser in all three views, A/B in column
   PASS  the asset browser's tab strip is on the tab it is showing — strip on Clips, showing Clips
   PASS  a generator dragged from the asset browser loads on the source it is dropped on — carried isf:isf.01_Strobosphere, accepted, C now plays from generator.isf.c
-  PASS  re-showing a 250-item library takes less than one frame — 7.2 ms
+  PASS  re-showing a 250-item library takes less than one frame — 8.6 ms
   PASS  no toolbar control moved through every view, bin and selection change — 6 controls where they were

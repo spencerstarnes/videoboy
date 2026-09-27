@@ -77,6 +77,20 @@ struct LibraryItem {
     /// among the shortest clips and read as a clip of no length.
     var duration: Double?
 
+    /// Frames in the clip and its rate, measured once at import (`ClipProbe`) and kept
+    /// in the catalog, so loading never has to count them. Nil until measured.
+    var frameCount: Int?
+    var frameRate: Double?
+
+    /// A Finder bookmark to the file, made at import off the main thread, so a moved or
+    /// renamed file can be found again. Nil for items that were never imported.
+    var bookmark: Data?
+
+    /// The file's standardised path, when whoever made the entry already worked it out
+    /// off the main thread (the import job does). Saves the library computing it for
+    /// each new entry while a show is on.
+    var standardPath: String?
+
     /// What kind of thing this is, spelled out for the list view.
     ///
     /// The badge is three letters because it goes on a thumbnail; a list column has
@@ -134,6 +148,18 @@ struct LibraryItem {
     }
 }
 
+extension LibraryItem {
+    /// An entry read back from the catalog.
+    init(_ clip: CatalogClip) {
+        self.init(name: clip.name, badge: clip.badge, isAvailable: true,
+                  url: URL(fileURLWithPath: clip.path, isDirectory: clip.badge == "SEQ"),
+                  bin: clip.bin, duration: clip.duration, id: clip.id)
+        frameCount = clip.frameCount
+        frameRate = clip.frameRate
+        bookmark = clip.bookmark
+    }
+}
+
 /// How a library lays its items out.
 enum LibraryViewStyle: String, CaseIterable {
     /// Thumbnails in a grid, bins as folders you open. What you want when you
@@ -180,8 +206,11 @@ enum LibrarySortField: String, CaseIterable {
 /// The one library.
 final class LibraryModel {
 
-    /// Every clip, in every bin.
-    private(set) var items: [LibraryItem] = []
+    /// Every clip, in every bin. Any change — even to one entry's bin — drops the
+    /// cached bin counts.
+    private(set) var items: [LibraryItem] = [] {
+        didSet { binCounts = nil }
+    }
 
     /// Bins with nothing in them yet.
     ///
@@ -206,13 +235,111 @@ final class LibraryModel {
     /// need telling.
     private var observers: [() -> Void] = []
 
+    // MARK: - The catalog
+    //
+    // Everything below is written through to it as it changes, so the library a
+    // performer builds is the library they come back to. Without a catalog (the
+    // self-QA's windows, or a catalog another copy of the app holds) the library works
+    // exactly as before, in memory.
+
+    private(set) var catalog: Catalog?
+    /// Library order, as stored.
+    private var positions: [String: Int] = [:]
+    private var nextPosition = 0
+
+    /// Connects the saved catalog. A catalog that holds clips REPLACES what the library
+    /// started with; an empty one is seeded from it (the first launch).
+    func attach(_ catalog: Catalog) {
+        self.catalog = catalog
+        let stored = catalog.loadClips()
+        if stored.isEmpty {
+            for item in items { position(for: item.id) }
+            persist(items.map(\.id))
+            persistEmptyBins()
+            Log.info(.app, "catalog is new; seeded with \(items.count) clips")
+        } else {
+            items = stored.map(LibraryItem.init)
+            marks = [:]
+            positions = [:]
+            for clip in stored {
+                positions[clip.id] = clip.position
+                if clip.inPoint != nil || clip.outPoint != nil {
+                    marks[clip.id] = (clip.inPoint, clip.outPoint)
+                }
+            }
+            nextPosition = (stored.map(\.position).max() ?? -1) + 1
+            emptyBins = Set(catalog.loadEmptyBins())
+            Log.info(.app, "catalog loaded: \(stored.count) clips, \(binNames.count) bins")
+            fillDurations()
+            notify()
+        }
+    }
+
+    /// Each entry's standardised file path, computed once. A clip's URL never changes,
+    /// and `standardizedFileURL` allocates: recomputing it for every entry on every
+    /// batch of a 1,000-clip import cost up to 33 ms of main thread a batch.
+    private var pathKeys: [String: String] = [:]
+
+    /// The standardised path of an entry's file, cached by id; nil for non-file items.
+    private func pathKey(_ item: LibraryItem) -> String? {
+        if let known = pathKeys[item.id] { return known }
+        guard let url = item.url else { return nil }
+        let key = item.standardPath ?? url.standardizedFileURL.path
+        pathKeys[item.id] = key
+        return key
+    }
+
+    @discardableResult
+    private func position(for id: String) -> Int {
+        if let known = positions[id] { return known }
+        positions[id] = nextPosition
+        nextPosition += 1
+        return nextPosition - 1
+    }
+
+    /// Writes these entries' current state to the catalog. Entries without a file
+    /// (generators, sources) are not library clips and are not stored.
+    private func persist<S: Sequence>(_ ids: S) where S.Element == String {
+        guard let catalog else { return }
+        let wanted = Set(ids)
+        let records: [CatalogClip] = items.compactMap { item in
+            guard wanted.contains(item.id), let url = item.url else { return nil }
+            let mark = marks[item.id]
+            return CatalogClip(
+                id: item.id, path: url.path, bookmark: item.bookmark, name: item.name,
+                badge: item.badge, bin: item.bin, duration: item.duration,
+                frameCount: item.frameCount, frameRate: item.frameRate,
+                inPoint: mark?.inPoint, outPoint: mark?.outPoint, position: position(for: item.id))
+        }
+        catalog.save(records)
+    }
+
+    private func persistEmptyBins() {
+        catalog?.saveEmptyBins(emptyBins)
+    }
+
+    /// The measured frame count for a file, when the library has one — handed to the
+    /// decoder so a long MPEG stream is not counted again on load.
+    func frameCount(forPath path: String) -> Int? {
+        let standard = URL(fileURLWithPath: path).standardizedFileURL.path
+        return items.first { $0.frameCount != nil && pathKey($0) == standard }?.frameCount
+    }
+
     func observe(_ block: @escaping () -> Void) {
         observers.append(block)
     }
 
     private func notify() {
+        let start = notifyCostsForChecks != nil ? CACurrentMediaTime() : 0
         for observer in observers { observer() }
+        if notifyCostsForChecks != nil {
+            notifyCostsForChecks?.append((CACurrentMediaTime() - start) * 1000)
+        }
     }
+
+    /// Milliseconds each notification took (every view rebuilding), while a check
+    /// sets this non-nil. Nil in normal use: no cost, no growth.
+    var notifyCostsForChecks: [Double]?
 
     // MARK: - Contents
 
@@ -238,10 +365,12 @@ final class LibraryModel {
     /// repeated drop.
     ///
     /// - Returns: the ids of what was actually added.
+    /// - Parameter measuresDurations: false when the caller measures them itself (the
+    ///   import job does, off the main thread), so no file is probed twice.
     @discardableResult
-    func add(_ newItems: [LibraryItem]) -> [String] {
+    func add(_ newItems: [LibraryItem], measuresDurations: Bool = true) -> [String] {
         func key(_ item: LibraryItem) -> String {
-            let file = item.url.map { "path:" + $0.standardizedFileURL.path } ?? "name:" + item.name
+            let file = pathKey(item).map { "path:" + $0 } ?? "name:" + item.name
             return file + "|" + (item.bin ?? "")
         }
         var existing = Set(items.map(key))
@@ -249,7 +378,14 @@ final class LibraryModel {
         guard !fresh.isEmpty else { return [] }
         items.append(contentsOf: fresh)
         for bin in Set(fresh.compactMap(\.bin)) { emptyBins.remove(bin) }
-        fillDurations()
+        for item in fresh { position(for: item.id) }
+        persist(fresh.map(\.id))
+        persistEmptyBins()
+        if measuresDurations {
+            fillDurations()
+        } else {
+            for item in fresh { if let key = pathKey(item) { askedPaths.insert(key) } }
+        }
         notify()
         return fresh.map(\.id)
     }
@@ -257,13 +393,15 @@ final class LibraryModel {
     /// Files entries into a bin, or takes them out of one when `bin` is nil.
     func moveItems(_ ids: [String], toBin bin: String?) {
         let wanted = Set(ids)
-        var changed = false
+        var changed: [String] = []
         for index in items.indices where wanted.contains(items[index].id) && items[index].bin != bin {
             items[index].bin = bin
-            changed = true
+            changed.append(items[index].id)
         }
-        guard changed else { return }
+        guard !changed.isEmpty else { return }
         if let bin { emptyBins.remove(bin) }
+        persist(changed)
+        persistEmptyBins()
         notify()
     }
 
@@ -291,6 +429,9 @@ final class LibraryModel {
         guard !made.isEmpty else { return [] }
         items.append(contentsOf: made)
         if let bin { emptyBins.remove(bin) }
+        for item in made { position(for: item.id) }
+        persist(made.map(\.id))
+        persistEmptyBins()
         notify()
         return made.map(\.id)
     }
@@ -299,8 +440,9 @@ final class LibraryModel {
     func removeItems(_ ids: Set<String>) {
         let before = items.count
         items.removeAll { ids.contains($0.id) }
-        for id in ids { marks[id] = nil }
+        for id in ids { marks[id] = nil; positions[id] = nil; pathKeys[id] = nil }
         guard items.count != before else { return }
+        catalog?.delete(ids: Array(ids))
         notify()
     }
 
@@ -317,49 +459,91 @@ final class LibraryModel {
     private var askedPaths: Set<String> = []
     private let durationQueue = DispatchQueue(label: "videoboy.library.durations", qos: .utility)
 
+    /// Facts measured in the background and not yet applied, by path.
+    private var pendingFacts: [String: ClipFacts] = [:]
+    private var factsFlushScheduled = false
+
     /// Fills every entry it already knows the length of, and sends the rest to be
     /// measured. Does not notify: its callers do, once.
     private func fillDurations() {
         var toMeasure: [URL] = []
-        for index in items.indices where items[index].duration == nil {
-            guard let url = items[index].url, !url.hasDirectoryPath else { continue }
-            let path = url.standardizedFileURL.path
-            if let seconds = measuredDurations[path] {
+        for index in items.indices where items[index].duration == nil || items[index].frameCount == nil {
+            guard let url = items[index].url, let path = pathKey(items[index]) else { continue }
+            if let seconds = measuredDurations[path], items[index].duration == nil {
                 items[index].duration = seconds
-            } else if askedPaths.insert(path).inserted {
+            }
+            if askedPaths.insert(path).inserted {
                 toMeasure.append(url)
             }
         }
         guard !toMeasure.isEmpty else { return }
         durationQueue.async { [weak self] in
             for url in toMeasure {
-                let seconds = ClipDecoders.duration(of: url)
-                // Through the run loop, not the main queue: the self-QA drives the app
-                // from a nested `RunLoop.run` inside a main-queue block, which never
-                // drains a second main-queue block.
-                let main = CFRunLoopGetMain()
-                CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
-                    self?.recordDuration(seconds, for: url)
-                }
-                CFRunLoopWakeUp(main)
+                let facts = ClipProbe.facts(of: url)
+                self?.deliver(facts, for: url)
             }
         }
     }
 
-    private func recordDuration(_ seconds: Double?, for url: URL) {
-        guard let seconds, seconds > 0 else {
-            Log.warn(.app, "no duration for \(url.lastPathComponent); the list shows —")
-            return
+    /// Hands one measurement to the main thread — collected, and applied in BATCHES:
+    /// one rebuild per batch, not one per clip. Per clip, importing 500 clips rebuilt
+    /// all three libraries 500 times (audit 09-26 R3).
+    ///
+    /// Called on the measuring queue. Through the run loop rather than the main queue:
+    /// the self-QA drives the app from a nested `RunLoop.run`, which never drains a
+    /// main-queue block.
+    func deliver(_ facts: ClipFacts?, for url: URL) {
+        let main = CFRunLoopGetMain()
+        CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) { [weak self] in
+            guard let self else { return }
+            let path = url.standardizedFileURL.path
+            if let facts {
+                self.pendingFacts[path] = facts
+            } else {
+                Log.warn(.app, "no duration for \(url.lastPathComponent); the list shows —")
+            }
+            guard !self.factsFlushScheduled else { return }
+            self.factsFlushScheduled = true
+            // A timer in common modes, not `asyncAfter`: the self-QA's nested run loop
+            // does not drain the main queue, and a timer fires in both.
+            RunLoop.main.add(Timer(timeInterval: Self.factsBatchInterval, repeats: false) { [weak self] _ in
+                self?.flushFacts()
+            }, forMode: .common)
         }
-        let path = url.standardizedFileURL.path
-        measuredDurations[path] = seconds
-        fillDurations()
-        notify()
+        CFRunLoopWakeUp(main)
     }
 
-    /// The length of a file, if it has been measured. For the self-QA.
-    func measuredDuration(for url: URL) -> Double? {
-        measuredDurations[url.standardizedFileURL.path]
+    /// How often measured facts are applied: at most four rebuilds a second.
+    static let factsBatchInterval: TimeInterval = 0.25
+
+    /// Applies every pending measurement, with one notification.
+    private func flushFacts() {
+        guard factsFlushScheduled else { return }
+        factsFlushScheduled = false
+        let batch = pendingFacts
+        pendingFacts = [:]
+        guard !batch.isEmpty else { return }
+        applyFacts(byPath: batch)
+    }
+
+    /// Sets measured facts on every entry for those files (the same file may be in
+    /// two bins), stores them, and notifies once.
+    func applyFacts(byPath facts: [String: ClipFacts]) {
+        var changed: [String] = []
+        for index in items.indices {
+            guard let path = pathKey(items[index]), let fact = facts[path] else { continue }
+            items[index].duration = fact.duration
+            items[index].frameCount = fact.frameCount
+            items[index].frameRate = fact.frameRate
+            changed.append(items[index].id)
+        }
+        for (path, fact) in facts {
+            measuredDurations[path] = fact.duration
+            askedPaths.insert(path)
+        }
+        guard !changed.isEmpty else { return }
+        persist(changed)
+        notify()
     }
 
     // MARK: - Marks
@@ -372,6 +556,7 @@ final class LibraryModel {
     /// and rebuilding three libraries on every I and O would be a hitch per keypress.
     func setMarks(inPoint: Double?, outPoint: Double?, for id: String) {
         marks[id] = (inPoint == nil && outPoint == nil) ? nil : (inPoint, outPoint)
+        persist([id])
     }
 
     /// The marked range for an entry, or nil when the whole clip is wanted.
@@ -393,9 +578,23 @@ final class LibraryModel {
     }
 
     /// How many entries a bin holds.
+    ///
+    /// From a table built in ONE pass and kept until the library changes. Every folder
+    /// tile asks this as it is laid out; scanning every clip for each tile, on every
+    /// relayout, was ~16% of the main thread during a 1,000-clip import — bin names come
+    /// from the file system decomposed, so each comparison took Swift's slow
+    /// normalising path (sampled, 0.4.7).
     func count(inBin bin: String) -> Int {
-        items.reduce(0) { $0 + ($1.bin == bin ? 1 : 0) }
+        if binCounts == nil {
+            var counts: [String: Int] = [:]
+            for item in items { if let name = item.bin { counts[name, default: 0] += 1 } }
+            binCounts = counts
+        }
+        return binCounts?[bin] ?? 0
     }
+
+    /// Entries per bin; nil when the library has changed since it was counted.
+    private var binCounts: [String: Int]?
 
     /// An unused name: "untitled bin", then "untitled bin 2" — the Finder's pattern.
     func nextBinName(base: String = "untitled bin") -> String {
@@ -411,6 +610,7 @@ final class LibraryModel {
     func addBin() -> String {
         let name = nextBinName()
         emptyBins.insert(name)
+        persistEmptyBins()
         notify()
         return name
     }
@@ -424,12 +624,16 @@ final class LibraryModel {
     func renameBin(from oldName: String, to newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespaces)
         guard oldName != trimmed, !trimmed.isEmpty else { return }
+        var moved: [String] = []
         for index in items.indices where items[index].bin == oldName {
             items[index].bin = trimmed
+            moved.append(items[index].id)
         }
         if emptyBins.remove(oldName) != nil, count(inBin: trimmed) == 0 {
             emptyBins.insert(trimmed)
         }
+        persist(moved)
+        persistEmptyBins()
         notify()
     }
 
@@ -438,9 +642,13 @@ final class LibraryModel {
     /// throw away what was arranged in it.
     func deleteBin(_ name: String) {
         emptyBins.remove(name)
+        var moved: [String] = []
         for index in items.indices where items[index].bin == name {
             items[index].bin = nil
+            moved.append(items[index].id)
         }
+        persist(moved)
+        persistEmptyBins()
         notify()
     }
 

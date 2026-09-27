@@ -81,6 +81,7 @@ The rules that follow from that:
   ONCE per frame (`waitForIdle`). Only a CPU readback waits (on its own buffer). Per-pass
   waits cost ~11 ms/frame. Fallback switch: `VIDEOBOY_SYNC_EVERY_PASS=1`.
 - **Decoding never happens on the tick.** Each clip decodes ahead on its own queue (`ClipPrefetcher`); the live tick waits at most 5 ms for a frame it did not get ahead of, then holds its previous picture (`Engine.liveMissWaitLimit`; fallback `VIDEOBOY_BLOCKING_DECODE=1`). Sources are decoded no larger than the canvas needs and fitted to it on the GPU (`CanvasFit`); nothing enters the graph at HD.
+- **The library is saved** in an SQLite catalog (`Catalog`, `~/Movies/Videoboy/Videoboy Catalog.vbcatalog` by default), written through by `LibraryModel` on its own queue. Self-QA never attaches the person's catalog — only scratch ones. **Imports run as a background `ImportJob`**; nothing about adding clips (walking folders, posters, measuring) may run on the main thread. `selfqa import` (1,000 clips dropped mid-show) must show 0 dropped frames.
 - **Per-frame CPU pictures go through `TextureUploader`** (reused, double-buffered,
   SIMD swizzle), never `makeTexture(from:)`, which allocates — 165 MB/s at full load.
 - **In-window previews never wait for vsync** (`displaySyncEnabled = false`) and skip

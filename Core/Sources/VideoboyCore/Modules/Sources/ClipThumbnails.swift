@@ -97,7 +97,9 @@ public final class ClipThumbnails {
             // Through the run loop rather than the main queue: the self-QA drives the
             // app from a nested `RunLoop.run`, which never drains a main-queue block.
             let main = CFRunLoopGetMain()
-            CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) { completion(image) }
+            CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
+                autoreleasepool { completion(image) }
+            }
             CFRunLoopWakeUp(main)
         }
     }

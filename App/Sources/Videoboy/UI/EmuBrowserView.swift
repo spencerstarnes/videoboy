@@ -537,7 +537,7 @@ final class EmuBrowserView: NSStackView {
     private func refreshStates() {
         statesList.arrangedSubviews.forEach {
             statesList.removeArrangedSubview($0)
-            $0.removeFromSuperview()
+            $0.discardFromSuperview()
         }
 
         let states = controller.savedStates

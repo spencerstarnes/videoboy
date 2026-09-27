@@ -1,0 +1,203 @@
+//
+//  CatalogAndImportTests.swift — the saved library and the import rules (0.4.7).
+//
+//  Purpose : The catalog must give back exactly what it was given, survive a reopen,
+//            refuse a second writer, and back itself up; the import scan must apply
+//            the folder rules; the probe must agree with the decoders about frame
+//            counts (a playhead wraps on that number).
+//  Connects: Catalog, ImportScan, ImportProgress, ClipProbe, ClipDecoders.
+//
+
+import XCTest
+@testable import VideoboyCore
+
+final class CatalogTests: XCTestCase {
+
+    private var directory: URL!
+
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("catalog-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func clip(_ n: Int, bin: String? = nil) -> CatalogClip {
+        CatalogClip(id: "id-\(n)", path: "/clips/\(n).mov", bookmark: Data([1, 2, UInt8(n)]),
+                    name: "\(n).mov", badge: "MOV", bin: bin, duration: Double(n),
+                    frameCount: n * 30, frameRate: 29.97, inPoint: 0.25, outPoint: nil, position: n)
+    }
+
+    func testWhatIsSavedIsReadBackAfterReopening() throws {
+        let url = directory.appendingPathComponent("a.vbcatalog")
+        do {
+            let catalog = try Catalog(url: url, makesBackups: false)
+            catalog.save([clip(1), clip(2, bin: "Reel B"), clip(3)])
+            catalog.saveEmptyBins(["Empty"])
+            catalog.flush()
+        }
+        let reopened = try Catalog(url: url, makesBackups: false)
+        XCTAssertEqual(reopened.loadClips(), [clip(1), clip(2, bin: "Reel B"), clip(3)])
+        XCTAssertEqual(reopened.loadEmptyBins(), ["Empty"])
+    }
+
+    func testWritesApplyInOrder() throws {
+        let catalog = try Catalog(url: directory.appendingPathComponent("b.vbcatalog"), makesBackups: false)
+        catalog.save([clip(1), clip(2)])
+        var moved = clip(1, bin: "Moved")
+        moved.outPoint = 0.9
+        catalog.save([moved])
+        catalog.delete(ids: ["id-2"])
+        XCTAssertEqual(catalog.loadClips(), [moved])
+    }
+
+    func testASecondCopyCannotOpenTheSameCatalog() throws {
+        let url = directory.appendingPathComponent("c.vbcatalog")
+        do {
+            let first = try Catalog(url: url, makesBackups: false)
+            XCTAssertThrowsError(try Catalog(url: url, makesBackups: false)) { error in
+                guard case CatalogError.inUse = error else { return XCTFail("wrong error: \(error)") }
+            }
+            withExtendedLifetime(first) {}
+        }
+        // Released when the first one closes: it opens again.
+        XCTAssertNoThrow(try Catalog(url: url, makesBackups: false))
+    }
+
+    func testExportIsReadableJSONOfEverything() throws {
+        let catalog = try Catalog(url: directory.appendingPathComponent("d.vbcatalog"), makesBackups: false)
+        catalog.save([clip(7)])
+        let out = directory.appendingPathComponent("export.json")
+        try catalog.exportJSON(to: out)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: out)) as? [String: Any])
+        XCTAssertEqual((json["clips"] as? [[String: Any]])?.first?["name"] as? String, "7.mov")
+        XCTAssertEqual(json["schemaVersion"] as? Int, 1)
+    }
+
+    func testOpeningMakesABackupWhenOneIsDue() throws {
+        let url = directory.appendingPathComponent("e.vbcatalog")
+        do {
+            let catalog = try Catalog(url: url, makesBackups: false)
+            catalog.save([clip(1)])
+            catalog.flush()
+        }
+        _ = try Catalog(url: url, makesBackups: true)
+        let backups = try FileManager.default.contentsOfDirectory(
+            at: Catalog.backupDirectory(for: url), includingPropertiesForKeys: nil)
+        XCTAssertEqual(backups.count, 1, "one backup, since none existed")
+        // And the backup is a working catalog holding the same clip.
+        let restored = try Catalog(url: try XCTUnwrap(backups.first), makesBackups: false)
+        XCTAssertEqual(restored.loadClips(), [clip(1)])
+    }
+}
+
+final class ImportScanTests: XCTestCase {
+
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("import-tests-\(UUID().uuidString)", isDirectory: true)
+        for path in ["top.mov", "Reel A/one.mov", "Reel A/two.dv", "Reel B/Deep/three.mov", "Reel B/notes.txt"] {
+            let url = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: url.path, contents: Data("x".utf8))
+        }
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    func testAFolderIsWalkedAndEachFolderBecomesABin() {
+        let result = ImportScan.scan([root])
+        let byName = Dictionary(uniqueKeysWithValues: result.candidates.map { ($0.url.lastPathComponent, $0.bin) })
+        XCTAssertEqual(Set(byName.keys), ["top.mov", "one.mov", "two.dv", "three.mov"])
+        XCTAssertEqual(byName["three.mov"], "Deep")
+        XCTAssertEqual(byName["one.mov"], "Reel A")
+        XCTAssertTrue(result.includesFolder)
+        XCTAssertTrue(result.rejected.isEmpty, "unplayable files inside a folder are not clips, not errors")
+    }
+
+    func testDroppingIntoABinPutsEverythingThere() {
+        let result = ImportScan.scan([root], intoBin: "Chosen")
+        XCTAssertTrue(result.candidates.allSatisfy { $0.bin == "Chosen" })
+    }
+
+    func testADroppedFileThatCannotPlayIsNamed() {
+        let result = ImportScan.scan([root.appendingPathComponent("Reel B/notes.txt"),
+                                      root.appendingPathComponent("top.mov")])
+        XCTAssertEqual(result.rejected, ["notes.txt"])
+        XCTAssertEqual(result.candidates.count, 1)
+        XCTAssertFalse(result.includesFolder)
+    }
+
+    func testCancellingStopsTheWalk() {
+        // The ✕ is pressed from another thread; the walk polls between entries.
+        var polls = 0
+        let result = ImportScan.scan([root], isCancelled: { polls += 1; return polls > 3 })
+        XCTAssertLessThan(result.candidates.count, 4)
+    }
+}
+
+final class ImportProgressTests: XCTestCase {
+
+    func testTheStatusBarShowsOnlyWhenTheImportCallsForIt() {
+        var progress = ImportProgress()
+        progress.found = 3
+        XCTAssertFalse(progress.showsStatusBar, "three loose clips: nothing to worry about")
+        progress.found = 6
+        XCTAssertTrue(progress.showsStatusBar, "more than five clips")
+
+        var folder = ImportProgress()
+        folder.includesFolder = true
+        XCTAssertTrue(folder.showsStatusBar, "any folder")
+
+        var slow = ImportProgress()
+        slow.elapsed = 2.5
+        XCTAssertTrue(slow.showsStatusBar, "anything slow")
+    }
+
+    func testFoldersAreCountedInTheOrderMet() {
+        var progress = ImportProgress()
+        for (name, bin) in [("a.mov", "Reel A"), ("b.mov", "Reel A"), ("c.mov", "Reel B")] {
+            progress.count(ImportCandidate(url: URL(fileURLWithPath: "/x/\(name)"), bin: bin, isSequence: false))
+        }
+        XCTAssertEqual(progress.folders, [.init(name: "Reel A", count: 2), .init(name: "Reel B", count: 1)])
+        XCTAssertEqual(progress.activeFolder, "Reel B")
+        XCTAssertEqual(progress.current, "Reel B/c.mov")
+        XCTAssertEqual(progress.found, 3)
+    }
+}
+
+final class ClipProbeTests: XCTestCase {
+
+    /// The probe's frame count must be the decoder's, or the playhead wraps early or
+    /// shows frames that do not exist.
+    func testTheProbeAgreesWithEveryDecoder() throws {
+        for name in ["bars.dv", "motion.dv", "motion.m2v", "motion.mov"] {
+            let url = RepoPaths.samples.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("no \(name)") }
+            let facts = try XCTUnwrap(ClipProbe.facts(of: url), name)
+            let decoder = try XCTUnwrap(ClipDecoders.open(url), name)
+            XCTAssertEqual(facts.frameCount, decoder.frameCount, name)
+            XCTAssertEqual(facts.frameRate, decoder.frameRate, accuracy: 0.001, name)
+        }
+    }
+
+    /// A known count skips the MPEG picture scan and is used as given.
+    func testAKnownFrameCountIsUsedForAnMPEGStream() throws {
+        let url = RepoPaths.samples.appendingPathComponent("motion.m2v")
+        guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("no motion.m2v") }
+        let counted = try XCTUnwrap(MPEGStreamDecoder(url: url))
+        let given = try XCTUnwrap(MPEGStreamDecoder(url: url, knownFrameCount: counted.frameCount))
+        XCTAssertEqual(given.frameCount, counted.frameCount)
+    }
+
+    func testAnUnreadableFileHasNoFacts() {
+        XCTAssertNil(ClipProbe.facts(of: URL(fileURLWithPath: "/nonexistent/nope.mov")))
+    }
+}

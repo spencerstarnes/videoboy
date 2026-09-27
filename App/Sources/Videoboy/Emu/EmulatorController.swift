@@ -146,18 +146,32 @@ final class EmulatorController {
     }
 
     /// Fills the panel's choice lists from an already-installed drive.
+    ///
+    /// OFF THE MAIN THREAD. Finding the disc lists ~/Desktop, ~/Downloads and every
+    /// volume in /Volumes. This ran while the main window was being built, so a macOS
+    /// privacy prompt for those folders — or a slow network share — held up the whole
+    /// launch (seen 2026-09-26: a launch stuck in `open()` for minutes). The lists
+    /// arrive a moment later and the EMU tab refills itself (`onStateChanged`).
     private func loadTitlerAssets() {
         let installer = AmigaSystemInstaller(destination: systemDrive)
-        guard installer.isInstalled else { return }
-        let volume = findDisc().flatMap { try? DiscImage(path: $0).existingMountPoint() }?
-            .lastPathComponent ?? "Workbench"
-        let assets = installer.titlerAssets(
-            volumeName: volume, fontDrawers: fontDrawers())
-        panel.backdrops = assets.backdrops
-        panel.pageNames = assets.pageNames
-        panel.fontCatalogue = assets.fonts
-        panel.setBrush(file: assets.symbols.first)
+        Self.assetQueue.async { [weak self] in
+            guard let self, installer.isInstalled else { return }
+            let volume = self.findDisc().flatMap { try? DiscImage(path: $0).existingMountPoint() }?
+                .lastPathComponent ?? "Workbench"
+            let assets = installer.titlerAssets(
+                volumeName: volume, fontDrawers: self.fontDrawers())
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.panel.backdrops = assets.backdrops
+                self.panel.pageNames = assets.pageNames
+                self.panel.fontCatalogue = assets.fonts
+                self.panel.setBrush(file: assets.symbols.first)
+                self.onStateChanged?()
+            }
+        }
     }
+
+    private static let assetQueue = DispatchQueue(label: "videoboy.emu.assets", qos: .utility)
 
     /// Where the typefaces really are.
     ///

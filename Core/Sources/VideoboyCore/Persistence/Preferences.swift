@@ -83,6 +83,10 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var saveLocationPath: String?
     public var autoSave: AutoSaveCadence = .never
 
+    /// Where the library's catalog file lives. Nil means `Catalog.defaultURL`; the
+    /// setup assistant (0.4.8) lets the person choose.
+    public var libraryLocationPath: String?
+
     // MARK: Defaults for new work
 
     public var defaultClockSource: String = "Internal"
@@ -145,6 +149,11 @@ public struct Preferences: Codable, Equatable, Sendable {
         set { saveLocationPath = newValue?.path }
     }
 
+    /// The catalog file to open.
+    public var catalogURL: URL {
+        libraryLocationPath.map { URL(fileURLWithPath: $0) } ?? Catalog.defaultURL
+    }
+
     /// Whether a prompt should still be shown.
     public func shouldRemind(_ kind: ReminderKind) -> Bool {
         !suppressedReminders.contains(kind)
@@ -160,6 +169,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         }
         self.init()
         saveLocationPath = decode(.saveLocationPath, nil as String?)
+        libraryLocationPath = decode(.libraryLocationPath, nil as String?)
         autoSave = decode(.autoSave, AutoSaveCadence.never)
         defaultClockSource = decode(.defaultClockSource, "Internal")
         defaultSubdivision = decode(.defaultSubdivision, "1/4")

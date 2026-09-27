@@ -67,7 +67,10 @@ public final class MPEGStreamDecoder: ClipDecoding {
     /// - Parameter canvas: when given, swscale scales each frame to what this canvas
     ///   needs (`CanvasGeometry.decodeSize`) in the same pass that converts it to RGBA —
     ///   free, where scaling afterwards meant carrying full HD through the graph.
-    public init?(url: URL, canvas: CanvasGeometry? = nil) {
+    ///   - knownFrameCount: the count the catalog measured at import. A raw stream
+    ///     carries no count, and counting its pictures reads the whole file — 130 ms a
+    ///     minute of footage, on whatever thread opened it.
+    public init?(url: URL, canvas: CanvasGeometry? = nil, knownFrameCount: Int? = nil) {
         self.url = url
         self.canvas = canvas
 
@@ -149,7 +152,11 @@ public final class MPEGStreamDecoder: ClipDecoding {
         // index wrap to frame 0, so the clip decodes perfectly and never appears to
         // move — which looks like the effects being broken rather than the length.
         if frameCount <= 1 {
-            frameCount = max(countPictures(), 1)
+            if let knownFrameCount, knownFrameCount > 0 {
+                frameCount = knownFrameCount
+            } else {
+                frameCount = max(countPictures(), 1)
+            }
         }
 
         Log.info(.bitstream, "opened \(url.lastPathComponent): \(frameCount) MPEG frames at "

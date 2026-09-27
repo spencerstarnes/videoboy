@@ -20,6 +20,30 @@ final class StatusBarView: NSView {
     private let nodesLabel = Controls.monoLabel("0 nodes")
     private let rateLabel = Controls.monoLabel("drop 0 · 0.00")
 
+    // MARK: Import progress
+    //
+    // Shown only while an import calls for it (`ImportProgress.showsStatusBar`: any
+    // folder, more than five clips, or anything slow). It sits AFTER the readouts in the
+    // row and was hidden until now, so appearing moves nothing to its left, and the
+    // routing reminder stays pinned right — no control shifts under a hand.
+
+    /// The whole import segment.
+    let importSegment = NSStackView()
+    private let importTitle = Controls.monoLabel("IMPORTING", color: Theme.Color.accent)
+    /// The file being worked on — changes up to eight times a second while importing.
+    private let importName = Controls.monoLabel("")
+    /// One chip per folder: its name and clip count; the active one in the accent colour.
+    private let importFolders = NSTextField(labelWithString: "")
+    private let importCount = Controls.monoLabel("")
+    private let importBar = NSProgressIndicator()
+    private let importUnreadable = NSButton(title: "", target: nil, action: nil)
+    private let importCancel = NSButton(title: "✕", target: nil, action: nil)
+
+    /// ✕ pressed.
+    var onCancelImport: (() -> Void)?
+    /// "N unreadable" pressed.
+    var onShowUnreadable: (() -> Void)?
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
 
@@ -33,8 +57,9 @@ final class StatusBarView: NSView {
             font: Theme.Font.mono, color: Theme.Color.textTertiary
         )
 
+        buildImportSegment()
         let row = Controls.row(
-            [midiLabel, oscLabel, nodesLabel, rateLabel, Controls.spacer(), routing],
+            [midiLabel, oscLabel, nodesLabel, rateLabel, importSegment, Controls.spacer(), routing],
             spacing: 14
         )
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -58,6 +83,155 @@ final class StatusBarView: NSView {
     /// Shows the live node count of the render graph.
     func setNodeCount(_ count: Int) {
         nodesLabel.stringValue = "\(count) nodes"
+    }
+
+    private func buildImportSegment() {
+        Self.prepareSymbols()
+        importSegment.orientation = .horizontal
+        importSegment.spacing = 8
+        importSegment.isHidden = true
+        importSegment.setAccessibilityIdentifier("import-status")
+        importName.lineBreakMode = .byTruncatingMiddle
+        importName.widthAnchor.constraint(equalToConstant: Theme.Metrics.importNameWidth).isActive = true
+        importFolders.font = Theme.Font.mono
+        importFolders.lineBreakMode = .byTruncatingTail
+        importFolders.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        importBar.style = .bar
+        importBar.controlSize = .small
+        importBar.isIndeterminate = false
+        importBar.minValue = 0
+        importBar.widthAnchor.constraint(equalToConstant: Theme.Metrics.importBarWidth).isActive = true
+        for button in [importUnreadable, importCancel] {
+            button.isBordered = false
+            button.font = Theme.Font.mono
+            button.target = self
+        }
+        importUnreadable.contentTintColor = Theme.Color.displayWarning
+        importUnreadable.action = #selector(unreadablePressed)
+        importUnreadable.isHidden = true
+        importUnreadable.setAccessibilityIdentifier("import-unreadable")
+        importCancel.action = #selector(cancelPressed)
+        importCancel.toolTip = "Stop importing. Clips already added stay in the library."
+        importCancel.setAccessibilityIdentifier("import-cancel")
+        for view in [importTitle, importName, importFolders, importCount, importBar,
+                     importUnreadable, importCancel] as [NSView] {
+            importSegment.addArrangedSubview(view)
+        }
+    }
+
+    @objc private func cancelPressed() { onCancelImport?() }
+    @objc private func unreadablePressed() { onShowUnreadable?() }
+
+    /// Shows an import's progress — or hides the segment while the import is too small
+    /// to be worth a word.
+    func showImport(_ progress: ImportProgress) {
+        guard progress.showsStatusBar else { return }
+        importSegment.isHidden = false
+        let total = max(progress.found, 1)
+        switch progress.stage {
+        case .scanning:
+            importTitle.attributedStringValue = Self.title("square.and.arrow.down", "IMPORTING", Theme.Color.accent)
+            importCount.stringValue = "\(progress.found) found"
+            importBar.isIndeterminate = true
+            importBar.startAnimation(nil)
+        case .reading:
+            importTitle.attributedStringValue = Self.title("square.and.arrow.down", "IMPORTING", Theme.Color.accent)
+            importCount.stringValue = "\(progress.read) / \(progress.found)"
+            importBar.stopAnimation(nil)
+            importBar.isIndeterminate = false
+            importBar.maxValue = Double(total)
+            importBar.doubleValue = Double(progress.read)
+        case .finished, .cancelled:
+            importTitle.attributedStringValue = progress.stage == .finished
+                ? Self.title("checkmark.circle", "IMPORTED", Theme.Color.accent)
+                : Self.title("xmark.circle", "STOPPED", Theme.Color.displayWarning)
+            importCount.stringValue = "\(progress.added) added"
+            importBar.stopAnimation(nil)
+            importBar.isIndeterminate = false
+            importBar.maxValue = Double(total)
+            importBar.doubleValue = progress.stage == .finished ? Double(total) : Double(progress.read)
+        }
+        importName.stringValue = progress.current ?? ""
+        importFolders.attributedStringValue = Self.folderChips(progress)
+        importUnreadable.title = "\(progress.unreadable.count) unreadable"
+        importUnreadable.isHidden = progress.unreadable.isEmpty
+        importCancel.isHidden = progress.isFinished
+    }
+
+    /// Takes the segment away.
+    func hideImport() {
+        importBar.stopAnimation(nil)
+        importSegment.isHidden = true
+    }
+
+    /// What the import segment currently says, for self-QA.
+    var importTextForChecks: String {
+        [importTitle, importName, importFolders, importCount].map(\.stringValue).joined(separator: " | ")
+    }
+
+    /// SF Symbol images, made once. Loading them the first time an import showed cost
+    /// most of a ~96 ms stall at the start of a big import (measured, 0.4.7); they are
+    /// made when the status bar is built instead, before anything is on air.
+    private static var symbols: [String: NSImage] = [:]
+
+    private static func symbolImage(_ name: String, _ colour: NSColor?) -> NSImage? {
+        let key = name + (colour.map { "|\($0)" } ?? "")
+        if let cached = symbols[key] { return cached }
+        var image = NSImage(systemSymbolName: name, accessibilityDescription: name)
+        if let colour { image = image?.withSymbolConfiguration(.init(paletteColors: [colour])) }
+        symbols[key] = image
+        return image
+    }
+
+    /// Makes every symbol the import segment uses, so its first appearance costs nothing.
+    private static func prepareSymbols() {
+        _ = symbolImage("square.and.arrow.down", Theme.Color.accent)
+        _ = symbolImage("checkmark.circle", Theme.Color.accent)
+        _ = symbolImage("xmark.circle", Theme.Color.displayWarning)
+        _ = symbolImage("folder.fill", nil)
+    }
+
+    /// An SF Symbol and a word, in one colour: the segment's title.
+    private static func title(_ symbol: String, _ word: String, _ colour: NSColor) -> NSAttributedString {
+        let text = NSMutableAttributedString()
+        let attachment = NSTextAttachment()
+        attachment.image = symbolImage(symbol, colour)
+        text.append(NSAttributedString(attachment: attachment))
+        text.append(NSAttributedString(string: " \(word)",
+                                       attributes: [.font: Theme.Font.mono, .foregroundColor: colour]))
+        return text
+    }
+
+    /// "▣ Reel B 48  ▣ Reel C 12", the active folder in the accent colour. With more
+    /// folders than fit, the ACTIVE folder keeps its chip and count and the rest are
+    /// summed — "▣ Reel 07 40  +24 folders" — so it always says which folder is being
+    /// read and how many clips are in it.
+    private static func folderChips(_ progress: ImportProgress) -> NSAttributedString {
+        let text = NSMutableAttributedString()
+        let font = Theme.Font.mono
+        func chip(_ label: String, active: Bool) {
+            let attachment = NSTextAttachment()
+            attachment.image = symbolImage("folder.fill", nil)
+            let colour = active ? Theme.Color.accent : Theme.Color.textSecondary
+            if text.length > 0 { text.append(NSAttributedString(string: "  ")) }
+            text.append(NSAttributedString(attachment: attachment))
+            text.append(NSAttributedString(string: " \(label)",
+                                           attributes: [.font: font, .foregroundColor: colour]))
+        }
+        if progress.folders.count > Theme.Metrics.importFolderChips {
+            if let active = progress.folders.first(where: { $0.name == progress.activeFolder })
+                ?? progress.folders.last {
+                chip("\(active.name) \(active.count)", active: true)
+            }
+            text.append(NSAttributedString(
+                string: "  +\(progress.folders.count - 1) folders",
+                attributes: [.font: font, .foregroundColor: Theme.Color.textTertiary]))
+        } else {
+            for folder in progress.folders {
+                chip("\(folder.name) \(folder.count)", active: folder.name == progress.activeFolder)
+            }
+        }
+        return text
     }
 
     /// Shows dropped frames and the measured render rate.

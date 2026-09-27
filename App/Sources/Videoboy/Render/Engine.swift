@@ -903,7 +903,16 @@ final class Engine {
         return true
     }
 
+    /// The display link's callback. Each tick drains its OWN autorelease pool:
+    /// AppKit empties the main thread's pool once per EVENT, and a show can run for
+    /// minutes with no mouse or key event at all while this fires 30 times a second —
+    /// anything AppKit autoreleases on the way (views, images, arrays) would pile up
+    /// until someone touched the machine.
     @objc private func tick(_ link: CADisplayLink) {
+        autoreleasepool { renderTick(link) }
+    }
+
+    private func renderTick(_ link: CADisplayLink) {
         let tickStart = CACurrentMediaTime()
         var rendered = false
         defer {
@@ -1045,9 +1054,11 @@ final class Engine {
 
     /// Loads a media file into a channel.
     @discardableResult
-    func load(url: URL, intoChannel letter: String) -> Bool {
+    /// - Parameter knownFrameCount: the catalog's measured count, when the clip came
+    ///   from the library — saves a long MPEG stream a scan on this thread.
+    func load(url: URL, intoChannel letter: String, knownFrameCount: Int? = nil) -> Bool {
         guard let node = sources[letter] else { return false }
-        let loaded = node.load(url: url)
+        let loaded = node.load(url: url, knownFrameCount: knownFrameCount)
         if loaded {
             // Re-register: a source that has just been given a file exposes the same
             // codes, but doing this keeps the swap path exercised and honest.

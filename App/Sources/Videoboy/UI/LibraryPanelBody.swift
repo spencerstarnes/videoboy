@@ -485,9 +485,17 @@ final class LibraryPanelBody: NSView {
         RunLoop.main.perform(inModes: [.common]) { [weak self] in
             guard let self else { return }
             self.reloadScheduled = false
+            let start = Self.reloadCostsForChecks != nil ? CACurrentMediaTime() : 0
             self.reloadNow()
+            if Self.reloadCostsForChecks != nil {
+                Self.reloadCostsForChecks?.append((CACurrentMediaTime() - start) * 1000)
+            }
         }
     }
+
+    /// Milliseconds each deferred rebuild took, across all three panels, while a
+    /// check sets this non-nil.
+    static var reloadCostsForChecks: [Double]?
 
     private var reloadScheduled = false
 

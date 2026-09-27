@@ -362,11 +362,13 @@ final class EffectChainPanelBody: NSView {
         // stack's contents — and `removeArrangedSubview` on a view that is not in the
         // stack throws, which aborted the app on every drop. Rebuilding from the
         // stack's own arranged subviews cannot get out of step with it.
+        // Discarded, not just removed: the tooltip manager otherwise keeps every old
+        // card alive (see NSView+Discard). Every card, including one lifted for a drag.
         for view in stack.arrangedSubviews {
             stack.removeArrangedSubview(view)
-            view.removeFromSuperview()
+            view.discardFromSuperview()
         }
-        for view in cardViews where view.superview != nil { view.removeFromSuperview() }
+        for view in cardViews { view.discardFromSuperview() }
         cardViews.removeAll()
 
         // Add / Save row at the top, above the layer stack. The Add popup lists what
@@ -1087,7 +1089,7 @@ final class EffectChainPanelBody: NSView {
     /// Rebuilds only the pinned card: a channel changing source must not reset the
     /// chain's scroll position or a drag in progress.
     private func rebuildSourceCard() {
-        sourceCardView?.removeFromSuperview()
+        sourceCardView?.discardFromSuperview()
         sourceCardView = nil
         guard let sourceCard else { return }
         cardChannelSelection[sourceCard.name] = sourceCard.initialChannelIndex

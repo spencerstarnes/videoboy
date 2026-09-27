@@ -64,7 +64,7 @@ final class PlaylistView: NSView {
     func setItems(_ items: [PlaylistItem]) {
         for view in stack.arrangedSubviews {
             stack.removeArrangedSubview(view)
-            view.removeFromSuperview()
+            view.discardFromSuperview()
         }
 
         emptyLabel.isHidden = !items.isEmpty

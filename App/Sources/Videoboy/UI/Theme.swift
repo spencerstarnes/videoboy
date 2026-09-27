@@ -25,6 +25,12 @@ enum Theme {
     // expected. Changing these numbers is how that happens.
 
     enum Metrics {
+        /// The import status's file-name readout: wide enough for "Reel B/CLIP0042.MOV",
+        /// fixed so a changing name never shifts what follows it.
+        static let importNameWidth: CGFloat = 260
+        static let importBarWidth: CGFloat = 90
+        /// Folder chips shown by name before they collapse to a count.
+        static let importFolderChips = 3
         /// Width of one caution stripe on a preview's bars, measured across the bar.
         static let barStripeWidth: CGFloat = 5
         /// Corner radius of a panel box.

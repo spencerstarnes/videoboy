@@ -93,7 +93,8 @@ final class ShellController {
     private func loadClip(
         _ url: URL, into channel: String, range: ClosedRange<Double>? = nil
     ) {
-        guard engine.load(url: url, intoChannel: channel) else {
+        let known = shell.grid.panels.library.frameCount(forPath: url.path)
+        guard engine.load(url: url, intoChannel: channel, knownFrameCount: known) else {
             presentNotice(
                 "Could not load \(url.lastPathComponent)",
                 url.pathExtension.lowercased() == "dv"
@@ -338,6 +339,9 @@ final class ShellController {
             library.setAutoPlay(preferences.preferences.playOnLoad)
         }
 
+        shell.statusBar.onCancelImport = { [weak self] in self?.cancelImports() }
+        shell.statusBar.onShowUnreadable = { [weak self] in self?.showUnreadable() }
+
         for library in [panels.libraryOneBody, panels.libraryTwoBody, panels.assetBrowserBody] {
             library.onFilesDropped = { [weak self] urls, bin in
                 self?.addToLibrary(urls, library: library, intoBin: bin)
@@ -528,139 +532,100 @@ final class ShellController {
     /// Bounded, because a drop is a gesture and should not be able to start an
     /// unbounded walk of somebody's whole disk by accident — a home folder dropped by
     /// mistake would otherwise take minutes and fill the library with thousands of rows.
-    static func itemsWalking(
-        _ folder: URL, depth: Int = 0, fileManager: FileManager = .default
-    ) -> [LibraryItem] {
-        guard depth <= maximumFolderDepth else { return [] }
-
-        // A folder of photographs is ONE CLIP, and is not descended into — its contents
-        // are frames, not clips.
-        if ImageSequenceDecoder.isSequence(folder) {
-            let frames = ImageSequenceDecoder.frames(in: folder)
-            return [LibraryItem(
-                name: folder.lastPathComponent, badge: "SEQ", isAvailable: true,
-                url: folder, duration: Double(frames.count) / 30.0)]
-        }
-
-        let contents = (try? fileManager.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
-        var found: [LibraryItem] = []
-        let binName = folder.lastPathComponent
-
-        for child in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: child.path, isDirectory: &isDirectory) else {
-                continue
-            }
-            if isDirectory.boolValue {
-                found.append(contentsOf: itemsWalking(child, depth: depth + 1,
-                                                      fileManager: fileManager))
-            } else if playableExtensions.contains(child.pathExtension.lowercased()) {
-                var item = libraryItem(for: child)
-                item.bin = binName
-                found.append(item)
-            }
-        }
-
-        // A sequence found further down carries the bin of the folder holding it, so it
-        // sits with its neighbours rather than alone at the top level.
-        return found.map { item in
-            var item = item
-            if item.bin == nil { item.bin = binName }
+    static func itemsWalking(_ folder: URL) -> [LibraryItem] {
+        // The rules live in Core now (ImportScan), where the import job uses them off
+        // the main thread; this keeps the one synchronous caller (a self-QA) honest.
+        ImportScan.walk(folder).map { candidate in
+            var item = candidate.isSequence
+                ? LibraryItem(name: candidate.url.lastPathComponent, badge: "SEQ",
+                              isAvailable: true, url: candidate.url)
+                : libraryItem(for: candidate.url)
+            item.bin = candidate.bin
             return item
         }
     }
 
-    /// How deep a dropped folder is walked.
-    ///
-    /// Deep enough for the way people actually file clips — by year, by shoot, by reel —
-    /// and shallow enough that a mis-dropped home folder stops rather than grinding.
-    static let maximumFolderDepth = 4
 
     /// actually read.
     /// - Parameter bin: where the drop or paste landed. Nil is the top level, where a
     ///   folder's shape on disk becomes bins; into a bin, everything is filed in THAT
     ///   bin, because bins are one level deep and the person chose where it goes.
     private func addToLibrary(_ urls: [URL], library: LibraryPanelBody, intoBin bin: String? = nil) {
-        var accepted: [LibraryItem] = []
-        var rejected: [String] = []
-
-        for url in urls {
-            // A folder is expanded one level, because dropping a folder of clips is
-            // the normal way to fill a library and refusing it would be pedantic.
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-               isDirectory.boolValue {
-
-                // A FOLDER OF PHOTOGRAPHS IS ONE CLIP, not a bin of stills.
-                //
-                // Checked before the bin path, because the two readings of "a folder"
-                // are mutually exclusive and this one is far more specific: a folder of
-                // clips is a group of things you choose between, a folder of images is
-                // a single thing that plays. Two or more images and no video decides it.
-                //
-                // From here it is an ordinary clip. It loads through the same door as a
-                // DV file, so playback, looping, in and out points and stepping a frame
-                // on the beat all work without being written again.
-                if ImageSequenceDecoder.isSequence(url) {
-                    let frames = ImageSequenceDecoder.frames(in: url)
-                    accepted.append(LibraryItem(
-                        name: url.lastPathComponent, badge: "SEQ", isAvailable: true,
-                        url: url,
-                        // 30fps, which is what the decoder gives a stack of pictures.
-                        duration: Double(frames.count) / 30.0))
-                    Log.info(.app, "\(url.lastPathComponent) is a photo sequence: "
-                        + "\(frames.count) frames")
-                    continue
-                }
-
-                // WALKED ALL THE WAY DOWN, not one level.
-                //
-                // It used to read only the immediate children, so dropping a folder with
-                // any structure inside it — which is how anyone with a real clip library
-                // keeps things — silently took the loose files at the top and threw the
-                // rest away. Nothing said so. A drop that accepts a folder and quietly
-                // ignores most of it is worse than one that refuses.
-                //
-                // Every folder that holds clips becomes a bin named after ITSELF, so the
-                // shape of the library follows the shape on disk. A folder of images
-                // along the way is a clip, by the same rule as above, and is not
-                // descended into.
-                accepted.append(contentsOf: Self.itemsWalking(url))
-                continue
-            }
-
-            if Self.playableExtensions.contains(url.pathExtension.lowercased()) {
-                accepted.append(Self.libraryItem(for: url))
-            } else {
-                rejected.append(url.lastPathComponent)
-            }
+        // A BACKGROUND JOB, not a loop here: walking folders, reading posters and
+        // measuring clips on the main thread froze the window on large drops and
+        // looked like a crash (audit 09-26 R1–R3). Clips appear in the library as they
+        // are found; the status bar reports when the import is big enough to worry about.
+        let job = ImportJob(urls: urls, intoBin: bin)
+        job.isLive = { [weak self] in self?.engine.transport.isRunning ?? false }
+        job.onProgress = { [weak self] progress in self?.showImportProgress(progress) }
+        job.onFinished = { [weak self, weak job] progress in
+            guard let self, let job else { return }
+            self.importFinished(job, progress: progress)
         }
-
-        if let bin {
-            accepted = accepted.map { item in
-                var item = item
-                item.bin = bin
-                return item
-            }
-        }
-        library.addItems(accepted)
-
-        if !rejected.isEmpty {
-            presentNotice(
-                rejected.count == 1
-                    ? "Could not add \(rejected[0])"
-                    : "Could not add \(rejected.count) files",
-                "Videoboy reads .dv, .mov, .mp4, .m4v, .m2v, .mpg and .ts. "
-                    + "These were left out:\n\n\(rejected.joined(separator: "\n"))"
-            )
-        }
+        importJobs.append(job)
+        job.start(into: shell.grid.panels.library)
     }
 
+    /// Imports running or queued, oldest first. The status bar shows the latest news.
+    private var importJobs: [ImportJob] = []
+    /// What the last import could not read, for the status bar's "N unreadable".
+    private var lastUnreadable: [String] = []
+    /// Hides the import status a few seconds after the last import ends.
+    private var importHideTimer: Timer?
+
+    private func showImportProgress(_ progress: ImportProgress) {
+        importHideTimer?.invalidate()
+        lastUnreadable = progress.unreadable
+        shell.statusBar.showImport(progress)
+    }
+
+    private func importFinished(_ job: ImportJob, progress: ImportProgress) {
+        importJobs.removeAll { $0 === job }
+        showImportProgress(progress)
+        if !progress.rejected.isEmpty {
+            presentNotice(
+                progress.rejected.count == 1
+                    ? "Could not add \(progress.rejected[0])"
+                    : "Could not add \(progress.rejected.count) files",
+                "Videoboy reads .dv, .mov, .mp4, .m4v, .m2v, .mpg and .ts. "
+                    + "These were left out:\n\n\(progress.rejected.joined(separator: "\n"))")
+        }
+        guard importJobs.isEmpty else { return }
+        // In common modes, so it also fires inside the self-QA's nested run loop.
+        let timer = Timer(timeInterval: Self.importStatusLinger, repeats: false) { [weak self] _ in
+            self?.shell.statusBar.hideImport()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        importHideTimer = timer
+    }
+
+    /// How long a finished import's summary stays in the status bar.
+    static let importStatusLinger: TimeInterval = 3
+
+    /// ✕ in the status bar: stops every import. What was added stays.
+    private func cancelImports() {
+        for job in importJobs { job.cancel() }
+    }
+
+    private func showUnreadable() {
+        guard !lastUnreadable.isEmpty else { return }
+        presentNotice(
+            lastUnreadable.count == 1 ? "1 clip could not be read" : "\(lastUnreadable.count) clips could not be read",
+            "They are in the library but will not play or show a picture:\n\n"
+                + lastUnreadable.joined(separator: "\n"))
+    }
+
+    /// Imports files and folders chosen from File ▸ Import Clips…, as a drop on the
+    /// library would.
+    func importFiles(_ urls: [URL]) {
+        addToLibrary(urls, library: shell.grid.panels.libraryOneBody)
+    }
+
+    /// Imports running now — for self-QA.
+    var importJobsForChecks: Int { importJobs.count }
+
     /// What this build can open. Kept here rather than guessed at each call site.
-    static let playableExtensions: Set<String> = [
-        "dv", "mov", "mp4", "m4v", "m2v", "mpg", "mpeg", "ts", "m2t", "m2ts"
-    ]
+    static let playableExtensions: Set<String> = ImportScan.playableExtensions
 
     /// A library entry for a file, badged by what it is.
     static func libraryItem(for url: URL) -> LibraryItem {

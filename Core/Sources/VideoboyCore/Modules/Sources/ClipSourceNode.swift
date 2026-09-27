@@ -416,7 +416,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// A failure is logged and leaves the node empty rather than throwing into the
     /// render loop; the panel then shows its "no source" state (SPEC 1.5).
     @discardableResult
-    public func load(url: URL) -> Bool {
+    public func load(url: URL, knownFrameCount: Int? = nil) -> Bool {
         // The extension chooses the decoder. DV goes down the bitstream path because
         // that is the only path the wedge can work on; everything else goes through
         // AVFoundation. A .dv that will not open is NOT retried as ordinary video —
@@ -464,7 +464,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
 
         // DV to the DV decoder, the MPEG families to the bitstream decoder (the wedge
         // needs the packet), everything else to AVFoundation — see ClipDecoders.
-        decoder = ClipDecoders.open(url, canvas: decodeCanvas)
+        decoder = ClipDecoders.open(url, canvas: decodeCanvas, knownFrameCount: knownFrameCount)
 
         guard let decoder, decoder.frameCount > 0 else {
             Log.error(.dv, "\(identifier) could not load \(url.lastPathComponent)")

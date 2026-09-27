@@ -261,6 +261,12 @@ final class LibraryItemView: LibraryCellView {
 /// them, rename it in place.
 final class LibraryFolderView: LibraryCellView {
 
+    /// Made once and shared: a big import creates dozens of folder tiles in one layout
+    /// pass (25 per panel, three panels), and each building its own symbol image was
+    /// part of a ~75 ms stall at the start of a 1,000-clip import (0.4.7).
+    private static let folderSymbol = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: "Bin")?
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 26, weight: .regular))
+
     var binName: String { entry.binName ?? "" }
 
     private let icon = NSImageView()
@@ -280,9 +286,7 @@ final class LibraryFolderView: LibraryCellView {
         well.translatesAutoresizingMaskIntoConstraints = false
         addSubview(well)
 
-        let configuration = NSImage.SymbolConfiguration(pointSize: 26, weight: .regular)
-        icon.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: "Bin")?
-            .withSymbolConfiguration(configuration)
+        icon.image = Self.folderSymbol
         icon.contentTintColor = Theme.Color.accent.withAlphaComponent(0.85)
         icon.imageScaling = .scaleProportionallyDown
         icon.translatesAutoresizingMaskIntoConstraints = false
@@ -496,11 +500,13 @@ final class HoverScrubView: NSView {
         guard let url = item?.url else { return }
         wantedPosition = position
         ClipThumbnails.shared.request(for: url, at: position) { [weak self] buffer in
-            guard let self, self.item?.url == url, self.wantedPosition == position,
-                  let buffer, let cgImage = buffer.makeCGImage() else { return }
-            self.frameImage = NSImage(
-                cgImage: cgImage, size: NSSize(width: buffer.width, height: buffer.height))
-            self.needsDisplay = true
+            MainThreadCosts.measure("thumbnail") {
+                guard let self, self.item?.url == url, self.wantedPosition == position,
+                      let buffer, let cgImage = buffer.makeCGImage() else { return }
+                self.frameImage = NSImage(
+                    cgImage: cgImage, size: NSSize(width: buffer.width, height: buffer.height))
+                self.needsDisplay = true
+            }
         }
     }
 

@@ -123,10 +123,38 @@ enum SoakSelfQA {
                 panels.programBody.onScopeKeyPressed?(.kind(.waveform))
             })
         ]
+        // VIDEOBOY_SOAK_ONLY runs a single action (by name), to find which one a
+        // growth comes from.
+        let only = ProcessInfo.processInfo.environment["VIDEOBOY_SOAK_ONLY"]
+        let chosen = only.map { name in actions.filter { $0.name == name } } ?? actions
+        guard !chosen.isEmpty else { return check.finish(blockedReason: "no action named \(only ?? "")") }
         var actionCosts: [String: [Double]] = [:]
 
         // Warm-up: shader compiles, pools filling. Not a show.
         RunLoop.main.run(until: Date().addingTimeInterval(5))
+
+        // A REPLACED Source Controls card must be freed. Every clip change rebuilds it;
+        // one that stays alive leaks a card of controls per load (found 0.4.7).
+        // Inside autorelease pools, as NSApplication's event loop runs each event: this
+        // harness drives the run loop itself, and without a pool anything autoreleased
+        // on the main thread lives until the check ends.
+        // Steady state: the card built at launch was made outside any pool, so the one
+        // tracked is a card built by a clip change, then replaced by another.
+        weak var replacedCard: NSView?
+        autoreleasepool { panels.sourceBodies["A"]?.onClipDropped?(clips[2], nil) }
+        autoreleasepool { RunLoop.main.run(until: Date().addingTimeInterval(0.3)) }
+        autoreleasepool { replacedCard = panels.effectsOneBody.sourceCardViewForChecks }
+        autoreleasepool { panels.sourceBodies["A"]?.onClipDropped?(clips[1], nil) }
+        autoreleasepool { RunLoop.main.run(until: Date().addingTimeInterval(0.5)) }
+        check.record(AssertionResult(
+            name: "a replaced Source Controls card is freed",
+            passed: replacedCard == nil,
+            detail: replacedCard == nil ? "freed" : "still alive after its replacement: \(String(describing: replacedCard))"))
+        panels.sourceBodies["A"]?.onClipDropped?(clips[0], nil)
+        engine.setPlaying(true, channel: "A")
+
+        func viewCount(_ view: NSView) -> Int { 1 + view.subviews.reduce(0) { $0 + viewCount($1) } }
+        let viewsAtStart = window.contentView.map(viewCount) ?? 0
 
         var samples: [Sample] = []
         let start = Date()
@@ -140,13 +168,17 @@ enum SoakSelfQA {
         var dropsAtWindow = engine.droppedFrames
         samples.append(snapshot(at: 0, engine: engine, ticks: [], dropped: 0))
 
+        // Each slice and each action in its own autorelease pool, as NSApplication's
+        // event loop runs each event. Without them this harness — which drives the run
+        // loop itself — kept every autoreleased object for the whole soak, and the
+        // growth looked like a leak in the app (0.4.7).
         while Date() < end {
-            RunLoop.main.run(until: min(nextAction, nextSample))
+            autoreleasepool { RunLoop.main.run(until: min(nextAction, nextSample)) }
             let now = Date()
             if now >= nextAction {
-                let action = actions[actionIndex % actions.count]
+                let action = chosen[actionIndex % chosen.count]
                 let began = CACurrentMediaTime()
-                action.run()
+                autoreleasepool { action.run() }
                 actionCosts[action.name, default: []].append((CACurrentMediaTime() - began) * 1000)
                 actionIndex += 1
                 nextAction = now.addingTimeInterval(2)
@@ -262,6 +294,13 @@ enum SoakSelfQA {
             name: "the tick does not get slower over the show",
             passed: lastMean <= firstMean * 1.25 + 0.5,
             detail: String(format: "%.2f → %.2f ms", firstMean, lastMean)))
+        // The window must not accumulate views: a panel that rebuilds on a clip change
+        // has to take its old views away, or every load leaves controls behind.
+        let viewsAtEnd = window.contentView.map(viewCount) ?? 0
+        check.record(AssertionResult(
+            name: "the window's view count does not grow over the show",
+            passed: viewsAtEnd <= viewsAtStart + 20,
+            detail: "\(viewsAtStart) views at the start, \(viewsAtEnd) at the end"))
         let worstAction = actionCosts.mapValues { $0.max() ?? 0 }.max { $0.value < $1.value }
         check.record(AssertionResult(
             name: "no performer action blocks the main thread for longer than a frame",

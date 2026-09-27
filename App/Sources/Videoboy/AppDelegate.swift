@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMenuBar()
 
         let controller = MainWindowController(preferences: preferences)
+        openCatalog(into: controller)
         launch.complete(.graph)
         launch.complete(.clock)
 
@@ -193,6 +194,82 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the moment of quitting, nothing about it looked like a bug.
     func applicationWillTerminate(_ notification: Notification) {
         mainWindowController?.shellController?.shutdown()
+        // Every library change is already written; wait for the last of them.
+        catalog?.flush()
+    }
+
+    // MARK: - The library's catalog
+
+    /// The saved library. Nil when it could not be opened — the library then works
+    /// for this session only, and the person has been told so.
+    private var catalog: Catalog?
+
+    /// Opens the catalog and hands it to the library, which loads what was saved (or,
+    /// the first time, saves what it starts with).
+    private func openCatalog(into controller: MainWindowController) {
+        let url = preferences.preferences.catalogURL
+        do {
+            let opened = try Catalog(url: url)
+            controller.shellController?.shell.grid.panels.library.attach(opened)
+            catalog = opened
+        } catch {
+            Log.error(.app, "library catalog not opened: \(error)")
+            let alert = NSAlert()
+            alert.messageText = "The library could not be opened"
+            alert.informativeText = "\(error).\n\nClips added in this session will work but will not be "
+                + "saved. Close the other copy of Videoboy, or move the catalog, and open this one again."
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+    }
+
+    @objc private func importClips() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Import"
+        panel.message = "Choose clips or folders. Each folder becomes a bin."
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+        mainWindowController?.shellController?.importFiles(panel.urls)
+    }
+
+    @objc private func exportLibrary() {
+        guard let catalog else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Videoboy Library.json"
+        panel.message = "A readable copy of the library: every clip, bin and mark."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try catalog.exportJSON(to: url)
+        } catch {
+            let alert = NSAlert(error: error)
+            alert.runModal()
+        }
+    }
+
+    @objc private func revealLibrary() {
+        NSWorkspace.shared.activateFileViewerSelecting([preferences.preferences.catalogURL])
+    }
+
+    /// File: import, and the library's own file.
+    private func makeFileMenu() -> NSMenuItem {
+        let item = NSMenuItem()
+        let menu = NSMenu(title: "File")
+        // ⇧⌘I, Lightroom's import key.
+        let importItem = NSMenuItem(title: "Import Clips…", action: #selector(importClips), keyEquivalent: "i")
+        importItem.keyEquivalentModifierMask = [.command, .shift]
+        importItem.target = self
+        menu.addItem(importItem)
+        menu.addItem(.separator())
+        let export = NSMenuItem(title: "Export Library as JSON…", action: #selector(exportLibrary), keyEquivalent: "")
+        export.target = self
+        menu.addItem(export)
+        let reveal = NSMenuItem(title: "Show Library in Finder", action: #selector(revealLibrary), keyEquivalent: "")
+        reveal.target = self
+        menu.addItem(reveal)
+        item.submenu = menu
+        return item
     }
 
     /// Records what this build is and what it can see, once, at startup.
@@ -253,6 +330,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The remaining menus mirror the mockup. Their contents arrive with the
         // features they drive; until then they are visibly present and disabled.
         for title in ["File", "Edit", "Workspace", "Templates"] {
+            if title == "File" {
+                mainMenu.addItem(makeFileMenu())
+                continue
+            }
             let item = NSMenuItem()
             if title == "Edit" {
                 item.submenu = Self.makeEditMenu()

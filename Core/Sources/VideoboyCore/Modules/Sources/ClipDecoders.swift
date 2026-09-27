@@ -27,11 +27,13 @@ public enum ClipDecoders {
     ///
     /// - Parameter canvas: decode no larger than this canvas needs; nil for full size.
     ///   DV is always SD and ignores it.
-    public static func open(_ url: URL, canvas: CanvasGeometry? = nil) -> ClipDecoding? {
+    /// - Parameter knownFrameCount: from the catalog; saves an MPEG stream a full scan.
+    public static func open(_ url: URL, canvas: CanvasGeometry? = nil, knownFrameCount: Int? = nil) -> ClipDecoding? {
         let ext = url.pathExtension.lowercased()
         if ext == "dv" { return try? DVClipDecoder(url: url) }
         if mpegExtensions.contains(ext) {
-            return MPEGStreamDecoder(url: url, canvas: canvas) ?? AVFClipDecoder(url: url, canvas: canvas)
+            return MPEGStreamDecoder(url: url, canvas: canvas, knownFrameCount: knownFrameCount)
+                ?? AVFClipDecoder(url: url, canvas: canvas)
         }
         return AVFClipDecoder(url: url, canvas: canvas)
     }

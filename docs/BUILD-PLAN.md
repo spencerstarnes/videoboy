@@ -213,7 +213,7 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       background prefetch ring (loop wraps and loads off the tick); staggered scopes;
       off-main thumbnails with an LRU cap. Gate: HD soak (`VIDEOBOY_SOAK_CLIPS`) with no tick
       over one frame.
-- [ ] **0.4.7 Phase 1** — SQLite catalog, background import job, contextual status bar.
+- [x] **0.4.7 Phase 1** — SQLite catalog, background import job, contextual status bar (done 2026-09-26; `selfqa import`, results in `docs/AUDIT-2026-09-26.md`).
 - [ ] **0.4.8 Phase 2** — mode bar (⌘1 Import · ⌘2 VJ · ⌘3 Settings), Settings mode, setup assistant.
 - [ ] **0.4.9 Phase 3** — Import mode (Lightroom model; Add/Move/Copy).
 - [ ] **0.4.10 Phase 4** — Copy + Optimize, linked optimized media (LGPL ffmpeg helper).
