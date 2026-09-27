@@ -18,7 +18,7 @@ import Foundation
 /// Namespace for library-wide identity.
 public enum Videoboy {
     /// Semantic version of the Core library. Bumped per phase.
-    public static let version = "0.4.7"
+    public static let version = "0.4.8"
 
     /// Human-readable build banner, logged once at startup.
     public static var banner: String {
@@ -73,6 +73,9 @@ public enum FeatureFlag: String, CaseIterable, Sendable {
     case recording
     /// IP video in/out (Phase 4+).
     case ipVideo
+    /// The bottom mode bar (Import · VJ · Settings, ⌘1–⌘3), Settings as a mode and
+    /// the setup assistant (0.4.8, proposal §4/§8). Off: the 0.4.7 window exactly.
+    case modeBar
 }
 
 /// The set of flags this build runs with.

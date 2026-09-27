@@ -148,6 +148,19 @@ enum LayoutBreakpoint {
 /// The grid itself.
 final class PanelGridView: NSView {
 
+    /// True while Import or Settings covers the grid: its previews stop presenting
+    /// (as if hidden) while every control stays exactly where it is.
+    var previewsCovered = false {
+        didSet {
+            guard previewsCovered != oldValue else { return }
+            func walk(_ view: NSView) {
+                if let preview = view as? MetalPreviewView { preview.isCovered = previewsCovered }
+                view.subviews.forEach(walk)
+            }
+            walk(self)
+        }
+    }
+
     /// A panel plus its placement.
     private struct PlacedPanel {
         let panel: PanelView

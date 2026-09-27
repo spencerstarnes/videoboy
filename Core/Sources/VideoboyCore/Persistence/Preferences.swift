@@ -86,6 +86,16 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// Where the library's catalog file lives. Nil means `Catalog.defaultURL`; the
     /// setup assistant (0.4.8) lets the person choose.
     public var libraryLocationPath: String?
+    /// The default destination for Copy/Move imports (proposal §5, §8). Nil means
+    /// `~/Movies/Videoboy/Media`.
+    public var mediaLocationPath: String?
+    /// Where linked optimized files are written (0.4.10). Nil means
+    /// `~/Movies/Videoboy/Optimized Media`.
+    public var optimizedMediaLocationPath: String?
+    /// Where ISF plugins are read from. Nil means the app's own ISF folder.
+    public var pluginsLocationPath: String?
+    /// True once the setup assistant has been finished (or skipped) once.
+    public var setupCompleted: Bool = false
 
     // MARK: Defaults for new work
 
@@ -154,6 +164,24 @@ public struct Preferences: Codable, Equatable, Sendable {
         libraryLocationPath.map { URL(fileURLWithPath: $0) } ?? Catalog.defaultURL
     }
 
+    /// The Videoboy folder in ~/Movies every default location lives under.
+    public static var defaultMoviesFolder: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Movies/Videoboy", isDirectory: true)
+    }
+
+    /// Where Copy/Move imports go by default.
+    public var mediaLocation: URL {
+        mediaLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? Self.defaultMoviesFolder.appendingPathComponent("Media", isDirectory: true)
+    }
+
+    /// Where optimized media is written.
+    public var optimizedMediaLocation: URL {
+        optimizedMediaLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? Self.defaultMoviesFolder.appendingPathComponent("Optimized Media", isDirectory: true)
+    }
+
     /// Whether a prompt should still be shown.
     public func shouldRemind(_ kind: ReminderKind) -> Bool {
         !suppressedReminders.contains(kind)
@@ -170,6 +198,10 @@ public struct Preferences: Codable, Equatable, Sendable {
         self.init()
         saveLocationPath = decode(.saveLocationPath, nil as String?)
         libraryLocationPath = decode(.libraryLocationPath, nil as String?)
+        mediaLocationPath = decode(.mediaLocationPath, nil as String?)
+        optimizedMediaLocationPath = decode(.optimizedMediaLocationPath, nil as String?)
+        pluginsLocationPath = decode(.pluginsLocationPath, nil as String?)
+        setupCompleted = decode(.setupCompleted, false)
         autoSave = decode(.autoSave, AutoSaveCadence.never)
         defaultClockSource = decode(.defaultClockSource, "Internal")
         defaultSubdivision = decode(.defaultSubdivision, "1/4")

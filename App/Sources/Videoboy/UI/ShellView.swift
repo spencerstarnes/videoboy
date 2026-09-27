@@ -18,7 +18,12 @@ final class ShellView: NSView {
 
     let toolbar = TransportToolbarView()
     let grid = PanelGridView()
-    let statusBar = StatusBarView()
+    let statusBar: StatusBarView
+    /// Whether this shell carries the mode bar (0.4.8). Fixed for the shell's life.
+    let hasModeBar: Bool
+    /// Where Import and Settings modes are shown: exactly the grid's frame, so the
+    /// toolbar (transport, record) and the strip stay put in every mode.
+    let modeHost = NSView()
 
     /// How bright the beat pulse currently is, 0...1.
     private var pulseAmount: Double = 0
@@ -38,7 +43,11 @@ final class ShellView: NSView {
     // different lifecycles.
     deinit { flashTimer?.invalidate() }
 
-    init() {
+    /// - Parameter modeBar: build with the mode bar; defaults to the flag. Checks build
+    ///   both kinds side by side to prove the grid only shrinks by the strip change.
+    init(modeBar: Bool = FeatureFlag.modeBar.isOn) {
+        hasModeBar = modeBar
+        statusBar = StatusBarView(modeBar: modeBar)
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = Theme.Color.content.cgColor
@@ -62,7 +71,21 @@ final class ShellView: NSView {
             statusBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             statusBar.trailingAnchor.constraint(equalTo: trailingAnchor),
             statusBar.bottomAnchor.constraint(equalTo: bottomAnchor),
-            statusBar.heightAnchor.constraint(equalToConstant: Theme.Metrics.statusBarHeight)
+            statusBar.heightAnchor.constraint(equalToConstant: modeBar
+                ? Theme.Metrics.modeBarHeight : Theme.Metrics.statusBarHeight)
+        ])
+
+        // The mode host covers the grid and nothing else; empty and hidden in VJ mode.
+        modeHost.translatesAutoresizingMaskIntoConstraints = false
+        modeHost.isHidden = true
+        modeHost.wantsLayer = true
+        modeHost.layer?.backgroundColor = Theme.Color.content.cgColor
+        addSubview(modeHost)
+        NSLayoutConstraint.activate([
+            modeHost.topAnchor.constraint(equalTo: grid.topAnchor),
+            modeHost.bottomAnchor.constraint(equalTo: grid.bottomAnchor),
+            modeHost.leadingAnchor.constraint(equalTo: grid.leadingAnchor),
+            modeHost.trailingAnchor.constraint(equalTo: grid.trailingAnchor)
         ])
     }
 

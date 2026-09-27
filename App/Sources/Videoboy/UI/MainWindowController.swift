@@ -28,6 +28,9 @@ final class MainWindowController: NSWindowController {
     /// Exposed so the app delegate can make first-run offers that touch routing.
     private(set) var shellController: ShellController?
 
+    /// Import · VJ · Settings (0.4.8), or nil when the mode bar is off.
+    private(set) var modeController: ModeController?
+
     /// How big to open on first run, measured against the display rather than fixed.
     ///
     /// This was pinned at 1460x912 on every machine. That is not merely conservative
@@ -122,6 +125,14 @@ final class MainWindowController: NSWindowController {
         let shell = ShellView()
         window.contentView = shell
         shellController = ShellController(shell: shell, engine: engine, preferences: preferences)
+        if shell.hasModeBar {
+            let modes = ModeController(shell: shell, store: preferences, engine: engine)
+            modes.onPreviewFillChanged = { [weak self] fill in
+                self?.shellController?.setPreviewFill(fill)
+            }
+            modes.onRunSetupAssistant = { [weak self] in self?.runSetupAssistant() }
+            modeController = modes
+        }
         // The render clock follows the display this window is on, so moving the
         // window between screens retimes it automatically (SPEC 4a).
         engine.start(drivenBy: shell)
@@ -132,6 +143,21 @@ final class MainWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("MainWindowController is created in code, never from a nib")
+    }
+
+    /// The assistant currently showing, held so the sheet outlives this call.
+    private(set) var setupAssistant: SetupAssistant?
+
+    /// Shows the setup assistant as a sheet on this window (proposal §8).
+    func runSetupAssistant() {
+        guard let window, setupAssistant == nil else { return }
+        let assistant = SetupAssistant(store: preferences)
+        assistant.onFinish = { [weak self] openImport in
+            self?.setupAssistant = nil
+            if openImport { self?.modeController?.show(.importMedia) }
+        }
+        setupAssistant = assistant
+        assistant.present(on: window)
     }
 }
 

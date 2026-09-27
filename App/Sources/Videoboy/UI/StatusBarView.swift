@@ -59,8 +59,42 @@ final class StatusBarView: NSView {
     /// "N unreadable" pressed.
     var onShowUnreadable: (() -> Void)?
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+    // MARK: Mode bar (0.4.8, `FeatureFlag.modeBar`)
+    //
+    // Resolve's page bar, merged into this strip (proposal §4): IMPORT · VJ · SETTINGS
+    // between the readouts and the routing reminder. Present only when the flag is on;
+    // the strip then grows from 22 to 32 pt and nothing else in the window changes.
+
+    /// The mode switcher, or nil when the flag is off.
+    let modeSwitch: NSSegmentedControl?
+    /// A segment was clicked.
+    var onModeSelected: ((AppMode) -> Void)?
+
+    /// - Parameter modeBar: show the mode switcher (the flag, unless a check says).
+    init(modeBar: Bool = FeatureFlag.modeBar.isOn) {
+        if modeBar {
+            let control = NSSegmentedControl()
+            control.segmentCount = AppMode.allCases.count
+            control.trackingMode = .selectOne
+            control.segmentStyle = .texturedRounded
+            control.controlSize = .regular
+            for mode in AppMode.allCases {
+                let segment = mode.rawValue - 1
+                control.setLabel(mode.title, forSegment: segment)
+                control.setImage(NSImage(systemSymbolName: mode.symbolName,
+                                         accessibilityDescription: mode.title), forSegment: segment)
+                control.setImageScaling(.scaleProportionallyDown, forSegment: segment)
+                control.setToolTip("\(mode.title.capitalized) (⌘\(mode.rawValue))", forSegment: segment)
+            }
+            control.selectedSegment = AppMode.vj.rawValue - 1
+            control.setAccessibilityIdentifier("mode-bar")
+            modeSwitch = control
+        } else {
+            modeSwitch = nil
+        }
+        super.init(frame: .zero)
+        modeSwitch?.target = self
+        modeSwitch?.action = #selector(modeClicked(_:))
 
         wantsLayer = true
         layer?.backgroundColor = Theme.Color.bar.cgColor
@@ -77,10 +111,11 @@ final class StatusBarView: NSView {
         noticeLabel.lineBreakMode = .byTruncatingTail
         noticeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         noticeLabel.setAccessibilityIdentifier("status-notice")
-        let row = Controls.row(
-            [midiLabel, oscLabel, nodesLabel, rateLabel, importSegment, noticeLabel, Controls.spacer(), routing],
-            spacing: 14
-        )
+        var items: [NSView] = [midiLabel, oscLabel, nodesLabel, rateLabel, importSegment, noticeLabel,
+                               Controls.spacer()]
+        if let modeSwitch { items.append(modeSwitch) }
+        items.append(routing)
+        let row = Controls.row(items, spacing: 14)
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
 
@@ -91,8 +126,23 @@ final class StatusBarView: NSView {
         ])
     }
 
+    override convenience init(frame frameRect: NSRect) {
+        self.init(modeBar: FeatureFlag.modeBar.isOn)
+        frame = frameRect
+    }
+
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+
+    @objc private func modeClicked(_ sender: NSSegmentedControl) {
+        guard let mode = AppMode(rawValue: sender.selectedSegment + 1) else { return }
+        onModeSelected?(mode)
+    }
+
+    /// Shows which mode is current (the menu or a key may have changed it).
+    func setMode(_ mode: AppMode) {
+        modeSwitch?.selectedSegment = mode.rawValue - 1
+    }
 
     /// Shows the connected MIDI source, or "none".
     func setMIDIDevice(_ name: String?) {

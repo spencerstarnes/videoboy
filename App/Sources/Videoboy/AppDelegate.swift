@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private var launchWindowController: LaunchWindowController?
     private var preferencesController: PreferencesWindowController?
+    /// The View menu (mode items), when the mode bar is on.
+    private var viewMenu: NSMenu?
 
     /// Settings that outlive a patch. Loaded once, here, and handed to whoever needs
     /// them — one store, so a change made in the window is seen everywhere at once.
@@ -80,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         controller.showWindow(nil)
         mainWindowController = controller
+        controller.modeController?.onModeChanged = { [weak self] mode in self?.markMode(mode) }
         launch.complete(.interface)
 
         NSApp.activate(ignoringOtherApps: true)
@@ -90,7 +93,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
             self?.launchWindowController?.dismiss()
             self?.launchWindowController = nil
-            self?.remindAboutSaveLocationIfNeeded()
+            // With the mode bar on, first launch gets the setup assistant (a sheet)
+            // in place of the save-location alert it replaces (proposal §8).
+            if let self, let window = self.mainWindowController, window.modeController != nil {
+                if !self.preferences.preferences.setupCompleted { window.runSetupAssistant() }
+            } else {
+                self?.remindAboutSaveLocationIfNeeded()
+            }
             self?.offerDefaultOutputIfNothingIsRouted()
         }
     }
@@ -295,8 +304,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Opens the Preferences window, reusing it if it is already open.
+    /// View ▸ Import ⌘1 · VJ ⌘2 · Settings ⌘3 (proposal §4). Menu items rather than
+    /// bare key handling, so the modes are discoverable and remappable in System
+    /// Settings ▸ Keyboard.
+    private func makeViewMenu() -> NSMenuItem {
+        let item = NSMenuItem()
+        let menu = ModeController.makeViewMenu(target: self, action: #selector(modeMenuChosen(_:)))
+        viewMenu = menu
+        item.submenu = menu
+        return item
+    }
+
+    @objc func modeMenuChosen(_ sender: NSMenuItem) {
+        guard let mode = AppMode(rawValue: sender.tag) else { return }
+        mainWindowController?.modeController?.show(mode)
+    }
+
+    /// Ticks the current mode in the View menu.
+    private func markMode(_ mode: AppMode) {
+        for entry in viewMenu?.items ?? [] { entry.state = entry.tag == mode.rawValue ? .on : .off }
+    }
+
+    /// Opens the Preferences window, reusing it if it is already open — or, with the
+    /// mode bar on, switches to Settings mode (⌘, still works).
     @objc private func showPreferences() {
+        if let modes = mainWindowController?.modeController {
+            modes.show(.settings)
+            return
+        }
         guard let engine = mainWindowController?.engine else {
             Log.warn(.app, "no engine yet; cannot open preferences")
             return
@@ -356,6 +391,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.submenu = submenu
             mainMenu.addItem(item)
         }
+
+        if FeatureFlag.modeBar.isOn { mainMenu.addItem(makeViewMenu()) }
 
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")

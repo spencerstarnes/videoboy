@@ -223,6 +223,15 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)
 
+- **Under-constrained grid layout (found 2026-09-27, `selfqa modes`).** About 10–20
+  controls (some bus pop-ups, step buttons and crossfader-row faders) land differently in
+  identical `ShellView`s built back to back, for example a fader 0 pt vs 216 pt wide.
+  A performer could get a zero-width fader. Needs its own look at the priorities and
+  hugging of those rows.
+- **F9: open clips off the main thread.** Eject + reload blocks the main thread for up to
+  50 ms with 4K HEVC (12-min HD soak, BUGHUNT step 2). Write-up is in BUGHUNT.
+- **Catalog backup off the launch path** (BUGHUNT S1 follow-up).
+
 - **The genlock key's colour/threshold/edge (6xE) have no visible fader.** Added
   2026-09-22 alongside `BlendMode.key` — see the Phase 4+ emulated-titler entry
   above. They are real, registry-backed, mappable params (same shape as every other

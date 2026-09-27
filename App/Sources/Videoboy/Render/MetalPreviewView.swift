@@ -636,6 +636,10 @@ final class MetalPreviewView: NSView {
     /// - Parameter time: the refresh to show this frame on (host clock), from the
     ///   render tick. Nil — a resize, an unhide — shows it as soon as it is drawn.
     ///   Scheduling does not wait: the drawable is queued and the tick carries on.
+    /// Set while another mode covers the VJ grid (0.4.8): skipped like a hidden
+    /// preview, without hiding it — unhiding re-lays-out the whole grid.
+    var isCovered = false
+
     func present(at time: CFTimeInterval? = nil) {
         emptyLabel.isHidden = texture != nil
 
@@ -645,7 +649,7 @@ final class MetalPreviewView: NSView {
         // drawables, and `nextDrawable()` then blocks the render tick for up to 1 s —
         // which also freezes the output. The output window is exempt; it is the show.
         if !metalLayer.displaySyncEnabled,
-           isHiddenOrHasHiddenAncestor
+           isCovered || isHiddenOrHasHiddenAncestor
             || !(window?.occlusionState.contains(.visible) ?? false) {
             return
         }

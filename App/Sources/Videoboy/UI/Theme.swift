@@ -61,6 +61,9 @@ enum Theme {
         static let transportDisplayHeight: CGFloat = 42
         /// Height of the status bar below the grid.
         static let statusBarHeight: CGFloat = 22
+        /// Height of the same strip once it carries the mode bar (proposal §4: the one
+        /// approved change to the VJ layout — the grid shrinks by the difference).
+        static let modeBarHeight: CGFloat = 32
         /// Height of a panel header.
         static let panelHeaderHeight: CGFloat = 22
         /// Height of the record/stream/output/toggles bar.

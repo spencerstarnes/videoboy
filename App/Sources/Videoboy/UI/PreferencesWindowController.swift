@@ -26,6 +26,9 @@ final class PreferencesWindowController: NSWindowController {
 
     /// The panes, in the order they appear down the left.
     enum Pane: String, CaseIterable {
+        case project
+        case media
+        case optimize
         case save
         case defaults
         case outputs
@@ -39,6 +42,9 @@ final class PreferencesWindowController: NSWindowController {
 
         var title: String {
             switch self {
+            case .project: "Project"
+            case .media: "Media"
+            case .optimize: "Optimize"
             case .save: "Save"
             case .defaults: "Defaults"
             case .outputs: "Outputs"
@@ -54,6 +60,9 @@ final class PreferencesWindowController: NSWindowController {
 
         var symbolName: String {
             switch self {
+            case .project: "rectangle.on.rectangle"
+            case .media: "folder"
+            case .optimize: "speedometer"
             case .save: "externaldrive"
             case .defaults: "slider.horizontal.3"
             case .outputs: "tv"
@@ -70,6 +79,9 @@ final class PreferencesWindowController: NSWindowController {
         /// One line under the pane's heading saying what it is for.
         var summary: String {
             switch self {
+            case .project: "The canvas and frame rate everything is mixed at."
+            case .media: "Where the library, imported clips and optimized media live."
+            case .optimize: "What Copy + Optimize turns clips into."
             case .save: "Where your work goes, and how often it gets there by itself."
             case .defaults: "What a new source, bus and session start out as."
             case .outputs: "Where PROGRAM and the buses can be sent."
@@ -105,6 +117,12 @@ final class PreferencesWindowController: NSWindowController {
     /// Called when the picture fill changes, so open previews follow immediately
     /// rather than at the next relaunch.
     var onPreviewFillChanged: ((PreviewFill) -> Void)?
+    /// "Run Setup Assistant…" pressed (Project pane).
+    var onRunSetupAssistant: (() -> Void)?
+
+    /// Everything the controller draws. The window's content in the Preferences window;
+    /// lifted out whole into Settings mode when the mode bar is on (0.4.8).
+    let rootView = NSView()
 
     private var selected: Pane = .save
     private var tabButtons: [Pane: NSButton] = [:]
@@ -128,6 +146,7 @@ final class PreferencesWindowController: NSWindowController {
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = Theme.Color.content
         window.center()
+        window.contentView = rootView
         super.init(window: window)
         buildLayout()
         select(.save)
@@ -139,7 +158,7 @@ final class PreferencesWindowController: NSWindowController {
     // MARK: - Layout
 
     private func buildLayout() {
-        guard let content = window?.contentView else { return }
+        let content = rootView
         content.wantsLayer = true
         content.layer?.backgroundColor = Theme.Color.content.cgColor
 
@@ -226,6 +245,19 @@ final class PreferencesWindowController: NSWindowController {
         ])
     }
 
+    /// Lifts the settings out of the window so Settings mode can show them (the window
+    /// is then never shown). Call once.
+    func detachRootViewForEmbedding() -> NSView {
+        window?.contentView = NSView()
+        rootView.removeFromSuperview()
+        return rootView
+    }
+
+    /// Which pane is showing, for self-QA.
+    var selectedPaneForChecks: Pane { selected }
+    /// The tab buttons, for self-QA.
+    var tabButtonsForChecks: [Pane: NSButton] { tabButtons }
+
     /// Throws away a built pane so it is made afresh next time it is shown.
     ///
     /// Used when a pane's content is a list of something that has just changed. The
@@ -256,6 +288,9 @@ final class PreferencesWindowController: NSWindowController {
 
     func makePane(_ pane: Pane) -> NSView {
         switch pane {
+        case .project: makeProjectPane()
+        case .media: makeMediaPane()
+        case .optimize: makeOptimizePane()
         case .save: makeSavePane()
         case .defaults: makeDefaultsPane()
         case .outputs: makeOutputsPane()
