@@ -57,6 +57,13 @@ final class SourcePanelBody: NSView {
         onLoopModeChanged?(loopMode)
     }
 
+    /// Shows a loop mode set from outside (a template load) without firing it.
+    func setLoopMode(_ mode: LoopMode) {
+        loopMode = mode
+        loopKey?.setTitle(mode.shuttleGlyph)
+        loopKey?.toolTip = mode.displayName
+    }
+
     /// Loads a file into this channel. Wired by the app; nil until then.
     var onLoadRequested: (() -> Void)?
 
@@ -1501,6 +1508,14 @@ final class FaderPanelBody: NSView {
         guard let beat = beatCutButton, beat.isOn != on else { return }
         beat.isOn = on
         onBeatCutToggled?(on)
+    }
+
+    /// Where the crossfader is drawn — for self-QA.
+    var faderValueForChecks: Double { fader.value }
+
+    /// Shows a blend mode set from outside (a template load) without firing it.
+    func setBlendModeForTemplate(_ mode: BlendMode) {
+        blendButton?.mode = mode
     }
 
     func triggerLeftKey() { cut(to: 0) }

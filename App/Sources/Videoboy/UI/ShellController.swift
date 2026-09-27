@@ -1357,6 +1357,151 @@ final class ShellController {
         )
     }
 
+    // MARK: - Templates: save and open the whole show (audit L1)
+    //
+    // A template is the performance, not the instrument (Preferences are that): both
+    // effect chains, every parameter value, every MIDI mapping, the clock, and what
+    // each channel holds — clip and marks, playing, loop mode, or a generator /
+    // configured source. `TemplateDocument` (Core) is the file; this is the bridge.
+
+    /// The template file the show was last saved to or opened from.
+    private(set) var currentTemplateURL: URL?
+    /// Told when that changes (the window subtitle).
+    var onTemplateURLChanged: ((URL?) -> Void)?
+
+    /// The show as it is now.
+    func captureTemplate(name: String) -> TemplateDocument {
+        var channels: [String: TemplateChannel] = [:]
+        for letter in ["A", "B", "C", "D"] {
+            let source = engine.sources[letter]
+            var channel = TemplateChannel(isPlaying: source?.isPlaying ?? false, loopMode: source?.loopMode)
+            switch engine.channelSourceKinds[letter] ?? .file {
+            case .file:
+                channel.mediaPath = source?.mediaURL?.path
+                channel.inPoint = source?.playbackRange?.lowerBound
+                channel.outPoint = source?.playbackRange?.upperBound
+            case .generator:
+                if let kind = engine.generators[letter]?.generator { channel.reference = "generator:\(kind.rawValue)" }
+            case .isfGenerator(let id):
+                channel.reference = "isf:\(id)"
+            case .capture(let id):
+                channel.reference = "source:\(id)"
+            case .emulator:
+                Log.info(.template, "channel \(letter) shows the emulator; templates do not reopen it yet")
+            }
+            channels[letter] = channel
+        }
+        return TemplateDocument.capture(
+            name: name, graph: engine.graph, registry: engine.registry,
+            clock: TemplateClock(beatsPerMinute: engine.transport.beatsPerMinute,
+                                 subdivision: engine.beatSubdivision.rawValue),
+            chains: engine.chains, channels: channels)
+    }
+
+    /// Writes the show to `url` and remembers it as the current template.
+    func saveTemplate(to url: URL) throws {
+        let name = url.deletingPathExtension().lastPathComponent
+        try captureTemplate(name: name).write(to: url)
+        currentTemplateURL = url
+        onTemplateURLChanged?(url)
+        Log.info(.template, "saved \(url.path)")
+    }
+
+    /// Replaces the show with a template: chains, values, mappings, clock, channels,
+    /// and every control repainted to match.
+    func openTemplate(_ document: TemplateDocument, from url: URL?) {
+        engine.loadChains([.one: document.chain(for: .one), .two: document.chain(for: .two)])
+        // The template's mappings REPLACE the current ones — opening a set is not a merge.
+        for binding in engine.registry.bindings { engine.registry.unbind(source: binding.source) }
+        let unknown = document.apply(to: engine.registry)
+        engine.setTempo(document.clock.beatsPerMinute)
+        shell.toolbar.setTempo(document.clock.beatsPerMinute)
+        if let subdivision = Subdivision(rawValue: document.clock.subdivision) {
+            engine.beatSubdivision = subdivision
+        }
+
+        for (letter, channel) in document.channels ?? [:] {
+            let body = shell.grid.panels.sourceBodies[letter]
+            if let reference = channel.reference {
+                loadLibraryReference(reference, into: letter)
+                setChannelPlaying(letter, channel.isPlaying)
+            } else if let path = channel.mediaPath {
+                let url = URL(fileURLWithPath: path)
+                guard FileManager.default.fileExists(atPath: path) else {
+                    presentNotice("\(url.lastPathComponent) is missing — channel \(letter) left empty",
+                                  "The template points at \(path), which is not there any more.")
+                    ejectClip(fromChannel: letter)
+                    continue
+                }
+                let range = channel.inPoint.flatMap { lower in channel.outPoint.map { lower...$0 } }
+                loadClip(url, into: letter, range: range) { [weak self] loaded in
+                    guard loaded, let self else { return }
+                    if let mode = channel.loopMode {
+                        self.engine.sources[letter]?.loopMode = mode
+                        body?.setLoopMode(mode)
+                    }
+                    self.setChannelPlaying(letter, channel.isPlaying)
+                }
+            } else {
+                ejectClip(fromChannel: letter)
+            }
+        }
+
+        repaintFromRegistry()
+        currentTemplateURL = url
+        onTemplateURLChanged?(url)
+        Log.info(.template, "opened \(document.name)" + (unknown > 0 ? " (\(unknown) mappings this build does not know)" : ""))
+    }
+
+    /// Sets every control on screen to what the registry holds — after a template load,
+    /// when values changed without anyone touching the controls.
+    func repaintFromRegistry() {
+        refreshCards(.one)
+        refreshCards(.two)
+        func walk(_ view: NSView) {
+            if let fader = view as? VBFader, let slot = fader.mappingSlot, let code = fader.mappingCode,
+               let declared = engine.graph.nodes[slot]?.parameters.first(where: { $0.code == code }),
+               let value = engine.registry.value(slot: slot, code: code) {
+                fader.setDisplayedValue(declared.normalise(value))
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(shell)
+        let buses: [(body: FaderPanelBody, slot: String, code: ParamCode)] = [
+            (shell.grid.panels.faderABBody, GraphTopology.subMixOne, .crossfadeAB),
+            (shell.grid.panels.faderCDBody, GraphTopology.subMixTwo, .crossfadeCD),
+            (shell.grid.panels.faderOneTwoBody, GraphTopology.primary, .crossfadeOneTwo)
+        ]
+        for bus in buses {
+            if let position = engine.registry.value(slot: bus.slot, code: bus.code) { bus.body.setPosition(position) }
+            if let blend = engine.registry.value(slot: bus.slot, code: .blendMode) {
+                bus.body.setBlendModeForTemplate(BlendMode.from(normalised: blend))
+            }
+            if let transition = engine.registry.value(slot: bus.slot, code: .transition) {
+                bus.body.transitionButton?.transition = Transition.from(normalised: transition)
+            }
+        }
+        refreshDrivenParameters()
+    }
+
+    /// The show exactly as the app opened: taken once, at launch. "New" reopens it,
+    /// rather than re-deriving a fresh state by hand (which effects start bypassed,
+    /// which program stages start off, and so on are the engine's own decisions).
+    private var launchTemplate: TemplateDocument?
+
+    /// Remembers the launch state. Called once, after the window is built.
+    func rememberLaunchState() {
+        launchTemplate = captureTemplate(name: "untitled")
+    }
+
+    /// Back to a fresh show: the launch state, empty channels, no file.
+    func newTemplate() {
+        guard var fresh = launchTemplate else { return }
+        fresh.channels = Dictionary(uniqueKeysWithValues: ["A", "B", "C", "D"].map { ($0, TemplateChannel()) })
+        openTemplate(fresh, from: nil)
+        Log.info(.template, "new template")
+    }
+
     // MARK: - A/B ROLL and ADV (docs/specs/ab-roll-adv.md)
     //
     // A TAKE is CUT, FADE, a bus key or their MIDI triggers moving a sub-mix from one

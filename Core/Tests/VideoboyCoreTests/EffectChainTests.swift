@@ -93,7 +93,7 @@ final class EffectChainTests: XCTestCase {
         let back = try TemplateDocument.read(from: url)
         XCTAssertEqual(back.chain(for: .one), chain)
         XCTAssertEqual(back.chain(for: .two), .standard, "a bus the template does not mention gets the standard chain")
-        XCTAssertEqual(back.version, 2)
+        XCTAssertEqual(back.version, TemplateDocument.currentVersion)
 
         // A version-1 file: no chains key at all.
         let old = #"{ "version": 1, "name": "old", "nodes": [ { "identifier": "fx.one.colour", "moduleType": "ColourControlNode", "parameters": { "53A": 0.4 } } ] }"#

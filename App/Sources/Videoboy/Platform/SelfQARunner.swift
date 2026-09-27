@@ -76,6 +76,8 @@ enum SelfQARunner {
             verdict = ABRollSelfQA.run()
         case "optimize":
             verdict = OptimizeSelfQA.run()
+        case "template":
+            verdict = TemplateSelfQA.run()
         case "push-fade":
             verdict = PushFadeSelfQA.run()
         case "mosh":

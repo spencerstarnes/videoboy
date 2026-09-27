@@ -1,0 +1,12 @@
+check:    perf/template
+verdict:  PASS
+when:     2026-09-27T22:28:42Z
+core:     0.4.10
+
+assertions (6/6 passed):
+  PASS  the show saves to a template file — file true, window subtitle 'QA Show.vbt'
+  PASS  New clears the show back to how the app opened — A empty true, C file true, chain 7/7, mappings 0
+  PASS  Open brings back channel A: the clip, its marks, ping-pong, playing — motion.mov, range Optional(ClosedRange(0.2...0.7)), Ping-Pong, playing true
+  PASS  Open brings back the generator in C — C is Optional(Videoboy.ChannelSourceKind.generator)
+  PASS  Open brings back the effect chain, values, MIDI mapping and tempo — chain 8/8, crossfade 0.8, colour 0.660, mapping true, tempo 97.0
+  PASS  the controls on screen show the opened values (crossfader, effect fader) — A/B crossfader shows 0.80; colour fader matches yes

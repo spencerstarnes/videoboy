@@ -82,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         controller.showWindow(nil)
         mainWindowController = controller
+        startAutosave()
         controller.modeController?.onModeChanged = { [weak self] mode in self?.markMode(mode) }
         launch.complete(.interface)
 
@@ -172,6 +173,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// back to AppKit as soon as it is known. Cancel really cancels — a quit prompt
     /// whose Cancel does not cancel is worse than no prompt.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // A show that has a file and auto-save on is saved without asking.
+        if preferences.preferences.autoSave != .never, shellController?.currentTemplateURL != nil {
+            return saveCurrentTemplate(askingForLocation: false) ? .terminateNow : .terminateCancel
+        }
         let response = ReminderAlert.show(
             .saveOnQuit,
             store: preferences,
@@ -189,16 +194,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .tertiary:
             return .terminateCancel
         case .primary:
-            // Saving templates is not built yet. Saying so plainly and quitting is
-            // more honest than a silent no-op that looks like a successful save.
-            Log.warn(.app, "save on quit requested, but template saving is not built")
-            let alert = NSAlert()
-            alert.messageText = "Saving is not built yet"
-            alert.informativeText = "Template save and load is still to come. Your settings are "
-                + "already saved; the patch is not."
-            alert.addButton(withTitle: "Quit Anyway")
-            alert.addButton(withTitle: "Cancel")
-            return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+            // Save, then quit; a cancelled Save As panel cancels the quit too.
+            return saveCurrentTemplate(askingForLocation: false) ? .terminateNow : .terminateCancel
         }
     }
 
@@ -278,6 +275,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeFileMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "File")
+        // The show: New / Open / Save (audit L1 — the patch used to be lost at quit).
+        for (title, action, key, shift) in [
+            ("New", #selector(newTemplate), "n", false),
+            ("Open…", #selector(openTemplate), "o", false)
+        ] as [(String, Selector, String, Bool)] {
+            let entry = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            entry.keyEquivalentModifierMask = shift ? [.command, .shift] : .command
+            entry.target = self
+            menu.addItem(entry)
+        }
+        let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        recentMenu.delegate = self
+        recent.submenu = recentMenu
+        menu.addItem(recent)
+        menu.addItem(.separator())
+        for (title, action, key, shift) in [
+            ("Save", #selector(saveTemplate), "s", false),
+            ("Save As…", #selector(saveTemplateAs), "s", true)
+        ] as [(String, Selector, String, Bool)] {
+            let entry = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            entry.keyEquivalentModifierMask = shift ? [.command, .shift] : .command
+            entry.target = self
+            menu.addItem(entry)
+        }
+        menu.addItem(.separator())
         // ⇧⌘I, Lightroom's import key.
         let importItem = NSMenuItem(title: "Import Clips…", action: #selector(importClips), keyEquivalent: "i")
         importItem.keyEquivalentModifierMask = [.command, .shift]
@@ -293,6 +315,99 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.submenu = menu
         return item
     }
+
+    // MARK: - Templates (File menu)
+
+    private let recentMenu = NSMenu(title: "Open Recent")
+    fileprivate var recentMenuForDelegate: NSMenu { recentMenu }
+    private var autosaveTimer: Timer?
+
+    private var shellController: ShellController? { mainWindowController?.shellController }
+
+    @objc private func newTemplate() { shellController?.newTemplate() }
+
+    @objc private func openTemplate() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = []
+        panel.allowsOtherFileTypes = true
+        panel.directoryURL = preferences.preferences.saveLocation
+        panel.message = "Open a Videoboy template (.vbt)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        open(templateAt: url)
+    }
+
+    /// Opens a template file (also Open Recent).
+    func open(templateAt url: URL) {
+        do {
+            let document = try TemplateDocument.read(from: url)
+            shellController?.openTemplate(document, from: url)
+            remember(url)
+        } catch {
+            shellController?.presentNotice("Could not open \(url.lastPathComponent)", "\(error)")
+        }
+    }
+
+    @objc private func saveTemplate() { saveCurrentTemplate(askingForLocation: false) }
+    @objc private func saveTemplateAs() { saveCurrentTemplate(askingForLocation: true) }
+
+    /// Saves to the current file, or asks where. Returns false if nothing was saved.
+    @discardableResult
+    private func saveCurrentTemplate(askingForLocation: Bool) -> Bool {
+        guard let shell = shellController else { return false }
+        var url = askingForLocation ? nil : shell.currentTemplateURL
+        if url == nil {
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = shell.currentTemplateURL?.lastPathComponent ?? "untitled.vbt"
+            panel.directoryURL = preferences.preferences.saveLocation
+            panel.message = "Save the show — chains, faders, mappings, clock and channels"
+            guard panel.runModal() == .OK, var chosen = panel.url else { return false }
+            if chosen.pathExtension.lowercased() != "vbt" { chosen.appendPathExtension("vbt") }
+            url = chosen
+        }
+        guard let url else { return false }
+        do {
+            try shell.saveTemplate(to: url)
+            remember(url)
+            return true
+        } catch {
+            shell.presentNotice("Could not save \(url.lastPathComponent)", "\(error)")
+            return false
+        }
+    }
+
+    private func remember(_ url: URL) {
+        var recent = preferences.preferences.recentTemplates.filter { $0 != url.path }
+        recent.insert(url.path, at: 0)
+        preferences.preferences.recentTemplates = Array(recent.prefix(10))
+    }
+
+    @objc fileprivate func recentChosenFromMenu(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? String else { return }
+        open(templateAt: URL(fileURLWithPath: path))
+    }
+
+    /// Auto-save (Settings ▸ Save): writes over the current template on its cadence.
+    /// Only when a template has been saved once — it never invents a file.
+    private func startAutosave() {
+        autosaveTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            guard let self, let shell = self.shellController, let url = shell.currentTemplateURL else { return }
+            let minutes: Double
+            switch self.preferences.preferences.autoSave {
+            case .everyFiveMinutes: minutes = 5
+            case .everyFifteenMinutes: minutes = 15
+            case .never, .onQuitOnly: return
+            }
+            guard Date().timeIntervalSince(self.lastAutosave) >= minutes * 60 else { return }
+            self.lastAutosave = Date()
+            // Captured on the main thread (it reads the registry), written on a queue.
+            let document = shell.captureTemplate(name: url.deletingPathExtension().lastPathComponent)
+            DispatchQueue.global(qos: .utility).async {
+                do { try document.write(to: url); Log.info(.template, "auto-saved \(url.lastPathComponent)") }
+                catch { Log.error(.template, "auto-save failed: \(error)") }
+            }
+        }
+    }
+    private var lastAutosave = Date()
 
     /// Records what this build is and what it can see, once, at startup.
     private func logEnvironment() {
@@ -445,3 +560,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 }
+
+// MARK: - Open Recent
+
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === recentMenuForDelegate else { return }
+        menu.removeAllItems()
+        let paths = preferences.preferences.recentTemplates.filter { FileManager.default.fileExists(atPath: $0) }
+        if paths.isEmpty {
+            let empty = NSMenuItem(title: "No Recent Templates", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        }
+        for path in paths {
+            let entry = NSMenuItem(title: URL(fileURLWithPath: path).lastPathComponent,
+                                   action: #selector(recentChosenFromMenu(_:)), keyEquivalent: "")
+            entry.representedObject = path
+            entry.target = self
+            entry.toolTip = path
+            menu.addItem(entry)
+        }
+    }
+}
+

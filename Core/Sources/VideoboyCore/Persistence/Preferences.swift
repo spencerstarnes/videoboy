@@ -107,6 +107,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var usesOptimizedMedia: Bool = true
     /// What Copy + Optimize writes ("performance" = DV, "compact" = MPEG-2 GOP 6).
     public var optimizePreset: String = "performance"
+    /// Templates opened or saved, newest first (File ▸ Open Recent).
+    public var recentTemplates: [String] = []
 
     // MARK: Defaults for new work
 
@@ -218,6 +220,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         announcesAdvanceFallback = decode(.announcesAdvanceFallback, true)
         usesOptimizedMedia = decode(.usesOptimizedMedia, true)
         optimizePreset = decode(.optimizePreset, "performance")
+        recentTemplates = decode(.recentTemplates, [String]())
         autoSave = decode(.autoSave, AutoSaveCadence.never)
         defaultClockSource = decode(.defaultClockSource, "Internal")
         defaultSubdivision = decode(.defaultSubdivision, "1/4")

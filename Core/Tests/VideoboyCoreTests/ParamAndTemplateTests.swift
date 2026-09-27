@@ -411,3 +411,33 @@ extension ParamAndTemplateTests {
         XCTAssertEqual(pinned.normalise(1), 0, accuracy: 1e-9)
     }
 }
+
+/// Version 3: what each channel holds survives a save and a reopen, and a template
+/// written before channels were saved still opens.
+final class TemplateChannelTests: XCTestCase {
+
+    func testChannelsRoundTripThroughAFile() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("channels-\(UUID().uuidString).vbt")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let document = TemplateDocument(name: "set", channels: [
+            "A": TemplateChannel(mediaPath: "/clips/a.mov", inPoint: 0.25, outPoint: 0.75,
+                                 isPlaying: true, loopMode: .pingPong),
+            "C": TemplateChannel(isPlaying: false, reference: "generator:checkerboard")
+        ])
+        try document.write(to: url)
+        let read = try TemplateDocument.read(from: url)
+        XCTAssertEqual(read.channels, document.channels)
+        XCTAssertEqual(read.version, TemplateDocument.currentVersion)
+    }
+
+    func testAVersionTwoTemplateStillOpens() throws {
+        let json = #"{"version": 2, "name": "old", "nodes": [], "edges": [], "mappings": []}"#
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("v2-\(UUID().uuidString).vbt")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(json.utf8).write(to: url)
+        let read = try TemplateDocument.read(from: url)
+        XCTAssertEqual(read.name, "old")
+        XCTAssertNil(read.channels)
+    }
+}
+

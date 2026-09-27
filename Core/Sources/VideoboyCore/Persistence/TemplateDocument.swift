@@ -81,6 +81,30 @@ public struct TemplateLayout: Codable, Equatable {
     }
 }
 
+/// What one channel (A–D) held when the template was saved (version 3).
+public struct TemplateChannel: Codable, Equatable {
+    /// The clip file, by absolute path, when the channel played a file.
+    public var mediaPath: String?
+    /// In and out marks, 0...1 of the clip.
+    public var inPoint: Double?
+    public var outPoint: Double?
+    public var isPlaying: Bool
+    public var loopMode: LoopMode?
+    /// A non-file source, as a library reference: `generator:<kind>`, `isf:<module>`,
+    /// `source:<configured id>`. Nil for a file or an empty channel.
+    public var reference: String?
+
+    public init(mediaPath: String? = nil, inPoint: Double? = nil, outPoint: Double? = nil,
+                isPlaying: Bool = false, loopMode: LoopMode? = nil, reference: String? = nil) {
+        self.mediaPath = mediaPath
+        self.inPoint = inPoint
+        self.outPoint = outPoint
+        self.isPlaying = isPlaying
+        self.loopMode = loopMode
+        self.reference = reference
+    }
+}
+
 /// A complete saved setup.
 public struct TemplateDocument: Codable, Equatable {
 
@@ -89,7 +113,11 @@ public struct TemplateDocument: Codable, Equatable {
     /// 2 (2026-09-23): the effect chains (`chains`), now that a chain is data rather
     /// than hard-wired. A version-1 template has none and loads with the standard
     /// chain, its values applied by slot and code as before (`chains(orStandard:)`).
-    public static let currentVersion = 2
+    ///
+    /// 3 (2026-09-27): what each channel holds (`channels`) — clip, marks, playing,
+    /// loop mode, or a generator / configured-source reference — so opening a template
+    /// brings the show back, not only its settings.
+    public static let currentVersion = 3
 
     public var version: Int
     /// Free-text name shown in the window subtitle.
@@ -102,6 +130,8 @@ public struct TemplateDocument: Codable, Equatable {
     /// Each sub-mix's effect chain, by bus (`one`, `two`). Nil in a template saved
     /// before chains were data.
     public var chains: [String: EffectChain]?
+    /// Each channel's contents, by letter. Nil before version 3.
+    public var channels: [String: TemplateChannel]?
 
     public init(
         version: Int = TemplateDocument.currentVersion,
@@ -111,7 +141,8 @@ public struct TemplateDocument: Codable, Equatable {
         mappings: [TemplateMapping] = [],
         clock: TemplateClock = TemplateClock(),
         layout: TemplateLayout = TemplateLayout(),
-        chains: [String: EffectChain]? = nil
+        chains: [String: EffectChain]? = nil,
+        channels: [String: TemplateChannel]? = nil
     ) {
         self.version = version
         self.name = name
@@ -121,6 +152,7 @@ public struct TemplateDocument: Codable, Equatable {
         self.clock = clock
         self.layout = layout
         self.chains = chains
+        self.channels = channels
     }
 
     /// The chain a bus should run: the saved one, or the standard chain for a
@@ -133,7 +165,7 @@ public struct TemplateDocument: Codable, Equatable {
     // Every field has a default, so a hand-edited template missing a section still
     // loads. This is the mechanism behind SPEC 16's "unknown keys are non-fatal".
     private enum CodingKeys: String, CodingKey {
-        case version, name, nodes, edges, mappings, clock, layout, chains
+        case version, name, nodes, edges, mappings, clock, layout, chains, channels
     }
 
     public init(from decoder: Decoder) throws {
@@ -146,6 +178,7 @@ public struct TemplateDocument: Codable, Equatable {
         clock = try container.decodeIfPresent(TemplateClock.self, forKey: .clock) ?? TemplateClock()
         layout = try container.decodeIfPresent(TemplateLayout.self, forKey: .layout) ?? TemplateLayout()
         chains = try container.decodeIfPresent([String: EffectChain].self, forKey: .chains)
+        channels = try container.decodeIfPresent([String: TemplateChannel].self, forKey: .channels)
 
         if version > TemplateDocument.currentVersion {
             Log.warn(.template, "template is version \(version) but this build understands \(TemplateDocument.currentVersion); loading anyway")
@@ -207,7 +240,8 @@ public struct TemplateDocument: Codable, Equatable {
     /// Builds a template from the current graph and registry.
     public static func capture(
         name: String, graph: RenderGraph, registry: ParamRegistry, clock: TemplateClock,
-        chains: [ChainBus: EffectChain]? = nil
+        chains: [ChainBus: EffectChain]? = nil,
+        channels: [String: TemplateChannel]? = nil
     ) -> TemplateDocument {
         let nodes = graph.nodes.values.map { node -> TemplateNode in
             var values: [String: Double] = [:]
@@ -235,7 +269,8 @@ public struct TemplateDocument: Codable, Equatable {
             edges: graph.edges.sorted { ($0.to, $0.inputIndex) < ($1.to, $1.inputIndex) },
             mappings: mappings,
             clock: clock,
-            chains: chains.map { Dictionary(uniqueKeysWithValues: $0.map { ($0.key.rawValue, $0.value) }) }
+            chains: chains.map { Dictionary(uniqueKeysWithValues: $0.map { ($0.key.rawValue, $0.value) }) },
+            channels: channels
         )
     }
 

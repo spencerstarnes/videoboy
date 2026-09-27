@@ -140,6 +140,10 @@ final class MainWindowController: NSWindowController {
         // The render clock follows the display this window is on, so moving the
         // window between screens retimes it automatically (SPEC 4a).
         engine.start(drivenBy: shell)
+        shellController?.rememberLaunchState()
+        shellController?.onTemplateURLChanged = { [weak window] url in
+            window?.subtitle = url?.lastPathComponent ?? "untitled.vbt"
+        }
 
         Log.info(.app, "main window built at \(Int(initialSize.width))x\(Int(initialSize.height))")
     }
