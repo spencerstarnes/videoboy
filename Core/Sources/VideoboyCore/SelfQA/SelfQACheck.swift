@@ -25,7 +25,8 @@ public enum SelfQAVerdict: String {
 /// Locates the repository on disk so checks can write next to the source.
 public enum RepoPaths {
     /// Repository root: `$VIDEOBOY_REPO_ROOT` if set, otherwise the nearest ancestor
-    /// of the current directory containing CLAUDE.md, otherwise the current directory.
+    /// of the current directory containing CLAUDE.md, then of the app bundle, then
+    /// `~/dev/videoboy-perf`, otherwise the current directory.
     ///
     /// The environment variable is what scripts/ set, and is the reliable path. The
     /// walk-up is a convenience for running a test directly from an editor.
@@ -41,6 +42,20 @@ public enum RepoPaths {
             let parent = candidate.deletingLastPathComponent()
             if parent.path == candidate.path { break }
             candidate = parent
+        }
+        // Opened from Finder the working directory is "/", so walk up from the app
+        // bundle too (an app in <repo>/build finds its repo), then the usual checkout.
+        var bundleCandidate = Bundle.main.bundleURL
+        for _ in 0..<6 {
+            bundleCandidate = bundleCandidate.deletingLastPathComponent()
+            if FileManager.default.fileExists(atPath: bundleCandidate.appendingPathComponent("CLAUDE.md").path) {
+                return bundleCandidate
+            }
+        }
+        let checkout = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("dev/videoboy-perf", isDirectory: true)
+        if FileManager.default.fileExists(atPath: checkout.appendingPathComponent("CLAUDE.md").path) {
+            return checkout
         }
         Log.warn(.selfqa, "could not locate repo root; falling back to working directory")
         return URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)

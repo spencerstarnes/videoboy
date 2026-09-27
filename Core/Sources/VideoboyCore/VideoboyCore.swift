@@ -74,7 +74,8 @@ public enum FeatureFlag: String, CaseIterable, Sendable {
     /// IP video in/out (Phase 4+).
     case ipVideo
     /// The bottom mode bar (Import · VJ · Settings, ⌘1–⌘3), Settings as a mode and
-    /// the setup assistant (0.4.8, proposal §4/§8). Off: the 0.4.7 window exactly.
+    /// the setup assistant (0.4.8, proposal §4/§8). On by default; off gives the
+    /// 0.4.7 window exactly.
     case modeBar
     /// A/B ROLL and ADV keys on the two sub-mix faders (docs/specs/ab-roll-adv.md).
     /// ON: both keys start OFF, and off they change nothing, so the flag only adds
@@ -100,7 +101,10 @@ public struct FeatureFlags: Sendable {
         .displayOutput,
         .compositeCodec,
         .feedback,
-        .abRoll
+        .abRoll,
+        // ON since 2026-09-27 (owner: every feature without a special launch).
+        // `VIDEOBOY_FLAGS=-modeBar` gives the 0.4.7 window back.
+        .modeBar
     ]
 
     /// The process-wide flag set, resolved once from defaults + `VIDEOBOY_FLAGS`.
