@@ -123,12 +123,14 @@ final class PanelSet {
         faderABBody = FaderPanelBody(
             leftLabel: "A", rightLabel: "B",
             leftColor: Theme.Color.busOne, rightColor: Theme.Color.textSecondary,
-            includesSwap: false
+            includesSwap: false,
+            includesABRoll: FeatureFlag.abRoll.isOn
         )
         faderCDBody = FaderPanelBody(
             leftLabel: "C", rightLabel: "D",
             leftColor: Theme.Color.busTwo, rightColor: Theme.Color.textSecondary,
-            includesSwap: false
+            includesSwap: false,
+            includesABRoll: FeatureFlag.abRoll.isOn
         )
         faderOneTwoBody = FaderPanelBody(
             // The ends match the keys above them. Saying "ONE" under a key marked "1"

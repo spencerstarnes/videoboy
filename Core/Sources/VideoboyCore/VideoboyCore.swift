@@ -76,6 +76,10 @@ public enum FeatureFlag: String, CaseIterable, Sendable {
     /// The bottom mode bar (Import · VJ · Settings, ⌘1–⌘3), Settings as a mode and
     /// the setup assistant (0.4.8, proposal §4/§8). Off: the 0.4.7 window exactly.
     case modeBar
+    /// A/B ROLL and ADV keys on the two sub-mix faders (docs/specs/ab-roll-adv.md).
+    /// ON: both keys start OFF, and off they change nothing, so the flag only adds
+    /// the keys. `VIDEOBOY_FLAGS=-abRoll` removes them.
+    case abRoll
 }
 
 /// The set of flags this build runs with.
@@ -95,7 +99,8 @@ public struct FeatureFlags: Sendable {
         .midiControl,
         .displayOutput,
         .compositeCodec,
-        .feedback
+        .feedback,
+        .abRoll
     ]
 
     /// The process-wide flag set, resolved once from defaults + `VIDEOBOY_FLAGS`.

@@ -313,8 +313,11 @@ final class StatusBarView: NSView {
     /// Shows a notice without blocking anything. The detail is the tooltip and is also
     /// logged by the caller. Replaces any earlier notice; clears itself after
     /// `noticeSeconds`.
-    func showNotice(_ title: String, detail: String) {
-        noticeLabel.stringValue = "⚠ \(title)"
+    /// - Parameter isWarning: false for information (ADV improvised, as told to) —
+    ///   red/amber stays for real problems.
+    func showNotice(_ title: String, detail: String, isWarning: Bool = true) {
+        noticeLabel.stringValue = isWarning ? "⚠ \(title)" : title
+        noticeLabel.textColor = isWarning ? Theme.Color.displayWarning : Theme.Color.textSecondary
         noticeLabel.toolTip = detail
         noticeLabel.isHidden = false
         noticeHideWork?.cancel()

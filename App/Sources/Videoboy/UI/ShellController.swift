@@ -1194,9 +1194,12 @@ final class ShellController {
                let current = engine.registry.value(slot: slot, code: code) {
                 activeFades[slot] = FadeAutomation(
                     from: current, to: cut.target, duration: rate.seconds, startedAt: now)
+                takeStarted(on: slot, target: cut.target)
                 Log.info(.clock, "fade started on beat \(String(format: "%.2f", cut.targetBeat)) for \(slot)")
             } else {
                 applyFaderPosition(cut.target, to: slot)
+                takeStarted(on: slot, target: cut.target)
+                takeLanded(on: slot, target: cut.target)
                 Log.info(.clock, "cut on beat \(String(format: "%.2f", cut.targetBeat)) taken for \(slot)")
             }
         }
@@ -1205,6 +1208,9 @@ final class ShellController {
             applyFaderPosition(fade.position(atHostTime: now), to: slot)
             if fade.isFinished(atHostTime: now) {
                 activeFades.removeValue(forKey: slot)
+                // A fade's outgoing side re-cues only once it is fully off air —
+                // swapping its picture mid-dissolve would show on PROGRAM.
+                takeLanded(on: slot, target: fade.to)
             }
         }
     }
@@ -1269,8 +1275,11 @@ final class ShellController {
             if let rate {
                 activeFades[slot] = FadeAutomation(
                     from: current, to: target, duration: rate.seconds, startedAt: now)
+                takeStarted(on: slot, target: target)
             } else {
                 applyFaderPosition(target, to: slot)
+                takeStarted(on: slot, target: target)
+                takeLanded(on: slot, target: target)
             }
             return
         }
@@ -1284,6 +1293,146 @@ final class ShellController {
             rate: rate
         )
     }
+
+    // MARK: - A/B ROLL and ADV (docs/specs/ab-roll-adv.md)
+    //
+    // A TAKE is CUT, FADE, a bus key or their MIDI triggers moving a sub-mix from one
+    // side to the other. A hand on the fader is not a take — rocking it would keep
+    // loading clips. ROLL: the incoming source plays when the take STARTS (so a fade
+    // dissolves in moving); the outgoing one pauses and re-cues when it has fully
+    // LEFT air. ADV: the outgoing source loads its next clip at that same moment —
+    // Up Next first, then the library fallback. The loading runs on the next run-loop
+    // turn, never inside the render tick that took the cut.
+
+    /// The two sub-mixes ROLL/ADV work on: their channels and preference key.
+    private static let abRollBuses: [String: (left: String, right: String, key: String)] = [
+        GraphTopology.subMixOne: ("A", "B", "one"),
+        GraphTopology.subMixTwo: ("C", "D", "two")
+    ]
+    private var rollOn: [String: Bool] = [:]
+    private var advanceOn: [String: Bool] = [:]
+    private var pickers: [String: NextClipPicker] = [:]
+    /// Which side each sub-mix last TOOK to (true = right), so a bus key pressed for
+    /// the side already on air is not a take.
+    private var takenSide: [String: Bool] = [:]
+    /// Channels whose empty-queue fallback has been announced since Up Next last had
+    /// something — said once per dry spell, not on every cut.
+    private var announcedFallback: Set<String> = []
+
+    /// ROLL on or off for a sub-mix (key click, MIDI, check).
+    func setRoll(_ on: Bool, on slot: String) {
+        guard Self.abRollBuses[slot] != nil else { return }
+        rollOn[slot] = on
+        Self.faderBody(for: slot, panels: shell.grid.panels)?.setRoll(on: on)
+        Log.info(.app, "A/B ROLL \(on ? "on" : "off") for \(slot)")
+    }
+
+    /// ADV on or off for a sub-mix.
+    func setAdvance(_ on: Bool, on slot: String) {
+        guard Self.abRollBuses[slot] != nil else { return }
+        advanceOn[slot] = on
+        Self.faderBody(for: slot, panels: shell.grid.panels)?.setAdvance(on: on)
+        Log.info(.app, "ADV \(on ? "on" : "off") for \(slot)")
+    }
+
+    /// Plays or pauses a channel, keeping the play key's own record in step (the key
+    /// and ROLL are linked controls: they must never disagree).
+    private func setChannelPlaying(_ channel: String, _ playing: Bool) {
+        if playing { playingChannels.insert(channel) } else { playingChannels.remove(channel) }
+        engine.setPlaying(playing, channel: channel)
+    }
+
+    /// A take began: with ROLL on, the incoming source rolls.
+    private func takeStarted(on slot: String, target: Double) {
+        guard let bus = Self.abRollBuses[slot] else { return }
+        let side = target >= 0.5
+        if let previous = takenSide[slot], previous == side { return }
+        guard rollOn[slot] == true else { return }
+        let take = ABRoll.take(channels: (bus.left, bus.right), target: target)
+        setChannelPlaying(take.incoming, true)
+    }
+
+    /// A take landed (a cut is on air, a fade has finished): re-cue and/or advance
+    /// the outgoing source — on the next run-loop turn, outside the render tick.
+    private func takeLanded(on slot: String, target: Double) {
+        guard let bus = Self.abRollBuses[slot] else { return }
+        let side = target >= 0.5
+        let isTake = takenSide[slot].map { $0 != side } ?? true
+        takenSide[slot] = side
+        guard isTake, rollOn[slot] == true || advanceOn[slot] == true else { return }
+        let take = ABRoll.take(channels: (bus.left, bus.right), target: target)
+        let main = CFRunLoopGetMain()
+        CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) { [weak self] in
+            self?.settleOutgoing(take, slot: slot, busKey: bus.key)
+        }
+        CFRunLoopWakeUp(main)
+    }
+
+    /// What happens to the source that just left air.
+    private func settleOutgoing(_ take: ABRoll.Take, slot: String, busKey: String) {
+        let rolls = rollOn[slot] == true
+        let channel = take.outgoing
+        if advanceOn[slot] == true, let pick = nextClip(for: channel, onAir: take.incoming, busKey: busKey) {
+            let library = shell.grid.panels.library
+            let item = library.items.first {
+                $0.url?.standardizedFileURL == pick.url.standardizedFileURL
+            }
+            loadClip(pick.url, into: channel, range: item.flatMap { library.markedRange(for: $0.id) })
+            refreshPlaylists()
+            if pick.fromQueue {
+                announcedFallback.remove(channel)
+            } else if preferences.preferences.announcesAdvanceFallback, !announcedFallback.contains(channel) {
+                announcedFallback.insert(channel)
+                let how = pick.fallback?.displayName.lowercased() ?? "library"
+                shell.statusBar.showNotice(
+                    "Up Next \(channel) was empty — cued \(pick.url.lastPathComponent) (\(how))",
+                    detail: "ADV loads from the library when a queue runs out. "
+                        + "Settings ▸ Defaults ▸ When Up Next runs out.",
+                    isWarning: false)
+            }
+            Log.info(.app, "ADV: \(channel) cued \(pick.url.lastPathComponent)"
+                + (pick.fromQueue ? " from Up Next" : " (\(pick.fallback?.rawValue ?? "?"))"))
+        }
+        if rolls {
+            // Paused on its head (the in point when trimmed), waiting to roll.
+            setChannelPlaying(channel, false)
+            engine.sources[channel]?.seek(toNormalised: 0)
+        }
+    }
+
+    /// The next clip for a channel leaving air, or nil.
+    private func nextClip(for channel: String, onAir: String, busKey: String) -> NextClipPicker.Pick? {
+        let panel = busKey == "one" ? shell.grid.panels.libraryOneBody : shell.grid.panels.libraryTwoBody
+        let shown = panel.browser.fallbackOrder()
+        let candidates = shown.compactMap { item in item.url.map { LibraryCandidate(url: $0, bin: item.bin) } }
+        let outgoingURL = engine.sources[channel]?.mediaURL
+        let outgoing = outgoingURL.map { url in
+            LibraryCandidate(url: url, bin: shown.first { $0.url?.standardizedFileURL == url.standardizedFileURL }?.bin)
+        }
+        var queue = playlists[channel]
+        var picker = pickers[busKey] ?? NextClipPicker()
+        let pick = picker.pick(
+            queue: &queue, library: candidates,
+            fallback: preferences.preferences.advanceFallback[busKey] ?? .inOrder,
+            onAir: engine.sources[onAir]?.mediaURL, outgoing: outgoing)
+        pickers[busKey] = picker
+        playlists[channel] = queue
+        return pick
+    }
+
+    /// ROLL / ADV state — for self-QA.
+    func abRollStateForChecks(_ slot: String) -> (roll: Bool, advance: Bool) {
+        (rollOn[slot] ?? false, advanceOn[slot] ?? false)
+    }
+
+    /// Queues a clip on a channel's Up Next — for self-QA.
+    func queueForChecks(_ url: URL, channel: String) {
+        playlists[channel].append(url: url)
+        refreshPlaylists()
+    }
+
+    /// Loads a clip exactly as a drop would — for self-QA.
+    func loadForChecks(_ url: URL, channel: String) { loadClip(url, into: channel) }
 
     private func wireFaders() {
         let panels = shell.grid.panels
@@ -1336,6 +1485,8 @@ final class ShellController {
                     rate: rate,
                     waitsForBeat: self.beatCutEnabled[bus.slot] ?? false)
             }
+            bus.body.onRollToggled = { [weak self] on in self?.setRoll(on, on: bus.slot) }
+            bus.body.onAdvanceToggled = { [weak self] on in self?.setAdvance(on, on: bus.slot) }
             bus.body.onBeatCutToggled = { [weak self] on in
                 self?.beatCutEnabled[bus.slot] = on
             }
@@ -1359,7 +1510,12 @@ final class ShellController {
                 guard let self else { return }
                 // The key has already moved the fader for an immediate cut; with beat
                 // sync on it is put back and scheduled instead.
-                guard self.beatCutEnabled[bus.slot] == true else { return }
+                guard self.beatCutEnabled[bus.slot] == true else {
+                    // An immediate bus-key cut moved the fader itself; it is still a take.
+                    self.takeStarted(on: bus.slot, target: target)
+                    self.takeLanded(on: bus.slot, target: target)
+                    return
+                }
                 self.beginMove(
                     on: bus.slot, rate: nil, waitsForBeat: true, to: target)
             }
@@ -2220,6 +2376,17 @@ final class ShellController {
             (shell.grid.panels.faderOneTwoBody, GraphTopology.primary)
         ]
         for bus in buses {
+            for code in [ParamCode.rollToggleTrigger, .advanceToggleTrigger] {
+                guard let value = engine.registry.value(slot: bus.slot, code: code),
+                      value > 0.5 else { continue }
+                engine.registry.setValue(0, slot: bus.slot, code: code)
+                if code == .rollToggleTrigger {
+                    setRoll(!(rollOn[bus.slot] ?? false), on: bus.slot)
+                } else {
+                    setAdvance(!(advanceOn[bus.slot] ?? false), on: bus.slot)
+                }
+                Log.info(.midi, "\(code.displayName) toggled on \(bus.slot) from a mapping")
+            }
             for code in [ParamCode.cutTrigger, .fadeTrigger, .cutToLeftTrigger, .cutToRightTrigger] {
                 guard let value = engine.registry.value(slot: bus.slot, code: code),
                       value > 0.5 else { continue }

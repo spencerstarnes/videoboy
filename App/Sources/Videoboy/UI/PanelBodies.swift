@@ -929,6 +929,30 @@ final class FaderPanelBody: NSView {
     var onButtonAutomationChanged: (() -> Void)?
 
     private weak var cutButton: VBOptionButton?
+    /// The floating ROLL/ADV pair and the cluster it must never cover.
+    private weak var abRollKeys: NSView?
+    /// What the floating pair must never cover: the end label, the live value, the
+    /// CUT/FADE/BEAT cluster and the fader.
+    private var abRollAvoids: [NSView] = []
+
+    /// Hides the floating ROLL/ADV pair when the panel has no spare room for it —
+    /// hidden, never overlapping another control and never pushing one.
+    override func layout() {
+        super.layout()
+        guard let keys = abRollKeys else { return }
+        let keysFrame = keys.convert(keys.bounds, to: self).insetBy(dx: -3, dy: 0)
+        let blocked = abRollAvoids.contains { view in
+            !view.isHidden && view.convert(view.bounds, to: self).intersects(keysFrame)
+        }
+        keys.isHidden = blocked || keysFrame.minX < 0
+    }
+
+    /// A/B ROLL and ADV — only on the two sub-mix faders.
+    private(set) weak var rollButton: VBOptionButton?
+    private(set) weak var advanceButton: VBOptionButton?
+    /// ROLL / ADV toggled by a click (a MIDI toggle goes through `setRoll`/`setAdvance`).
+    var onRollToggled: ((Bool) -> Void)?
+    var onAdvanceToggled: ((Bool) -> Void)?
     private weak var fadeButton: VBOptionButton?
     private weak var sweepRateKey: VBStepButton?
     private weak var sweepCancelButton: NSButton?
@@ -993,6 +1017,8 @@ final class FaderPanelBody: NSView {
     /// Tells the action keys which slot they belong to, so they can be learned.
     func setMappingSlot(_ slot: String) {
         cutButton?.mappingSlot = slot
+        rollButton?.mappingSlot = slot
+        advanceButton?.mappingSlot = slot
         fadeButton?.mappingSlot = slot
         leftKey?.mappingSlot = slot
         rightKey?.mappingSlot = slot
@@ -1041,7 +1067,8 @@ final class FaderPanelBody: NSView {
         leftLabel: String, rightLabel: String,
         leftColor: NSColor, rightColor: NSColor,
         includesSwap: Bool,
-        leftKeyLabel: String? = nil, rightKeyLabel: String? = nil
+        leftKeyLabel: String? = nil, rightKeyLabel: String? = nil,
+        includesABRoll: Bool = false
     ) {
         self.fader = Controls.fader(value: 0.5, fillsFromCentre: true, accent: leftColor)
         fader.leadingTint = leftColor
@@ -1278,7 +1305,34 @@ final class FaderPanelBody: NSView {
         // FADE and BEAT can each be armed independently, and a rate key stranded
         // here with two others would not say which button it belongs to. Each lives
         // in `buttons`, right beside its own key, instead (see above).
-        let optionsRow = Controls.row([blend, sweepKey, sweepCancel], spacing: 4)
+        // ROLL and ADV (sub-mix faders only, `FeatureFlag.abRoll`) FLOAT beside the
+        // options row rather than joining it: in the row they made it wider, and on a
+        // narrow panel the centred CUT/FADE/BEAT cluster gave way and slid left —
+        // under a performer's fingers. Floating, they take no width from anything;
+        // where the panel has no spare space for them they hide (`layout`), and stay
+        // reachable by MIDI.
+        let options: [NSView] = [blend, sweepKey, sweepCancel]
+        var abRollKeys: NSStackView?
+        if includesABRoll {
+            let roll = VBOptionButton(title: "ROLL")
+            roll.target = self
+            roll.action = #selector(rollPressed(_:))
+            roll.mappingCode = .rollToggleTrigger
+            roll.toolTip = "A/B ROLL: the source you take rolls (plays) as it goes on air; "
+                + "the one leaving pauses and re-cues to its start. Shift-click to learn a MIDI button."
+            roll.setAccessibilityIdentifier("ab-roll")
+            let advance = VBOptionButton(title: "ADV")
+            advance.target = self
+            advance.action = #selector(advancePressed(_:))
+            advance.mappingCode = .advanceToggleTrigger
+            advance.toolTip = "ADV: the source leaving air loads its next clip — Up Next first, "
+                + "then the library (Settings ▸ Defaults). Shift-click to learn a MIDI button."
+            advance.setAccessibilityIdentifier("ab-advance")
+            rollButton = roll
+            advanceButton = advance
+            abRollKeys = Controls.row([roll, advance], spacing: 4)
+        }
+        let optionsRow = Controls.row(options, spacing: 4)
         optionsRow.translatesAutoresizingMaskIntoConstraints = false
 
         // Both live in a band so the cluster can be centred on the PANEL while the
@@ -1356,6 +1410,20 @@ final class FaderPanelBody: NSView {
             fader.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -padding)
         ])
 
+        if let abRollKeys {
+            abRollKeys.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(abRollKeys)
+            // On the end-label line above the fader, beside the right-hand label: that
+            // line is otherwise empty, and a 17 pt key fits between the button row and
+            // the fader without touching either.
+            NSLayoutConstraint.activate([
+                abRollKeys.centerYAnchor.constraint(equalTo: right.centerYAnchor),
+                abRollKeys.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -8)
+            ])
+            self.abRollKeys = abRollKeys
+            self.abRollAvoids = [left, valueLabel, transportCluster, fader]
+        }
+
         // The tap-rate keys float over their buttons, outside every stack view, so
         // showing one never changes the row's size or moves a key under a finger.
         for (rateKey, button) in [(cutRateKey, cutButton), (fadeRateKey, fadeButton),
@@ -1394,6 +1462,19 @@ final class FaderPanelBody: NSView {
         onCutRequested?()
     }
 
+    @objc private func rollPressed(_ sender: VBOptionButton) {
+        onRollToggled?(sender.isOn)
+    }
+
+    @objc private func advancePressed(_ sender: VBOptionButton) {
+        onAdvanceToggled?(sender.isOn)
+    }
+
+    /// Shows ROLL's state (a MIDI toggle, a template) without firing it.
+    func setRoll(on: Bool) { rollButton?.isOn = on }
+    /// Shows ADV's state without firing it.
+    func setAdvance(on: Bool) { advanceButton?.isOn = on }
+
     @objc private func beatCutPressed(_ sender: NSButton) {
         sender.contentTintColor = sender.state == .on ? Theme.Color.accent : nil
         onBeatCutToggled?(sender.state == .on)
@@ -1415,6 +1496,13 @@ final class FaderPanelBody: NSView {
 
     /// Fires as if the left/right bus key were pressed — used when a MIDI-mapped
     /// button pushes `cutToLeftTrigger`/`cutToRightTrigger` to 1 (SPEC 7).
+    /// Presses BEAT on or off exactly as a click does — for self-QA.
+    func setBeatForChecks(_ on: Bool) {
+        guard let beat = beatCutButton, beat.isOn != on else { return }
+        beat.isOn = on
+        onBeatCutToggled?(on)
+    }
+
     func triggerLeftKey() { cut(to: 0) }
     func triggerRightKey() { cut(to: 1) }
 

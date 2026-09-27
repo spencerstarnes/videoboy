@@ -123,6 +123,13 @@ final class LibraryBrowser {
         return rootEntries()
     }
 
+    /// Every clip this panel shows, flat, in its current sort and search — what ADV
+    /// falls back to when Up Next is empty, so what comes next is what you can see.
+    func fallbackOrder() -> [LibraryItem] {
+        model.items(matching: search, sortedBy: sortField, ascending: sortAscending)
+            .filter { $0.url != nil }
+    }
+
     private func sortedItems(_ items: [LibraryItem]) -> [LibraryItem] {
         model.sorted(items, by: sortField, ascending: sortAscending)
     }

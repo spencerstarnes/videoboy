@@ -83,6 +83,8 @@ public final class CrossfadeNode: Node {
             Parameter(code: .fadeTrigger, range: 0...1, defaultValue: 0),
             Parameter(code: .cutToLeftTrigger, range: 0...1, defaultValue: 0),
             Parameter(code: .cutToRightTrigger, range: 0...1, defaultValue: 0),
+            Parameter(code: .rollToggleTrigger, range: 0...1, defaultValue: 0),
+            Parameter(code: .advanceToggleTrigger, range: 0...1, defaultValue: 0),
             Parameter(code: .transition, range: 0...1, defaultValue: 0)
         ] + AVE5Wipe.parameters + AVE5Wipe.triggerParameters
     }

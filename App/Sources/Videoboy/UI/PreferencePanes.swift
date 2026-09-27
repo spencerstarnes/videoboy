@@ -125,6 +125,20 @@ extension PreferencesWindowController {
         reminderCountLabel = Controls.label(
             reminderSummary(), font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
 
+        // What ADV loads when a sub-mix's Up Next is empty (docs/specs/ab-roll-adv.md).
+        // Set before the show, so it lives here rather than on the tight fader row.
+        let fallbacks = ABRollFallback.allCases
+        func fallbackPopUp(_ bus: String) -> NSPopUpButton {
+            let popUp = Controls.popUp(fallbacks.map(\.displayName), target: self,
+                                       action: #selector(advanceFallbackChanged(_:)))
+            popUp.identifier = NSUserInterfaceItemIdentifier("fallback|\(bus)")
+            popUp.selectItem(at: fallbacks.firstIndex(of: store.preferences.advanceFallback[bus] ?? .inOrder) ?? 1)
+            return popUp
+        }
+        let announce = Controls.toggle(
+            on: store.preferences.announcesAdvanceFallback,
+            target: self, action: #selector(announceFallbackChanged(_:)))
+
         return Controls.column([
             header(.defaults),
             spacer(14),
@@ -135,9 +149,23 @@ extension PreferencesWindowController {
             field("Blend mode", blend),
             field("Play on load", playOnLoad),
             field("Picture fill", fill),
+            field("Up Next empty, A/B", fallbackPopUp("one")),
+            field("Up Next empty, C/D", fallbackPopUp("two")),
+            field("Say when ADV improvises", announce),
             spacer(12),
             field("Reminders", Controls.row([restore, reminderCountLabel!], spacing: 10))
         ], spacing: 8)
+    }
+
+    @objc func advanceFallbackChanged(_ sender: NSPopUpButton) {
+        guard let bus = sender.identifier?.rawValue.split(separator: "|").last.map(String.init),
+              ABRollFallback.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
+        store.preferences.advanceFallback[bus] = ABRollFallback.allCases[sender.indexOfSelectedItem]
+        Log.info(.app, "ADV fallback for \(bus): \(ABRollFallback.allCases[sender.indexOfSelectedItem].displayName)")
+    }
+
+    @objc func announceFallbackChanged(_ sender: NSSwitch) {
+        store.preferences.announcesAdvanceFallback = sender.state == .on
     }
 
     private func reminderSummary() -> String {

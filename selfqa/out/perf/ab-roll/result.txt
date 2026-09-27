@@ -1,0 +1,21 @@
+check:    perf/ab-roll
+verdict:  PASS
+when:     2026-09-27T14:12:16Z
+core:     0.4.9
+
+notes:
+  window photo: /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/ab-roll/window.png
+
+assertions (12/12 passed):
+  PASS  ROLL and ADV move nothing on the fader panel (CUT, FADE, BEAT, bus keys, rate, fader) — 7 controls compared
+  PASS  ROLL and ADV are on the A/B and C/D faders, not on PROGRAM — A/B true, C/D true, program false
+  PASS  at a normal window size the ROLL and ADV keys are shown, not squeezed out — window 1840×975; A/B shown true, C/D shown true
+  PASS  ROLL off, ADV off: a cut changes nothing but the picture — A bars.dv playing false; B motion.dv playing false
+  PASS  ROLL on: the incoming source rolls; the outgoing one pauses on its head, same clip — B playing true; A paused true at frame 0.0 (was 19.0); A bars.dv
+  PASS  ADV on: the outgoing source loads its Up Next clip, and with AUTO on it plays off air — A motion.mov playing true
+  PASS  ROLL + ADV: the next clip waits paused at its head and rolls on take — A cued hd-h264-25.mov then rolled true; B cued bars.dv, paused at head true
+  PASS  an empty Up Next falls back to the library and says so once, as information — Up Next A was empty — cued hd-h264-25.mov (in order)
+  PASS  FADE: the incoming source rolls as the fade starts; the outgoing one changes only after it — mid-fade B playing true, A still bars.dv; after: A hd-h264-25.mov
+  PASS  BEAT: nothing rolls or cues until the cut lands on the beat — just after the press: A bars.dv, B playing false; on the beat: B playing true, A hd-h264-2997.mov
+  PASS  a MIDI button toggles ROLL and ADV, and the keys light — roll true, adv true
+  PASS  10 ROLL + ADV cuts under live render: no tick over a frame, no extra dropped frames — worst tick 9.61 ms of 150, 0 dropped (0 in 5 s without cuts)

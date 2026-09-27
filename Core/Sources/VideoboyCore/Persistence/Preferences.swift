@@ -99,6 +99,10 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// Import mode's Favorites: folders the person pinned, by path (macOS has no
     /// public API for Finder's own sidebar).
     public var importFavorites: [String] = []
+    /// What ADV loads when Up Next is empty, per sub-mix ("one" = A/B, "two" = C/D).
+    public var advanceFallback: [String: ABRollFallback] = [:]
+    /// Say in the status strip when ADV fell back to the library (once per dry spell).
+    public var announcesAdvanceFallback: Bool = true
 
     // MARK: Defaults for new work
 
@@ -206,6 +210,8 @@ public struct Preferences: Codable, Equatable, Sendable {
         pluginsLocationPath = decode(.pluginsLocationPath, nil as String?)
         setupCompleted = decode(.setupCompleted, false)
         importFavorites = decode(.importFavorites, [String]())
+        advanceFallback = decode(.advanceFallback, [String: ABRollFallback]())
+        announcesAdvanceFallback = decode(.announcesAdvanceFallback, true)
         autoSave = decode(.autoSave, AutoSaveCadence.never)
         defaultClockSource = decode(.defaultClockSource, "Internal")
         defaultSubdivision = decode(.defaultSubdivision, "1/4")

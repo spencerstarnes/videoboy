@@ -26,6 +26,7 @@
 #           import      — 1,000 clips dropped mid-show: no stutter, status bar, catalog, ✕
 #           modes       — mode bar (0.4.8): strip-only layout change, hitTest, ⌘1–3, live switches
 #           import-mode — Import mode (0.4.9): Add/Move/Copy end to end, scratch catalog
+#           ab-roll     — A/B ROLL + ADV: four combinations by real keys, BEAT, MIDI, budget
 #           fullscreen  — the real window at full-screen size: every scope key, hovered
 #                         sources, the Generators tab, photographed
 #           push-fade   — clips in A and C, Push on the centre fader, FADE and a sweep:
@@ -107,6 +108,9 @@ case "$CHECK" in
   modes)     VIDEOBOY_FLAGS="${VIDEOBOY_FLAGS:+$VIDEOBOY_FLAGS,}modeBar" run_app_check modes ;;
   # Import mode (0.4.9): Add / Move / Copy end to end on scratch folders and a scratch
   # catalog, badges, greying, DUP, the viewer. Real window; opt-in.
+  # A/B ROLL + ADV on the sub-mix faders: the four combinations by real CUT/FADE,
+  # BEAT, MIDI, layout, frame budget. Real window; opt-in.
+  ab-roll)   run_app_check ab-roll ;;
   import-mode) VIDEOBOY_FLAGS="${VIDEOBOY_FLAGS:+$VIDEOBOY_FLAGS,}modeBar" run_app_check import-mode ;;
   push-fade) run_app_check push-fade ;;
   # The real window at the main screen's full size, all four channels playing, every
@@ -137,5 +141,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, bars, import, modes, import-mode, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, bars, import, modes, import-mode, ab-roll, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

@@ -219,6 +219,12 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
 - [ ] **0.4.10 Phase 4** — Copy + Optimize, linked optimized media (LGPL ffmpeg helper).
 - [ ] **0.4.11 Phase 5** — any resolution and frame rate (`ProjectFormat`).
 - [ ] **0.5.0** — tags (proposal appendix A).
+- [x] **A/B ROLL + ADV** (designed with the owner 2026-09-24, built 2026-09-27;
+      `docs/specs/ab-roll-adv.md`): ROLL rolls the source you take and re-cues the one
+      leaving; ADV loads the leaving source's next clip (Up Next, then the library
+      fallback in Settings ▸ Defaults). A/B and C/D faders; MIDI-learnable (6CA/6DA).
+      `selfqa ab-roll`. Still to do: ROLL/ADV on the program fader; a "Then from" key
+      on the library row; blink the linked play key when ROLL starts a source.
 
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)

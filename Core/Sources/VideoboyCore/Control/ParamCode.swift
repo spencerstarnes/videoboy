@@ -236,6 +236,11 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     /// Cut straight to this bus's RIGHT source (e.g. B, D, or TWO) — what the
     /// right bus key does.
     public static let cutToRightTrigger = ParamCode(known: "6BA")
+    /// Toggles A/B ROLL on this sub-mix: the incoming source rolls on take, the
+    /// outgoing one pauses and re-cues (docs/specs/ab-roll-adv.md).
+    public static let rollToggleTrigger = ParamCode(known: "6CA")
+    /// Toggles ADV on this sub-mix: a source leaving air loads its next clip.
+    public static let advanceToggleTrigger = ParamCode(known: "6DA")
 
     // MARK: Genlock/chroma key (6xE)
     //
@@ -487,6 +492,8 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "69A": "fade",
         "6AA": "cut to left",
         "6BA": "cut to right",
+        "6CA": "A/B roll",
+        "6DA": "advance",
         "65A": "blend mode",
         "66A": "layer opacity",
         "61E": "key colour",
@@ -620,6 +627,8 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .fadeTrigger,
         .cutToLeftTrigger,
         .cutToRightTrigger,
+        .rollToggleTrigger,
+        .advanceToggleTrigger,
         .keyColour,
         .keyThreshold,
         .keyEdge,
