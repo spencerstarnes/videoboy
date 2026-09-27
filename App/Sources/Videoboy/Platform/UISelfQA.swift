@@ -149,6 +149,11 @@ enum UISelfQA {
             let started = CACurrentMediaTime()
             controller.loadClipForChecks(bogus, into: "A")
             let elapsed = (CACurrentMediaTime() - started) * 1000
+            // The file is opened off the main thread (F9); the notice follows.
+            let deadline = Date().addingTimeInterval(3)
+            while engine.loadsInFlight > 0, Date() < deadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            }
             check.record(AssertionResult(
                 name: "a failed load returns without blocking",
                 passed: elapsed < 500 && NSApp.modalWindow == nil,
@@ -643,6 +648,7 @@ enum UISelfQA {
                     let drag = FakeDragging(urls: [dv], pasteboardName: "vb-drop-source")
                     let operation = sourceB.draggingEntered(drag)
                     let accepted = sourceB.performDragOperation(drag)
+                    waitForLoads(engine)
                     check.record(AssertionResult(
                         name: "dropping a clip on a source loads it",
                         passed: operation == .copy && accepted
@@ -2544,6 +2550,7 @@ enum UISelfQA {
             }
             body.onReferenceDropped?("generator:\(GeneratorKind.checkerboard.rawValue)")
             body.onClipDropped?(clip, nil)
+            waitForLoads(engine)
             let afterLoad = engine.channelSourceKinds["A"] ?? .file
             check.record(AssertionResult(
                 name: "a clip dropped on a generator channel replaces the generator",
@@ -3091,6 +3098,14 @@ enum UISelfQA {
     private static func countHighlightedFaders(in view: NSView, into count: inout Int) {
         if let fader = view as? VBFader, fader.isDetectHighlighted { count += 1 }
         for subview in view.subviews { countHighlightedFaders(in: subview, into: &count) }
+    }
+
+    /// Waits (up to 5 s) for clip loads to finish: they open off the main thread (F9).
+    static func waitForLoads(_ engine: Engine) {
+        let deadline = Date().addingTimeInterval(5)
+        while engine.loadsInFlight > 0, Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
     }
 
     /// Draws a view hierarchy into an `ImageBuffer` with no window involved.

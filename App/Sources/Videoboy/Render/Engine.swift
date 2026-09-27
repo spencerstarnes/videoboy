@@ -1069,6 +1069,55 @@ final class Engine {
         return loaded
     }
 
+    // MARK: Opening clips off the main thread (audit F9)
+
+    /// One queue for opening clips: file open, probe, first decode. Serial, so two
+    /// loads never fight for the disk, and never the main thread.
+    private let openQueue = DispatchQueue(label: "videoboy.clip-open", qos: .userInitiated)
+    /// The newest load asked for on each channel; an older one that finishes later is
+    /// dropped rather than replacing the clip the performer chose after it.
+    private var loadGeneration: [String: Int] = [:]
+    /// `VIDEOBOY_BLOCKING_LOAD=1` puts loads back on the main thread (the old path).
+    static let blockingLoads = ProcessInfo.processInfo.environment["VIDEOBOY_BLOCKING_LOAD"] == "1"
+    /// Loads started and not yet installed — for self-QA.
+    private(set) var loadsInFlight = 0
+
+    /// Loads a clip without blocking the main thread. The channel keeps playing what
+    /// it had until the new clip is open and its first frames are decoding; then it is
+    /// swapped in on the main run loop and `completion` is called there.
+    func loadAsync(url: URL, intoChannel letter: String, knownFrameCount: Int? = nil,
+                   completion: @escaping (Bool) -> Void) {
+        guard let node = sources[letter] else { return completion(false) }
+        if Self.blockingLoads {
+            return completion(load(url: url, intoChannel: letter, knownFrameCount: knownFrameCount))
+        }
+        let generation = (loadGeneration[letter] ?? 0) + 1
+        loadGeneration[letter] = generation
+        loadsInFlight += 1
+        let work = node.preparation(url: url, knownFrameCount: knownFrameCount)
+        openQueue.async { [weak self] in
+            let prepared = work()
+            // Through the run loop, not the main queue: the self-QA drives the app from
+            // a nested RunLoop.run, which does not drain the main queue.
+            let main = CFRunLoopGetMain()
+            CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
+                guard let self else { return }
+                self.loadsInFlight -= 1
+                guard self.loadGeneration[letter] == generation else {
+                    Log.info(.dv, "\(letter): a newer load replaced \(url.lastPathComponent) before it opened")
+                    return
+                }
+                let loaded = node.install(prepared)
+                if loaded {
+                    self.registry.register(slot: node.identifier, parameters: node.parameters)
+                    self.onChannelSourceChanged?(letter)
+                }
+                completion(loaded)
+            }
+            CFRunLoopWakeUp(main)
+        }
+    }
+
     /// Takes whatever is loaded out of a channel. Safe to call on an empty one.
     ///
     /// Returns false only when the letter names no source at all, so a caller can

@@ -116,6 +116,9 @@ enum ABRollSelfQA {
             shell.setAdvance(false, on: slot)
             shell.loadForChecks(clips[0], channel: "A")
             shell.loadForChecks(clips[1], channel: "B")
+            // Loads open off the main thread (F9); wait for both to be in.
+            let deadline = Date().addingTimeInterval(5)
+            while engine.loadsInFlight > 0, Date() < deadline { spin(0.02) }
             engine.setPlaying(false, channel: "A")
             engine.setPlaying(false, channel: "B")
             // Put the bus on A with a real key press, then settle.

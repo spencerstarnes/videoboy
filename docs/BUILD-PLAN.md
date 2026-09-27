@@ -234,8 +234,8 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
   identical `ShellView`s built back to back, for example a fader 0 pt vs 216 pt wide.
   A performer could get a zero-width fader. Needs its own look at the priorities and
   hugging of those rows.
-- **F9: open clips off the main thread.** Eject + reload blocks the main thread for up to
-  50 ms with 4K HEVC (12-min HD soak, BUGHUNT step 2). Write-up is in BUGHUNT.
+- ~~**F9: open clips off the main thread.**~~ Done 2026-09-27: `Engine.loadAsync`;
+  eject + reload now takes 6.7 ms worst (was 50 ms). See BUGHUNT.
 - **Catalog backup off the launch path** (BUGHUNT S1 follow-up).
 - **Soak memory check reads a sawtooth.** Its least-squares slope swung from −2 to
   +6 MB/min between two identical 12-min runs, although the troughs stayed flat. Judge

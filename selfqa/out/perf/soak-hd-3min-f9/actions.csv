@@ -1,0 +1,8 @@
+action,count,mean_ms,worst_ms
+cut,13,0.11,0.16
+drop clip,13,0.09,0.22
+effect off/on,13,0.01,0.01
+eject + reload,13,5.92,6.67
+fade,13,0.01,0.04
+scope key,12,0.10,0.16
+swap A/B,12,0.05,0.07

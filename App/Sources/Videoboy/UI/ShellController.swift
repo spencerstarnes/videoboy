@@ -95,11 +95,24 @@ final class ShellController {
     /// The single path for every way a file arrives — double-clicked in a library,
     /// dragged onto a source, or chosen from the Load button — so a file that loads
     /// one way cannot silently fail another.
+    ///
+    /// Opening happens OFF the main thread (`Engine.loadAsync`, audit F9): the channel
+    /// keeps showing what it had until the new clip is ready, then everything below
+    /// runs. `then` is told whether it loaded, after the panel is updated.
     private func loadClip(
-        _ url: URL, into channel: String, range: ClosedRange<Double>? = nil
+        _ url: URL, into channel: String, range: ClosedRange<Double>? = nil,
+        then: ((Bool) -> Void)? = nil
     ) {
         let known = shell.grid.panels.library.frameCount(forPath: url.path)
-        guard engine.load(url: url, intoChannel: channel, knownFrameCount: known) else {
+        engine.loadAsync(url: url, intoChannel: channel, knownFrameCount: known) { [weak self] loaded in
+            self?.clipLoaded(url, into: channel, range: range, loaded: loaded)
+            then?(loaded)
+        }
+    }
+
+    /// The main-thread half of `loadClip`, once the clip is open (or failed to).
+    private func clipLoaded(_ url: URL, into channel: String, range: ClosedRange<Double>?, loaded: Bool) {
+        guard loaded else {
             presentNotice(
                 "Could not load \(url.lastPathComponent)",
                 url.pathExtension.lowercased() == "dv"
@@ -162,10 +175,11 @@ final class ShellController {
             guard let self else { return }
             guard let next = self.playlists[channel].takeNext() else { return }
             Log.info(.dv, "\(channel) taking \(next.displayName) from its playlist")
-            self.loadClip(next.url, into: channel)
-            // Up next means up NEXT — it plays, rather than landing paused and
-            // waiting for someone to notice the clip changed.
-            self.engine.setPlaying(true, channel: channel)
+            self.loadClip(next.url, into: channel) { [weak self] loaded in
+                // Up next means up NEXT — it plays, rather than landing paused and
+                // waiting for someone to notice the clip changed.
+                if loaded { self?.engine.setPlaying(true, channel: channel) }
+            }
             self.refreshPlaylists()
         }
     }
@@ -1379,7 +1393,13 @@ final class ShellController {
             let item = library.items.first {
                 $0.url?.standardizedFileURL == pick.url.standardizedFileURL
             }
-            loadClip(pick.url, into: channel, range: item.flatMap { library.markedRange(for: $0.id) })
+            // ROLL's pause-and-re-cue has to wait for the new clip to be in: done in
+            // the load's completion (the clip opens off the main thread).
+            loadClip(pick.url, into: channel, range: item.flatMap { library.markedRange(for: $0.id) }) { [weak self] _ in
+                guard rolls else { return }
+                self?.setChannelPlaying(channel, false)
+                self?.engine.sources[channel]?.seek(toNormalised: 0)
+            }
             refreshPlaylists()
             if pick.fromQueue {
                 announcedFallback.remove(channel)
@@ -1394,6 +1414,7 @@ final class ShellController {
             }
             Log.info(.app, "ADV: \(channel) cued \(pick.url.lastPathComponent)"
                 + (pick.fromQueue ? " from Up Next" : " (\(pick.fallback?.rawValue ?? "?"))"))
+            return
         }
         if rolls {
             // Paused on its head (the in point when trimmed), waiting to roll.

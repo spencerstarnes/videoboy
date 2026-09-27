@@ -201,6 +201,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// Installs a freshly opened decoder and starts decoding its first frames at once,
     /// so the first render after a load usually finds frame 0 ready.
     private func install(_ decoder: ClipDecoding?) {
+        retireCurrentClip()
         clipDecoder = decoder
         prefetcher = decoder.map { ClipPrefetcher(decoder: $0, label: identifier) }
         prefetcher?.prefetch(Array(0..<min(4, decoder?.frameCount ?? 0)), damage: effectiveCorruption)
@@ -411,75 +412,124 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         return playheadFrame / Double(frameCount - 1)
     }
 
-    /// Loads a DV file.
-    ///
-    /// A failure is logged and leaves the node empty rather than throwing into the
-    /// render loop; the panel then shows its "no source" state (SPEC 1.5).
-    @discardableResult
-    public func load(url: URL, knownFrameCount: Int? = nil) -> Bool {
-        // The extension chooses the decoder. DV goes down the bitstream path because
-        // that is the only path the wedge can work on; everything else goes through
-        // AVFoundation. A .dv that will not open is NOT retried as ordinary video —
-        // it would then play without the effects that are the reason to use DV.
+    /// A clip opened and ready to install: the slow half of a load (open the file,
+    /// probe it, start decoding its first frames), done off the main thread so a load
+    /// mid-show does not hold the UI (audit F9: up to 50 ms for 4K HEVC).
+    public struct PreparedClip {
+        public let url: URL
         let decoder: ClipDecoding?
+        let prefetcher: ClipPrefetcher?
+        /// A folder of photographs — it arrives beat-locked.
+        let isSequence: Bool
+        /// Whether it opened; `install` of a failed one empties the channel.
+        public var opened: Bool { decoder != nil }
+    }
 
+    /// Opens a clip WITHOUT touching any node. Safe on any thread; blocking I/O.
+    ///
+    /// - Parameters:
+    ///   - canvas: the node's `decodeCanvas`, read on the main thread by the caller.
+    ///   - damage: the damage to decode the first frames with.
+    ///   - label: the node's identifier, for the prefetcher's queue and the log.
+    public static func prepare(url: URL, canvas: CanvasGeometry, knownFrameCount: Int? = nil,
+                               damage: CorruptionSettings, label: String) -> PreparedClip {
         // A FOLDER is a sequence of photographs. It comes first because a directory has
         // no useful extension to switch on, and because everything downstream —
         // playback, looping, in and out points, stepping a frame on the beat — is the
         // same work whether the frames came from a file or from a stack of pictures.
         var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-           isDirectory.boolValue {
-            decoder = try? ImageSequenceDecoder(folder: url)
-            guard let decoder, decoder.frameCount > 0 else {
-                Log.error(.dv, "\(identifier) found no images in \(url.lastPathComponent)")
-                install(nil)
-                self.mediaURL = nil
-                return false
-            }
-            install(decoder)
-            self.mediaURL = url
-            self.playheadFrame = 0
-
-            // A STACK OF PHOTOGRAPHS ARRIVES BEAT-LOCKED, not running at frame rate.
-            //
-            // SPEC §153 is explicit that the point of importing a folder is that it
-            // "behaves as a beat-locked clip" — deliberately NOT baked to a frame
-            // sequence at project fps the way an NLE would. Loading one as `.continuous`
-            // met the letter of that and missed all of it: 400 photographs at 29.97 fps
-            // is thirteen seconds of flicker, and every single person who dropped a
-            // folder in would have had to find the STEP button before the feature did
-            // anything they wanted.
-            //
-            // One frame per quarter note is the honest default: it is the rung of the
-            // ladder people mean by "a slideshow on the beat", and the STEP button walks
-            // either way from it. A video file is untouched by this — it has its own
-            // frame rate and `.continuous` is the right reading of one.
-            self.timing = .stepped(subdivision: .quarter, frames: 1)
-
-            Log.info(.dv, "\(identifier) loaded \(url.lastPathComponent): "
-                + "\(decoder.frameCount) photographs, one per 1/4 note")
-            return true
+        let isSequence = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            && isDirectory.boolValue
+        let opened: ClipDecoding?
+        if isSequence {
+            opened = try? ImageSequenceDecoder(folder: url)
+        } else {
+            // DV to the DV decoder, the MPEG families to the bitstream decoder (the
+            // wedge needs the packet), everything else to AVFoundation — see
+            // ClipDecoders. A .dv that will not open is NOT retried as ordinary video:
+            // it would then play without the effects that are the reason to use DV.
+            opened = ClipDecoders.open(url, canvas: canvas, knownFrameCount: knownFrameCount)
         }
+        guard let decoder = opened, decoder.frameCount > 0 else {
+            Log.error(.dv, "\(label) could not load \(url.lastPathComponent)")
+            return PreparedClip(url: url, decoder: nil, prefetcher: nil, isSequence: isSequence)
+        }
+        // The first frames start decoding now, on the prefetcher's own queue, so the
+        // first render after the swap usually finds frame 0 ready.
+        let prefetcher = ClipPrefetcher(decoder: decoder, label: label)
+        prefetcher.prefetch(Array(0..<min(4, decoder.frameCount)), damage: damage)
+        return PreparedClip(url: url, decoder: decoder, prefetcher: prefetcher, isSequence: isSequence)
+    }
 
-        // DV to the DV decoder, the MPEG families to the bitstream decoder (the wedge
-        // needs the packet), everything else to AVFoundation — see ClipDecoders.
-        decoder = ClipDecoders.open(url, canvas: decodeCanvas, knownFrameCount: knownFrameCount)
+    /// Where a replaced or ejected clip's decoder and prefetcher are let go of.
+    ///
+    /// Releasing them tears down an AVAssetReader or VideoToolbox session and frees
+    /// every frame they cached — for 4K, tens of megabytes. On the main thread that was
+    /// most of a 40–50 ms eject + reload (HD soak, audit F9). The last reference is
+    /// dropped here instead.
+    private static let retireQueue = DispatchQueue(label: "videoboy.clip-retire", qos: .utility)
 
-        guard let decoder, decoder.frameCount > 0 else {
-            Log.error(.dv, "\(identifier) could not load \(url.lastPathComponent)")
+    /// Hands the current decoder and prefetcher to `retireQueue` and forgets them.
+    private func retireCurrentClip() {
+        guard clipDecoder != nil || prefetcher != nil else { return }
+        let retiring: (ClipDecoding?, ClipPrefetcher?) = (clipDecoder, prefetcher)
+        clipDecoder = nil
+        prefetcher = nil
+        Self.retireQueue.async { withExtendedLifetime(retiring) {} }
+    }
+
+    /// The work of opening `url` for this node, as a closure to run on another
+    /// thread. What it needs from the node (canvas, damage, name) is read NOW, on the
+    /// calling thread, so the closure touches nothing the render loop owns.
+    public func preparation(url: URL, knownFrameCount: Int? = nil) -> () -> PreparedClip {
+        let canvas = decodeCanvas, damage = effectiveCorruption, label = identifier
+        return { Self.prepare(url: url, canvas: canvas, knownFrameCount: knownFrameCount,
+                              damage: damage, label: label) }
+    }
+
+    /// Loads a clip: `prepare` then `install`, on this thread. The live app loads with
+    /// `Engine.loadAsync` instead; offline renders and tests use this.
+    ///
+    /// A failure is logged and leaves the node empty rather than throwing into the
+    /// render loop; the panel then shows its "no source" state (SPEC 1.5).
+    @discardableResult
+    public func load(url: URL, knownFrameCount: Int? = nil) -> Bool {
+        install(Self.prepare(url: url, canvas: decodeCanvas, knownFrameCount: knownFrameCount,
+                             damage: effectiveCorruption, label: identifier))
+    }
+
+    /// The quick half of a load: swaps a prepared clip in. Main thread (or the thread
+    /// that owns this node). Returns whether the channel now has a clip.
+    @discardableResult
+    public func install(_ prepared: PreparedClip) -> Bool {
+        guard let decoder = prepared.decoder else {
             install(nil)
             self.mediaURL = nil
             return false
         }
-
-        install(decoder)
-        self.mediaURL = url
+        retireCurrentClip()
+        clipDecoder = decoder
+        prefetcher = prepared.prefetcher
+        self.mediaURL = prepared.url
         self.playheadFrame = 0
+        if prepared.isSequence {
+            // A STACK OF PHOTOGRAPHS ARRIVES BEAT-LOCKED, not running at frame rate.
+            //
+            // SPEC §153 is explicit that the point of importing a folder is that it
+            // "behaves as a beat-locked clip" — deliberately NOT baked to a frame
+            // sequence at project fps the way an NLE would. 400 photographs at 29.97
+            // fps is thirteen seconds of flicker. One frame per quarter note is the
+            // honest default; the STEP button walks either way from it. A video file
+            // is untouched by this — `.continuous` is the right reading of one.
+            self.timing = .stepped(subdivision: .quarter, frames: 1)
+            Log.info(.dv, "\(identifier) loaded \(prepared.url.lastPathComponent): "
+                + "\(decoder.frameCount) photographs, one per 1/4 note")
+            return true
+        }
         self.isPlayingBackwards = false
         self.textureFrameIndex = -1
         self.playbackRange = nil
-        Log.info(.dv, "\(identifier) loaded \(url.lastPathComponent) "
+        Log.info(.dv, "\(identifier) loaded \(prepared.url.lastPathComponent) "
             + "(\(decoder.dataEffectFamily.displayName) data effects)")
         return true
     }
