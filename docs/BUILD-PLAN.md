@@ -214,8 +214,8 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       off-main thumbnails with an LRU cap. Gate: HD soak (`VIDEOBOY_SOAK_CLIPS`) with no tick
       over one frame.
 - [x] **0.4.7 Phase 1** — SQLite catalog, background import job, contextual status bar (done 2026-09-26; `selfqa import`, results in `docs/AUDIT-2026-09-26.md`).
-- [ ] **0.4.8 Phase 2** — mode bar (⌘1 Import · ⌘2 VJ · ⌘3 Settings), Settings mode, setup assistant.
-- [ ] **0.4.9 Phase 3** — Import mode (Lightroom model; Add/Move/Copy).
+- [x] **0.4.8 Phase 2** — mode bar (⌘1 Import · ⌘2 VJ · ⌘3 Settings), Settings mode, setup assistant (2026-09-27, behind `VIDEOBOY_FLAGS=modeBar`; `selfqa modes`; a person's click-through is still wanted — docs/BLOCKED.md).
+- [x] **0.4.9 Phase 3** — Import mode (Lightroom model; Add/Move/Copy) (2026-09-27, same flag; `selfqa import-mode`; marks to catalog, J/K/L viewer).
 - [ ] **0.4.10 Phase 4** — Copy + Optimize, linked optimized media (LGPL ffmpeg helper).
 - [ ] **0.4.11 Phase 5** — any resolution and frame rate (`ProjectFormat`).
 - [ ] **0.5.0** — tags (proposal appendix A).
@@ -237,11 +237,10 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
 - **F9: open clips off the main thread.** Eject + reload blocks the main thread for up to
   50 ms with 4K HEVC (12-min HD soak, BUGHUNT step 2). Write-up is in BUGHUNT.
 - **Catalog backup off the launch path** (BUGHUNT S1 follow-up).
-- **`selfqa import` drops 1 refresh** in most runs: a 54 ms main-thread stretch about
-  0.33 s into a 1,000-clip drop. Reproduced on 3e710a2, so it predates 0.4.9. Needs a
-  `sample` profile.
-- **Import mode, still to do:** write I/O marks set on an Import tile to the catalog;
-  J/K/L and frame step in the viewer.
+- **Soak memory check reads a sawtooth.** Its least-squares slope swung from −2 to
+  +6 MB/min between two identical 12-min runs, although the troughs stayed flat. Judge
+  leaks by the floor (the lowest sample each 2 min) instead.
+- **Import mode viewer:** add a loop toggle (J/K/L, step and I/O are done).
 - 0.4.8 and 0.4.9 need a person's click-through with `VIDEOBOY_FLAGS=modeBar` before
   their boxes are ticked (see docs/BLOCKED.md).
 

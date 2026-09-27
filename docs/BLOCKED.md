@@ -1,5 +1,7 @@
 # BLOCKED — 2026-09-27, step 3 (0.4.8 mode bar) gate
 
+**Update 2026-09-27:** 0.4.8 and 0.4.9 are ticked on the self-QA gates. A hand click-through is still recommended.
+
 **What's left:** the real-app check the gate asks for: `scripts/run.sh` with
 `VIDEOBOY_FLAGS=modeBar`, clicking the mode bar through real hit-testing.
 
