@@ -318,6 +318,16 @@ final class LibraryModel {
         catalog?.saveEmptyBins(emptyBins)
     }
 
+    /// Clip ids by standardised file path (the first entry for a file) — for Import
+    /// mode, which shows and stores marks for clips already in the library.
+    func idsByPath() -> [String: String] {
+        var ids: [String: String] = [:]
+        for item in items {
+            if let key = pathKey(item), ids[key] == nil { ids[key] = item.id }
+        }
+        return ids
+    }
+
     /// The standardised path of every clip's file — handed to Import mode's background
     /// queue, which works out DUP badges from it (paths are cached, so this is cheap).
     func filePaths() -> [String] {

@@ -15,6 +15,7 @@
 //
 
 import AppKit
+import AVFoundation
 import VideoboyCore
 
 enum ImportModeSelfQA {
@@ -201,6 +202,25 @@ enum ImportModeSelfQA {
             passed: movedOut && movedIn && moveExpected.isSubset(of: afterMove),
             detail: "out of source \(movedOut), in destination \(movedIn), \(moveExpected.intersection(afterMove).count) cataloged"))
 
+        // Marks before an import: I in the viewer, halfway into a clip not yet imported.
+        // Not an import, so outside the main-thread measurement (opening a clip in
+        // AVPlayer is the viewer's own cost, and it is not on the show's path).
+        CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+        let markedClip = copyFolder.appendingPathComponent("motion.mov")
+        view.openInViewer(markedClip)
+        wait(3) { view.playerView.player?.currentItem?.status == .readyToPlay }
+        if let player = view.playerView.player, let item = player.currentItem {
+            player.pause()
+            let half = CMTimeMultiplyByFloat64(item.duration, multiplier: 0.5)
+            var sought = false
+            player.seek(to: half, toleranceBefore: .zero, toleranceAfter: .zero) { _ in sought = true }
+            wait(3) { sought }
+            view.handleViewerKey("i", player: player)
+        }
+        let waitingMarks = view.pendingMarkCountForChecks
+        awake = 0
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+
         // 6. Copy.
         view.show(source(copyFolder))
         wait(10) { view.entries.count == fixtures.count }
@@ -227,6 +247,50 @@ enum ImportModeSelfQA {
         MainThreadCosts.byLabel = nil
         check.note("longest main-thread stretch by phase: " + byPhase.map { String(format: "%@ %.1f ms", $0.key, $0.value) }
             .sorted().joined(separator: ", "))
+        // Marks: set before Copy, stored on the COPY in the catalog.
+        let copiedMark = catalog.loadClips().first {
+            URL(fileURLWithPath: $0.path).standardizedFileURL.path
+                == standard(copyDest.appendingPathComponent("motion.mov"))
+        }?.inPoint
+        check.record(AssertionResult(
+            name: "an I mark set in Import mode before Copy lands in the catalog on the copied clip",
+            passed: waitingMarks == 1 && copiedMark.map { abs($0 - 0.5) < 0.06 } == true
+                && view.pendingMarkCountForChecks == 0,
+            detail: "waiting before import \(waitingMarks); catalog in point "
+                + (copiedMark.map { String(format: "%.3f", $0) } ?? "none")
+                + "; still waiting \(view.pendingMarkCountForChecks)"))
+
+        // Marks on a clip already in the library are stored at once.
+        let libraryClip = addFolder.appendingPathComponent("bars.dv")
+        view.show(source(addFolder))
+        wait(10) { view.entries.count == fixtures.count }
+        view.openInViewer(libraryClip)
+        wait(3) { view.playerView.player?.currentItem?.status == .readyToPlay }
+        if let player = view.playerView.player { player.pause(); view.handleViewerKey("o", player: player) }
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+        let storedOut = catalog.loadClips().first {
+            URL(fileURLWithPath: $0.path).standardizedFileURL.path == standard(libraryClip)
+        }?.outPoint
+        check.record(AssertionResult(
+            name: "an O mark on a clip already in the library is stored in the catalog straight away",
+            passed: storedOut != nil, detail: "catalog out point \(storedOut.map { String(format: "%.3f", $0) } ?? "none")"))
+
+        // J/K/L and frame step.
+        var shuttle: [Float] = []
+        var stepped = false
+        if let player = view.playerView.player {
+            for key in ["l", "l", "k", "j"] { view.handleViewerKey(key, player: player); shuttle.append(player.rate) }
+            let before = CMTimeGetSeconds(player.currentTime())
+            view.handleViewerKey("", keyCode: 124, player: player)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            stepped = CMTimeGetSeconds(player.currentTime()) > before
+            player.pause()
+        }
+        check.record(AssertionResult(
+            name: "the viewer shuttles with J/K/L and steps a frame with →",
+            passed: shuttle == [1, 2, 0, -1] && stepped,
+            detail: "rates \(shuttle); stepped forward \(stepped)"))
+
         // 8. The main thread stayed free throughout the imports.
         check.record(AssertionResult(
             name: "the main thread never stays busy for 25 ms while importing",

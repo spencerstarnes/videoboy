@@ -46,6 +46,17 @@ final class ImportModeView: NSView {
     var onImport: ((_ urls: [URL], _ method: ImportMethod, _ destination: URL?, _ bin: String?) -> Void)?
 
     private let listQueue = DispatchQueue(label: "videoboy.import-mode", qos: .userInitiated)
+
+    // MARKS (proposal §5: "I/O marks stored in the catalog"). A mark on a clip already in
+    // the library is written straight to it (and so to the catalog). A mark on a clip
+    // not yet imported waits here, keyed by its path, and is applied when the clip
+    // lands — at its new path after Move/Copy.
+    typealias Marks = (inPoint: Double?, outPoint: Double?)
+    private var pendingMarks: [String: Marks] = [:]
+    /// Library ids by path, refreshed with each listing.
+    private var libraryIDs: [String: String] = [:]
+    /// Source path → where Move/Copy is putting it, for pending marks.
+    private var transferTargets: [String: URL] = [:]
     private var generation = 0
 
     // Sidebar
@@ -311,6 +322,7 @@ final class ImportModeView: NSView {
         let wanted = generation
         let deep = includeSubfolders.state == .on
         let libraryPaths = library.filePaths()
+        libraryIDs = library.idsByPath()
         gridStatus.stringValue = "Reading \(source.title)…"
         entries = []
         applyFilter()
@@ -382,12 +394,50 @@ final class ImportModeView: NSView {
     /// After an import the DUP badges are stale; re-list once things settle.
     private func libraryChanged() {
         refreshBins()
+        applyPendingMarks()
         libraryRefresh?.cancel()
         guard let source = currentSource else { return }
         let work = DispatchWorkItem { [weak self] in self?.show(source) }
         libraryRefresh = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
+
+    // MARK: - Marks
+
+    /// The marks a tile shows: the library's, or ones waiting for the import.
+    fileprivate func marks(for url: URL) -> Marks {
+        let path = url.standardizedFileURL.path
+        if let id = libraryIDs[path] { return library.marks(for: id) }
+        return pendingMarks[path] ?? (nil, nil)
+    }
+
+    /// I, O or X on a tile or in the viewer.
+    fileprivate func setMarks(_ marks: Marks, for url: URL) {
+        let path = url.standardizedFileURL.path
+        if let id = libraryIDs[path] ?? library.idsByPath()[path] {
+            library.setMarks(inPoint: marks.inPoint, outPoint: marks.outPoint, for: id)
+        } else if marks.inPoint == nil && marks.outPoint == nil {
+            pendingMarks[path] = nil
+        } else {
+            pendingMarks[path] = marks
+        }
+    }
+
+    /// Hands waiting marks to clips that have now arrived in the library.
+    private func applyPendingMarks() {
+        guard !pendingMarks.isEmpty else { return }
+        let ids = library.idsByPath()
+        for (path, marks) in pendingMarks {
+            let landed = transferTargets[path]?.standardizedFileURL.path ?? path
+            guard let id = ids[landed] else { continue }
+            library.setMarks(inPoint: marks.inPoint, outPoint: marks.outPoint, for: id)
+            pendingMarks[path] = nil
+            transferTargets[path] = nil
+        }
+    }
+
+    /// Marks waiting for an import — for self-QA.
+    var pendingMarkCountForChecks: Int { pendingMarks.count }
 
     // MARK: - Grid
 
@@ -417,6 +467,56 @@ final class ImportModeView: NSView {
         playerView.player = player
         player.play()
         if viewerHeight?.constant == 0 { toggleViewer() }
+        shuttle = 0
+        window?.makeFirstResponder(self)
+    }
+
+    // MARK: - Viewer keys: J/K/L shuttle, ←/→ frame step, I/O marks
+
+    override var acceptsFirstResponder: Bool { true }
+
+    /// The shuttle speed J and L have reached (negative is reverse).
+    private var shuttle: Float = 0
+
+    override func keyDown(with event: NSEvent) {
+        guard let player = playerView.player,
+              event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+              handleViewerKey(event.charactersIgnoringModifiers?.lowercased() ?? "",
+                              keyCode: event.keyCode, player: player)
+        else { return super.keyDown(with: event) }
+    }
+
+    /// One viewer key; false when it is not one of ours. Exposed for self-QA.
+    @discardableResult
+    func handleViewerKey(_ key: String, keyCode: UInt16 = 0, player: AVPlayer) -> Bool {
+        switch key {
+        case "l":
+            shuttle = shuttle <= 0 ? 1 : min(shuttle * 2, 8)
+            player.rate = shuttle
+        case "j":
+            shuttle = shuttle >= 0 ? -1 : max(shuttle * 2, -8)
+            player.rate = shuttle
+        case "k":
+            shuttle = 0
+            player.pause()
+        case "i", "o", "x":
+            guard let url = viewerURL, let item = player.currentItem else { return false }
+            let duration = CMTimeGetSeconds(item.duration)
+            let position = duration > 0 ? CMTimeGetSeconds(player.currentTime()) / duration : 0
+            var marks = self.marks(for: url)
+            if key == "i" { marks.inPoint = position; if let out = marks.outPoint, out < position { marks.outPoint = nil } }
+            if key == "o" { marks.outPoint = position; if let into = marks.inPoint, into > position { marks.inPoint = nil } }
+            if key == "x" { marks = (nil, nil) }
+            setMarks(marks, for: url)
+            collection.reloadData()
+        default:
+            // ← and → step one frame (paused).
+            guard keyCode == 123 || keyCode == 124, let item = player.currentItem else { return false }
+            shuttle = 0
+            player.pause()
+            item.step(byCount: keyCode == 124 ? 1 : -1)
+        }
+        return true
     }
 
     /// The clip in the viewer — for self-QA.
@@ -456,6 +556,14 @@ final class ImportModeView: NSView {
         guard !urls.isEmpty else { return }
         Log.info(.app, "import mode: \(method.rawValue) \(urls.count) clips"
             + (resolvedDestination.map { " to \($0.path)" } ?? ""))
+        if let destination = resolvedDestination {
+            // Where each file will land (FileTransfer numbers a taken name, which this
+            // cannot predict; such a clip keeps its marks waiting until matched by hand).
+            for url in urls where pendingMarks[url.standardizedFileURL.path] != nil {
+                transferTargets[url.standardizedFileURL.path] =
+                    destination.appendingPathComponent(url.lastPathComponent)
+            }
+        }
         onImport?(urls, method, resolvedDestination, chosenBin)
     }
 
@@ -576,6 +684,8 @@ extension ImportModeView: NSCollectionViewDataSource {
         tile.configure(entries[shown[index]])
         tile.onChecked = { [weak self] checked in self?.toggle(index, checked: checked) }
         tile.onOpen = { [weak self] url in self?.openInViewer(url) }
+        tile.onMarks = { [weak self] url, marks in self?.setMarks(marks, for: url) }
+        tile.showMarks(marks(for: entries[shown[index]].url))
         return tile
     }
 }
@@ -591,10 +701,14 @@ final class ImportTileItem: NSCollectionViewItem {
     private var url: URL?
     var onChecked: ((Bool) -> Void)?
     var onOpen: ((URL) -> Void)?
+    var onMarks: ((URL, ImportModeView.Marks) -> Void)?
 
     override func loadView() {
         let tile = ImportTileView()
         tile.onDoubleClick = { [weak self] in if let url = self?.url { self?.onOpen?(url) } }
+        picture.onMarksChanged = { [weak self] inPoint, outPoint in
+            if let url = self?.url { self?.onMarks?(url, (inPoint, outPoint)) }
+        }
         name.lineBreakMode = .byTruncatingMiddle
         check.target = self
         check.action = #selector(checkChanged)
@@ -628,6 +742,13 @@ final class ImportTileItem: NSCollectionViewItem {
         name.stringValue = entry.url.lastPathComponent
         view.alphaValue = entry.isDuplicate ? 0.55 : 1   // duplicates greyed
     }
+
+    func showMarks(_ marks: ImportModeView.Marks) {
+        picture.setInOut(inPoint: marks.inPoint, outPoint: marks.outPoint)
+    }
+
+    /// The picture — for self-QA (it takes I and O while hovered).
+    var pictureForChecks: HoverScrubView { picture }
 
     /// The badge text — for self-QA.
     var badgeText: String { badges.stringValue }
