@@ -16,3 +16,14 @@ never reached Videoboy. The agent won't enter a password.
 3. If that works, tick 0.4.8 in BUILD-PLAN. Step 4 (0.4.9 Import mode) can then start.
 
 Everything else in the step 3 gate is green. See BUGHUNT-2026-09-27.md, "step 3".
+
+## Update (same day, after the dialog was dismissed)
+
+Retried with real posted clicks. The real app came up with the mode bar and the setup
+assistant sheet. **Found and fixed:** on first launch, the older "Nothing is being
+sent out yet" output offer (a modal alert) opened on top of the assistant's sheet. The
+offer now waits until the assistant closes (`runSetupAssistant(then:)`). After that,
+posted clicks stopped reaching the app. The click tool can't confirm delivery, so the
+real-app click-through of IMPORT / VJ / SETTINGS is **still unverified by a person**.
+`selfqa modes` covers the same path through `hitTest` inside a real window.
+Your preferences were restored each time.

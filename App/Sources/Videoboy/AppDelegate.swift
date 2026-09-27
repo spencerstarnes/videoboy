@@ -95,9 +95,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.launchWindowController = nil
             // With the mode bar on, first launch gets the setup assistant (a sheet)
             // in place of the save-location alert it replaces (proposal §8).
-            if let self, let window = self.mainWindowController, window.modeController != nil {
-                if !self.preferences.preferences.setupCompleted { window.runSetupAssistant() }
-            } else {
+            if let self, let window = self.mainWindowController, window.modeController != nil,
+               !self.preferences.preferences.setupCompleted {
+                // The output offer is a modal alert; it waits for the assistant's sheet.
+                window.runSetupAssistant { [weak self] in self?.offerDefaultOutputIfNothingIsRouted() }
+                return
+            }
+            if self?.mainWindowController?.modeController == nil {
                 self?.remindAboutSaveLocationIfNeeded()
             }
             self?.offerDefaultOutputIfNothingIsRouted()

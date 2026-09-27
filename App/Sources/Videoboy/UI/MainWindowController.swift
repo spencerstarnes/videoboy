@@ -149,11 +149,14 @@ final class MainWindowController: NSWindowController {
     private(set) var setupAssistant: SetupAssistant?
 
     /// Shows the setup assistant as a sheet on this window (proposal §8).
-    func runSetupAssistant() {
+    /// - Parameter then: runs after the assistant closes — first-launch prompts wait
+    ///   for it, so no alert lands on top of the sheet (seen in the real app).
+    func runSetupAssistant(then: (() -> Void)? = nil) {
         guard let window, setupAssistant == nil else { return }
         let assistant = SetupAssistant(store: preferences)
         assistant.onFinish = { [weak self] openImport in
             self?.setupAssistant = nil
+            then?()
             if openImport { self?.modeController?.show(.importMedia) }
         }
         setupAssistant = assistant
