@@ -1,0 +1,37 @@
+check:    perf/soak
+verdict:  PASS
+when:     2026-09-27T08:03:05Z
+core:     0.4.7
+
+notes:
+  clips: hd-h264-2997.mov, hd-h264-25.mov, hd-prores.mov, uhd-hevc-hev1.mov
+  5 ticks over 14 ms; costliest part in each: source.a ×3, source.b ×2
+    18.62 ms: source.a 5.65, source.b 5.65, ui/onFrame 4.06, gpu fence 1.15, source.c 0.32, source.d 0.27
+    14.67 ms: source.a 5.66, source.b 5.44, gpu fence 1.52, ui/onFrame 0.47, source.c 0.30, fx.c.mosh 0.22
+    14.62 ms: source.a 5.66, source.b 5.63, gpu fence 1.20, source.c 0.33, source.d 0.26, ui/onFrame 0.26
+    14.60 ms: source.b 5.65, source.a 5.65, gpu fence 1.30, ui/onFrame 0.33, source.c 0.33, source.d 0.24
+    14.54 ms: source.b 5.65, source.a 5.64, gpu fence 1.19, ui/onFrame 0.39, source.c 0.28, fx.two.mosh 0.25
+  action cut: 4×, mean 0.08 ms, worst 0.09 ms
+  action drop clip: 5×, mean 11.73 ms, worst 14.31 ms
+  action effect off/on: 4×, mean 0.01 ms, worst 0.01 ms
+  action eject + reload: 4×, mean 17.62 ms, worst 18.96 ms
+  action fade: 4×, mean 0.01 ms, worst 0.03 ms
+  action scope key: 4×, mean 0.11 ms, worst 0.12 ms
+  action swap A/B: 4×, mean 0.05 ms, worst 0.06 ms
+  1.0 min, 29 actions, 1800 frames = 30.00/s, 0 dropped, 1 ticks over 16 ms, worst 18.62 ms
+  footprint 699 → 535 MB (settled 699, -163.48 MB/min); gpu 171 → 144 MB (-27.26 MB/min)
+  threads 35 → 36 (max 38); file descriptors 14 → 14 (max 14)
+  tick mean first window 5.74 ms, last window 5.77 ms
+
+assertions (11/11 passed):
+  PASS  a replaced Source Controls card is freed — freed
+  PASS  the soak holds the 29.97 content rate — 30.00 frames/s
+  PASS  no tick over one SD frame in the whole soak — worst 18.62 ms, 1 ticks over 16 ms
+  PASS  under 0.1% of refreshes dropped across the soak — 0 of 1800
+  PASS  memory footprint is flat once settled (under 2 MB/min) — -163.48 MB/min from minute 0.0
+  PASS  GPU allocation is flat once settled (under 1 MB/min) — -27.26 MB/min
+  PASS  clip swaps leave no threads behind — 35 settled → 36
+  PASS  clip swaps leave no file handles open — 14 settled → 14
+  PASS  the tick does not get slower over the show — 5.74 → 5.77 ms
+  PASS  the window's view count does not grow over the show — 2245 views at the start, 2249 at the end
+  PASS  no performer action blocks the main thread for longer than a frame — worst: eject + reload 18.96 ms

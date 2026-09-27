@@ -95,6 +95,32 @@ if [ ! -f "$SAMPLES/motion-hev1.mov" ]; then
     -c:v hevc_videotoolbox -b:v 4M -tag:v hev1 "$SAMPLES/motion-hev1.mov"
 fi
 
+# HD / 4K fixtures (audit H1). The SD fixtures above hid the real cost of camera
+# footage (F1–F4), so the soak and decode bench run on these too. testsrc2, not
+# mandelbrot: mandelbrot at 1080p takes minutes per clip to generate. 20 s each, long
+# enough that a loop wrap happens several times a minute, not every few seconds.
+hd_fixture() { # name, description, ffmpeg output args...
+  local name="$1" description="$2"; shift 2
+  if [ ! -f "$SAMPLES/$name" ]; then
+    log "generating samples/$name ($description)"
+    ffmpeg -y -loglevel error "${HD_INPUT[@]}" "$@" "$SAMPLES/$name"
+  fi
+}
+HD_INPUT=(-f lavfi -i "testsrc2=size=1920x1080:rate=30000/1001:duration=20")
+hd_fixture hd-h264-2997.mov "1080p H.264 @29.97, 2 s GOP" \
+  -c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 20 -g 60
+hd_fixture hd-prores.mov "1080p ProRes 422 @29.97" \
+  -c:v prores_ks -profile:v 2 -pix_fmt yuv422p10le
+HD_INPUT=(-f lavfi -i "testsrc2=size=1920x1080:rate=25:duration=20")
+hd_fixture hd-h264-25.mov "1080p H.264 @25" \
+  -c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 20 -g 50
+HD_INPUT=(-f lavfi -i "testsrc2=size=3840x2160:rate=30000/1001:duration=20")
+hd_fixture uhd-hevc-hvc1.mov "4K HEVC tagged hvc1" \
+  -c:v hevc_videotoolbox -b:v 30M -tag:v hvc1
+# The S7 regression at the size it was found: 4K HEVC tagged hev1.
+hd_fixture uhd-hevc-hev1.mov "4K HEVC tagged hev1 — S7 regression" \
+  -c:v hevc_videotoolbox -b:v 30M -tag:v hev1
+
 log "writing samples/manifest.json"
 python3 - "$SAMPLES" <<'PY'
 import json, os, sys

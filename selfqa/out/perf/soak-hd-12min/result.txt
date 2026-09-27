@@ -1,0 +1,59 @@
+perf/soak: clips: hd-h264-2997.mov, hd-h264-25.mov, hd-prores.mov, uhd-hevc-hvc1.mov
+perf/soak: PASS  a replaced Source Controls card is freed — freed
+soak 0.5 min: 681 MB, gpu 144 MB, 39 thr, 14 fd, 900 fr, worst 20.4 ms
+soak 1.0 min: 645 MB, gpu 144 MB, 40 thr, 14 fd, 899 fr, worst 17.9 ms
+soak 1.5 min: 538 MB, gpu 144 MB, 42 thr, 14 fd, 899 fr, worst 18.8 ms
+soak 2.0 min: 559 MB, gpu 144 MB, 41 thr, 14 fd, 899 fr, worst 15.7 ms
+soak 2.5 min: 525 MB, gpu 144 MB, 39 thr, 14 fd, 900 fr, worst 15.1 ms
+soak 3.0 min: 613 MB, gpu 144 MB, 40 thr, 14 fd, 899 fr, worst 14.8 ms
+soak 3.5 min: 600 MB, gpu 145 MB, 39 thr, 14 fd, 899 fr, worst 14.9 ms
+soak 4.0 min: 656 MB, gpu 144 MB, 39 thr, 14 fd, 899 fr, worst 14.9 ms
+soak 4.5 min: 640 MB, gpu 145 MB, 41 thr, 14 fd, 899 fr, worst 16.1 ms
+soak 5.0 min: 610 MB, gpu 145 MB, 39 thr, 14 fd, 899 fr, worst 14.9 ms
+soak 5.5 min: 633 MB, gpu 145 MB, 39 thr, 14 fd, 899 fr, worst 18.2 ms
+soak 6.0 min: 541 MB, gpu 145 MB, 39 thr, 14 fd, 899 fr, worst 18.6 ms
+soak 6.5 min: 516 MB, gpu 145 MB, 40 thr, 14 fd, 899 fr, worst 15.1 ms
+soak 7.0 min: 542 MB, gpu 145 MB, 43 thr, 14 fd, 899 fr, worst 15.6 ms
+soak 7.5 min: 530 MB, gpu 145 MB, 42 thr, 14 fd, 900 fr, worst 15.4 ms
+soak 8.0 min: 580 MB, gpu 145 MB, 41 thr, 14 fd, 899 fr, worst 15.2 ms
+soak 8.5 min: 611 MB, gpu 145 MB, 40 thr, 14 fd, 899 fr, worst 15.0 ms
+soak 9.0 min: 540 MB, gpu 145 MB, 40 thr, 14 fd, 899 fr, worst 15.0 ms
+soak 9.5 min: 515 MB, gpu 145 MB, 42 thr, 14 fd, 899 fr, worst 18.4 ms
+soak 10.0 min: 576 MB, gpu 145 MB, 41 thr, 14 fd, 899 fr, worst 15.5 ms
+soak 10.5 min: 599 MB, gpu 145 MB, 39 thr, 14 fd, 899 fr, worst 17.0 ms
+soak 11.0 min: 517 MB, gpu 145 MB, 43 thr, 14 fd, 899 fr, worst 15.6 ms
+soak 11.5 min: 510 MB, gpu 145 MB, 39 thr, 14 fd, 899 fr, worst 14.9 ms
+soak 12.0 min: 539 MB, gpu 145 MB, 39 thr, 14 fd, 899 fr, worst 15.4 ms
+perf/soak: 61 ticks over 14 ms; costliest part in each: source.a ×28, source.b ×24, gpu fence ×9
+perf/soak:   20.39 ms: gpu fence 17.10, ui/onFrame 0.31, source.d 0.31, source.c 0.25, source.a 0.24, source.b 0.22
+perf/soak:   19.36 ms: gpu fence 15.85, ui/onFrame 0.34, source.b 0.29, source.a 0.28, source.d 0.25, source.c 0.24
+perf/soak:   19.02 ms: gpu fence 15.48, source.a 0.35, ui/onFrame 0.31, source.d 0.28, source.b 0.27, source.c 0.24
+perf/soak:   18.84 ms: source.b 5.66, source.a 5.65, ui/onFrame 3.78, gpu fence 1.46, source.c 0.56, source.d 0.27
+perf/soak:   18.66 ms: gpu fence 14.27, ui/onFrame 0.42, source.d 0.27, fx.two.mosh 0.25, source.c 0.25, source.a 0.23
+perf/soak:   18.60 ms: source.b 5.65, source.a 5.65, ui/onFrame 3.93, gpu fence 1.55, source.c 0.29, source.d 0.25
+perf/soak:   18.47 ms: source.b 5.67, source.a 5.65, ui/onFrame 3.91, gpu fence 1.38, source.c 0.33, source.d 0.28
+perf/soak:   18.41 ms: source.a 5.67, source.b 5.64, ui/onFrame 3.86, gpu fence 1.43, source.c 0.33, source.d 0.25
+perf/soak:   18.24 ms: source.b 5.66, source.a 5.65, ui/onFrame 3.66, gpu fence 1.32, source.c 0.36, source.d 0.27
+perf/soak:   17.88 ms: source.b 5.65, source.a 5.64, ui/onFrame 3.52, gpu fence 1.32, source.c 0.29, source.d 0.28
+perf/soak: action cut: 52×, mean 0.10 ms, worst 0.15 ms
+perf/soak: action drop clip: 52×, mean 14.05 ms, worst 19.27 ms
+perf/soak: action effect off/on: 51×, mean 0.01 ms, worst 0.01 ms
+perf/soak: action eject + reload: 51×, mean 22.88 ms, worst 49.98 ms
+perf/soak: action fade: 51×, mean 0.01 ms, worst 0.04 ms
+perf/soak: action scope key: 51×, mean 0.10 ms, worst 0.18 ms
+perf/soak: action swap A/B: 51×, mean 0.05 ms, worst 0.08 ms
+perf/soak: 12.0 min, 359 actions, 21579 frames = 29.97/s, 1 dropped, 11 ticks over 16 ms, worst 20.39 ms
+perf/soak: footprint 719 → 539 MB (settled 559, -2.05 MB/min); gpu 171 → 145 MB (+0.15 MB/min)
+perf/soak: threads 36 → 39 (max 43); file descriptors 14 → 14 (max 14)
+perf/soak: tick mean first window 5.88 ms, last window 5.75 ms
+perf/soak: PASS  the soak holds the 29.97 content rate — 29.97 frames/s
+perf/soak: PASS  no tick over one SD frame in the whole soak — worst 20.39 ms, 11 ticks over 16 ms
+perf/soak: PASS  under 0.1% of refreshes dropped across the soak — 1 of 21579
+perf/soak: PASS  memory footprint is flat once settled (under 2 MB/min) — -2.05 MB/min from minute 2.0
+perf/soak: PASS  GPU allocation is flat once settled (under 1 MB/min) — +0.15 MB/min
+perf/soak: PASS  clip swaps leave no threads behind — 41 settled → 39
+perf/soak: PASS  clip swaps leave no file handles open — 14 settled → 14
+perf/soak: PASS  the tick does not get slower over the show — 5.88 → 5.75 ms
+perf/soak: PASS  the window's view count does not grow over the show — 2245 views at the start, 2249 at the end
+perf/soak: FAIL  no performer action blocks the main thread for longer than a frame — worst: eject + reload 49.98 ms
+perf/soak: FAIL -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/soak/result.txt
