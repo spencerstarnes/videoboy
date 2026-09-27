@@ -1168,18 +1168,6 @@ final class EffectChainPanelBody: NSView {
         collapsedEffects.contains(effectName)
     }
 
-    /// Folds or opens every effect at once.
-    ///
-    /// Not on a control yet. It exists because "collapse all" is the first thing
-    /// anyone asks for after collapsing three cards by hand, and having it here means
-    /// the answer is a menu item rather than a rewrite.
-    func setAllCollapsed(_ collapsed: Bool) {
-        // Chain cards only; the pinned card keeps its own fold.
-        collapsedEffects = (collapsed ? Set(effects.map(\.name)) : [])
-            .union(collapsedEffects.intersection([Self.sourceCardName]))
-        rebuild()
-    }
-
     @objc private func effectToggled(_ sender: NSSwitch) {
         guard let name = sender.identifier?.rawValue else { return }
         onEffectToggled?(name, sender.state == .on)

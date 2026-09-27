@@ -742,11 +742,10 @@ final class Engine {
     /// Each source declares its own latency and the scheduler compensates for it, so
     /// the *visible* change lands on the beat rather than one frame after it.
     private func buildSchedule() {
-        for (letter, node) in sources {
+        for (_, node) in sources {
             scheduler.subscribe(subdivision: .quarter, latencyInFrames: node.latencyInFrames) { event in
                 // Seeding from the beat number keeps a performance reproducible.
                 node.rerollCorruptionSeed(using: UInt64(event.targetBeat * 1000) &+ 17)
-                Log.info(.clock, "source \(letter) reseeded for beat \(event.targetBeat)")
             }
         }
 
@@ -763,7 +762,6 @@ final class Engine {
             scheduler.subscribe(subdivision: .quarter, latencyInFrames: 0) { [weak self] event in
                 guard let codec = self?.busCodec(forBus: name) else { return }
                 codec.rerollCorruptionSeed(using: UInt64(event.targetBeat * 1000) &+ 29)
-                Log.info(.clock, "bus \(name) data effects reseeded for beat \(event.targetBeat)")
             }
         }
     }

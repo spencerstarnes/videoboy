@@ -374,17 +374,6 @@ public final class SharedDrawerTransport: AmigaTransport, @unchecked Sendable {
         }
     }
 
-    /// Removes acknowledgements already counted, so the drawer does not grow forever.
-    ///
-    /// Kept separate from reading them: a listener that is mid-write when we tidy up
-    /// would lose an acknowledgement, so this runs only for sequences well behind.
-    public func pruneAcknowledgements(upTo sequence: Int) {
-        for number in acknowledgedSequences() where number <= sequence {
-            let name = String(format: "%06d.ack", number)
-            try? fileManager.removeItem(
-                at: acknowledgementsDirectory.appendingPathComponent(name))
-        }
-    }
 }
 
 /// A transport that keeps everything in memory.

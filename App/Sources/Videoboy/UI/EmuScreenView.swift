@@ -46,7 +46,6 @@ final class EmuScreenView: NSView {
 
     private let screenLayer = CALayer()
     private var timer: Timer?
-    private var lastFrameCount = -1
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

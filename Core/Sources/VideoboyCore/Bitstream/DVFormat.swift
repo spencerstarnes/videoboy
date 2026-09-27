@@ -75,13 +75,6 @@ public enum DIFSectionType: UInt8, Sendable {
     case vaux = 2
     case audio = 3
     case video = 4
-
-    /// True for the two section types that carry compressed picture data.
-    ///
-    /// These are the only blocks the corruptor should touch by default: damaging a
-    /// header or subcode block tends to make the decoder reject the whole frame,
-    /// which produces a dropout rather than the artefact we want.
-    public var carriesPicture: Bool { self == .video }
 }
 
 /// Constants and offsets for the DV DIF layout.

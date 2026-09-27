@@ -151,7 +151,6 @@ final class SettingsBarPanelBody: NSView {
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
     private let streamLabel = NSTextField(labelWithString: "idle")
-    private var ntscDetailButton: NSButton?
 
     /// Shows what is being streamed, or "idle".
     func setStreamStatus(_ status: String?) {
@@ -159,7 +158,6 @@ final class SettingsBarPanelBody: NSView {
         streamLabel.textColor = status == nil
             ? Theme.Color.textTertiary : Theme.Color.accent
     }
-    private var dvDetailButton: NSButton?
 
     @objc private func outputNTSCChanged(_ sender: VBOptionButton) {
         onOutputNTSCToggled?(sender.isOn)
@@ -185,11 +183,6 @@ final class SettingsBarPanelBody: NSView {
     /// Reflects output state set from elsewhere, without firing the action.
     func setOutputEnabled(_ enabled: Bool) {
         outputToggle.isOn = enabled
-    }
-
-    /// Kept for callers that only have a mode string.
-    func setNegotiatedMode(_ mode: String) {
-        modeLabel.stringValue = mode
     }
 
     /// A vertical rule between sections — a rule rather than more space, so the bar

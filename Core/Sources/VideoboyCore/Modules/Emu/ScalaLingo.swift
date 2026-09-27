@@ -232,15 +232,12 @@ public enum ScalaLingo {
             explanation: "draw text \(words.joined(separator: ", "))")
     }
 
-    /// Text attributes seen on the disc, as separate groups because alignment is
-    /// exclusive and the decorations are not.
+    /// The mutually exclusive text alignments.
     ///
-    /// Counted from Scala's own scripts: remap 305, shadow 197, center 148, left 51,
-    /// edge 40, antialias 31, bevel 14, jam 7, underline 3, right 3, italics 2. The
-    /// order below is that order, because what its authors reached for most is a better
-    /// guide to what matters than what reads well in a list.
+    /// Counted from Scala's own scripts: center 148, left 51, right 3. The order below
+    /// is that order, because what its authors reached for most is a better guide to
+    /// what matters than what reads well in a list.
     public static let alignments = ["left", "center", "right"]
-    public static let decorations = ["antialias", "remap", "shadow", "underline", "edge"]
 
     /// The mutually exclusive ways of edging type. `none` is a real choice, not an
     /// absence: Scala's own scripts use it three times.

@@ -161,9 +161,6 @@ public struct TitlerControl: Equatable, Sendable, Identifiable {
         }
     }
 
-    /// Whether this one is a switch rather than a fader.
-    public var isToggle: Bool { shape == .toggle }
-
     /// The stable param code this control lives at.
     ///
     /// Stable because it is what a MIDI mapping and a saved template store. Every EMU
@@ -370,17 +367,6 @@ public final class ScalaTitlerPanel {
         let span = Double(range.upperBound - range.lowerBound)
         guard span > 0 else { return 0 }
         return min(max(Double(value - range.lowerBound) / span, 0), 1)
-    }
-
-    /// The biggest size the chosen face actually has, which is what a title wants.
-    ///
-    /// An Amiga bitmap font exists at fixed sizes and nowhere in between, so this picks
-    /// from what the disc really carries rather than asking for a number that would drop
-    /// Scala's screen. Called when the faces are learned, because until then there is
-    /// nothing to choose from.
-    public func useLargestAvailableSize() {
-        guard let biggest = faceSizes.max() else { return }
-        state.fontSize = biggest
     }
 
     /// The page names the loaded script defines, in order.

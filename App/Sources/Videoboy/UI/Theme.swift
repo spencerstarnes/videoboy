@@ -51,7 +51,6 @@ enum Theme {
         static let gridPadding: CGFloat = 5
         /// Horizontal and vertical padding inside a panel header (`.boxh`).
         static let panelHeaderPaddingX: CGFloat = 8
-        static let panelHeaderPaddingY: CGFloat = 4
         /// Padding inside a panel body.
         static let panelBodyPadding: CGFloat = 6
         /// Spacing between controls sitting on one row.
@@ -531,9 +530,6 @@ enum Theme {
         /// The line down the middle of the cap.
         static let faderCapLine = NSColor(white: 0.45, alpha: 1)
 
-        /// Hairline drawn where two panels in the same group meet.
-        static let groupSeam = NSColor(white: 1.0, alpha: 0.07)
-
         /// The record button, idle, hovered, running, and unavailable.
         static let recordIdle = NSColor(srgbRed: 0.85, green: 0.16, blue: 0.16, alpha: 1)
         static let recordHover = NSColor(srgbRed: 1.0, green: 0.25, blue: 0.25, alpha: 1)
@@ -598,10 +594,6 @@ enum Theme {
             NSFont(name: "VCR OSD Mono", size: size)
                 ?? NSFont.monospacedDigitSystemFont(ofSize: size, weight: weight)
         }
-
-        /// True when the OSD face is actually available, so the self-QA can say which
-        /// of the two it rendered.
-        static var hasOSDFace: Bool { NSFont(name: "VCR OSD Mono", size: 12) != nil }
     }
 
     /// The resting playhead line on a source preview (`VBMiniPlayBar`).

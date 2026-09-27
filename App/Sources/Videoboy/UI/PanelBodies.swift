@@ -599,7 +599,6 @@ final class PreviewPanelBody: NSView {
 
     /// The scope keys, so their lit state can be set from the selection.
     private var scopeKeys: [ScopeKey: VBOptionButton] = [:]
-    private var blendPopUp: NSPopUpButton?
     private var interchangePopUp: NSPopUpButton?
     private var dataEffectRow: NSStackView?
     /// The bus data-effect faders, exposed so the shell can address them for MIDI.
@@ -1004,11 +1003,6 @@ final class FaderPanelBody: NSView {
 
     /// The blend icon, whose menu pops out beside it.
     private var blendButton: VBBlendButton?
-
-    /// Points the popup at a mode without firing its action.
-    func setBlendMode(_ mode: BlendMode) {
-        blendButton?.mode = mode
-    }
 
     /// Called when this bus's transition pattern changes.
     var onTransitionChanged: ((Transition) -> Void)?

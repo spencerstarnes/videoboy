@@ -81,9 +81,6 @@ public enum ScopeDisplayMode: String, CaseIterable, Codable, Sendable {
     public var showsPicture: Bool {
         self == .quadOverlay || self == .miniLuma
     }
-
-    /// Whether this mode draws small, in a corner, rather than over the whole frame.
-    public var isCorner: Bool { self == .miniLuma }
 }
 
 /// Where a scope sits on the picture.

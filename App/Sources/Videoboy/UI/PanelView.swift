@@ -52,7 +52,6 @@ final class PanelView: NSView {
     private let bodyContainer = NSView()
     /// The header's contents, left to right; `setHeaderAccessory` appends to it.
     private var headerRow: NSStackView?
-    private var bodyHeightWhenCollapsed: NSLayoutConstraint?
 
     /// The view filling the panel body.
     private let body: NSView

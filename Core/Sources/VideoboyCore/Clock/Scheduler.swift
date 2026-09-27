@@ -61,8 +61,7 @@ public final class Scheduler {
     /// quarter notes at 120 BPM is 14 events a second, so a four-hour show appended
     /// ~200,000 of them — several megabytes, and a full-array copy on whichever single
     /// frame happened to hit a capacity doubling. Nothing outside the tests ever read
-    /// more than the last handful, and `resetHistory()` is called only by tests, so the
-    /// growth was pure cost.
+    /// more than the last handful, so the growth was pure cost.
     private(set) public var firedEvents: [ScheduledEvent] = []
 
     /// How many fired events to keep. Comfortably more than the debug overlay shows or
@@ -173,10 +172,5 @@ public final class Scheduler {
         if nowBeats - horizonBeats > 1 {
             Log.warn(.clock, "scheduler advanced past its own horizon; some beats were skipped")
         }
-    }
-
-    /// Clears the fired-event history.
-    public func resetHistory() {
-        firedEvents.removeAll()
     }
 }

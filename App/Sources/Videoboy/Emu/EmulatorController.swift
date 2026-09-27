@@ -74,26 +74,6 @@ final class EmulatorController {
         return AmigaSaveState(directory: amiberryStatesDirectory)
     }
 
-    /// What to tell someone who wants to make one.
-    ///
-    /// ── WHY THIS IS A DIALOGUE AND NOT A BUTTON THAT JUST DOES IT ───────────────
-    ///
-    /// Saving a state means telling the EMULATOR to save, and the emulator is a
-    /// separate application. Driving its menu from here would need Accessibility
-    /// permission to send events to another process — a large thing to ask so that one
-    /// button can avoid explaining itself once.
-    ///
-    /// It is also genuinely a one-time manual step, and the thing that makes it work is
-    /// the part only a person can judge: getting the machine to exactly the page you
-    /// want to start from.
-    static let saveStateInstructions = """
-        Get the machine to the point you want to start from every time: software         loaded, the script open, sitting on the page you will title from.
-
-        Then, in the emulator's own window, press F12 to open its menu, choose         Savestates, and save to a slot.
-
-        Videoboy watches for the file. Once it exists, this button becomes LOAD STATE         and every start lands there in about a second instead of booting from cold.
-        """
-
     /// Whether the next start restores the saved state instead of booting cold.
     ///
     /// Defaults to TRUE once a state exists, because that is invariably what someone

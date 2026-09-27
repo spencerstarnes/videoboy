@@ -117,9 +117,6 @@ public enum NowPlayingTemplate: String, CaseIterable, Codable, Sendable {
     /// Whether the artwork is shown.
     public var showsArtwork: Bool { self != .ticker }
 
-    /// Whether a progress bar is drawn.
-    public var showsProgress: Bool { self == .lowerThird }
-
     public static func from(normalised value: Double) -> NowPlayingTemplate {
         let all = allCases
         return all[NormalisedSweep.index(value, count: all.count)]
