@@ -97,6 +97,9 @@ enum ImportModeSelfQA {
         // Main-thread watch for the whole check.
         var awake = 0.0, longest = 0.0
         var phase = "setup"
+        let sampler = ProcessInfo.processInfo.environment["VIDEOBOY_MAIN_SAMPLER"] == "1"
+            ? MainThreadSampler() : nil
+        var longSpans: [(start: CFTimeInterval, end: CFTimeInterval)] = []
         var byPhase: [String: Double] = [:]
         let observer = CFRunLoopObserverCreateWithHandler(
             nil, CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue,
@@ -106,6 +109,7 @@ enum ImportModeSelfQA {
                 let ms = (now - awake) * 1000
                 longest = max(longest, ms)
                 byPhase[phase] = max(byPhase[phase] ?? 0, ms)
+                if ms > 25 { longSpans.append((awake, now)) }
             }
         }
 
@@ -135,7 +139,7 @@ enum ImportModeSelfQA {
             view.methodControl.selectedSegment = segment
             view.methodControl.sendAction(view.methodControl.action, to: view.methodControl.target)
             if view.destinationEnabled != wantDestination { greying.append("segment \(segment) destination \(view.destinationEnabled)") }
-            if view.optimizeCheck.isEnabled || view.optimizePreset.isEnabled { greying.append("optimize enabled in \(segment)") }
+            if view.optimizeCheck.isEnabled != (segment == 2) { greying.append("optimize enabled \(view.optimizeCheck.isEnabled) in \(segment)") }
         }
         view.show(source(addFolder, allowsMove: false))
         if view.moveEnabled { greying.append("Move enabled for a read-only source") }
@@ -143,12 +147,13 @@ enum ImportModeSelfQA {
         view.show(source(addFolder))
         wait(10) { view.entries.count == fixtures.count }
         check.record(AssertionResult(
-            name: "greying: Add greys the destination; Optimize is 'coming' everywhere; no Move from a read-only source",
-            passed: greying.isEmpty && view.optimizeCheck.title.contains("coming"),
+            name: "greying: Add greys the destination; Optimize only with Copy; no Move from a read-only source",
+            passed: greying.isEmpty,
             detail: greying.isEmpty ? "as the table says" : greying.joined(separator: "; ")))
 
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
         MainThreadCosts.byLabel = [:]
+        sampler?.start()
         func runImport(_ method: Int, destination: URL?) {
             view.methodControl.selectedSegment = method
             view.methodControl.sendAction(view.methodControl.action, to: view.methodControl.target)
@@ -242,6 +247,12 @@ enum ImportModeSelfQA {
                 + "\(copyExpected.intersection(afterCopy).count) cataloged"))
         CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
 
+        sampler?.stop()
+        if let sampler {
+            try? sampler.report(for: longSpans).write(
+                to: RepoPaths.selfQAOutput.appendingPathComponent("perf/import-mode/main-sampler.txt"),
+                atomically: true, encoding: .utf8)
+        }
         check.note("labelled main-thread work, worst: " + (MainThreadCosts.byLabel ?? [:])
             .map { String(format: "%@ %d× %.1f ms", $0.key, $0.value.count, $0.value.max() ?? 0) }.sorted().joined(separator: ", "))
         MainThreadCosts.byLabel = nil

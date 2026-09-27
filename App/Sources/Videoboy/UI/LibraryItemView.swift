@@ -190,7 +190,8 @@ final class LibraryItemView: LibraryCellView {
         entry = .item(item)
         thumbnail.item = item
         thumbnail.setInOut(inPoint: marks.inPoint, outPoint: marks.outPoint)
-        badge.stringValue = item.badge
+        // "DV·OPT": the clip has a linked optimized file (0.4.10), which is what plays.
+        badge.stringValue = item.optimizedPath == nil ? item.badge : "\(item.badge)·OPT"
         caption.stringValue = item.name
         toolTip = item.url != nil
             ? "\(item.name) — double-click to load · drag to a source · I and O set in and out"

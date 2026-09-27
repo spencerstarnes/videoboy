@@ -43,7 +43,8 @@ final class ImportModeView: NSView {
     private let store: PreferenceStore
     private let library: LibraryModel
     /// Runs the import. Set by the owner.
-    var onImport: ((_ urls: [URL], _ method: ImportMethod, _ destination: URL?, _ bin: String?) -> Void)?
+    var onImport: ((_ urls: [URL], _ method: ImportMethod, _ destination: URL?, _ bin: String?,
+                    _ optimize: OptimizePreset?) -> Void)?
 
     private let listQueue = DispatchQueue(label: "videoboy.import-mode", qos: .userInitiated)
 
@@ -87,9 +88,8 @@ final class ImportModeView: NSView {
     private let subfolderField = NSTextField(string: "")
     let binPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let skipDuplicates = NSButton(checkboxWithTitle: "Skip duplicates", target: nil, action: nil)
-    let optimizeCheck = NSButton(checkboxWithTitle: "Optimize while copying — coming in 0.4.10",
-                                 target: nil, action: nil)
-    let optimizePreset = Controls.popUp(SetupChoices.optimizePresets, enabled: false)
+    let optimizeCheck = NSButton(checkboxWithTitle: "Optimize while copying", target: nil, action: nil)
+    let optimizePreset = SetupChoices.popUp(SetupChoices.optimizePresetItems)
     let importButton = NSButton(title: "Import", target: nil, action: nil)
 
     init(store: PreferenceStore, library: LibraryModel) {
@@ -232,8 +232,11 @@ final class ImportModeView: NSView {
         binPopUp.target = self
         binPopUp.action = #selector(binChanged)
         skipDuplicates.state = .on
-        optimizeCheck.isEnabled = false
-        optimizeCheck.toolTip = "Copy + Optimize arrives in 0.4.10"
+        optimizeCheck.toolTip = "Convert each copy for the SD canvas (DV or MPEG-2), linked to "
+            + "the original and played in its place"
+        optimizeCheck.target = self
+        optimizeCheck.action = #selector(methodChanged)
+        optimizePreset.selectItem(at: store.preferences.optimizePreset == OptimizePreset.compact.rawValue ? 1 : 0)
         importButton.bezelStyle = .rounded
         importButton.keyEquivalent = "\r"
         importButton.target = self
@@ -275,9 +278,9 @@ final class ImportModeView: NSView {
         destinationRow.pathLabel.textColor = usesDestination ? Theme.Color.textSecondary : Theme.Color.textTertiary
         subfolderCheck.isEnabled = usesDestination
         subfolderField.isEnabled = usesDestination && subfolderCheck.state == .on
-        // Copy + Optimize is 0.4.10: disabled in every method until then.
-        optimizeCheck.isEnabled = false
-        optimizePreset.isEnabled = false
+        // Optimize only with COPY (proposal §5: Add and Move grey it out).
+        optimizeCheck.isEnabled = method == .copy
+        optimizePreset.isEnabled = method == .copy && optimizeCheck.state == .on
         updateImportButton()
     }
 
@@ -564,7 +567,9 @@ final class ImportModeView: NSView {
                     destination.appendingPathComponent(url.lastPathComponent)
             }
         }
-        onImport?(urls, method, resolvedDestination, chosenBin)
+        let optimize = method == .copy && optimizeCheck.state == .on
+            ? SetupChoices.optimizePreset(at: optimizePreset.indexOfSelectedItem) : nil
+        onImport?(urls, method, resolvedDestination, chosenBin, optimize)
     }
 
     private func refreshBins() {

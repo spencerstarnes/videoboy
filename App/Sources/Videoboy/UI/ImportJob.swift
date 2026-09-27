@@ -44,6 +44,10 @@ final class ImportJob {
     let destination: URL?
     /// Files the transfer could not move or copy, for the caller's notice.
     private(set) var transferFailures: [String] = []
+    /// Where the files ended up (after Move/Copy) — what Optimize converts.
+    private(set) var resultingURLs: [URL] = []
+    /// Copy + Optimize: convert the copies once they are in the library.
+    var optimizePreset: OptimizePreset?
 
     /// Called on the main thread with each progress update.
     var onProgress: ((ImportProgress) -> Void)?
@@ -114,6 +118,8 @@ final class ImportJob {
             progress.read = 0
             progress.stage = .scanning
         }
+
+        resultingURLs = sources
 
         // SCAN, adding clips to the library in batches as they are found.
         var pending: [LibraryItem] = []

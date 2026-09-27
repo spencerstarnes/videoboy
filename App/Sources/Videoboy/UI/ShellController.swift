@@ -103,8 +103,13 @@ final class ShellController {
         _ url: URL, into channel: String, range: ClosedRange<Double>? = nil,
         then: ((Bool) -> Void)? = nil
     ) {
-        let known = shell.grid.panels.library.frameCount(forPath: url.path)
-        engine.loadAsync(url: url, intoChannel: channel, knownFrameCount: known) { [weak self] loaded in
+        // Linked optimized media plays in place of the original when there is one for
+        // this canvas (Settings ▸ Optimize; a missing file falls back to the original).
+        let library = shell.grid.panels.library
+        let playing = preferences.preferences.usesOptimizedMedia
+            ? library.playbackURL(for: url, canvas: ClipOptimizer.canvasTag) : (url: url, optimized: false)
+        let known = playing.optimized ? nil : library.frameCount(forPath: url.path)
+        engine.loadAsync(url: playing.url, intoChannel: channel, knownFrameCount: known) { [weak self] loaded in
             self?.clipLoaded(url, into: channel, range: range, loaded: loaded)
             then?(loaded)
         }
@@ -570,12 +575,14 @@ final class ShellController {
     ///   folder's shape on disk becomes bins; into a bin, everything is filed in THAT
     ///   bin, because bins are one level deep and the person chose where it goes.
     private func addToLibrary(_ urls: [URL], library: LibraryPanelBody, intoBin bin: String? = nil,
-                              method: ImportMethod = .add, destination: URL? = nil) {
+                              method: ImportMethod = .add, destination: URL? = nil,
+                              optimize: OptimizePreset? = nil) {
         // A BACKGROUND JOB, not a loop here: walking folders, reading posters and
         // measuring clips on the main thread froze the window on large drops and
         // looked like a crash (audit 09-26 R1–R3). Clips appear in the library as they
         // are found; the status bar reports when the import is big enough to worry about.
         let job = ImportJob(urls: urls, intoBin: bin, method: method, destination: destination)
+        job.optimizePreset = method == .copy ? optimize : nil
         job.isLive = { [weak self] in self?.engine.transport.isRunning ?? false }
         job.onProgress = { [weak self] progress in self?.showImportProgress(progress) }
         job.onFinished = { [weak self, weak job] progress in
@@ -602,6 +609,9 @@ final class ShellController {
 
     private func importFinished(_ job: ImportJob, progress: ImportProgress) {
         importJobs.removeAll { $0 === job }
+        if let preset = job.optimizePreset, progress.stage == .finished {
+            enqueueOptimize(job.resultingURLs, preset: preset)
+        }
         LibraryPanelBody.importsRunning = importJobs.count
         showImportProgress(progress)
         if !progress.rejected.isEmpty {
@@ -644,9 +654,46 @@ final class ShellController {
     }
 
     /// Import mode's Import button: Add, Move or Copy, into a bin, as a background job.
-    func importFiles(_ urls: [URL], method: ImportMethod, destination: URL?, bin: String?) {
+    func importFiles(_ urls: [URL], method: ImportMethod, destination: URL?, bin: String?,
+                     optimize: OptimizePreset? = nil) {
         addToLibrary(urls, library: shell.grid.panels.libraryOneBody, intoBin: bin,
-                     method: method, destination: destination)
+                     method: method, destination: destination, optimize: optimize)
+    }
+
+    // MARK: - Copy + Optimize (0.4.10)
+
+    /// One child process at a time, at background priority (see OptimizeQueue).
+    private(set) lazy var optimizeQueue: OptimizeQueue = {
+        let queue = OptimizeQueue { [weak self] in
+            self?.preferences.preferences.optimizedMediaLocation
+                ?? Preferences.defaultMoviesFolder.appendingPathComponent("Optimized Media")
+        }
+        queue.onStatus = { [weak self] text in
+            guard let text else { return }
+            self?.shell.statusBar.showNotice(text, detail: "Copy + Optimize, one clip at a time, "
+                + "at background priority.", isWarning: false)
+        }
+        queue.onFinished = { [weak self] job, result, reason in
+            guard let self else { return }
+            if let result {
+                self.shell.grid.panels.library.setOptimized(
+                    path: result.path, canvas: ClipOptimizer.canvasTag, for: job.clipID)
+            } else if reason != "stopped" {
+                self.presentNotice("Could not optimize \(job.source.lastPathComponent) — it plays the original",
+                                   reason ?? "unknown")
+            }
+        }
+        return queue
+    }()
+
+    /// Converts clips now in the library (at these paths).
+    func enqueueOptimize(_ urls: [URL], preset: OptimizePreset) {
+        let ids = shell.grid.panels.library.idsByPath()
+        let jobs = urls.compactMap { url -> OptimizeQueue.Job? in
+            guard let id = ids[url.standardizedFileURL.path] else { return nil }
+            return OptimizeQueue.Job(clipID: id, source: url, preset: preset)
+        }
+        optimizeQueue.enqueue(jobs)
     }
 
     /// Imports running now — for self-QA.

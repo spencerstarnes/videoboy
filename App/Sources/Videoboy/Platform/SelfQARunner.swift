@@ -74,6 +74,8 @@ enum SelfQARunner {
             verdict = ImportModeSelfQA.run()
         case "ab-roll":
             verdict = ABRollSelfQA.run()
+        case "optimize":
+            verdict = OptimizeSelfQA.run()
         case "push-fade":
             verdict = PushFadeSelfQA.run()
         case "mosh":

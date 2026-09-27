@@ -44,11 +44,15 @@ public struct CatalogClip: Equatable, Sendable, Codable {
     public var outPoint: Double?
     /// Library order.
     public var position: Int
+    /// The linked optimized file (0.4.10), when one has been written.
+    public var optimizedPath: String?
+    /// The canvas it was made for (e.g. "SD NTSC 29.97"); stale when that changes.
+    public var optimizedCanvas: String?
 
     public init(id: String, path: String, bookmark: Data? = nil, name: String, badge: String,
                 bin: String? = nil, duration: Double? = nil, frameCount: Int? = nil,
                 frameRate: Double? = nil, inPoint: Double? = nil, outPoint: Double? = nil,
-                position: Int) {
+                position: Int, optimizedPath: String? = nil, optimizedCanvas: String? = nil) {
         self.id = id
         self.path = path
         self.bookmark = bookmark
@@ -61,6 +65,8 @@ public struct CatalogClip: Equatable, Sendable, Codable {
         self.inPoint = inPoint
         self.outPoint = outPoint
         self.position = position
+        self.optimizedPath = optimizedPath
+        self.optimizedCanvas = optimizedCanvas
     }
 }
 
@@ -83,7 +89,7 @@ public final class Catalog {
 
     public let url: URL
     public static let fileExtension = "vbcatalog"
-    public static let schemaVersion: Int32 = 1
+    public static let schemaVersion: Int32 = 2
     /// How often opening makes a backup, and how many are kept.
     public static let backupInterval: TimeInterval = 7 * 24 * 3600
     public static let backupsKept = 5
@@ -176,7 +182,15 @@ public final class Catalog {
                 PRAGMA user_version = 1;
                 """)
         }
-        // Later versions: `if version < 2 { ALTER TABLE … ; PRAGMA user_version = 2 }`.
+        if version < 2 {
+            // 0.4.10: the linked optimized file (Resolve-style: one clip, two files).
+            try execute("""
+                ALTER TABLE clips ADD COLUMN optimized_path TEXT;
+                ALTER TABLE clips ADD COLUMN optimized_canvas TEXT;
+                PRAGMA user_version = 2;
+                """)
+        }
+        // Later versions: `if version < 3 { ALTER TABLE … ; PRAGMA user_version = 3 }`.
     }
 
     // MARK: - Reading (launch)
@@ -187,7 +201,8 @@ public final class Catalog {
             var clips: [CatalogClip] = []
             query("""
                 SELECT id, path, bookmark, name, badge, bin, duration, frame_count, frame_rate,
-                       in_point, out_point, position FROM clips ORDER BY position
+                       in_point, out_point, position, optimized_path, optimized_canvas
+                FROM clips ORDER BY position
                 """) { s in
                 clips.append(CatalogClip(
                     id: Self.text(s, 0) ?? UUID().uuidString,
@@ -201,7 +216,9 @@ public final class Catalog {
                     frameRate: Self.double(s, 8),
                     inPoint: Self.double(s, 9),
                     outPoint: Self.double(s, 10),
-                    position: Int(sqlite3_column_int64(s, 11))))
+                    position: Int(sqlite3_column_int64(s, 11)),
+                    optimizedPath: Self.text(s, 12),
+                    optimizedCanvas: Self.text(s, 13)))
             }
             return clips
         }
@@ -227,8 +244,9 @@ public final class Catalog {
             transaction {
                 let sql = """
                     INSERT OR REPLACE INTO clips (id, path, bookmark, name, badge, bin, duration,
-                        frame_count, frame_rate, in_point, out_point, position)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        frame_count, frame_rate, in_point, out_point, position,
+                        optimized_path, optimized_canvas)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """
                 prepare(sql) { statement in
                     for clip in clips {
@@ -245,6 +263,8 @@ public final class Catalog {
                         bind(statement, 10, clip.inPoint)
                         bind(statement, 11, clip.outPoint)
                         sqlite3_bind_int64(statement, 12, Int64(clip.position))
+                        bind(statement, 13, clip.optimizedPath)
+                        bind(statement, 14, clip.optimizedCanvas)
                         if sqlite3_step(statement) != SQLITE_DONE { logError("save") }
                     }
                 }

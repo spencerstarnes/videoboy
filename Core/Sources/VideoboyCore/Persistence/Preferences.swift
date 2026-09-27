@@ -103,6 +103,10 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var advanceFallback: [String: ABRollFallback] = [:]
     /// Say in the status strip when ADV fell back to the library (once per dry spell).
     public var announcesAdvanceFallback: Bool = true
+    /// Play a clip's linked optimized file when there is one (0.4.10, proposal §5).
+    public var usesOptimizedMedia: Bool = true
+    /// What Copy + Optimize writes ("performance" = DV, "compact" = MPEG-2 GOP 6).
+    public var optimizePreset: String = "performance"
 
     // MARK: Defaults for new work
 
@@ -212,6 +216,8 @@ public struct Preferences: Codable, Equatable, Sendable {
         importFavorites = decode(.importFavorites, [String]())
         advanceFallback = decode(.advanceFallback, [String: ABRollFallback]())
         announcesAdvanceFallback = decode(.announcesAdvanceFallback, true)
+        usesOptimizedMedia = decode(.usesOptimizedMedia, true)
+        optimizePreset = decode(.optimizePreset, "performance")
         autoSave = decode(.autoSave, AutoSaveCadence.never)
         defaultClockSource = decode(.defaultClockSource, "Internal")
         defaultSubdivision = decode(.defaultSubdivision, "1/4")

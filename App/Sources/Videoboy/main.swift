@@ -20,6 +20,10 @@ import VideoboyCore
 enum LaunchMode {
     case normal
     case selfQA(check: String)
+    /// The Copy + Optimize helper (0.4.10): converts one file and exits. Run by the
+    /// app as a CHILD PROCESS (OptimizeQueue), so a crash in a decoder or encoder can
+    /// never take the show down.
+    case optimize(source: String, output: String, preset: String)
     case help
 }
 
@@ -31,6 +35,13 @@ func parseLaunchMode(_ arguments: [String]) -> LaunchMode {
         switch arguments[index] {
         case "--help", "-h":
             return .help
+        case "--optimize":
+            guard index + 3 < arguments.count else {
+                Log.error(.app, "--optimize needs <source> <output> <preset>")
+                return .help
+            }
+            return .optimize(source: arguments[index + 1], output: arguments[index + 2],
+                             preset: arguments[index + 3])
         case "--selfqa":
             guard index + 1 < arguments.count else {
                 Log.error(.app, "--selfqa needs a check name (offscreen, loopback, midi)")
@@ -51,6 +62,9 @@ Videoboy \(Videoboy.version)
   Videoboy                    launch the app
   Videoboy --selfqa <check>   run a self-QA check and exit
                               checks: loopback, offscreen, displays
+  Videoboy --optimize <in> <out> <performance|compact>
+                              convert one clip for Copy + Optimize and exit;
+                              prints "progress <done> <total>" lines
   Videoboy --help             this message
 """
 
@@ -60,6 +74,28 @@ switch parseLaunchMode(CommandLine.arguments) {
 case .help:
     FileHandle.standardOutput.write(Data((usage + "\n").utf8))
     exit(0)
+
+case .optimize(let source, let output, let presetName):
+    // Lowest priority: this runs beside a show.
+    setpriority(PRIO_PROCESS, 0, 10)
+    guard let preset = OptimizePreset(rawValue: presetName) else {
+        Log.error(.app, "unknown optimize preset '\(presetName)'")
+        exit(2)
+    }
+    // SIGTERM (Cancel) stops between frames; the caller deletes the partial file.
+    signal(SIGTERM, SIG_DFL)
+    do {
+        let frames = try ClipOptimizer.optimize(
+            URL(fileURLWithPath: source), to: URL(fileURLWithPath: output), preset: preset
+        ) { done, total in
+            FileHandle.standardOutput.write(Data("progress \(done) \(total)\n".utf8))
+        }
+        FileHandle.standardOutput.write(Data("done \(frames)\n".utf8))
+        exit(0)
+    } catch {
+        FileHandle.standardError.write(Data("optimize failed: \(error)\n".utf8))
+        exit(1)
+    }
 
 case .selfQA(let check):
     // Self-QA runs without a visible UI, but still needs an NSApplication: the

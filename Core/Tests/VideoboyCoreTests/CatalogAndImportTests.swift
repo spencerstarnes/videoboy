@@ -8,6 +8,7 @@
 //  Connects: Catalog, ImportScan, ImportProgress, ClipProbe, ClipDecoders.
 //
 
+import SQLite3
 import XCTest
 @testable import VideoboyCore
 
@@ -44,6 +45,50 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(reopened.loadEmptyBins(), ["Empty"])
     }
 
+    /// 0.4.10: the optimized file's link survives a reopen.
+    func testTheOptimizedLinkIsKept() throws {
+        let url = directory.appendingPathComponent("opt.vbcatalog")
+        var linked = clip(1)
+        linked.optimizedPath = "/opt/1.dv"
+        linked.optimizedCanvas = "SD NTSC 29.97"
+        do {
+            let catalog = try Catalog(url: url, makesBackups: false)
+            catalog.save([linked, clip(2)])
+            catalog.flush()
+        }
+        let reopened = try Catalog(url: url, makesBackups: false)
+        XCTAssertEqual(reopened.loadClips(), [linked, clip(2)])
+    }
+
+    /// A catalog written by 0.4.7–0.4.9 (schema 1) opens, keeps its clips, and gains
+    /// the optimized columns.
+    func testAVersionOneCatalogUpgrades() throws {
+        let url = directory.appendingPathComponent("v1.vbcatalog")
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
+        let v1 = """
+            CREATE TABLE clips (id TEXT PRIMARY KEY, path TEXT NOT NULL, bookmark BLOB,
+                name TEXT NOT NULL, badge TEXT NOT NULL, bin TEXT, duration REAL,
+                frame_count INTEGER, frame_rate REAL, in_point REAL, out_point REAL,
+                position INTEGER NOT NULL);
+            CREATE TABLE bins (name TEXT PRIMARY KEY);
+            INSERT INTO clips (id, path, name, badge, position) VALUES ('old', '/old.dv', 'old.dv', 'DV', 0);
+            PRAGMA user_version = 1;
+            """
+        XCTAssertEqual(sqlite3_exec(db, v1, nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+
+        let catalog = try Catalog(url: url, makesBackups: false)
+        let clips = catalog.loadClips()
+        XCTAssertEqual(clips.map(\.id), ["old"])
+        XCTAssertNil(clips.first?.optimizedPath)
+        var updated = clips[0]
+        updated.optimizedPath = "/opt/old.dv"
+        catalog.save([updated])
+        catalog.flush()
+        XCTAssertEqual(catalog.loadClips().first?.optimizedPath, "/opt/old.dv")
+    }
+
     func testWritesApplyInOrder() throws {
         let catalog = try Catalog(url: directory.appendingPathComponent("b.vbcatalog"), makesBackups: false)
         catalog.save([clip(1), clip(2)])
@@ -74,7 +119,7 @@ final class CatalogTests: XCTestCase {
         try catalog.exportJSON(to: out)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: out)) as? [String: Any])
         XCTAssertEqual((json["clips"] as? [[String: Any]])?.first?["name"] as? String, "7.mov")
-        XCTAssertEqual(json["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(json["schemaVersion"] as? Int, 2)
     }
 
     func testOpeningMakesABackupWhenOneIsDue() throws {

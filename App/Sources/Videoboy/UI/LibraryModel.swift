@@ -90,6 +90,9 @@ struct LibraryItem {
     /// off the main thread (the import job does). Saves the library computing it for
     /// each new entry while a show is on.
     var standardPath: String?
+    /// The linked optimized file and the canvas it was made for (0.4.10).
+    var optimizedPath: String?
+    var optimizedCanvas: String?
 
     /// What kind of thing this is, spelled out for the list view.
     ///
@@ -157,6 +160,8 @@ extension LibraryItem {
         frameCount = clip.frameCount
         frameRate = clip.frameRate
         bookmark = clip.bookmark
+        optimizedPath = clip.optimizedPath
+        optimizedCanvas = clip.optimizedCanvas
     }
 }
 
@@ -309,7 +314,8 @@ final class LibraryModel {
                 id: item.id, path: url.path, bookmark: item.bookmark, name: item.name,
                 badge: item.badge, bin: item.bin, duration: item.duration,
                 frameCount: item.frameCount, frameRate: item.frameRate,
-                inPoint: mark?.inPoint, outPoint: mark?.outPoint, position: position(for: item.id))
+                inPoint: mark?.inPoint, outPoint: mark?.outPoint, position: position(for: item.id),
+                optimizedPath: item.optimizedPath, optimizedCanvas: item.optimizedCanvas)
         }
         catalog.save(records)
     }
@@ -560,6 +566,31 @@ final class LibraryModel {
         guard !changed.isEmpty else { return }
         persist(changed)
         notify()
+    }
+
+    // MARK: - Optimized media (0.4.10)
+
+    /// Links an optimized file to a clip (and the catalog), or clears the link.
+    func setOptimized(path: String?, canvas: String?, for id: String) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].optimizedPath = path
+        items[index].optimizedCanvas = canvas
+        persist([id])
+        notify()
+    }
+
+    /// The file to PLAY for a clip at `url`: its optimized file when there is one for
+    /// this canvas and it exists, otherwise the original. Never black: a missing
+    /// optimized file falls back.
+    func playbackURL(for url: URL, canvas: String) -> (url: URL, optimized: Bool) {
+        let standard = url.standardizedFileURL.path
+        guard let item = items.first(where: { pathKey($0) == standard }),
+              let path = item.optimizedPath, item.optimizedCanvas == canvas else { return (url, false) }
+        guard FileManager.default.fileExists(atPath: path) else {
+            Log.warn(.app, "optimized file for \(url.lastPathComponent) is missing; playing the original")
+            return (url, false)
+        }
+        return (URL(fileURLWithPath: path), true)
     }
 
     // MARK: - Marks

@@ -216,7 +216,10 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
 - [x] **0.4.7 Phase 1** — SQLite catalog, background import job, contextual status bar (done 2026-09-26; `selfqa import`, results in `docs/AUDIT-2026-09-26.md`).
 - [x] **0.4.8 Phase 2** — mode bar (⌘1 Import · ⌘2 VJ · ⌘3 Settings), Settings mode, setup assistant (2026-09-27, behind `VIDEOBOY_FLAGS=modeBar`; `selfqa modes`; a person's click-through is still wanted — docs/BLOCKED.md).
 - [x] **0.4.9 Phase 3** — Import mode (Lightroom model; Add/Move/Copy) (2026-09-27, same flag; `selfqa import-mode`; marks to catalog, J/K/L viewer).
-- [ ] **0.4.10 Phase 4** — Copy + Optimize, linked optimized media (LGPL ffmpeg helper).
+- [x] **0.4.10 Phase 4** — Copy + Optimize, linked optimized media (2026-09-27; `docs/specs/0.4.10-copy-optimize.md`).
+      The helper is Videoboy itself (`--optimize`, a child process) using macOS decoders
+      and the bundled LGPL DV/MPEG-2 encoders, so no ffmpeg CLI build was needed.
+      `selfqa optimize`.
 - [ ] **0.4.11 Phase 5** — any resolution and frame rate (`ProjectFormat`).
 - [ ] **0.5.0** — tags (proposal appendix A).
 - [x] **A/B ROLL + ADV** (designed with the owner 2026-09-24, built 2026-09-27;
@@ -241,6 +244,13 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
   +6 MB/min between two identical 12-min runs, although the troughs stayed flat. Judge
   leaks by the floor (the lowest sample each 2 min) instead.
 - **Import mode viewer:** add a loop toggle (J/K/L, step and I/O are done).
+- **Copy + Optimize, still to do:** the Custom preset (codec, GOP, bitrate, keep audio);
+  Re-optimize for stale files after a canvas change (0.4.11 makes that possible); a
+  per-hour disk estimate in setup; pausing conversions while output is live.
+- **`selfqa import-mode` main-thread limit** read 36.7 ms twice, both times on the first
+  run after a fresh build. The next 6 runs read 14.0–14.6 ms, including 3 under the
+  sampler, which could not catch it again. Probably one-time code loading; not on the
+  show path.
 - 0.4.8 and 0.4.9 need a person's click-through with `VIDEOBOY_FLAGS=modeBar` before
   their boxes are ticked (see docs/BLOCKED.md).
 
