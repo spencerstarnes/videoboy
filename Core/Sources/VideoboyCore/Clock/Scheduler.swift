@@ -110,6 +110,10 @@ public final class Scheduler {
         subscriptions.removeValue(forKey: id)
     }
 
+    /// How many beats behind `now` a subscription may be and still have its missed
+    /// boundaries fired. Further behind than this, they are skipped (see `advance`).
+    public static let maximumCatchUpBeats = 2.0
+
     /// Most recent host time seen by `advance(to:)`.
     private(set) public var currentHostTime: Double = 0
 
@@ -127,7 +131,23 @@ public final class Scheduler {
 
         var due: [(Subscription, ScheduledEvent)] = []
 
+        // A very late advance — the Mac slept mid-show, or the app was suspended —
+        // must not replay every missed boundary in this one tick: after an 8-hour
+        // sleep that was 57,600 closures before the next frame could render
+        // (BUGHUNT S5). Anything older than `maximumCatchUpBeats` is skipped, not
+        // replayed; the few boundaries nearest now still fire so beat-driven state
+        // lands where it should.
+        let catchUpFloor = nowBeats - Self.maximumCatchUpBeats
+
         for (id, var subscription) in subscriptions {
+            if subscription.lastScheduledBeat < catchUpFloor {
+                let skipped = catchUpFloor - subscription.lastScheduledBeat
+                Log.warn(.clock, "subscription \(id) was "
+                    + String(format: "%.1f", skipped + Self.maximumCatchUpBeats)
+                    + " beats behind (the app was asleep or suspended); skipped "
+                    + String(format: "%.1f", skipped) + " beats instead of replaying them")
+                subscription.lastScheduledBeat = catchUpFloor
+            }
             // Walk every boundary between what we last scheduled and the horizon.
             var boundary = transport.nextBoundary(
                 after: subscription.lastScheduledBeat, subdivision: subscription.subdivision
@@ -166,11 +186,5 @@ public final class Scheduler {
             firedEvents.removeFirst(firedEvents.count - Self.firedEventCapacity)
         }
 
-        // A very late advance (the app was suspended) would otherwise replay every
-        // missed boundary at once. Log it; the per-subscription cursor has already
-        // been moved past them.
-        if nowBeats - horizonBeats > 1 {
-            Log.warn(.clock, "scheduler advanced past its own horizon; some beats were skipped")
-        }
     }
 }

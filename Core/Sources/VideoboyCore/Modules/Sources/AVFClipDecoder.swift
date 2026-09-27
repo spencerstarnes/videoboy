@@ -75,6 +75,9 @@ public final class AVFClipDecoder: ClipDecoding {
     /// VideoToolbox scales during decode, which is nearly free; the alternative was
     /// copying 8 MB 1080p frames through the CPU and scaling them in the graph.
     private let decodeSize: (width: Int, height: Int)?
+    /// Set for HEVC tagged `hev1`, which AVAssetReader will not decode (BUGHUNT S7):
+    /// frames then come from VideoToolbox directly, through the same cache and seeks.
+    private var hev1: HEV1Reader?
 
     /// Opens a clip, or fails if it has no readable video track.
     ///
@@ -137,6 +140,16 @@ public final class AVFClipDecoder: ClipDecoding {
             + "\(Int(track.naturalSize.width))x\(Int(track.naturalSize.height))"
             + (decodeSize.map { ", decoded at \($0.width)x\($0.height)" } ?? "")
             + (quarterTurns != 0 ? ", turned \(quarterTurns * 90)°" : ""))
+
+        if HEV1Reader.applies(to: track) {
+            guard let direct = HEV1Reader(asset: asset, track: track, frameRate: frameRate,
+                                          decodeSize: decodeSize) else {
+                Log.error(.dv, "\(url.lastPathComponent) is HEVC tagged hev1 and could not be decoded")
+                return nil
+            }
+            Log.info(.dv, "\(url.lastPathComponent) is HEVC tagged hev1: decoding through VideoToolbox directly")
+            self.hev1 = direct
+        }
 
         guard restartReader(atFrame: 0) else { return nil }
     }
@@ -210,6 +223,11 @@ public final class AVFClipDecoder: ClipDecoding {
 
     private func restartReader(atFrame index: Int) -> Bool {
         readerRestarts += 1
+        if let hev1 {
+            guard hev1.start(atSeconds: Double(index) / frameRate) else { return false }
+            nextFrameIndex = index
+            return true
+        }
         reader?.cancelReading()
 
         guard let newReader = try? AVAssetReader(asset: asset) else {
@@ -246,6 +264,11 @@ public final class AVFClipDecoder: ClipDecoding {
     }
 
     private func readNextFrame() -> ImageBuffer? {
+        if let hev1 {
+            guard let frame = hev1.next() else { return nil }
+            nextFrameIndex = frame.index + 1
+            return Self.imageBuffer(from: frame.image)
+        }
         guard let output, let sample = output.copyNextSampleBuffer(),
               let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { return nil }
         nextFrameIndex += 1

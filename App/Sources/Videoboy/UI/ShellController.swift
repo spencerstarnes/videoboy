@@ -85,6 +85,11 @@ final class ShellController {
         driveSweeps(from: engine, at: showAt)
     }
 
+    /// `loadClip`, for self-QA: the real path, so a check proves what a drop does.
+    func loadClipForChecks(_ url: URL, into channel: String) {
+        loadClip(url, into: channel)
+    }
+
     /// Loads a clip into a channel and says what happened.
     ///
     /// The single path for every way a file arrives — double-clicked in a library,
@@ -1100,13 +1105,14 @@ final class ShellController {
         loadClip(url, into: letter)
     }
 
-    /// A plain alert. Used instead of silently doing nothing (SPEC 1.5).
-    private func presentNotice(_ title: String, _ detail: String) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = detail
-        alert.alertStyle = .informational
-        alert.runModal()
+    /// Says what went wrong instead of silently doing nothing (SPEC 1.5).
+    ///
+    /// Never modal: this used to be `NSAlert.runModal()`, which froze the main thread
+    /// — and with it the UI and every main-thread-driven part of the output — until
+    /// someone clicked OK (BUGHUNT S6). It now goes to the status strip and the log.
+    func presentNotice(_ title: String, _ detail: String) {
+        Log.warn(.app, "notice: \(title) — \(detail)")
+        shell.statusBar.showNotice(title, detail: detail)
     }
 
     /// Wires the blend mode of the three composites (SPEC 12).

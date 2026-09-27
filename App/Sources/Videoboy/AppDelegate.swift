@@ -54,8 +54,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMenuBar()
 
         let controller = MainWindowController(preferences: preferences)
-        openCatalog(into: controller)
         launch.complete(.graph)
+        // Its own stage: opening the catalog (lock, migration, the weekly backup, then
+        // loading every clip) grows with the library, and a pause here must read as
+        // "Library catalog", not as a hang between two lit dots (BUGHUNT S1).
+        if openCatalog(into: controller) {
+            launch.complete(.library)
+        } else {
+            launch.skip(.library, reason: "not opened")
+        }
         launch.complete(.clock)
 
         if controller.engine.midi.connectedSourceNames.isEmpty {
@@ -206,20 +213,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Opens the catalog and hands it to the library, which loads what was saved (or,
     /// the first time, saves what it starts with).
-    private func openCatalog(into controller: MainWindowController) {
+    /// Opens the library catalog and attaches it; false (with a status-strip notice,
+    /// never a modal) when it cannot be opened.
+    @discardableResult
+    private func openCatalog(into controller: MainWindowController) -> Bool {
         let url = preferences.preferences.catalogURL
         do {
             let opened = try Catalog(url: url)
             controller.shellController?.shell.grid.panels.library.attach(opened)
             catalog = opened
+            return true
         } catch {
             Log.error(.app, "library catalog not opened: \(error)")
-            let alert = NSAlert()
-            alert.messageText = "The library could not be opened"
-            alert.informativeText = "\(error).\n\nClips added in this session will work but will not be "
-                + "saved. Close the other copy of Videoboy, or move the catalog, and open this one again."
-            alert.alertStyle = .warning
-            alert.runModal()
+            controller.shellController?.presentNotice(
+                "The library could not be opened — clips added now will not be saved",
+                "\(error). Close the other copy of Videoboy, or move the catalog, and open this one again.")
+            return false
         }
     }
 

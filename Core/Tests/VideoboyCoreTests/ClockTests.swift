@@ -231,4 +231,28 @@ final class ClockTests: XCTestCase {
         // At most the one boundary actually crossed since subscribing.
         XCTAssertLessThanOrEqual(fired, 2, "a late subscriber must not receive every past beat at once")
     }
+
+    // MARK: - Waking from sleep (BUGHUNT S5)
+
+    /// One display-link tick after an 8-hour sleep must not replay every missed beat.
+    /// Before the fix this one call fired 57,600 events synchronously.
+    func testAnEightHourGapInOneAdvanceFiresABoundedNumberOfEvents() {
+        let transport = Transport(beatsPerMinute: 120)
+        let scheduler = Scheduler(transport: transport)
+        transport.start(atHostTime: 0)
+
+        var fired = 0
+        scheduler.subscribe(subdivision: .sixteenth) { _ in fired += 1 }
+        scheduler.advance(to: 0)
+        scheduler.advance(to: 8 * 3600)
+
+        // At most the catch-up window (2 beats of sixteenths) plus the look-ahead.
+        XCTAssertLessThanOrEqual(fired, 12, "a long gap must be skipped, not replayed")
+        XCTAssertGreaterThan(fired, 0, "the boundaries nearest now still fire")
+
+        // And the clock carries on normally afterwards: one more second is two beats.
+        fired = 0
+        for step in 1...60 { scheduler.advance(to: 8 * 3600 + Double(step) / 60.0) }
+        XCTAssertEqual(Double(fired), 8, accuracy: 1, "sixteenths at 120 BPM: 8 per second")
+    }
 }

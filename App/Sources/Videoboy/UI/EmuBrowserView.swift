@@ -517,11 +517,7 @@ final class EmuBrowserView: NSStackView {
     @objc private func statePressed() {
         let result = controller.captureState()
         if let error = result.error {
-            let alert = NSAlert()
-            alert.messageText = "Could not save the state"
-            alert.informativeText = error
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
+            presentNonBlockingNotice("Could not save the state", error)
             return
         }
         // The list is rebuilt rather than appended to, so what is on screen is what is
@@ -561,11 +557,7 @@ final class EmuBrowserView: NSStackView {
     @objc private func stateRowPressed(_ sender: VBOptionButton) {
         guard let state = stateRows[ObjectIdentifier(sender)] else { return }
         if let error = controller.loadState(state) {
-            let alert = NSAlert()
-            alert.messageText = "Could not restore \(state.name)"
-            alert.informativeText = error
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
+            presentNonBlockingNotice("Could not restore \(state.name)", error)
         }
         refresh()
     }

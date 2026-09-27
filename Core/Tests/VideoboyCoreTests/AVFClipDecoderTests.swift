@@ -175,4 +175,29 @@ extension AVFClipDecoderTests {
             "\(restarts) reader restarts for \(frames) backward frames — that is the "
                 + "restart-per-frame regression audit C2 describes")
     }
+
+    // MARK: - HEVC tagged hev1 (BUGHUNT S7)
+
+    /// AVAssetReader refuses to decode `hev1`; the decoder routes it through
+    /// VideoToolbox directly. It must open, show real moving pictures, and seek back.
+    func testHEVCTaggedHev1Plays() throws {
+        let url = RepoPaths.samples.appendingPathComponent("motion-hev1.mov")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw XCTSkip("samples/motion-hev1.mov is missing — run scripts/make-fixtures.sh")
+        }
+        guard let decoder = AVFClipDecoder(url: url) else {
+            return XCTFail("hev1 clip did not open (S7 regression)")
+        }
+        let first = decoder.image(at: 0, corruption: .inert)
+        let later = decoder.image(at: 40, corruption: .inert)
+        let back = decoder.image(at: 5, corruption: .inert)
+        guard let first, let later, let back else { return XCTFail("hev1 frames missing") }
+        XCTAssertTrue(FrameAssertions.signalPresent(first, varianceThreshold: 1.0))
+        XCTAssertNotEqual(first.pixels, later.pixels, "hev1 playback does not advance")
+        XCTAssertNotEqual(back.pixels, later.pixels, "hev1 backward seek returned the wrong frame")
+
+        // Decoded no larger than the canvas needs, like every other AVF clip.
+        let fitted = AVFClipDecoder(url: url, canvas: CanvasGeometry.standardDefinition)
+        XCTAssertNotNil(fitted?.image(at: 10, corruption: .inert))
+    }
 }

@@ -84,6 +84,17 @@ if [ ! -f "$SAMPLES/motion.m2v" ]; then
     -f mpeg2video "$SAMPLES/motion.m2v"
 fi
 
+# HEVC tagged `hev1` — the S7 regression fixture (BUGHUNT-2026-09-27). AVAssetReader
+# refuses to decode this tag though the same stream tagged `hvc1` plays; the app routes
+# it through VideoToolbox directly (HEV1Reader). hevc_videotoolbox writes `hev1`
+# unless told otherwise; the tag is forced so an ffmpeg default change can't hide it.
+if [ ! -f "$SAMPLES/motion-hev1.mov" ]; then
+  log "generating samples/motion-hev1.mov (HEVC tagged hev1, 3s — S7 regression)"
+  ffmpeg -y -loglevel error \
+    -f lavfi -i "testsrc2=size=720x480:rate=30000/1001:duration=3" \
+    -c:v hevc_videotoolbox -b:v 4M -tag:v hev1 "$SAMPLES/motion-hev1.mov"
+fi
+
 log "writing samples/manifest.json"
 python3 - "$SAMPLES" <<'PY'
 import json, os, sys

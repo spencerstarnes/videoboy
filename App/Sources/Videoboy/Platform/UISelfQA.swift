@@ -131,6 +131,39 @@ enum UISelfQA {
             check.note("\(collapseCase.name): folded \(collapseCase.groups.map(\.displayName).joined(separator: ", "))")
         }
 
+        // A clip that fails to load must never block (BUGHUNT S6). It used to open a
+        // modal NSAlert and park the main thread until someone clicked OK — a full
+        // freeze mid-show, and the reason the HD soak sat stuck for two hours. The
+        // notice now goes to the status strip; the load returns at once.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
+            shell.layoutSubtreeIfNeeded()
+            let bogus = FileManager.default.temporaryDirectory
+                .appendingPathComponent("videoboy-selfqa-not-a-clip-\(UUID().uuidString).mov")
+            try? Data("not a movie".utf8).write(to: bogus)
+            defer { try? FileManager.default.removeItem(at: bogus) }
+
+            let started = CACurrentMediaTime()
+            controller.loadClipForChecks(bogus, into: "A")
+            let elapsed = (CACurrentMediaTime() - started) * 1000
+            check.record(AssertionResult(
+                name: "a failed load returns without blocking",
+                passed: elapsed < 500 && NSApp.modalWindow == nil,
+                detail: String(format: "%.1f ms, modal window: %@", elapsed,
+                               NSApp.modalWindow == nil ? "none" : "OPEN")
+            ))
+            let notice = shell.statusBar.noticeTextForChecks ?? ""
+            check.record(AssertionResult(
+                name: "a failed load says so in the status strip",
+                passed: notice.contains("Could not load"),
+                detail: notice.isEmpty ? "no notice shown" : notice
+            ))
+            withExtendedLifetime(controller) {}
+        }
+
         // Shift-to-detect, rendered. The audit proves every enabled fader carries a
         // mapping address; this proves holding Shift actually reaches them, which is
         // a different claim and the one the performer experiences.

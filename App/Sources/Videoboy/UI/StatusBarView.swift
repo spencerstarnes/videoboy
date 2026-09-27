@@ -39,6 +39,21 @@ final class StatusBarView: NSView {
     private let importUnreadable = NSButton(title: "", target: nil, action: nil)
     private let importCancel = NSButton(title: "✕", target: nil, action: nil)
 
+    // MARK: Notices
+    //
+    // A failed load (or any other problem the app must report) used to open a modal
+    // NSAlert, which parked the main thread in `runModal` until someone clicked OK —
+    // mid-show, a full freeze (BUGHUNT S6). Notices now appear here instead: one line,
+    // the detail in its tooltip, gone after a while. Nothing ever waits on it. It sits
+    // after the import segment and before the spacer, so appearing moves nothing to
+    // its left.
+
+    /// The notice line ("⚠ Could not load x.mov — reason").
+    let noticeLabel = Controls.monoLabel("", color: Theme.Color.displayWarning)
+    private var noticeHideWork: DispatchWorkItem?
+    /// How long a notice stays up before it clears itself.
+    static let noticeSeconds: TimeInterval = 12
+
     /// ✕ pressed.
     var onCancelImport: (() -> Void)?
     /// "N unreadable" pressed.
@@ -58,8 +73,12 @@ final class StatusBarView: NSView {
         )
 
         buildImportSegment()
+        noticeLabel.isHidden = true
+        noticeLabel.lineBreakMode = .byTruncatingTail
+        noticeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        noticeLabel.setAccessibilityIdentifier("status-notice")
         let row = Controls.row(
-            [midiLabel, oscLabel, nodesLabel, rateLabel, importSegment, Controls.spacer(), routing],
+            [midiLabel, oscLabel, nodesLabel, rateLabel, importSegment, noticeLabel, Controls.spacer(), routing],
             spacing: 14
         )
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -232,6 +251,24 @@ final class StatusBarView: NSView {
             }
         }
         return text
+    }
+
+    /// Shows a notice without blocking anything. The detail is the tooltip and is also
+    /// logged by the caller. Replaces any earlier notice; clears itself after
+    /// `noticeSeconds`.
+    func showNotice(_ title: String, detail: String) {
+        noticeLabel.stringValue = "⚠ \(title)"
+        noticeLabel.toolTip = detail
+        noticeLabel.isHidden = false
+        noticeHideWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.noticeLabel.isHidden = true }
+        noticeHideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.noticeSeconds, execute: work)
+    }
+
+    /// The notice on show, or nil — for self-QA.
+    var noticeTextForChecks: String? {
+        noticeLabel.isHidden ? nil : noticeLabel.stringValue
     }
 
     /// Shows dropped frames and the measured render rate.

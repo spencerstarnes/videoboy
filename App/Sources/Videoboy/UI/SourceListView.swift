@@ -200,10 +200,7 @@ final class SourceListView: NSView {
                 return
             }
             guard !windows.isEmpty else {
-                let alert = NSAlert()
-                alert.messageText = "No windows found"
-                alert.informativeText = "Nothing capturable is on screen right now."
-                alert.runModal()
+                self.presentNonBlockingNotice("No windows found", "Nothing capturable is on screen right now.")
                 return
             }
             let menu = NSMenu()

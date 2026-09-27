@@ -22,6 +22,7 @@ enum LaunchStage: String, CaseIterable {
     case shaders = "Shader library"
     case codecs = "DV codec (LGPL FFmpeg)"
     case graph = "Render graph"
+    case library = "Library catalog"
     case clock = "Transport and scheduler"
     case midi = "Core MIDI"
     case displays = "Display router"

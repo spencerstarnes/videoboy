@@ -248,3 +248,20 @@ enum Controls {
         return button
     }
 }
+
+// MARK: - Notices that never block
+
+extension NSView {
+    /// Shows an error notice as a sheet on this view's window — never `runModal()`,
+    /// which parks the main thread (and the show) until someone clicks OK (BUGHUNT
+    /// S6). With no window it is only logged.
+    func presentNonBlockingNotice(_ title: String, _ detail: String) {
+        Log.warn(.app, "notice: \(title) — \(detail)")
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = detail
+        alert.addButton(withTitle: "OK")
+        alert.beginSheetModal(for: window, completionHandler: nil)
+    }
+}
