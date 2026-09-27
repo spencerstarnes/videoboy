@@ -569,6 +569,7 @@ final class ShellController {
             self.importFinished(job, progress: progress)
         }
         importJobs.append(job)
+        LibraryPanelBody.importsRunning = importJobs.count
         job.start(into: shell.grid.panels.library)
     }
 
@@ -587,6 +588,7 @@ final class ShellController {
 
     private func importFinished(_ job: ImportJob, progress: ImportProgress) {
         importJobs.removeAll { $0 === job }
+        LibraryPanelBody.importsRunning = importJobs.count
         showImportProgress(progress)
         if !progress.rejected.isEmpty {
             presentNotice(

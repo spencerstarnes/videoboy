@@ -482,16 +482,49 @@ final class LibraryPanelBody: NSView {
     private func scheduleReload() {
         guard !reloadScheduled else { return }
         reloadScheduled = true
-        RunLoop.main.perform(inModes: [.common]) { [weak self] in
+        // At most one rebuild per `minimumReloadInterval`. Each rebuild costs a layout
+        // pass of ~25–35 ms when tiles change (in-process sampler, 1,000-clip import),
+        // and an import changes the library every 80 ms while scanning: rebuilding on
+        // every change stacked those passes against the display link and dropped a
+        // refresh. An idle library still rebuilds on the next turn.
+        // And the three library panels never rebuild in the same turn: one layout
+        // pass building every new tile in all three grids at once was the last 30–45 ms
+        // stretch. Each waits until `panelSpacing` after whichever panel went last.
+        let now = CACurrentMediaTime()
+        // Only while an import streams clips in: a search, a sort, one dropped clip
+        // must show at once.
+        var wait: CFTimeInterval = 0
+        if Self.importsRunning > 0 {
+            wait = max(0, Self.minimumReloadInterval - (now - lastReload))
+            let nextSlot = Self.lastAnyReload + Self.panelSpacing - now
+            if nextSlot > wait { wait = nextSlot }
+        }
+        Self.lastAnyReload = now + wait
+        let run = { [weak self] in
             guard let self else { return }
             self.reloadScheduled = false
+            self.lastReload = CACurrentMediaTime()
             let start = Self.reloadCostsForChecks != nil ? CACurrentMediaTime() : 0
             self.reloadNow()
             if Self.reloadCostsForChecks != nil {
                 Self.reloadCostsForChecks?.append((CACurrentMediaTime() - start) * 1000)
             }
         }
+        if wait <= 0 {
+            RunLoop.main.perform(inModes: [.common], block: run)
+        } else {
+            let timer = Timer(timeInterval: wait, repeats: false) { _ in run() }
+            RunLoop.main.add(timer, forMode: .common)
+        }
     }
+
+    /// See `scheduleReload`.
+    static let minimumReloadInterval: CFTimeInterval = 0.35
+    static let panelSpacing: CFTimeInterval = 0.1
+    /// Imports in flight (set by ShellController): the throttle applies only then.
+    static var importsRunning = 0
+    private static var lastAnyReload: CFTimeInterval = 0
+    private var lastReload: CFTimeInterval = 0
 
     /// Milliseconds each deferred rebuild took, across all three panels, while a
     /// check sets this non-nil.

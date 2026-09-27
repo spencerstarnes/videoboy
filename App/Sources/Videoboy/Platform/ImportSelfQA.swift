@@ -164,6 +164,11 @@ enum ImportSelfQA {
         // enough to drop a refresh shows here even when no tick was slow.
         var busyStretches: [Double] = []
         var longAt: [(at: Double, ms: Double)] = []
+        // Opt-in profiler (VIDEOBOY_MAIN_SAMPLER=1): what the main thread runs in the
+        // long stretches that no labelled measurement explains.
+        let sampler = ProcessInfo.processInfo.environment["VIDEOBOY_MAIN_SAMPLER"] == "1"
+            ? MainThreadSampler() : nil
+        var longSpans: [(start: CFTimeInterval, end: CFTimeInterval)] = []
         let dropTime = CACurrentMediaTime()
         var busySince: CFTimeInterval = 0
         let observer = CFRunLoopObserverCreateWithHandler(
@@ -174,7 +179,10 @@ enum ImportSelfQA {
             } else if busySince > 0 {
                 let ms = (CACurrentMediaTime() - busySince) * 1000
                 busyStretches.append(ms)
-                if ms > 25 { longAt.append((busySince - dropTime, ms)) }
+                if ms > 25 {
+                    longAt.append((busySince - dropTime, ms))
+                    longSpans.append((busySince, CACurrentMediaTime()))
+                }
                 busySince = 0
             }
         }
@@ -197,6 +205,7 @@ enum ImportSelfQA {
         let dropsBefore = engine.droppedFrames
         let started = Date()
         Log.info(.selfqa, "import check: big drop starting, pid \(getpid())")
+        sampler?.start()
         panels.libraryOneBody.onFilesDropped?([bigTree], nil)
         var barSeen = false
         var names: Set<String> = []
@@ -239,6 +248,13 @@ enum ImportSelfQA {
         check.note(String(format: "AppKit layout/display passes over 10 ms: %d of %d, longest %@",
                           longCommits.count, commits.count,
                           longCommits.prefix(8).map { String(format: "%.0f", $0) }.joined(separator: ", ")))
+        sampler?.stop()
+        if let sampler {
+            let report = sampler.report(for: longSpans)
+            try? report.write(to: RepoPaths.selfQAOutput.appendingPathComponent("perf/import/main-sampler.txt"),
+                              atomically: true, encoding: .utf8)
+            check.note("main-thread sampler: selfqa/out/perf/import/main-sampler.txt")
+        }
         check.note("long stretches at: " + longAt.map { String(format: "%.0f ms @ %.2f s", $0.ms, $0.at) }
             .joined(separator: ", "))
         let longStretches = busyStretches.filter { $0 > 25 }.sorted(by: >)

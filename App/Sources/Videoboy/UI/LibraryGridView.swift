@@ -97,10 +97,39 @@ final class LibraryGridView: NSView {
     // MARK: - Contents
 
     /// Re-reads the browser: what to show, and what is selected.
+    ///
+    /// A full `reloadData` rebuilds every visible tile in the next layout pass —
+    /// 25–33 ms of main thread each time, measured by the in-process sampler during a
+    /// 1,000-clip import (it dropped a refresh). So the same entries → the visible
+    /// tiles are re-configured in place, which costs nothing like a rebuild. (Batched
+    /// `insertItems` was tried for pure additions: its own update bookkeeping cost as
+    /// much as the rebuild. Fewer rebuilds is the fix — see LibraryPanelBody.)
     func reload() {
-        entries = browser.currentEntries()
-        collectionView.reloadData()
+        let old = entries
+        let new = browser.currentEntries()
+        entries = new
+        let oldIDs = old.map(\.id), newIDs = new.map(\.id)
+        if oldIDs == newIDs {
+            reconfigureVisible()
+        } else {
+            collectionView.reloadData()
+        }
         applySelection()
+    }
+
+    /// Updates the tiles on screen (counts, names, marks) without rebuilding them.
+    private func reconfigureVisible() {
+        for indexPath in collectionView.indexPathsForVisibleItems() where indexPath.item < entries.count {
+            let entry = entries[indexPath.item]
+            switch entry {
+            case .bin(let name):
+                (collectionView.item(at: indexPath) as? BinItem)?.folder
+                    .configure(bin: name, count: browser.model.count(inBin: name))
+            case .item(let libraryItem):
+                (collectionView.item(at: indexPath) as? ClipItem)?.clip
+                    .configure(item: libraryItem, marks: browser.model.marks(for: libraryItem.id))
+            }
+        }
     }
 
     /// Makes the collection view's selection match the browser's.
