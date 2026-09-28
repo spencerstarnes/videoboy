@@ -1078,7 +1078,7 @@ final class ImportTileItem: NSCollectionViewItem {
         check.target = self
         check.action = #selector(checkChanged)
         pills.orientation = .horizontal
-        pills.spacing = 4
+        pills.spacing = Theme.Import.pillSpacing
         let inset: CGFloat = 6
         for view in [check, picture, name, size, pills] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -1114,10 +1114,15 @@ final class ImportTileItem: NSCollectionViewItem {
         pills.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if let wedge = entry.wedge { pills.addArrangedSubview(Self.pill(wedge, Theme.Import.wedgePill)) }
         if let mismatch = entry.mismatch {
-            pills.addArrangedSubview(Self.pill(mismatch.replacingOccurrences(of: "⚠", with: "⚠ "), Theme.Import.mismatchPill))
+            // The amber says "does not fit"; a ⚠ glyph beside capitals only sat on its
+            // own baseline. The tooltip says it in words.
+            pills.addArrangedSubview(Self.pill(mismatch.replacingOccurrences(of: "⚠", with: ""), Theme.Import.mismatchPill))
         }
         if entry.isDuplicate { pills.addArrangedSubview(Self.pill("IN LIBRARY", Theme.Import.duplicatePill)) }
-        view.toolTip = entry.isDuplicate ? "Already in the library" : nil
+        view.toolTip = [entry.isDuplicate ? "Already in the library." : nil,
+                        entry.wedge.map { "\($0): the bitstream effects work on it." },
+                        entry.mismatch.map { _ in "Not the canvas's shape — it will be fitted." }]
+            .compactMap { $0 }.joined(separator: " ").nilIfEmpty
         applyLook()
     }
 
@@ -1131,15 +1136,7 @@ final class ImportTileItem: NSCollectionViewItem {
     }
 
     private static func pill(_ text: String, _ colour: NSColor) -> NSView {
-        let label = Controls.label(text, font: Theme.Import.pillFont, color: .black)
-        label.alignment = .center
-        label.wantsLayer = true
-        label.layer?.backgroundColor = colour.cgColor
-        label.layer?.cornerRadius = Theme.Import.pillCornerRadius
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.heightAnchor.constraint(equalToConstant: Theme.Import.pillHeight).isActive = true
-        label.widthAnchor.constraint(greaterThanOrEqualToConstant: label.intrinsicContentSize.width + 8).isActive = true
-        return label
+        ImportPill(text: text, colour: colour)
     }
 
     func showMarks(_ marks: ImportModeView.Marks) {
@@ -1156,6 +1153,61 @@ final class ImportTileItem: NSCollectionViewItem {
         applyLook()
         onChecked?(check.state == .on)
     }
+}
+
+/// A codec / shape / library pill, drawn rather than made of a text field.
+///
+/// It was an NSTextField with a layer background and a fixed height: a text field
+/// never centres its text vertically, so every word rode against the pill's top edge;
+/// its cell's own insets made the sides uneven; its background filled the whole frame,
+/// so neighbouring pills touched; and the colours were black bold text on saturated
+/// slabs. Drawn here instead: text centred on its cap height, the same padding either
+/// side, and a tint — coloured text and hairline over a faint wash of the colour.
+final class ImportPill: NSView {
+    private let text: NSAttributedString
+    private let colour: NSColor
+
+    init(text: String, colour: NSColor) {
+        self.colour = colour
+        self.text = NSAttributedString(string: text.uppercased(), attributes: [
+            .font: Theme.Import.pillFont,
+            .foregroundColor: colour,
+            .kern: Theme.Import.pillTracking
+        ])
+        super.init(frame: .zero)
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        setAccessibilityElement(true)
+        setAccessibilityLabel(text)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: ceil(text.size().width) + 2 * Theme.Import.pillPaddingX, height: Theme.Import.pillHeight)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let body = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let shape = NSBezierPath(roundedRect: body, xRadius: Theme.Import.pillCornerRadius,
+                                 yRadius: Theme.Import.pillCornerRadius)
+        colour.withAlphaComponent(0.16).setFill()
+        shape.fill()
+        colour.withAlphaComponent(0.45).setStroke()
+        shape.lineWidth = 1
+        shape.stroke()
+        // Centre the CAPITALS, not the line box: capitals have no descenders, so a
+        // line-box centre sits them visibly high.
+        let font = Theme.Import.pillFont
+        let size = text.size()
+        let baseline = bounds.midY - font.capHeight / 2
+        text.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: baseline + font.descender))
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 /// The tile's view: a double-click opens the clip in the viewer. Single presses on the
