@@ -538,6 +538,25 @@ final class DatamoshNodeTests: XCTestCase {
         XCTAssertFalse(node.isRunning)
     }
 
+    /// Every control on the card says what it does, and the readouts are in units a
+    /// performer can use (owner, 2026-09-28: "I can't tell what some of them even do").
+    func testTheCardExplainsEveryControlInRealUnits() throws {
+        let card = try XCTUnwrap(ModuleCatalog.nativeModules().first { $0.id == ModuleCatalog.ID.datamosh })
+        let unexplained = card.controls.filter { ($0.help ?? "").isEmpty }.map(\.label)
+        XCTAssertEqual(unexplained, [], "controls with no tooltip")
+        XCTAssertEqual(Set(card.controls.map(\.label)).count, card.controls.count, "no two controls share a name")
+        func text(_ code: ParamCode, _ value: Double) throws -> String {
+            try XCTUnwrap(card.controls.first { $0.code == code }).valueText(value)
+        }
+        XCTAssertEqual(try text(.moshAmount, 0), "off")
+        XCTAssertEqual(try text(.moshMelt, 0), "off")
+        XCTAssertEqual(try text(.moshMelt, 1), "1/3")
+        XCTAssertEqual(try text(.moshBloom, 0.5), "50%")
+        XCTAssertEqual(try text(.moshBlocks, 0), "0.4M")
+        XCTAssertEqual(try text(.moshBlocks, 1), "8.0M")
+        XCTAssertEqual(try text(.moshLoop, 0), "1fr")
+    }
+
     /// A mosh whose encoder dies mid-run (sleep, a media-server restart) must come back
     /// on its own. Before the watchdog the picture froze on its last moshed frame
     /// until the card was switched off and on.

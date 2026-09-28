@@ -2291,7 +2291,8 @@ final class ShellController {
                 value: parameter.normalise(value), enabled: available,
                 valueText: { control.valueText(parameter.denormalise($0)) },
                 isTrigger: control.kind == .trigger,
-                beatArm: beatArm)
+                beatArm: beatArm,
+                help: control.help)
         }
     }
 

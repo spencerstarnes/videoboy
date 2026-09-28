@@ -10,9 +10,9 @@ live, on anything: a clip, a camera, a whole bus.
 | **mosh** | 35B | 0 = clean. Above 0, keyframes and scene-cut frames never reach the decoder, so the *next* picture's motion is painted onto the *old* picture. Higher = smaller changes count as a cut. |
 | **melt** | 39B | 0 = off. Ordinary P-frames are dropped at random (up to about one in three), so the error piles up and the picture melts even without a cut. (This used to be the top half of **mosh**.) |
 | **bloom** | 36B | 0 = off. The share of frames that are replays of the loop: 1 = every frame (full stream, live frames held back), 0.5 = every other frame, with live motion in between. **Pulling it down slows the stream** instead of doing nothing until 0. |
-| **loop** | 3AB | How many P-frames bloom replays: 1 to 16. Short = one push, over and over; long = a wobble. |
-| **blocks** | 38B | Encoder bitrate. Low = starved: big blocks, heavier smear. High = finer. |
-| **MOSH** | 3FB | A key, and a **hold**. While it is held the card moshes at full whatever the faders say: every frame is a replay of the loop, and keyframes and cuts are dropped, so moving footage streams at once, no cut needed. Let go and the faders are back in charge: at zero, the mosh eases back to clean over the heal time, in the heal shape. Shift-click to learn a MIDI note (note on = press, note off = release). A tap between frames still moshes for one. |
+| **bloom loop** | 3AB | How many P-frames bloom replays: 1 to 16 (readout in frames). Does nothing unless bloom is up. Short = one push, over and over; long = a wobble. |
+| **bitrate** | 38B | Encoder bitrate, 0.4–8 Mb/s (readout in Mb/s). Low = starved: big blocks, heavier smear. High = finer. Labelled "blocks" until 2026-09-28, which read backwards (up is FEWER blocks); renamed rather than flipped so saved shows and mappings keep their meaning. |
+| **HOLD** | 3FB | A key, and a **hold** (labelled MOSH until 2026-09-28 — the same name as the fader, doing something else). While it is held the card moshes at full whatever the faders say: every frame is a replay of the loop, and keyframes and cuts are dropped, so moving footage streams at once, no cut needed. Let go and the faders are back in charge: at zero, the mosh eases back to clean over the heal time, in the heal shape. Shift-click to learn a MIDI note (note on = press, note off = release). A tap between frames still moshes for one. |
 | **HEAL** | 37B | A key, not a fader. Press it: the clean picture eases back in over the **heal time**, in the **heal shape**, and then one clean keyframe comes through. The screen already shows clean by then, so the reset is invisible and the mosh starts again from the clean picture. Shift-click to learn a MIDI note. A tap between frames still counts. **Option-Command-click** arms it on the beat: it sets **heal every** to 1 beat (or the rate it last had) and the key wears the purple automated outline; Option-Command-click again turns it off. A plain click still heals once, at once. |
 | **heal every** | 3BB | Heal on the beat: off, 1/16, 1/8, 1 beat, 2 beats, 1 bar, 2 bars, 4 bars. Transport has to be running. |
 | **heal time** | 3CB | 0 = instant (a hard reset, the old behaviour) … 2 s. Default 0.5 s. Also sets how long **letting go** takes (see below). |
@@ -25,7 +25,7 @@ push **mosh** up, then cut or fade A → B. B's motion drags A's picture around 
 heal. On **A** or **B** instead, the card moshes that channel alone, so changing the clip
 in that channel moshes one clip into the next.
 
-**Mosh on demand:** hold **MOSH**. Nothing else needs to be up; the key starts the
+**Mosh on demand:** hold **HOLD**. Nothing else needs to be up; the key starts the
 encoder itself (the first frame or two show the input while it spins up), and letting
 go eases back out. With the card already running, the mosh starts on the next frame.
 
@@ -105,3 +105,10 @@ tick on the render thread; the codec work runs on each node's own queue.
 `H264LiveEncoder`, `H264MoshDecoder`), the `mosh_layer_fragment` shader in `MetalContext`, `Modules/Effects/DatamoshNode.swift`,
 tests in `Core/Tests/VideoboyCoreTests/DatamoshTests.swift`,
 the app check `App/Sources/Videoboy/Platform/MoshSelfQA.swift` (`scripts/selfqa.sh mosh`).
+
+## Readouts and tooltips (2026-09-28)
+
+Every control on the card has a tooltip saying what it does. Readouts are in the units a
+performer can use: **mosh** and **bloom** say *off* at 0, **melt** shows how many frames it
+drops (*1/3* at the top, *rare* below 1 in 99), **bloom** is a percentage, **bloom loop** is
+in frames, **bitrate** in Mb/s.

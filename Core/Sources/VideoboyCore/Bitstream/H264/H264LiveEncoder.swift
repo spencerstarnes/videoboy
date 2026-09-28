@@ -136,15 +136,20 @@ public final class H264LiveEncoder {
         }
     }
 
-    /// Sets the bitrate from a 0...1 "blocks" control: 0 starved, 1 clean.
+    /// Bits per second for the card's 0...1 "bitrate" control: 0 starved, 1 clean.
+    /// Exponential, so the fader spends its travel where the look changes. Public so
+    /// the card's readout says the same number the encoder is given.
+    public static func bitRate(forNormalised normalised: Double) -> Double {
+        let clamped = min(max(normalised, 0), 1)
+        let range = bitRateRange
+        return range.lowerBound * pow(range.upperBound / range.lowerBound, clamped)
+    }
+
+    /// Sets the bitrate from the 0...1 "bitrate" control (code 38B).
     public func setQuality(_ normalised: Double) {
         guard let session = lock.withLock({ self.session }) else { return }
-        let clamped = min(max(normalised, 0), 1)
-        let range = H264LiveEncoder.bitRateRange
-        // Exponential, so the fader spends its travel where the look changes.
-        let bitRate = range.lowerBound * pow(range.upperBound / range.lowerBound, clamped)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate,
-                             value: NSNumber(value: Int(bitRate)))
+                             value: NSNumber(value: Int(Self.bitRate(forNormalised: normalised))))
     }
 
     /// Encodes one RGBA picture. Returns immediately; the result arrives on `output`.

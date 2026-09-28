@@ -46,6 +46,8 @@ struct EffectParameterModel {
     /// For a trigger that can be armed on the beat (`ModuleBeatArm`): which choice
     /// on the same card fires it, in 0...1 fader positions.
     var beatArm: BeatArmModel? = nil
+    /// What the control does (`ModuleControl.help`): the row's tooltip.
+    var help: String? = nil
 
     /// The readout for a fader position.
     func text(for value: Double) -> String {
@@ -674,7 +676,8 @@ final class EffectChainPanelBody: NSView {
         key.target = self
         key.action = #selector(triggerPressed(_:))
         key.identifier = NSUserInterfaceItemIdentifier(Self.triggerIdentifier(code: parameter.code, card: card))
-        key.toolTip = "\(parameter.name.capitalized) · \(parameter.code) — hold Shift and click to learn a MIDI note"
+        key.toolTip = (parameter.help.map { $0 + "\n\n" } ?? "")
+            + "\(parameter.name.capitalized) · \(parameter.code) — hold Shift and click to learn a MIDI note"
         if let code = ParamCode(rawValue: parameter.code) {
             key.mappingCode = code
             key.mappingSlot = mappingSlotForParameter?(card, code)
@@ -751,6 +754,7 @@ final class EffectChainPanelBody: NSView {
             "\(parameter.name)·\(parameter.code)",
             color: parameter.enabled ? Theme.Color.textSecondary : Theme.Color.textTertiary
         )
+        label.toolTip = parameter.help
         // Fixed width, so the row does not twitch as the digits change under a drag,
         // and so the readout is never what gets truncated when the column is narrow.
         let value = Controls.monoLabel(parameter.text(for: parameter.value))
@@ -799,6 +803,7 @@ final class EffectChainPanelBody: NSView {
             target: self, action: #selector(faderMoved(_:))
         )
         fader.identifier = NSUserInterfaceItemIdentifier(parameter.code)
+        fader.toolTip = parameter.help
         fader.ownerCard = card
         if let code = ParamCode(rawValue: parameter.code) {
             fader.mappingCode = code

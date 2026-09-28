@@ -149,11 +149,11 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     /// Datamosh heal: a press (crossing halfway) eases the clean picture back in over
     /// the heal time, then lets one clean keyframe through.
     public static let moshHeal = ParamCode(known: "37B")
-    /// Datamosh blocks: the encoder's bitrate. Low is starved and blocky.
+    /// Datamosh bitrate (was "blocks"): the encoder's bitrate. Low is starved and blocky.
     public static let moshBlocks = ParamCode(known: "38B")
     /// Datamosh melt: ordinary P-frames dropped at random, so continuous footage melts.
     public static let moshMelt = ParamCode(known: "39B")
-    /// Datamosh loop: how many P-frames bloom replays, 1 to 16.
+    /// Datamosh bloom loop: how many P-frames bloom replays, 1 to 16.
     public static let moshLoop = ParamCode(known: "3AB")
     /// Datamosh heal on the beat: off, or every 1/16 note up to every 4 bars.
     public static let moshHealEvery = ParamCode(known: "3BB")
@@ -163,7 +163,7 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     public static let moshHealShape = ParamCode(known: "3DB")
     /// Datamosh blend: how the mosh combines with the clean picture under it.
     public static let moshBlend = ParamCode(known: "3EB")
-    /// Datamosh MOSH key: a hold. While held the node moshes at full whatever the
+    /// Datamosh HOLD key (was labelled MOSH): a hold. While held the node moshes at full whatever the
     /// faders say (every frame a bloom replay, keyframes and cuts dropped); let go,
     /// it returns to the faders, easing back to clean if they are at zero.
     public static let moshHold = ParamCode(known: "3FB")
@@ -496,9 +496,9 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "35B": "mosh",
         "36B": "bloom",
         "37B": "heal",
-        "38B": "blocks",
+        "38B": "mosh bitrate",
         "39B": "melt",
-        "3AB": "loop",
+        "3AB": "bloom loop",
         "3BB": "heal every",
         "3CB": "heal time",
         "3DB": "heal shape",

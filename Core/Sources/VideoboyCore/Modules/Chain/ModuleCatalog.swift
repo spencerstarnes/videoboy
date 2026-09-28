@@ -65,15 +65,19 @@ public struct ModuleControl {
     public let valueText: (Double) -> String
     /// For a trigger that can be armed on the beat, how. Nil for everything else.
     public let beatArm: ModuleBeatArm?
+    /// What the control does, in a sentence or two — the card's tooltip for it. A
+    /// one-word label cannot say "only works while bloom is up".
+    public let help: String?
 
     public init(label: String, code: ParamCode, kind: ModuleControlKind = .continuous,
                 valueText: @escaping (Double) -> String = { String(format: "%.2f", $0) },
-                beatArm: ModuleBeatArm? = nil) {
+                beatArm: ModuleBeatArm? = nil, help: String? = nil) {
         self.label = label
         self.code = code
         self.kind = kind
         self.valueText = valueText
         self.beatArm = beatArm
+        self.help = help
     }
 }
 
@@ -281,18 +285,45 @@ public final class ModuleCatalog {
         return [
             ModuleDescriptor(
                 id: ID.datamosh, name: "Datamosh · H.264", origin: .native, group: "Built-in",
+                // Order is the card's, unchanged since the performer learned it; the
+                // names, readouts and tooltips were reviewed with the owner 2026-09-28
+                // ("I can't tell what some of them even do").
                 controls: [
-                    ModuleControl(label: "mosh", code: .moshAmount),
-                    ModuleControl(label: "melt", code: .moshMelt),
+                    ModuleControl(label: "mosh", code: .moshAmount,
+                                  valueText: { $0 > 0.001 ? number($0) : "off" },
+                                  help: "Drops the frames where the picture changes a lot — cuts, big moves — so "
+                                    + "the new motion smears across the old picture. Higher catches smaller "
+                                    + "changes. Needs a cut or movement to show; a still picture stays still."),
+                    ModuleControl(label: "melt", code: .moshMelt,
+                                  valueText: { value in
+                                      // The drop rate MoshEngine uses: melt² × 0.35.
+                                      let chance = min(max(value, 0), 1) * min(max(value, 0), 1) * 0.35
+                                      guard chance > 0.00001 else { return "off" }
+                                      let oneIn = Int((1 / chance).rounded())
+                                      return oneIn > 99 ? "rare" : "1/\(oneIn)"
+                                  },
+                                  help: "Drops ordinary frames at random, so the smear builds even on continuous "
+                                    + "footage with no cut. The readout is how many frames go: 1/3 at the top."),
                     ModuleControl(label: "bloom", code: .moshBloom,
-                                  valueText: { $0 > 0.001 ? number($0) : "off" }),
-                    ModuleControl(label: "loop", code: .moshLoop,
-                                  valueText: { "\(MoshControls.bloomLength(fromNormalised: $0))fr" }),
-                    ModuleControl(label: "blocks", code: .moshBlocks),
+                                  valueText: { $0 > 0.001 ? "\(Int(($0 * 100).rounded()))%" : "off" },
+                                  help: "Replays the last few frames' motion in a loop, so the picture streams "
+                                    + "outward. The readout is the share of frames that are replays: 100% "
+                                    + "streams nonstop, 50% lets live motion through between replays."),
+                    ModuleControl(label: "bloom loop", code: .moshLoop,
+                                  valueText: { "\(MoshControls.bloomLength(fromNormalised: $0))fr" },
+                                  help: "How many recent frames bloom repeats, 1 to 16. Only does anything while "
+                                    + "bloom is up."),
+                    ModuleControl(label: "bitrate", code: .moshBlocks,
+                                  valueText: { String(format: "%.1fM", H264LiveEncoder.bitRate(forNormalised: $0) / 1_000_000) },
+                                  help: "The encoder's bitrate, 0.4 to 8 Mb/s. Down starves it: big blocks and "
+                                    + "smeared colour, and the mosh breaks up coarser. Up is clean."),
                     // Two keys, one row (adjacent triggers share one — see the FX
-                    // panel): MOSH, held for full mosh, then HEAL.
-                    ModuleControl(label: "mosh", code: .moshHold, kind: .trigger,
-                                  valueText: { $0 >= 0.5 ? "mosh" : "—" }),
+                    // panel): HOLD, held for full mosh and bloom, then HEAL. HOLD was
+                    // labelled "mosh", the same as the fader above it, doing something else.
+                    ModuleControl(label: "hold", code: .moshHold, kind: .trigger,
+                                  valueText: { $0 >= 0.5 ? "hold" : "—" },
+                                  help: "Hold for everything at once: full mosh and full bloom, streaming the "
+                                    + "bloom loop. Let go and the faders are back in charge."),
                     // Option-Command-click HEAL arms "heal every" at one beat (or the
                     // rate it last had), and again turns it off.
                     ModuleControl(label: "heal", code: .moshHeal, kind: .trigger,
@@ -300,21 +331,32 @@ public final class ModuleCatalog {
                                   beatArm: ModuleBeatArm(
                                     code: .moshHealEvery,
                                     armedValue: MoshHealEvery.beat.normalisedPosition,
-                                    isArmed: { MoshHealEvery.from(normalised: $0) != .off })),
+                                    isArmed: { MoshHealEvery.from(normalised: $0) != .off }),
+                                  help: "Brings the clean picture back over the heal time; the mosh then carries "
+                                    + "on from it. Option-Command-click heals on the beat."),
                     ModuleControl(label: "heal every", code: .moshHealEvery, kind: .choice,
-                                  valueText: { MoshHealEvery.from(normalised: $0).shortName }),
+                                  valueText: { MoshHealEvery.from(normalised: $0).shortName },
+                                  help: "Heals by itself on the beat, from every 1/16 to every 4 bars, while the "
+                                    + "transport is running."),
                     ModuleControl(label: "heal time", code: .moshHealTime,
                                   valueText: { value in
                                       let frames = MoshHealEnvelope.frames(fromNormalised: value)
                                       return frames == 0
                                           ? "now"
                                           : String(format: "%.2fs", Double(frames) / StandardDefinition.frameRate)
-                                  }),
+                                  },
+                                  help: "How long a heal takes to bring the clean picture back — and how long "
+                                    + "letting go of the card takes to fade the mosh out."),
                     ModuleControl(label: "heal shape", code: .moshHealShape, kind: .choice,
-                                  valueText: { MoshHealShape.from(normalised: $0).displayName }),
-                    ModuleControl(label: "opacity", code: .opacity),
+                                  valueText: { MoshHealShape.from(normalised: $0).displayName },
+                                  help: "How the clean picture comes back during a heal: a fade, blocks snapping "
+                                    + "back at random, a wipe from the top, or the brightest parts first."),
+                    ModuleControl(label: "opacity", code: .opacity,
+                                  help: "How strongly the mosh lies over the clean picture."),
                     ModuleControl(label: "blend", code: .moshBlend, kind: .choice,
-                                  valueText: { DatamoshNode.blendShortName(DatamoshNode.blendMode(fromNormalised: $0)) })
+                                  valueText: { DatamoshNode.blendShortName(DatamoshNode.blendMode(fromNormalised: $0)) },
+                                  help: "How the mosh combines with the clean picture — normal, screen, "
+                                    + "difference and the rest.")
                 ],
                 problem: nil, fileURL: nil,
                 factory: { DatamoshNode(identifier: $0, context: $1) }),

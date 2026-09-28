@@ -149,6 +149,17 @@ enum MoshSelfQA {
             passed: healKey != nil && healFader == nil && missing.isEmpty,
             detail: "HEAL key \(healKey != nil), heal fader \(healFader != nil), missing faders: "
                 + (missing.isEmpty ? "none" : missing.map(\.rawValue).joined(separator: ", "))))
+        // Every control on the card explains itself on hover (owner, 2026-09-28).
+        let explained: [ParamCode] = [.moshAmount, .moshMelt, .moshBloom, .moshLoop, .moshBlocks,
+                                      .moshHealEvery, .moshHealTime, .moshHealShape, .opacity, .moshBlend]
+        let silent = explained.filter { (find(VBFader.self, named: $0.rawValue, in: panel)?.toolTip ?? "").isEmpty }
+        let holdKey = find(VBOptionButton.self, named: "trigger|\(ParamCode.moshHold.rawValue)|\(cardName)", in: panel)
+        check.record(AssertionResult(
+            name: "every Datamosh fader and key has a tooltip saying what it does; the hold key reads HOLD",
+            passed: silent.isEmpty && (holdKey?.toolTip ?? "").hasPrefix("Hold for everything")
+                && (healKey?.toolTip ?? "").hasPrefix("Brings the clean picture back"),
+            detail: "faders without one: " + (silent.isEmpty ? "none" : silent.map(\.rawValue).joined(separator: ", "))
+                + "; hold key \(holdKey != nil)"))
         if let healKey, let card = cardView(containing: healKey) {
             writePNG(of: card, to: check.artifactURL("card.png"))
             check.note("card: \(Int(card.bounds.width))×\(Int(card.bounds.height)) pt")
