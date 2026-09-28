@@ -12,7 +12,12 @@
 //  Inputs  : transport state pushed in by the app.
 //  Outputs : user intent, via its callbacks.
 //  Connects: Core's Transport (BPM, phase) and DetectSession (shift-to-detect).
-//  Extend  : do not add anything here that is not transport or clock.
+//            The Clip Pads (docs/specs/clip-pads.md) flank the cluster, 1–4 left and
+//            5–8 right, in what was empty bar — also the owner's instruction
+//            (2026-09-28): launching clips on the beat is a transport concern.
+//  Extend  : do not add anything here that is not transport, clock or the pads. The
+//            pads must never move anything else in the bar: they hang off the
+//            cluster's sides and simply hide when a window is too narrow for them.
 //
 
 import AppKit
@@ -49,6 +54,12 @@ final class TransportToolbarView: NSView {
         display.formatField.value = next.rawValue
         Log.info(.app, "recording format is now \(next.rawValue)")
     }
+
+    /// The Clip Pads either side of the cluster. ClipPadController drives them.
+    let leftPads = ClipPadStrip(side: .left)
+    let rightPads = ClipPadStrip(side: .right)
+    private var leftGroupView: NSView?
+    private var rightGroupView: NSView?
 
     /// The record key, which lives in the centre cluster with the transport.
     let recordButton = RecordButton(frame: .zero)
@@ -178,6 +189,10 @@ final class TransportToolbarView: NSView {
         addSubview(leftGroup)
         addSubview(display)
         addSubview(rightGroup)
+        addSubview(leftPads)
+        addSubview(rightPads)
+        leftGroupView = leftGroup
+        rightGroupView = rightGroup
 
         NSLayoutConstraint.activate([
             leftGroup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
@@ -191,8 +206,32 @@ final class TransportToolbarView: NSView {
             rightGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             rightGroup.centerYAnchor.constraint(equalTo: centerYAnchor),
             rightGroup.leadingAnchor.constraint(
-                greaterThanOrEqualTo: display.trailingAnchor, constant: 12)
+                greaterThanOrEqualTo: display.trailingAnchor, constant: 12),
+
+            // The pads hang off the cluster and constrain nothing else, so they can
+            // never push a control that was already here.
+            leftPads.trailingAnchor.constraint(equalTo: display.leadingAnchor, constant: -Self.padGap),
+            leftPads.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rightPads.leadingAnchor.constraint(equalTo: display.trailingAnchor, constant: Self.padGap),
+            rightPads.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
+    }
+
+    /// Between the cluster and the pads, and the least between the pads and the
+    /// edge groups before the pads give way.
+    private static let padGap: CGFloat = 16
+
+    /// Hides both pad strips (never one — the bar stays symmetrical) when either
+    /// would crowd its edge group in a narrow window.
+    override func layout() {
+        super.layout()
+        guard let leftGroupView, let rightGroupView else { return }
+        let fits = leftPads.frame.minX >= leftGroupView.frame.maxX + Self.padGap
+            && rightPads.frame.maxX <= rightGroupView.frame.minX - Self.padGap
+        if leftPads.isHidden == fits {
+            leftPads.isHidden = !fits
+            rightPads.isHidden = !fits
+        }
     }
 
     /// Shows the clock source the app settled on.

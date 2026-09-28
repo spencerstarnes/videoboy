@@ -1,0 +1,22 @@
+check:    perf/pads
+verdict:  PASS
+when:     2026-09-28T15:40:47Z
+core:     0.4.10
+
+notes:
+  press costs, worst: pad.clipLoaded 0.45 ms, pad.install 0.16 ms, pad.prepare 0.24 ms, pad.refresh 0.99 ms
+  window photo: /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/pads/window.png
+
+assertions (12/12 passed):
+  PASS  eight pads flank the cluster (1–4 left, 5–8 right), overlap nothing, cluster still centred, every pad clickable — left ok true, right ok true, ordered true, overlaps [], centred true, unreachable [], window 1840 wide
+  PASS  dropping a file or a library clip embeds its thumbnail and opens it in memory — taken [true, true, true, true], ready [true, true, true, true], thumbnail true, pad 2 marks Optional(ClosedRange(0.2...0.8))
+  PASS  clicking pad 1 swaps its already-open clip into A (nothing opened on the main thread) and AUTO plays it — A holds motion.mov, instant 1, playing Optional(true), click 4.75 ms
+  PASS  clicking it again while it is loaded restarts it — playhead 41.99999980506896 → 0.0
+  PASS  with A's AUTO off, a pad loads its clip paused (and with its marks) — A holds hd-h264-2997.mov, playing Optional(false), range Optional(ClosedRange(0.2...0.8))
+  PASS  ⌥-clicking pad 5 loads C, plays it even with AUTO off, and cuts C/D to C — C holds hd-prores.mov, playing Optional(true), C/D fader 0.0
+  PASS  switching the left side to B re-opens its pads for B; pad 1 then loads into B — pad 1 → B, B holds motion.mov
+  PASS  the number key 6 loads pad 6; ⌘6 is left alone — 6 taken true, ⌘6 taken false, C holds motion.m2v
+  PASS  a MIDI press on 62J fires pad 2 and the trigger falls back to 0 — B holds hd-h264-2997.mov
+  PASS  ⌥⌘ arms a pad (the blue rate box shows inside it) and it fires on the beat — rate 1/16, box shown true, C playhead 15.014999999999999 → 2.5025000000000004 (restarted every 1/16), loads 0
+  PASS  the pads, their marks and the side switches save with the show and reopen ready — emptied true, pads back 4, left side B
+  PASS  8 pad presses on HD under live render: each an instant swap or a restart, no dropped frame, no held picture, no stall — 8 instant, 0 restarts, 0 opened on demand, 0 dropped (1 in 3 s without), 0 held, worst tick 12.84 ms, longest main-thread stretch 14.5 ms

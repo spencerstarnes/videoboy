@@ -121,7 +121,10 @@ public struct TemplateDocument: Codable, Equatable {
     /// 3 (2026-09-27): what each channel holds (`channels`) — clip, marks, playing,
     /// loop mode, or a generator / configured-source reference — so opening a template
     /// brings the show back, not only its settings.
-    public static let currentVersion = 3
+    ///
+    /// 4 (2026-09-28): the Clip Pads (`clipPads`) — each pad's clip and marks, the
+    /// side switches, beat arming (docs/specs/clip-pads.md).
+    public static let currentVersion = 4
 
     public var version: Int
     /// Free-text name shown in the window subtitle.
@@ -136,6 +139,8 @@ public struct TemplateDocument: Codable, Equatable {
     public var chains: [String: EffectChain]?
     /// Each channel's contents, by letter. Nil before version 3.
     public var channels: [String: TemplateChannel]?
+    /// The top bar's Clip Pads. Nil before version 4.
+    public var clipPads: ClipPadBank?
 
     public init(
         version: Int = TemplateDocument.currentVersion,
@@ -146,7 +151,8 @@ public struct TemplateDocument: Codable, Equatable {
         clock: TemplateClock = TemplateClock(),
         layout: TemplateLayout = TemplateLayout(),
         chains: [String: EffectChain]? = nil,
-        channels: [String: TemplateChannel]? = nil
+        channels: [String: TemplateChannel]? = nil,
+        clipPads: ClipPadBank? = nil
     ) {
         self.version = version
         self.name = name
@@ -157,6 +163,7 @@ public struct TemplateDocument: Codable, Equatable {
         self.layout = layout
         self.chains = chains
         self.channels = channels
+        self.clipPads = clipPads
     }
 
     /// The chain a bus should run: the saved one, or the standard chain for a
@@ -169,7 +176,7 @@ public struct TemplateDocument: Codable, Equatable {
     // Every field has a default, so a hand-edited template missing a section still
     // loads. This is the mechanism behind SPEC 16's "unknown keys are non-fatal".
     private enum CodingKeys: String, CodingKey {
-        case version, name, nodes, edges, mappings, clock, layout, chains, channels
+        case version, name, nodes, edges, mappings, clock, layout, chains, channels, clipPads
     }
 
     public init(from decoder: Decoder) throws {
@@ -183,6 +190,7 @@ public struct TemplateDocument: Codable, Equatable {
         layout = try container.decodeIfPresent(TemplateLayout.self, forKey: .layout) ?? TemplateLayout()
         chains = try container.decodeIfPresent([String: EffectChain].self, forKey: .chains)
         channels = try container.decodeIfPresent([String: TemplateChannel].self, forKey: .channels)
+        clipPads = try container.decodeIfPresent(ClipPadBank.self, forKey: .clipPads)
 
         if version > TemplateDocument.currentVersion {
             Log.warn(.template, "template is version \(version) but this build understands \(TemplateDocument.currentVersion); loading anyway")

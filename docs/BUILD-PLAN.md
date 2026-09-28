@@ -318,6 +318,13 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
   a second while locked). Which beat is "one" of the bar is still not guessed, and
   output latency to the screen is not compensated — both would need a per-rig
   offset control (SPEC 4b's "offset/nudge") rather than an algorithm.
+- [x] **Clip Pads** (designed with the owner 2026-09-28; spec `docs/specs/clip-pads.md`).
+      Eight pads in the top bar flanking the tempo cluster (1–4 | 5–8), A/B and C/D
+      side switches, drag a clip in, press/number key loads (per AUTO), again resets,
+      ⌥ loads+plays+cuts, ⌥⌘ arms on the beat, Shift-click learns MIDI (61J–68J,
+      61K–68K, 69J/6AJ). Clips kept pre-opened (Engine.preparePad); saved with the
+      show (template v4). `selfqa pads` 12/12 ×3: 8 HD presses under live render all
+      instant (~1 ms main thread), 0 dropped, 0 held; stress 10/10.
 - [x] **Every beat-rate key follows one rule** (owner, 2026-09-28: "absolutely 100%
       universal across all uses… always editable… forward and backwards on right
       click"). All 93 VBStepButtons — source STEP keys, CUT/FADE/BEAT tap rates,

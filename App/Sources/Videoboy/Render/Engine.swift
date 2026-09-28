@@ -1147,16 +1147,77 @@ final class Engine {
     /// Swaps in the pre-opened clip if it is `url` and ready: true, and nothing was
     /// opened on this thread. False when it is not ready (the caller loads normally).
     func installPrepared(url: URL, intoChannel letter: String) -> Bool {
-        guard let node = sources[letter], let ahead = preparedAhead[letter], ahead.url == url,
+        guard let ahead = preparedAhead[letter], ahead.url == url,
               let prepared = ahead.clip, prepared.opened else { return false }
         preparedAhead[letter] = nil
-        loadGeneration[letter] = (loadGeneration[letter] ?? 0) + 1   // cancels any older async load
-        guard node.install(prepared) else { return false }
-        registry.register(slot: node.identifier, parameters: node.parameters)
+        guard swapIn(prepared, channel: letter) else { return false }
         // The panel's reaction (rebuilding Source Controls) waits for the next run-loop
         // turn: the take's turn carries only the swap itself.
         onAdvanceInstalled?(letter)
         return true
+    }
+
+    /// Puts an already-opened clip into a channel: the only work on this thread is the
+    /// swap. Shared by ADV and the Clip Pads.
+    private func swapIn(_ prepared: ClipSourceNode.PreparedClip, channel letter: String) -> Bool {
+        guard let node = sources[letter] else { return false }
+        loadGeneration[letter] = (loadGeneration[letter] ?? 0) + 1   // cancels any older async load
+        guard node.install(prepared) else { return false }
+        registry.register(slot: node.identifier, parameters: node.parameters)
+        return true
+    }
+
+    // MARK: Clip Pads (docs/specs/clip-pads.md) — each pad's clip, opened ahead
+
+    /// Each loaded pad's clip, opened for the channel its side targets, waiting to be
+    /// swapped in. A press consumes it; the controller asks for a fresh one straight
+    /// after, so the next press is instant too.
+    private var padsAhead: [Int: (url: URL, channel: String, clip: ClipSourceNode.PreparedClip?)] = [:]
+
+    /// Opens `url` for pad `index`, for `channel`, in the background. Idempotent while
+    /// the same clip for the same channel is open or opening.
+    func preparePad(_ index: Int, url: URL, forChannel letter: String, knownFrameCount: Int? = nil) {
+        guard let node = sources[letter] else { return }
+        if let ahead = padsAhead[index], ahead.url == url, ahead.channel == letter { return }
+        discardPad(index)
+        padsAhead[index] = (url, letter, nil)            // pending
+        let work = node.preparation(url: url, knownFrameCount: knownFrameCount)
+        openQueue.async { [weak self] in
+            let prepared = work()
+            let main = CFRunLoopGetMain()
+            CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
+                guard let self, let ahead = self.padsAhead[index], ahead.url == url, ahead.channel == letter else {
+                    DispatchQueue.global(qos: .utility).async { withExtendedLifetime(prepared) {} }
+                    return
+                }
+                self.padsAhead[index] = (url, letter, prepared)
+                Log.info(.dv, "pad \(index + 1): \(url.lastPathComponent) ready for \(letter)")
+            }
+            CFRunLoopWakeUp(main)
+        }
+    }
+
+    /// Swaps pad `index`'s opened clip into `channel`: true when it was ready (nothing
+    /// was opened on this thread), false when it was not (the caller loads normally).
+    func installPad(_ index: Int, url: URL, intoChannel letter: String) -> Bool {
+        guard let ahead = padsAhead[index], ahead.url == url, ahead.channel == letter,
+              let prepared = ahead.clip, prepared.opened else { return false }
+        padsAhead[index] = nil
+        return swapIn(prepared, channel: letter)
+    }
+
+    /// Whether pad `index` has `url` open and ready for `channel` — for the pad's
+    /// "ready" look and for self-QA.
+    func isPadReady(_ index: Int, url: URL, channel letter: String) -> Bool {
+        guard let ahead = padsAhead[index] else { return false }
+        return ahead.url == url && ahead.channel == letter && ahead.clip?.opened == true
+    }
+
+    /// Drops pad `index`'s opened clip (cleared, or re-targeted). Released off the
+    /// main thread.
+    func discardPad(_ index: Int) {
+        guard let dropped = padsAhead.removeValue(forKey: index) else { return }
+        openQueue.async { withExtendedLifetime(dropped) {} }
     }
 
     /// Told (on the next run-loop turn) when ADV swapped a pre-opened clip into a

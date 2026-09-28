@@ -31,6 +31,9 @@
 //    6xF  — crossfader transition pattern (wipes, slides, pushes, iris — same
 //           mixer family, same reason as 6xE), then the AVE-5 wipe block's state
 //    6xG  — AVE-5 wipe block key PRESSES (momentary, like 68A–6BA)
+//    6xJ  — Clip Pads: pad 1–8 PRESSES (61J–68J, momentary), then the two side
+//           switches (69J left A/B, 6AJ right C/D) — docs/specs/clip-pads.md
+//    6xK  — Clip Pads: pad 1–8 TAKES (load, play and cut — a controller's ⌥-press)
 //    6xE  — genlock/chroma key (6xA's nine slots are already spoken for; this
 //           extends the same mixer family rather than starting a new number range,
 //           because a key is a property of a composite exactly like blend mode is)
@@ -241,6 +244,20 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     public static let rollToggleTrigger = ParamCode(known: "6CA")
     /// Toggles ADV on this sub-mix: a source leaving air loads its next clip.
     public static let advanceToggleTrigger = ParamCode(known: "6DA")
+
+    // MARK: Clip Pads (6xJ, 6xK — docs/specs/clip-pads.md)
+    //
+    // Momentary, like CUT: a press writes 1, the shell fires the pad and puts it back
+    // to 0. On the shell's own `clipPads` slot, since pads belong to no node.
+
+    /// Pad 1–8 pressed: load its clip into its side's source (again: reset).
+    public static let clipPadPresses: [ParamCode] = (1...8).map { ParamCode(known: "6\($0)J") }
+    /// Pad 1–8 taken: load, play and cut the sub-mix to it — a controller's ⌥-press.
+    public static let clipPadTakes: [ParamCode] = (1...8).map { ParamCode(known: "6\($0)K") }
+    /// Left side switch: 0 loads pads 1–4 into A, 1 into B.
+    public static let clipPadLeftSide = ParamCode(known: "69J")
+    /// Right side switch: 0 loads pads 5–8 into C, 1 into D.
+    public static let clipPadRightSide = ParamCode(known: "6AJ")
 
     // MARK: Now Playing generator (7xH)
 
@@ -505,6 +522,11 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "6BA": "cut to right",
         "6CA": "A/B roll",
         "6DA": "advance",
+        "61J": "pad 1", "62J": "pad 2", "63J": "pad 3", "64J": "pad 4",
+        "65J": "pad 5", "66J": "pad 6", "67J": "pad 7", "68J": "pad 8",
+        "61K": "pad 1 take", "62K": "pad 2 take", "63K": "pad 3 take", "64K": "pad 4 take",
+        "65K": "pad 5 take", "66K": "pad 6 take", "67K": "pad 7 take", "68K": "pad 8 take",
+        "69J": "pads 1–4 → A/B", "6AJ": "pads 5–8 → C/D",
         "71H": "now playing look",
         "72H": "now playing on change only",
         "73H": "now playing hold",
@@ -715,8 +737,10 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .emuDecoration,
         .emuItalic,
         .emuBackdrop,
-        .emuBox
-    ]
+        .emuBox,
+        .clipPadLeftSide,
+        .clipPadRightSide
+    ] + clipPadPresses + clipPadTakes
 
     /// The fixed table by raw value, for validation.
     private static let table: [String: ParamCode] = Dictionary(

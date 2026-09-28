@@ -29,6 +29,8 @@ final class ShellController {
     private lazy var router = OutputRouter(store: preferences, metal: MetalContext.shared)
     /// Shift-to-detect. Exposed so the self-QA render can arm it.
     private(set) var detectSession: DetectSession?
+    /// The top bar's Clip Pads (docs/specs/clip-pads.md).
+    private(set) var clipPads: ClipPadController?
 
     /// The AVE-5 wipe block's popover, while one is open, and the bus it edits.
     /// One at a time: it is opened from a fader's key, and a second fader's block
@@ -63,6 +65,8 @@ final class ShellController {
         // No single default camera to start here any more — a configured source's
         // session starts when a channel is actually pointed at it (`assignSource`),
         // the same as a file only starts decoding once it is loaded into one.
+        // Before Detect, so the pads' codes are registered when Shift first looks.
+        clipPads = ClipPadController(shell: self, engine: engine, toolbar: shell.toolbar)
         wireDetect()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
@@ -99,7 +103,7 @@ final class ShellController {
     /// Opening happens OFF the main thread (`Engine.loadAsync`, audit F9): the channel
     /// keeps showing what it had until the new clip is ready, then everything below
     /// runs. `then` is told whether it loaded, after the panel is updated.
-    private func loadClip(
+    func loadClip(
         _ url: URL, into channel: String, range: ClosedRange<Double>? = nil,
         then: ((Bool) -> Void)? = nil
     ) {
@@ -116,7 +120,7 @@ final class ShellController {
     }
 
     /// The main-thread half of `loadClip`, once the clip is open (or failed to).
-    private func clipLoaded(_ url: URL, into channel: String, range: ClosedRange<Double>?, loaded: Bool) {
+    func clipLoaded(_ url: URL, into channel: String, range: ClosedRange<Double>?, loaded: Bool) {
         guard loaded else {
             presentNotice(
                 "Could not load \(url.lastPathComponent)",
@@ -216,6 +220,18 @@ final class ShellController {
 
     /// Whether each channel starts playing when a clip lands in it.
     private var autoPlayByChannel: [String: Bool] = [:]
+
+    /// Whether `channel` plays a clip as soon as it lands (its AUTO key, else the
+    /// preference) — what a Clip Pad press follows.
+    func autoPlays(_ channel: String) -> Bool {
+        autoPlayByChannel[channel] ?? preferences.preferences.playOnLoad
+    }
+
+    /// Sets a channel's AUTO as its key would — for self-QA.
+    func setAutoPlayForChecks(_ isOn: Bool, channel: String) {
+        autoPlayByChannel[channel] = isOn
+        shell.grid.panels.sourceBodies[channel]?.preview.setAutoPlayAppearance(on: isOn)
+    }
 
     @objc private func sourceAutoPlayToggled(_ sender: NSButton) {
         guard let raw = sender.identifier?.rawValue,
@@ -1436,11 +1452,13 @@ final class ShellController {
             }
             channels[letter] = channel
         }
-        return TemplateDocument.capture(
+        var document = TemplateDocument.capture(
             name: name, graph: engine.graph, registry: engine.registry,
             clock: TemplateClock(beatsPerMinute: engine.transport.beatsPerMinute,
                                  subdivision: engine.beatSubdivision.rawValue),
             chains: engine.chains, channels: channels)
+        document.clipPads = clipPads?.bank
+        return document
     }
 
     /// Writes the show to `url` and remembers it as the current template.
@@ -1496,6 +1514,7 @@ final class ShellController {
             }
         }
 
+        clipPads?.restore(document.clipPads)
         repaintFromRegistry()
         currentTemplateURL = url
         onTemplateURLChanged?(url)
@@ -1602,7 +1621,7 @@ final class ShellController {
 
     /// Plays or pauses a channel, keeping the play key's own record in step (the key
     /// and ROLL are linked controls: they must never disagree).
-    private func setChannelPlaying(_ channel: String, _ playing: Bool) {
+    func setChannelPlaying(_ channel: String, _ playing: Bool) {
         if playing { playingChannels.insert(channel) } else { playingChannels.remove(channel) }
         engine.setPlaying(playing, channel: channel)
     }
@@ -1768,7 +1787,7 @@ final class ShellController {
 
     /// The file that would actually be PLAYED for a clip (its optimized file when
     /// there is one), and the catalog's frame count for it.
-    private func playbackTarget(for url: URL) -> (url: URL, knownFrameCount: Int?) {
+    func playbackTarget(for url: URL) -> (url: URL, knownFrameCount: Int?) {
         let library = shell.grid.panels.library
         let playing = preferences.preferences.usesOptimizedMedia
             ? library.playbackURL(for: url, canvas: ClipOptimizer.canvasTag) : (url: url, optimized: false)
@@ -3634,6 +3653,7 @@ final class ShellController {
         updateBeatLights(from: engine)
         fireActionTriggers(from: engine)
         flipAutomatedButtons(from: engine)
+        clipPads?.tick()
         refreshAVE5()
 
         // The status and transport readouts are cheap, but not free; once a second is

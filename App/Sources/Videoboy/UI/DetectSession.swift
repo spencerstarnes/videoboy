@@ -168,6 +168,17 @@ final class DetectSession {
                 }
             }
         }
+        // Clip Pads — a pad learns a KEY, like CUT. They also answer ⌥⌘ (armed on the
+        // beat), so they pulse with the other beat-armable keys.
+        if let pad = view as? ClipPadView {
+            pad.isDetectHighlighted = isArmed
+            pad.isSweepArming = isSweepArming
+            if pad.onDetectRequested == nil {
+                pad.onDetectRequested = { [weak self] slot, code in
+                    self?.onDetectRequested?(slot, code, .notesOnly)
+                }
+            }
+        }
         // Menus, switches and colour wells. They became mappable when the EMU panel
         // stopped using a fader for everything: a knob on a menu steps through its
         // items, and a pad on a switch is exactly what a pad is for.
