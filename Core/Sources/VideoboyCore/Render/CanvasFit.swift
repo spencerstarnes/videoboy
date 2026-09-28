@@ -69,12 +69,23 @@ public struct CanvasGeometry: Equatable, Sendable {
     }
 
     /// Where a picture of `sourceAspect` sits in this canvas, in canvas UV (0...1).
-    public func placement(sourceAspect: Double, framing: PreviewFill) -> (origin: SIMD2<Float>, size: SIMD2<Float>) {
+    ///
+    /// - Parameter nativeHeight: the source's own height in pixels (upright). Centre
+    ///   uses it: native size, neither scaled up nor down — a small picture sits small
+    ///   in the middle, a larger one is cropped to its middle. Without it Centre fits.
+    public func placement(sourceAspect: Double, framing: PreviewFill,
+                          nativeHeight: Int? = nil) -> (origin: SIMD2<Float>, size: SIMD2<Float>) {
         let canvas = CGSize(width: displayAspect, height: 1)
-        // `centre` means native pixel size, which has no meaning across rasters of
-        // different shapes; a source is fitted instead.
-        let mode: PreviewFill = framing == .centre ? .fit : framing
-        let rect = mode.rect(sourceSize: CGSize(width: sourceAspect, height: 1), in: canvas)
+        let rect: CGRect
+        if framing == .centre, let nativeHeight, nativeHeight > 0, height > 0 {
+            let h = CGFloat(nativeHeight) / CGFloat(height)
+            let size = CGSize(width: h * sourceAspect, height: h)
+            rect = CGRect(x: (canvas.width - size.width) / 2, y: (canvas.height - size.height) / 2,
+                          width: size.width, height: size.height)
+        } else {
+            let mode: PreviewFill = framing == .centre ? .fit : framing
+            rect = mode.rect(sourceSize: CGSize(width: sourceAspect, height: 1), in: canvas)
+        }
         return (SIMD2(Float(rect.minX / canvas.width), Float(rect.minY / canvas.height)),
                 SIMD2(Float(rect.width / canvas.width), Float(rect.height / canvas.height)))
     }
@@ -106,7 +117,7 @@ public final class CanvasFit {
     /// Submits without waiting, like every other pass.
     public func fit(
         _ source: MTLTexture, sourceAspect: Double, quarterTurns: Int,
-        framing: PreviewFill, canvas: CanvasGeometry
+        framing: PreviewFill, canvas: CanvasGeometry, nativeHeight: Int? = nil
     ) -> MTLTexture? {
         if target == nil || target?.width != canvas.width || target?.height != canvas.height {
             target = metal.makeRenderTarget(width: canvas.width, height: canvas.height, label: "\(label)-fit")
@@ -118,7 +129,7 @@ public final class CanvasFit {
             var size: SIMD2<Float>
             var quarterTurns: Int32
         }
-        let placed = canvas.placement(sourceAspect: sourceAspect, framing: framing)
+        let placed = canvas.placement(sourceAspect: sourceAspect, framing: framing, nativeHeight: nativeHeight)
         var params = Params(origin: placed.origin, size: placed.size, quarterTurns: Int32(quarterTurns & 3))
 
         let descriptor = MTLRenderPassDescriptor()

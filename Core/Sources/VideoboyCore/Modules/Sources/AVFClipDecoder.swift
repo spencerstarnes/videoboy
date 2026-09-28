@@ -71,6 +71,8 @@ public final class AVFClipDecoder: ClipDecoding {
     public let displayAspectRatio: Double?
     /// Clockwise quarter turns from the stored raster to upright.
     public let quarterTurns: Int
+    /// Upright pixel height of the file's own picture (Centre framing).
+    public let nativeHeight: Int?
     /// The size frames are decoded at (stored orientation), or nil for the file's own.
     /// VideoToolbox scales during decode, which is nearly free; the alternative was
     /// copying 8 MB 1080p frames through the CPU and scaling them in the graph.
@@ -124,6 +126,7 @@ public final class AVFClipDecoder: ClipDecoding {
         let uprightAspect = turns % 2 == 1 ? 1 / storedAspect : storedAspect
         self.quarterTurns = turns
         self.displayAspectRatio = uprightAspect
+        self.nativeHeight = turns % 2 == 1 ? stored.width : stored.height
 
         if let canvas, stored.width > 0, stored.height > 0 {
             let uprightNative = turns % 2 == 1 ? (stored.height, stored.width) : (stored.width, stored.height)

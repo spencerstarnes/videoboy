@@ -106,7 +106,22 @@ public final class CaptureSourceNode: Node {
         guard let image else { return texture }
 
         if uploader == nil { uploader = TextureUploader(context: metal, label: "\(identifier)-capture") }
-        texture = uploader?.upload(image) ?? texture
+        guard let uploaded = uploader?.upload(image) else { return texture }
+        // Into the canvas by the channel's framing, on the GPU — a 16:9 camera used to
+        // enter the mix at its own size and be stretched to 4:3 by whatever sampled it.
+        let canvas = CanvasGeometry(width: renderContext.width, height: renderContext.height)
+        let aspect = CanvasGeometry.displayAspect(width: uploaded.width, height: uploaded.height)
+        if CanvasFit.isIdentity(texture: uploaded, sourceAspect: aspect, quarterTurns: 0, canvas: canvas) {
+            texture = uploaded
+        } else {
+            if fitter == nil { fitter = CanvasFit(context: metal, label: identifier) }
+            texture = fitter?.fit(uploaded, sourceAspect: aspect, quarterTurns: 0, framing: framing,
+                                  canvas: canvas, nativeHeight: uploaded.height) ?? uploaded
+        }
         return texture
     }
+
+    /// How the captured picture sits in the canvas (the source panel's FIT key).
+    public var framing: PreviewFill = .fit
+    private var fitter: CanvasFit?
 }

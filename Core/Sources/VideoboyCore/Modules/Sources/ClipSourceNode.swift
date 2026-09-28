@@ -839,14 +839,15 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             picturePlacement = nil
             return uploaded
         }
-        let placed = canvas.placement(sourceAspect: aspect, framing: framing)
+        let native = decoder.nativeHeight
+        let placed = canvas.placement(sourceAspect: aspect, framing: framing, nativeHeight: native)
         let unit = CGRect(x: CGFloat(placed.origin.x), y: CGFloat(placed.origin.y),
                           width: CGFloat(placed.size.x), height: CGFloat(placed.size.y))
         // Nil when the picture covers the whole canvas (fill, stretch): no bars.
         picturePlacement = unit.contains(CGRect(x: 0, y: 0, width: 1, height: 1)) ? nil : unit
         if fitter == nil { fitter = CanvasFit(context: metal, label: identifier) }
         return fitter?.fit(uploaded, sourceAspect: aspect, quarterTurns: decoder.quarterTurns,
-                           framing: framing, canvas: canvas) ?? uploaded
+                           framing: framing, canvas: canvas, nativeHeight: native) ?? uploaded
     }
 
     /// Renders one frame without a Metal device, for headless self-QA.

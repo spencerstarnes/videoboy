@@ -50,9 +50,14 @@ public protocol ClipDecoding: AnyObject {
     /// Clockwise quarter turns needed to show the decoded raster upright. A phone's
     /// portrait clip is stored landscape with a rotation flag.
     var quarterTurns: Int { get }
+
+    var nativeHeight: Int? { get }
 }
 
 public extension ClipDecoding {
+    /// The picture's own height in pixels, upright — what Centre framing shows at 1:1.
+    /// Nil when unknown (Centre then fits).
+    var nativeHeight: Int? { nil }
     var displayAspectRatio: Double? { nil }
     var quarterTurns: Int { 0 }
 }

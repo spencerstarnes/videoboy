@@ -93,15 +93,19 @@ public struct TemplateChannel: Codable, Equatable {
     /// A non-file source, as a library reference: `generator:<kind>`, `isf:<module>`,
     /// `source:<configured id>`. Nil for a file or an empty channel.
     public var reference: String?
+    /// How the picture sits in the canvas (Fit / Fill / Stretch / Centre).
+    public var framing: PreviewFill?
 
     public init(mediaPath: String? = nil, inPoint: Double? = nil, outPoint: Double? = nil,
-                isPlaying: Bool = false, loopMode: LoopMode? = nil, reference: String? = nil) {
+                isPlaying: Bool = false, loopMode: LoopMode? = nil, reference: String? = nil,
+                framing: PreviewFill? = nil) {
         self.mediaPath = mediaPath
         self.inPoint = inPoint
         self.outPoint = outPoint
         self.isPlaying = isPlaying
         self.loopMode = loopMode
         self.reference = reference
+        self.framing = framing
     }
 }
 

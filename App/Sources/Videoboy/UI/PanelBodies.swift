@@ -84,12 +84,21 @@ final class SourcePanelBody: NSView {
     let fillKey = VBOptionButton(title: PreviewFill.fit.displayName.uppercased())
 
     /// How this source's picture fills its window.
+    /// How this channel frames its picture IN THE FEED (the engine applies it). The
+    /// monitor shows the feed as it is — already canvas-shaped — so it always fits;
+    /// applying the mode here as well cropped or stretched the picture a second time.
     private var previewFill: PreviewFill = .fit {
         didSet {
-            preview.fillMode = previewFill
+            preview.fillMode = .fit
             fillKey.setTitle(previewFill.displayName.uppercased())
         }
     }
+
+    /// The framing this panel's key shows — for self-QA and templates.
+    var fillForChecks: PreviewFill { previewFill }
+
+    /// Presses the key as a click does — for self-QA.
+    func cycleFillForChecks() { fillCycled() }
 
     /// Called when this source's fill mode changes.
     var onFillChanged: ((PreviewFill) -> Void)?

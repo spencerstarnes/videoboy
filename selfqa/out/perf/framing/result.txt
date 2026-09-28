@@ -1,0 +1,11 @@
+check:    perf/framing
+verdict:  PASS
+when:     2026-09-28T02:31:36Z
+core:     0.4.10
+
+assertions (5/5 passed):
+  PASS  every mode was pressed and read back from the feed — 4 of 4 modes
+  PASS  FIT letterboxes a 16:9 clip in the feed (black bars top and bottom) — top band 0, middle 127
+  PASS  FILL and STRETCH cover the whole canvas in the feed, and differ from each other — fill top 128, stretch top 127
+  PASS  CENTRE shows the HD clip at native size (cropped to its middle), unlike FILL — centre top 131
+  PASS  the A/B sub-mix (what goes to air) carries the same framing as channel A — 4 of 4 modes matched

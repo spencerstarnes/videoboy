@@ -80,6 +80,8 @@ enum SelfQARunner {
             verdict = TemplateSelfQA.run()
         case "now-playing":
             verdict = NowPlayingSelfQA.run()
+        case "framing":
+            verdict = FramingSelfQA.run()
         case "push-fade":
             verdict = PushFadeSelfQA.run()
         case "mosh":

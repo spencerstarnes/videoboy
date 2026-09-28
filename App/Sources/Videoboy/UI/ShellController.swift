@@ -272,7 +272,10 @@ final class ShellController {
         // Seeds each SOURCE with the saved preference; from then on each one carries
         // its own, set from its own panel. The three composites follow the preference
         // and have no key, because everything reaching them is already 720x480.
-        for body in panels.sourceBodies.values { body.setFill(fill) }
+        for (letter, body) in panels.sourceBodies {
+            body.setFill(fill)
+            engine.setFraming(fill, channel: letter)
+        }
         // Never Centre on a composite. Its picture is always 720x480 and its monitor
         // is always smaller, so Centre there is a crop of the middle of what goes to
         // air — and a source's fill key writing Centre as the default for fresh
@@ -926,10 +929,13 @@ final class ShellController {
             autoPlayByChannel[letter] = preferences.preferences.playOnLoad
 
             body.onFillChanged = { [weak self] fill in
+                // THE FEED, not only the monitor: the channel's picture is placed in the
+                // canvas this way on the GPU, so what goes to the mix and to air changes.
+                self?.engine.setFraming(fill, channel: letter)
                 // The most recently chosen mode becomes what a fresh source starts
                 // with, so setting it once does not mean setting it four times.
                 self?.preferences.preferences.previewFill = fill
-                Log.info(.render, "source \(letter) fill is now \(fill.displayName)")
+                Log.info(.render, "source \(letter) framing is now \(fill.displayName)")
             }
             body.onClipDropped = { [weak self] url, range in
                 // The range travels with the drag now, so a dragged clip honours its
@@ -1411,7 +1417,8 @@ final class ShellController {
         var channels: [String: TemplateChannel] = [:]
         for letter in ["A", "B", "C", "D"] {
             let source = engine.sources[letter]
-            var channel = TemplateChannel(isPlaying: source?.isPlaying ?? false, loopMode: source?.loopMode)
+            var channel = TemplateChannel(isPlaying: source?.isPlaying ?? false, loopMode: source?.loopMode,
+                                          framing: engine.framing[letter])
             switch engine.channelSourceKinds[letter] ?? .file {
             case .file:
                 channel.mediaPath = source?.mediaURL?.path
@@ -1459,6 +1466,10 @@ final class ShellController {
 
         for (letter, channel) in document.channels ?? [:] {
             let body = shell.grid.panels.sourceBodies[letter]
+            if let framing = channel.framing {
+                engine.setFraming(framing, channel: letter)
+                body?.setFill(framing)
+            }
             if let reference = channel.reference {
                 loadLibraryReference(reference, into: letter)
                 setChannelPlaying(letter, channel.isPlaying)

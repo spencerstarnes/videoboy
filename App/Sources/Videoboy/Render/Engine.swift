@@ -1188,6 +1188,20 @@ final class Engine {
         openQueue.async { withExtendedLifetime(dropped) {} }
     }
 
+    // MARK: Framing (the source panel's FIT / FILL / STRETCH / CENTRE key)
+
+    /// How each channel's picture sits in the canvas — in the FEED, not only the
+    /// monitor. Kept per channel so a clip or camera loaded later takes it too.
+    private(set) var framing: [String: PreviewFill] = [:]
+
+    func setFraming(_ fill: PreviewFill, channel letter: String) {
+        framing[letter] = fill
+        sources[letter]?.framing = fill
+        if case .capture(let id) = channelSourceKinds[letter] ?? .file {
+            captureNodes[id]?.framing = fill
+        }
+    }
+
     /// Takes whatever is loaded out of a channel. Safe to call on an empty one.
     ///
     /// Returns false only when the letter names no source at all, so a caller can
@@ -1355,7 +1369,10 @@ final class Engine {
         // A configured source's node is created lazily — see `ensureCaptureNode` — so
         // it must exist before the edge below can name it. Every other kind's node was
         // already added in `buildGraph`.
-        if case .capture(let id) = kind { ensureCaptureNode(id: id) }
+        if case .capture(let id) = kind {
+            // The channel's framing follows it onto the camera it now shows.
+            ensureCaptureNode(id: id).framing = framing[letter] ?? .fit
+        }
 
         let subMix = GraphTopology.subMix(forChannel: Engine.slot(forChannel: letter))
         // A and C are the lower layer of their bus; B and D the upper.
