@@ -83,10 +83,16 @@ final class VBSlideToggle: NSControl {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
+    /// Width of one position. 26 by default; the fader row sets it narrower so
+    /// ROLL and ADV fit beside it without the keys moving (2026-09-27, owner).
+    var cellWidth: CGFloat = 26 {
+        didSet { invalidateIntrinsicContentSize(); needsLayout = true }
+    }
+
     /// Wide enough for its positions, and exactly as tall as the keys beside it.
     override var intrinsicContentSize: NSSize {
         NSSize(
-            width: CGFloat(images.count) * 26 + 4,
+            width: CGFloat(images.count) * cellWidth + 4,
             height: Theme.BusButton.height)
     }
 
@@ -197,7 +203,7 @@ final class VBSlideToggle: NSControl {
             }
 
             let configuration = NSImage.SymbolConfiguration(
-                pointSize: 12, weight: .semibold
+                pointSize: cellWidth < 22 ? 10 : 12, weight: .semibold
             ).applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
             let drawn = image.withSymbolConfiguration(configuration) ?? image
 

@@ -29,37 +29,47 @@ enum ABRollSelfQA {
             return check.finish(blockedReason: "samples/ is missing fixtures")
         }
 
-        // 1. Layout: the keys moved nothing on a sub-mix fader panel.
-        do {
-            func panel(_ withKeys: Bool) -> FaderPanelBody {
-                let body = FaderPanelBody(leftLabel: "A", rightLabel: "B", leftColor: Theme.Color.busOne,
-                                          rightColor: Theme.Color.textSecondary, includesSwap: false,
-                                          includesABRoll: withKeys)
-                body.frame = NSRect(x: 0, y: 0, width: 520, height: 110)
-                body.layoutSubtreeIfNeeded()
-                return body
-            }
-            func frames(_ body: FaderPanelBody) -> [String: NSRect] {
-                var found: [String: NSRect] = [:]
-                func walk(_ view: NSView) {
-                    if let key = view as? VBOptionButton, key.mappingCode != .rollToggleTrigger,
-                       key.mappingCode != .advanceToggleTrigger {
-                        found[key.mappingCode?.rawValue ?? "beat"] = key.convert(key.bounds, to: body)
+        // 1. Layout (owner, 2026-09-27): ROLL and ADV sit in the performance row after
+        // FADE, as tall as CUT; BEAT is gone; the rate control is narrower; nothing
+        // overlaps — at a narrow and a wide panel.
+        for width in [440.0, 640.0] {
+            let body = FaderPanelBody(leftLabel: "A", rightLabel: "B", leftColor: Theme.Color.busOne,
+                                      rightColor: Theme.Color.textSecondary, includesSwap: false,
+                                      includesABRoll: true)
+            body.frame = NSRect(x: 0, y: 0, width: width, height: 110)
+            body.layoutSubtreeIfNeeded()
+            var keys: [String: NSRect] = [:]
+            var rate: NSRect?
+            var others: [NSRect] = []
+            var beatShown = false
+            func walk(_ view: NSView) {
+                if let key = view as? VBOptionButton, !key.isHiddenOrHasHiddenAncestor {
+                    let frame = key.convert(key.bounds, to: body)
+                    switch key.mappingCode {
+                    case .cutTrigger?: keys["CUT"] = frame
+                    case .fadeTrigger?: keys["FADE"] = frame
+                    case .rollToggleTrigger?: keys["ROLL"] = frame
+                    case .advanceToggleTrigger?: keys["ADV"] = frame
+                    default: if key.mappingCode == nil, key.superview != nil { beatShown = beatShown || key.accessibilityTitle() == "BEAT" }
                     }
-                    if let key = view as? VBBusButton { found["bus-\(key.mappingCode?.rawValue ?? "")"] = key.convert(key.bounds, to: body) }
-                    if let slide = view as? VBSlideToggle { found["rate"] = slide.convert(slide.bounds, to: body) }
-                    if let fader = view as? VBFader { found["fader"] = fader.convert(fader.bounds, to: body) }
-                    view.subviews.forEach(walk)
                 }
-                walk(body)
-                return found
+                if let bus = view as? VBBusButton { others.append(bus.convert(bus.bounds, to: body)) }
+                if let slide = view as? VBSlideToggle { rate = slide.convert(slide.bounds, to: body) }
+                if view is VBBlendButton || view is VBTransitionButton { others.append(view.convert(view.bounds, to: body)) }
+                view.subviews.forEach(walk)
             }
-            let without = frames(panel(false)), with = frames(panel(true))
-            let moved = without.filter { with[$0.key] != $0.value }.map(\.key)
+            walk(body)
+            let order = ["CUT", "FADE", "ROLL", "ADV"].compactMap { keys[$0]?.minX }
+            let inOrder = order.count == 4 && order == order.sorted() && (rate.map { $0.minX > order[3] } ?? false)
+            let sameHeight = keys["ROLL"]?.height == keys["CUT"]?.height && keys["ADV"]?.height == keys["CUT"]?.height
+            let all = Array(keys.values) + others + [rate].compactMap { $0 }
+            var overlaps = 0
+            for i in all.indices { for j in all.indices where j > i && all[i].intersects(all[j].insetBy(dx: 0.5, dy: 0.5)) { overlaps += 1 } }
             check.record(AssertionResult(
-                name: "ROLL and ADV move nothing on the fader panel (CUT, FADE, BEAT, bus keys, rate, fader)",
-                passed: moved.isEmpty && without.count >= 6,
-                detail: "\(without.count) controls compared" + (moved.isEmpty ? "" : "; moved: \(moved)")))
+                name: "\(Int(width)) pt panel: A B CUT FADE ROLL ADV then the rate control, same height, nothing overlapping, no BEAT",
+                passed: inOrder && sameHeight && overlaps == 0 && !beatShown && (rate?.width ?? 99) <= 60,
+                detail: "order \(order.map { Int($0) }), rate x \(Int(rate?.minX ?? -1)) w \(Int(rate?.width ?? -1)), "
+                    + "same height \(sameHeight), overlaps \(overlaps), BEAT shown \(beatShown)"))
         }
 
         let scratch = FileManager.default.temporaryDirectory

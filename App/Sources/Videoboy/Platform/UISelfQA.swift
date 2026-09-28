@@ -1704,7 +1704,8 @@ enum UISelfQA {
             let pulsing = keys.filter(\.isSweepArming)
             check.record(AssertionResult(
                 name: "holding ⌘⌥ pulses exactly the keys that can tap on the beat",
-                passed: tapKeys.count == 3 && Set(pulsing.map(\.title)) == Set(tapKeys.map(\.title)),
+                // CUT and FADE: BEAT left the panel on 2026-09-27 (owner's request).
+                passed: tapKeys.count == 2 && Set(pulsing.map(\.title)) == Set(tapKeys.map(\.title)),
                 detail: "pulsing: \(pulsing.map(\.title).joined(separator: ", "))"
             ))
             controller.detectSession?.setSweepArming(false)

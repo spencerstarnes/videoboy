@@ -945,24 +945,6 @@ final class FaderPanelBody: NSView {
     var onButtonAutomationChanged: (() -> Void)?
 
     private weak var cutButton: VBOptionButton?
-    /// The floating ROLL/ADV pair and the cluster it must never cover.
-    private weak var abRollKeys: NSView?
-    /// What the floating pair must never cover: the end label, the live value, the
-    /// CUT/FADE/BEAT cluster and the fader.
-    private var abRollAvoids: [NSView] = []
-
-    /// Hides the floating ROLL/ADV pair when the panel has no spare room for it —
-    /// hidden, never overlapping another control and never pushing one.
-    override func layout() {
-        super.layout()
-        guard let keys = abRollKeys else { return }
-        let keysFrame = keys.convert(keys.bounds, to: self).insetBy(dx: -3, dy: 0)
-        let blocked = abRollAvoids.contains { view in
-            !view.isHidden && view.convert(view.bounds, to: self).intersects(keysFrame)
-        }
-        keys.isHidden = blocked || keysFrame.minX < 0
-    }
-
     /// A/B ROLL and ADV — only on the two sub-mix faders.
     private(set) weak var rollButton: VBOptionButton?
     private(set) weak var advanceButton: VBOptionButton?
@@ -1190,7 +1172,9 @@ final class FaderPanelBody: NSView {
             + "Which beat is set by DIV in the transport readout."
         beatToggle.isTall = true
         self.beatCutButton = beatToggle
-        buttons.append(beatToggle)
+        // BEAT is off the panel for now (owner, 2026-09-27: "I don't know if this will
+        // be useful for anyone"). Still built and wired — cut-on-beat stays OFF unless
+        // something sets it — so bringing it back is appending it to `buttons` again.
 
         // And on BEAT itself — flips whether the next cut/fade waits, on the beat.
         let beatRateKey = VBStepButton()
@@ -1231,6 +1215,8 @@ final class FaderPanelBody: NSView {
             images: rateImages, tooltips: rateSymbols.map(\.1), selected: 1)
         rateControl.target = self
         rateControl.action = #selector(rateChanged(_:))
+        // Narrower positions, same height: room for ROLL and ADV in the row.
+        rateControl.cellWidth = 18
         rateControl.heightAnchor.constraint(
             equalToConstant: Theme.BusButton.height).isActive = true
         self.rateControl = rateControl
@@ -1311,24 +1297,6 @@ final class FaderPanelBody: NSView {
         // panel has a middle again.
         //
         // `buttons` still holds CUT, FADE and BEAT in order; the rate joins them here.
-        let transportCluster = Controls.row(buttons + [rateControl], spacing: 4)
-        transportCluster.translatesAutoresizingMaskIntoConstraints = false
-
-        // BLEND and the fader's OWN sweep keys are settings, not performance keys, so
-        // they sit out at the trailing edge rather than inside the cluster — there is
-        // exactly one fader per panel, so "off in the corner" still reads as
-        // belonging to it. The three button tap-rate keys do NOT join them: CUT,
-        // FADE and BEAT can each be armed independently, and a rate key stranded
-        // here with two others would not say which button it belongs to. Each lives
-        // in `buttons`, right beside its own key, instead (see above).
-        // ROLL and ADV (sub-mix faders only, `FeatureFlag.abRoll`) FLOAT beside the
-        // options row rather than joining it: in the row they made it wider, and on a
-        // narrow panel the centred CUT/FADE/BEAT cluster gave way and slid left —
-        // under a performer's fingers. Floating, they take no width from anything;
-        // where the panel has no spare space for them they hide (`layout`), and stay
-        // reachable by MIDI.
-        let options: [NSView] = [blend, sweepKey, sweepCancel]
-        var abRollKeys: NSStackView?
         if includesABRoll {
             let roll = VBOptionButton(title: "ROLL")
             roll.target = self
@@ -1344,10 +1312,27 @@ final class FaderPanelBody: NSView {
             advance.toolTip = "ADV: the source leaving air loads its next clip — Up Next first, "
                 + "then the library (Settings ▸ Defaults). Shift-click to learn a MIDI button."
             advance.setAccessibilityIdentifier("ab-advance")
+            roll.isTall = true
+            advance.isTall = true
             rollButton = roll
             advanceButton = advance
-            abRollKeys = Controls.row([roll, advance], spacing: 4)
+            // In the performance row, after FADE: same size as CUT and FADE, reached
+            // the same way (owner, 2026-09-27).
+            buttons.append(contentsOf: [roll, advance])
         }
+        let transportCluster = Controls.row(buttons + [rateControl], spacing: 4)
+        transportCluster.translatesAutoresizingMaskIntoConstraints = false
+
+        // BLEND and the fader's OWN sweep keys are settings, not performance keys, so
+        // they sit out at the trailing edge rather than inside the cluster — there is
+        // exactly one fader per panel, so "off in the corner" still reads as
+        // belonging to it. The three button tap-rate keys do NOT join them: CUT,
+        // FADE and BEAT can each be armed independently, and a rate key stranded
+        // here with two others would not say which button it belongs to. Each lives
+        // in `buttons`, right beside its own key, instead (see above).
+        // ROLL and ADV (sub-mix faders only, `FeatureFlag.abRoll`) are made here and
+        // join the performance row above, after FADE.
+        let options: [NSView] = [blend, sweepKey, sweepCancel]
         let optionsRow = Controls.row(options, spacing: 4)
         optionsRow.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1426,24 +1411,9 @@ final class FaderPanelBody: NSView {
             fader.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -padding)
         ])
 
-        if let abRollKeys {
-            abRollKeys.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(abRollKeys)
-            // On the end-label line above the fader, beside the right-hand label: that
-            // line is otherwise empty, and a 17 pt key fits between the button row and
-            // the fader without touching either.
-            NSLayoutConstraint.activate([
-                abRollKeys.centerYAnchor.constraint(equalTo: right.centerYAnchor),
-                abRollKeys.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -8)
-            ])
-            self.abRollKeys = abRollKeys
-            self.abRollAvoids = [left, valueLabel, transportCluster, fader]
-        }
-
         // The tap-rate keys float over their buttons, outside every stack view, so
         // showing one never changes the row's size or moves a key under a finger.
-        for (rateKey, button) in [(cutRateKey, cutButton), (fadeRateKey, fadeButton),
-                                  (beatRateKey, beatToggle)] as [(VBStepButton, NSView)] {
+        for (rateKey, button) in [(cutRateKey, cutButton), (fadeRateKey, fadeButton)] as [(VBStepButton, NSView)] {
             rateKey.translatesAutoresizingMaskIntoConstraints = false
             addSubview(rateKey)
             NSLayoutConstraint.activate([
