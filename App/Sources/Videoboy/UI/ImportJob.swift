@@ -38,6 +38,7 @@ final class ImportJob {
 
     let urls: [URL]
     let bin: String?
+    let root: URL?
     /// Add, Move or Copy (Import mode). Move and Copy run first, on this job's queue.
     let method: ImportMethod
     /// Where Move and Copy put the files.
@@ -60,9 +61,15 @@ final class ImportJob {
     private let lock = NSLock()
     private var cancelled = false
 
-    init(urls: [URL], intoBin bin: String?, method: ImportMethod = .add, destination: URL? = nil) {
+    /// - Parameter root: the folder the URLs were picked from (Import mode with
+    ///   "Include subfolders"). Its folder tree is kept: made again under the
+    ///   destination by Move/Copy, and as bins inside `bin`. Nil for a drop, whose
+    ///   folders are walked (and kept) by ImportScan itself.
+    init(urls: [URL], intoBin bin: String?, method: ImportMethod = .add, destination: URL? = nil,
+         root: URL? = nil) {
         self.urls = urls
         self.bin = bin
+        self.root = root
         self.method = method
         self.destination = destination
     }
@@ -105,7 +112,7 @@ final class ImportJob {
             progress.found = urls.count
             publish(force: true)
             let moved = FileTransfer.transfer(
-                urls, method: method, to: destination, isCancelled: { isCancelled }
+                urls, method: method, to: destination, keepingFoldersBelow: root, isCancelled: { isCancelled }
             ) { name in
                 progress.current = name
                 progress.read += 1
@@ -133,7 +140,11 @@ final class ImportJob {
             onMainSync { added += library.add(batch, measuresDurations: false).count }
         }
         publish(force: true)
-        let scan = ImportScan.scan(sources, intoBin: bin, isCancelled: { isCancelled }) { candidate in
+        // After a Move/Copy the files sit under the destination in the same folders
+        // they had under the root, so the tree is read from wherever they now are.
+        let treeRoot = method.usesDestination ? (root == nil ? nil : destination) : root
+        let scan = ImportScan.scan(sources, intoBin: bin, keepingFoldersBelow: treeRoot,
+                                   isCancelled: { isCancelled }) { candidate in
             progress.count(candidate)
             pending.append(Self.item(for: candidate))
             if Date().timeIntervalSince(lastBatch) >= Self.scanBatchInterval { handOver() }

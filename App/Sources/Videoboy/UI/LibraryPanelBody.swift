@@ -766,19 +766,21 @@ final class LibraryPanelBody: NSView {
     /// Every bin this library knows about, filled or not.
     var binNames: [String] { model.binNames }
 
-    /// Makes a bin — empty, or holding the given clips — at the top level, selects it
-    /// and puts its name into edit mode, as the Finder's New Folder does.
+    /// Makes a bin — empty, or holding the given clips — inside the bin being shown
+    /// (the top level when none), selects it and puts its name into edit mode, as the
+    /// Finder's New Folder does.
     private func makeBin(filing ids: [String]) {
+        let parent = currentTab == .clips && shownPlaylist == nil ? browser.effectiveOpenBin : nil
         let name: String
         if ids.isEmpty {
-            name = model.addBin()
+            name = model.addBin(in: parent)
         } else {
-            name = model.nextBinName()
+            name = model.nextBinName(in: parent)
             model.moveItems(ids, toBin: name)
         }
         Log.info(.app, "created bin '\(name)'" + (ids.isEmpty ? "" : " holding \(ids.count) clip(s)"))
-        // A bin lives at the top level of the clip library, so that is where it has to
-        // be seen being made.
+        // A bin lives in the clip library, so that is where it has to be seen being
+        // made — in the bin it was made inside.
         if shownPlaylist != nil {
             playlistTabs?.selectedSegment = 0
             shownPlaylist = nil
@@ -788,7 +790,7 @@ final class LibraryPanelBody: NSView {
             tabControl?.selectedSegment = AssetTab.allCases.firstIndex(of: .clips) ?? 0
             showTab(.clips)
         }
-        browser.openBin = nil
+        browser.openBin = parent
         browser.selection = [LibraryEntry.binPrefix + name]
         browser.anchor = LibraryEntry.binPrefix + name
         reloadNow()
@@ -998,7 +1000,7 @@ extension LibraryPanelBody: LibraryBrowserActions {
 
     func libraryGoUp() {
         guard let open = browser.effectiveOpenBin else { return }
-        browser.openBin = nil
+        browser.openBin = BinPath.parent(of: open)
         // Back out with the bin you were in selected, as the Finder does, so ⌘↓ goes
         // straight back in.
         browser.selection = [LibraryEntry.binPrefix + open]
@@ -1011,13 +1013,17 @@ extension LibraryPanelBody: LibraryBrowserActions {
         // inspector would listen.
     }
 
+    /// `oldName` is the bin's path; `newName` is its new own name, typed.
     func libraryRenameBin(from oldName: String, to newName: String) {
-        model.renameBin(from: oldName, to: newName)
-        if browser.openBin == oldName { browser.openBin = newName }
-        if browser.selection.remove(LibraryEntry.binPrefix + oldName) != nil {
-            browser.selection.insert(LibraryEntry.binPrefix + newName)
+        let newPath = model.renameBin(from: oldName, to: newName)
+        // The open bin may be this one or one inside it.
+        if let open = browser.openBin, let moved = BinPath.replacingPrefix(of: open, oldName, with: newPath) {
+            browser.openBin = moved
         }
-        Log.info(.app, "renamed bin '\(oldName)' to '\(newName)'")
+        if browser.selection.remove(LibraryEntry.binPrefix + oldName) != nil {
+            browser.selection.insert(LibraryEntry.binPrefix + newPath)
+        }
+        Log.info(.app, "renamed bin '\(oldName)' to '\(newPath)'")
     }
 
     /// Whether a drag may land in a bin, and as what.
@@ -1146,7 +1152,9 @@ extension LibraryPanelBody: LibraryBrowserActions {
             submenu.addItem(top)
             if !model.binNames.isEmpty { submenu.addItem(.separator()) }
             for bin in model.binNames {
-                let entry = NSMenuItem(title: bin, action: #selector(menuMove(_:)), keyEquivalent: "")
+                // Indented under the bin that holds it, named by its own name.
+                let entry = NSMenuItem(title: BinPath.leaf(of: bin), action: #selector(menuMove(_:)), keyEquivalent: "")
+                entry.indentationLevel = BinPath.ancestors(of: bin).count
                 entry.target = self
                 entry.representedObject = bin
                 entry.state = currentBins == [bin] ? .on : .off
@@ -1216,7 +1224,7 @@ final class LibraryPathBar: NSView {
         back.contentTintColor = Theme.Color.accent
         back.target = self
         back.action = #selector(backPressed)
-        back.toolTip = "Back to the top of the library (⌘↑). Drop clips here to take them out of this bin."
+        back.toolTip = "Up one bin (⌘↑). Drop clips here to file them there."
         back.translatesAutoresizingMaskIntoConstraints = false
         addSubview(back)
 
@@ -1238,8 +1246,16 @@ final class LibraryPathBar: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
+    /// The bin above the one shown — where Back goes and where a drop lands. Nil is
+    /// the top of the library.
+    private var parentBin: String?
+
+    /// Shows where the open bin is ("›  2019 › Shoot A"), and names Back after the
+    /// bin it goes up to, since bins nest.
     func setBin(_ bin: String?) {
-        label.stringValue = bin.map { "›  \($0)" } ?? ""
+        label.stringValue = bin.map { "›  " + BinPath.display($0) } ?? ""
+        parentBin = bin.flatMap(BinPath.parent)
+        back.title = parentBin.map(BinPath.leaf) ?? "Library"
     }
 
     /// The back key, so the self-QA can click it for real.
@@ -1248,7 +1264,7 @@ final class LibraryPathBar: NSView {
     @objc private func backPressed() { onUp?() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        let operation = dropHandler?.libraryDragOperation(sender, intoBin: nil) ?? []
+        let operation = dropHandler?.libraryDragOperation(sender, intoBin: parentBin) ?? []
         layer?.backgroundColor = operation.isEmpty ? nil : Theme.Color.accent.withAlphaComponent(0.25).cgColor
         return operation
     }
@@ -1259,7 +1275,7 @@ final class LibraryPathBar: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         layer?.backgroundColor = nil
-        return dropHandler?.libraryPerformDrop(sender, intoBin: nil) ?? false
+        return dropHandler?.libraryPerformDrop(sender, intoBin: parentBin) ?? false
     }
 }
 

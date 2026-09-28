@@ -26,6 +26,7 @@
 #           import      — 1,000 clips dropped mid-show: no stutter, status bar, catalog, ✕
 #           modes       — mode bar (0.4.8): strip-only layout change, hitTest, ⌘1–3, live switches
 #           import-mode — Import mode (0.4.9): Add/Move/Copy end to end, scratch catalog
+#           bins        — nested bins: a folder tree kept by Copy and by a drop; Back, rename
 #           ab-roll     — A/B ROLL + ADV: four combinations by real keys, BEAT, MIDI, budget
 #           optimize    — Copy + Optimize (0.4.10): helper process, link, fallback, cancel
 #           template    — Save / New / Open the whole show round-trips (audit L1)
@@ -124,6 +125,9 @@ case "$CHECK" in
   # cancel, and a live show beside it. Real window; opt-in.
   optimize)  VIDEOBOY_FLAGS="${VIDEOBOY_FLAGS:+$VIDEOBOY_FLAGS,}modeBar" run_app_check optimize ;;
   import-mode) VIDEOBOY_FLAGS="${VIDEOBOY_FLAGS:+$VIDEOBOY_FLAGS,}modeBar" run_app_check import-mode ;;
+  # Nested bins: a folder tree kept by Import-mode Copy and by a drop; bins inside
+  # bins, the path bar's Back, rename/delete, the column view. Silent. Real window.
+  bins)      VIDEOBOY_FLAGS="${VIDEOBOY_FLAGS:+$VIDEOBOY_FLAGS,}modeBar" run_app_check bins ;;
   push-fade) run_app_check push-fade ;;
   # The real window at the main screen's full size, all four channels playing, every
   # scope key pressed and photographed. Needs a GUI session; opt-in like stress.
@@ -153,5 +157,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, bars, import, modes, import-mode, ab-roll, optimize, template, now-playing, framing, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, bars, import, modes, import-mode, bins, ab-roll, optimize, template, now-playing, framing, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

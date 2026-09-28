@@ -42,9 +42,11 @@ final class ImportModeView: NSView {
 
     private let store: PreferenceStore
     private let library: LibraryModel
-    /// Runs the import. Set by the owner.
+    /// Runs the import. Set by the owner. `root` is the folder the clips were picked
+    /// from when "Include subfolders" is on: its folder tree is kept, on disk for
+    /// Copy/Move and as bins inside the chosen bin.
     var onImport: ((_ urls: [URL], _ method: ImportMethod, _ destination: URL?, _ bin: String?,
-                    _ optimize: OptimizePreset?) -> Void)?
+                    _ root: URL?, _ optimize: OptimizePreset?) -> Void)?
 
     private let listQueue = DispatchQueue(label: "videoboy.import-mode", qos: .userInitiated)
 
@@ -545,12 +547,19 @@ final class ImportModeView: NSView {
             ? destination.appendingPathComponent(name, isDirectory: true) : destination
     }
 
-    /// The bin chosen: the source folder's name, none, or an existing bin.
+    /// The folder whose tree the import keeps: the source, when its subfolders are
+    /// included. Without them every clip is in the source folder itself anyway.
+    private var importRoot: URL? {
+        includeSubfolders.state == .on ? currentSource?.url : nil
+    }
+
+    /// The bin chosen: the source folder's name, none, or an existing bin (a path;
+    /// the menu shows it indented under the bins that hold it).
     private var chosenBin: String? {
         switch binPopUp.indexOfSelectedItem {
         case 0: return currentSource?.title
         case 1: return nil
-        default: return binPopUp.titleOfSelectedItem
+        default: return binPopUp.selectedItem?.representedObject as? String
         }
     }
 
@@ -563,20 +572,32 @@ final class ImportModeView: NSView {
             // Where each file will land (FileTransfer numbers a taken name, which this
             // cannot predict; such a clip keeps its marks waiting until matched by hand).
             for url in urls where pendingMarks[url.standardizedFileURL.path] != nil {
-                transferTargets[url.standardizedFileURL.path] =
-                    destination.appendingPathComponent(url.lastPathComponent)
+                transferTargets[url.standardizedFileURL.path] = FileTransfer.targetFolder(
+                    for: url, in: destination, keepingFoldersBelow: importRoot
+                ).appendingPathComponent(url.lastPathComponent)
             }
         }
         let optimize = method == .copy && optimizeCheck.state == .on
             ? SetupChoices.optimizePreset(at: optimizePreset.indexOfSelectedItem) : nil
-        onImport?(urls, method, resolvedDestination, chosenBin, optimize)
+        onImport?(urls, method, resolvedDestination, chosenBin, importRoot, optimize)
     }
 
     private func refreshBins() {
-        let selected = binPopUp.titleOfSelectedItem
+        let selectedIndex = binPopUp.indexOfSelectedItem
+        let selectedBin = binPopUp.selectedItem?.representedObject as? String
         binPopUp.removeAllItems()
-        binPopUp.addItems(withTitles: ["Source folder's name", "No bin"] + library.binNames)
-        if let selected, binPopUp.item(withTitle: selected) != nil { binPopUp.selectItem(withTitle: selected) }
+        binPopUp.addItems(withTitles: ["Source folder's name", "No bin"])
+        for bin in library.binNames {
+            let item = NSMenuItem(title: BinPath.leaf(of: bin), action: nil, keyEquivalent: "")
+            item.representedObject = bin
+            item.indentationLevel = BinPath.ancestors(of: bin).count
+            binPopUp.menu?.addItem(item)
+        }
+        if let selectedBin, let index = binPopUp.itemArray.firstIndex(where: { $0.representedObject as? String == selectedBin }) {
+            binPopUp.selectItem(at: index)
+        } else if selectedIndex == 1 {
+            binPopUp.selectItem(at: 1)
+        }
     }
 
     // MARK: - Actions

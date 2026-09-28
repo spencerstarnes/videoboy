@@ -297,14 +297,15 @@ final class StatusBarView: NSView {
         if progress.folders.count > Theme.Metrics.importFolderChips {
             if let active = progress.folders.first(where: { $0.name == progress.activeFolder })
                 ?? progress.folders.last {
-                chip("\(active.name) \(active.count)", active: true)
+                chip("\(BinPath.leaf(of: active.name)) \(active.count)", active: true)
             }
             text.append(NSAttributedString(
                 string: "  +\(progress.folders.count - 1) folders",
                 attributes: [.font: font, .foregroundColor: Theme.Color.textTertiary]))
         } else {
             for folder in progress.folders {
-                chip("\(folder.name) \(folder.count)", active: folder.name == progress.activeFolder)
+                // Folders are bin paths now; the chip names the folder itself.
+                chip("\(BinPath.leaf(of: folder.name)) \(folder.count)", active: folder.name == progress.activeFolder)
             }
         }
         return text

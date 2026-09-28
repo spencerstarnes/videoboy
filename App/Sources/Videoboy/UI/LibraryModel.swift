@@ -618,13 +618,21 @@ final class LibraryModel {
 
     // MARK: - Bins
 
-    /// Every bin, filled or not.
+    /// Every bin, filled or not, as paths (BinPath): a bin inside another is
+    /// "Outer/Inner". The bins above a filled or empty bin exist too, even with no
+    /// clips of their own — a folder of folders is still a folder.
     var binNames: [String] {
-        Array(Set(items.compactMap(\.bin)).union(emptyBins))
-            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        var all = Set(items.compactMap(\.bin)).union(emptyBins)
+        for path in all { all.formUnion(BinPath.ancestors(of: path)) }
+        return all.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
-    /// How many entries a bin holds.
+    /// The bins directly inside `parent` (the top level when nil), as paths.
+    func childBins(of parent: String?) -> [String] {
+        binNames.filter { BinPath.parent(of: $0) == parent }
+    }
+
+    /// How many clips a bin holds, counting the bins inside it — what its tile says.
     ///
     /// From a table built in ONE pass and kept until the library changes. Every folder
     /// tile asks this as it is laid out; scanning every clip for each tile, on every
@@ -634,7 +642,11 @@ final class LibraryModel {
     func count(inBin bin: String) -> Int {
         if binCounts == nil {
             var counts: [String: Int] = [:]
-            for item in items { if let name = item.bin { counts[name, default: 0] += 1 } }
+            for item in items {
+                guard let path = item.bin else { continue }
+                counts[path, default: 0] += 1
+                for ancestor in BinPath.ancestors(of: path) { counts[ancestor, default: 0] += 1 }
+            }
             binCounts = counts
         }
         return binCounts?[bin] ?? 0
@@ -643,57 +655,67 @@ final class LibraryModel {
     /// Entries per bin; nil when the library has changed since it was counted.
     private var binCounts: [String: Int]?
 
-    /// An unused name: "untitled bin", then "untitled bin 2" — the Finder's pattern.
-    func nextBinName(base: String = "untitled bin") -> String {
-        let existing = Set(binNames.map { $0.lowercased() })
-        guard existing.contains(base.lowercased()) else { return base }
+    /// An unused bin path inside `parent`: "untitled bin", then "untitled bin 2" —
+    /// the Finder's pattern, unique among its neighbours.
+    func nextBinName(base: String = "untitled bin", in parent: String? = nil) -> String {
+        let existing = Set(childBins(of: parent).map { BinPath.leaf(of: $0).lowercased() })
+        guard existing.contains(base.lowercased()) else { return BinPath.join(parent, base) }
         var number = 2
         while existing.contains("\(base) \(number)".lowercased()) { number += 1 }
-        return "\(base) \(number)"
+        return BinPath.join(parent, "\(base) \(number)")
     }
 
-    /// Makes an empty bin with an unused name and returns the name.
+    /// Makes an empty bin inside `parent` with an unused name and returns its path.
     @discardableResult
-    func addBin() -> String {
-        let name = nextBinName()
+    func addBin(in parent: String? = nil) -> String {
+        let name = nextBinName(in: parent)
         emptyBins.insert(name)
         persistEmptyBins()
         notify()
         return name
     }
 
-    /// Renames a bin, and every clip in it.
+    /// Renames a bin — its own name, where it is — and returns its new path. The
+    /// clips and the bins inside it go with it.
     ///
-    /// The items carry the bin NAME rather than an identifier, so a rename has to move
+    /// The items carry the bin PATH rather than an identifier, so a rename has to move
     /// them too — otherwise the old bin keeps its contents and the renamed one is
     /// empty, which looks exactly like the rename having failed. Renaming onto an
     /// existing bin merges the two, as dropping a folder of the same name already does.
-    func renameBin(from oldName: String, to newName: String) {
-        let trimmed = newName.trimmingCharacters(in: .whitespaces)
-        guard oldName != trimmed, !trimmed.isEmpty else { return }
-        var moved: [String] = []
-        for index in items.indices where items[index].bin == oldName {
-            items[index].bin = trimmed
-            moved.append(items[index].id)
-        }
-        if emptyBins.remove(oldName) != nil, count(inBin: trimmed) == 0 {
-            emptyBins.insert(trimmed)
-        }
-        persist(moved)
-        persistEmptyBins()
-        notify()
+    @discardableResult
+    func renameBin(from oldPath: String, to newName: String) -> String {
+        let leaf = BinPath.sanitisedLeaf(newName)
+        let newPath = BinPath.join(BinPath.parent(of: oldPath), leaf)
+        guard !leaf.isEmpty, newPath != oldPath else { return oldPath }
+        rebase(oldPath, onto: newPath)
+        return newPath
     }
 
-    /// Deletes a bin. Its clips go back to the top level rather than out of the
-    /// library: a bin is a way of arranging clips, and throwing one away should not
-    /// throw away what was arranged in it.
-    func deleteBin(_ name: String) {
-        emptyBins.remove(name)
+    /// Deletes a bin. Its clips and the bins inside it move up into its parent rather
+    /// than out of the library: a bin is a way of arranging clips, and throwing one
+    /// away should not throw away what was arranged in it.
+    func deleteBin(_ path: String) {
+        rebase(path, onto: BinPath.parent(of: path))
+    }
+
+    /// Moves everything within `oldPath` to the same place within `newPath` (nil =
+    /// the top level): clips, and the empty bins that keep the shape.
+    private func rebase(_ oldPath: String, onto newPath: String?) {
         var moved: [String] = []
-        for index in items.indices where items[index].bin == name {
-            items[index].bin = nil
+        for index in items.indices {
+            guard let bin = items[index].bin, BinPath.isWithin(bin, oldPath) else { continue }
+            items[index].bin = BinPath.replacingPrefix(of: bin, oldPath, with: newPath)
             moved.append(items[index].id)
         }
+        var rebuilt: Set<String> = []
+        for bin in emptyBins {
+            if BinPath.isWithin(bin, oldPath) {
+                if let moved = BinPath.replacingPrefix(of: bin, oldPath, with: newPath) { rebuilt.insert(moved) }
+            } else {
+                rebuilt.insert(bin)
+            }
+        }
+        emptyBins = rebuilt
         persist(moved)
         persistEmptyBins()
         notify()

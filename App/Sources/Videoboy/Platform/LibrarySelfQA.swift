@@ -79,7 +79,9 @@ enum LibrarySelfQA {
         let panels = shell.grid.panels
         let library = panels.libraryOneBody
         let model = library.browser.model
-        library.onFilesDropped?([fixture], nil)
+        // The two reel folders, dropped together: each is a bin at the top level.
+        // (Dropping Shoot itself now keeps Shoot as the outer bin — see BinsSelfQA.)
+        library.onFilesDropped?(["Reel A", "Reel B"].map { fixture.appendingPathComponent($0) }, nil)
         pump(0.4)
         check.note("app active \(NSApp.isActive), window key \(window.isKeyWindow)"
             + (window.isKeyWindow ? "" : " — ⌘-keys are sent up the first responder's chain"

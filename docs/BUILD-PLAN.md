@@ -318,6 +318,17 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
   a second while locked). Which beat is "one" of the bar is still not guessed, and
   output latency to the screen is not compensated — both would need a per-rig
   offset control (SPEC 4b's "offset/nudge") rather than an algorithm.
+- [x] **Nested bins; imports keep the folder tree** (owner, 2026-09-28: "importing
+      folders of clips removes the folder hierarchy… there's a check box for this,
+      it's not working"; owner chose real nested bins over path-named flat bins).
+      A bin is its PATH ("2019/Shoot A", `BinPath`) — no schema change; old flat
+      bins are top-level bins. Import mode's Copy/Move with "Include subfolders"
+      rebuild the tree under the destination and file clips into the same bins
+      inside the chosen bin; a dropped folder keeps its whole tree (same-named
+      folders no longer merge). Icon/list/column views and the path bar go in and
+      up one level; rename/delete carry the bins inside; New Bin is made inside the
+      open bin. `selfqa bins` proves it end to end (8/8). Not built: dragging a
+      bin INTO another bin (move bins by rename/drop only).
 - **Beat detection now listens with BeatNet** (2026-09-27, owner request: "beat
   matching is probably the number one priority"). BeatNet's network (CC BY 4.0) is
   ported to Swift and checked to 2e-3 against PyTorch; its activations replace the

@@ -67,8 +67,8 @@ final class LibraryBrowser {
     var sortField: LibrarySortField = .name
     var sortAscending = true
 
-    /// The bin the icon and list views are inside, and the column view has open. Nil
-    /// is the top level.
+    /// The bin the icon and list views are inside, and the column view has open — a
+    /// path, so it may be a bin inside a bin (BinPath). Nil is the top level.
     var openBin: String?
 
     /// Entry ids currently selected. Held here rather than in a view so switching view
@@ -108,13 +108,15 @@ final class LibraryBrowser {
             return model.items(matching: search, sortedBy: sortField, ascending: sortAscending)
                 .map(LibraryEntry.item)
         }
-        let bins = model.binNames.map(LibraryEntry.bin)
-        return bins + entries(inBin: nil)
+        return entries(inBin: nil)
     }
 
-    /// The clips in one bin, or the loose clips when `bin` is nil.
+    /// What one bin holds (the top level when nil): the bins directly inside it,
+    /// first, then its own clips. Not the clips of the bins inside — those are one
+    /// level down, as a folder's are in the Finder.
     func entries(inBin bin: String?) -> [LibraryEntry] {
-        sortedItems(model.items.filter { $0.bin == bin }).map(LibraryEntry.item)
+        model.childBins(of: bin).map(LibraryEntry.bin)
+            + sortedItems(model.items.filter { $0.bin == bin }).map(LibraryEntry.item)
     }
 
     /// What the icon and list views show: inside the open bin, or the top level.

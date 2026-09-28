@@ -14,9 +14,14 @@
 //
 //  THE RULES (unchanged from the synchronous version they replace):
 //    - a folder of photographs is ONE clip (SEQ), never a bin of stills;
-//    - any other folder is walked all the way down, to `maximumFolderDepth`, and every
-//      folder holding clips becomes a bin named after itself;
-//    - dropped INTO a bin, everything lands in that bin;
+//    - any other folder is walked all the way down, to `maximumFolderDepth`, and the
+//      folder tree becomes the same tree of bins (BinPath): Shoots/2019/clip.mov lands
+//      in the bin "2019" inside the bin "Shoots". (Before 2026-09-28 every folder
+//      became a top-level bin named after itself, so the tree was lost and two
+//      folders of the same name merged.);
+//    - dropped INTO a bin, the tree lands inside that bin;
+//    - files handed over with a `root` (Import mode's "Include subfolders") keep
+//      the folders between the root and themselves, inside the chosen bin;
 //    - anything that is not playable is named in `rejected`, never silently dropped.
 //
 
@@ -56,10 +61,13 @@ public enum ImportScan {
     ///
     /// - Parameters:
     ///   - bin: the bin the drop landed on, or nil for the top level.
+    ///   - root: for FILES picked from inside one folder: each file goes into the bins
+    ///     its folders below `root` make, inside `bin`. Ignored when `bin` is nil (a
+    ///     choice of "no bin" is taken at its word).
     ///   - isCancelled: polled between entries.
     ///   - found: called for each clip as it is found (for the flashing name).
     public static func scan(
-        _ urls: [URL], intoBin bin: String? = nil,
+        _ urls: [URL], intoBin bin: String? = nil, keepingFoldersBelow root: URL? = nil,
         isCancelled: () -> Bool = { false },
         found: (ImportCandidate) -> Void = { _ in }
     ) -> Result {
@@ -76,8 +84,10 @@ public enum ImportScan {
                     found(candidate)
                 } else {
                     for candidate in walk(url, depth: 0, isCancelled: isCancelled) {
-                        let placed = bin.map { ImportCandidate(url: candidate.url, bin: $0, isSequence: candidate.isSequence) }
-                            ?? candidate
+                        let placed = bin.map {
+                            ImportCandidate(url: candidate.url, bin: BinPath.join($0, candidate.bin ?? ""),
+                                            isSequence: candidate.isSequence)
+                        } ?? candidate
                         result.candidates.append(placed)
                         found(placed)
                     }
@@ -85,7 +95,11 @@ public enum ImportScan {
                 continue
             }
             if playableExtensions.contains(url.pathExtension.lowercased()) {
-                let candidate = ImportCandidate(url: url, bin: bin, isSequence: false)
+                var placedBin = bin
+                if let bin, let root, let folders = BinPath.relativeFolder(of: url, below: root) {
+                    placedBin = BinPath.join(bin, folders)
+                }
+                let candidate = ImportCandidate(url: url, bin: placedBin, isSequence: false)
                 result.candidates.append(candidate)
                 found(candidate)
             } else {
@@ -95,22 +109,26 @@ public enum ImportScan {
         return result
     }
 
-    /// Every clip under a folder, each folder its own bin.
-    public static func walk(_ folder: URL, depth: Int = 0, isCancelled: () -> Bool = { false }) -> [ImportCandidate] {
+    /// Every clip under a folder, each folder a bin inside its parent's bin.
+    ///
+    /// - Parameter parentBin: the bin path of the folder above; nil for the folder
+    ///   that was dropped, whose bin is its own name at the top level.
+    public static func walk(_ folder: URL, depth: Int = 0, parentBin: String? = nil,
+                            isCancelled: () -> Bool = { false }) -> [ImportCandidate] {
         guard depth <= maximumFolderDepth, !isCancelled() else { return [] }
         if ImageSequenceDecoder.isSequence(folder) {
             return [ImportCandidate(url: folder, bin: nil, isSequence: true)]
         }
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
-        let binName = folder.lastPathComponent
+        let binName = BinPath.join(parentBin, folder.lastPathComponent)
         var found: [ImportCandidate] = []
         for child in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             if isCancelled() { break }
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: child.path, isDirectory: &isDirectory) else { continue }
             if isDirectory.boolValue {
-                found += walk(child, depth: depth + 1, isCancelled: isCancelled)
+                found += walk(child, depth: depth + 1, parentBin: binName, isCancelled: isCancelled)
             } else if playableExtensions.contains(child.pathExtension.lowercased()) {
                 found.append(ImportCandidate(url: child, bin: binName, isSequence: false))
             }

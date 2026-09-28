@@ -21,6 +21,7 @@
 //
 
 import AppKit
+import VideoboyCore
 
 /// The column view.
 final class LibraryColumnView: NSView {
@@ -143,8 +144,10 @@ final class LibraryColumnView: NSView {
     // MARK: - Contents
 
     func reload() {
-        rootEntries = browser.rootEntries()
         let open = browser.effectiveOpenBin
+        // Bins nest: the left column is the level the open bin sits in (the top of the
+        // library for a top-level bin), the right column what is inside it.
+        rootEntries = open.flatMap(BinPath.parent).map { browser.entries(inBin: $0) } ?? browser.rootEntries()
         binEntries = open.map { browser.entries(inBin: $0) } ?? []
 
         // Searching, or a tab with no bins: one column says it all.
@@ -194,9 +197,22 @@ final class LibraryColumnView: NSView {
     }
 
     func beginRename(bin: String) {
-        guard let row = rootEntries.firstIndex(where: { $0.binName == bin }) else { return }
-        rootTable.scrollRowToVisible(row)
-        rootTable.editColumn(0, row: row, with: nil, select: true)
+        // A new bin appears in whichever column shows its level.
+        for table in [rootTable, binTable] {
+            guard let row = entries(of: table).firstIndex(where: { $0.binName == bin }) else { continue }
+            table.scrollRowToVisible(row)
+            table.editColumn(0, row: row, with: nil, select: true)
+            return
+        }
+    }
+
+    /// The right column's hint, for the bin now open.
+    private func applyOpenHint() {
+        let open = browser.effectiveOpenBin
+        hint.stringValue = open == nil
+            ? "Select a bin to see what is in it."
+            : "\(BinPath.leaf(of: open ?? "")) is empty. Drag clips here to file them."
+        hint.isHidden = !binEntries.isEmpty
     }
 
     /// Selects everything in the column that has the keyboard — the left one unless
@@ -210,7 +226,18 @@ final class LibraryColumnView: NSView {
         let entries = entries(of: sender)
         guard entries.indices.contains(sender.clickedRow) else { return }
         let entry = entries[sender.clickedRow]
-        if entry.binName != nil {
+        if let bin = entry.binName {
+            if sender === binTable {
+                // A bin inside the open one: go down a level. It becomes the open bin,
+                // the left column becomes the level it was in.
+                browser.openBin = bin
+                browser.selection = []
+                reload()
+                rootTable.reloadData()
+                binTable.reloadData()
+                applyOpenHint()
+                return
+            }
             // Already open on the right; the double-click takes you into it.
             window?.makeFirstResponder(binTable)
             return
@@ -220,9 +247,12 @@ final class LibraryColumnView: NSView {
 
     /// Where a drop on a row of a column lands.
     fileprivate func bin(forDropOn table: NSTableView, row: Int) -> String? {
+        let entries = entries(of: table)
+        // Onto a bin row, in either column: that bin.
+        if entries.indices.contains(row), let bin = entries[row].binName { return bin }
+        // Onto the column itself: the level it shows.
         if table === binTable { return browser.effectiveOpenBin }
-        guard rootEntries.indices.contains(row) else { return nil }
-        return rootEntries[row].binName
+        return browser.effectiveOpenBin.flatMap(BinPath.parent)
     }
 
     fileprivate func menu(for table: NSTableView, row: Int) -> NSMenu? {
@@ -270,7 +300,7 @@ extension LibraryColumnView: NSTableViewDataSource, NSTableViewDelegate {
         cell.textField?.delegate = self
         switch entries[row] {
         case .bin(let name):
-            cell.textField?.stringValue = name
+            cell.textField?.stringValue = BinPath.leaf(of: name)
             cell.textField?.isEditable = true
             cell.textField?.textColor = Theme.Color.textSecondary
             cell.imageView?.image = LibraryListView.symbol("folder.fill")
@@ -300,10 +330,7 @@ extension LibraryColumnView: NSTableViewDataSource, NSTableViewDelegate {
                 browser.openBin = newOpen
                 binEntries = newOpen.map { browser.entries(inBin: $0) } ?? []
                 binTable.reloadData()
-                hint.stringValue = newOpen == nil
-                    ? "Select a bin to see what is in it."
-                    : "\(newOpen ?? "") is empty. Drag clips here to file them."
-                hint.isHidden = !binEntries.isEmpty
+                applyOpenHint()
             }
         } else {
             browser.selection = Set(chosen.map(\.id))
@@ -329,9 +356,9 @@ extension LibraryColumnView: NSTableViewDataSource, NSTableViewDelegate {
         _ tableView: NSTableView, validateDrop info: NSDraggingInfo,
         proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation
     ) -> NSDragOperation {
-        let onBinRow = tableView === rootTable && dropOperation == .on
-            && rootEntries.indices.contains(row) && rootEntries[row].binName != nil
-        let bin = onBinRow ? rootEntries[row].binName : bin(forDropOn: tableView, row: -1)
+        let rows = entries(of: tableView)
+        let onBinRow = dropOperation == .on && rows.indices.contains(row) && rows[row].binName != nil
+        let bin = bin(forDropOn: tableView, row: onBinRow ? row : -1)
         if tableView === binTable, browser.effectiveOpenBin == nil { return [] }
         let operation = actions?.libraryDragOperation(info, intoBin: bin) ?? []
         guard !operation.isEmpty else { return [] }
@@ -344,18 +371,23 @@ extension LibraryColumnView: NSTableViewDataSource, NSTableViewDelegate {
         _ tableView: NSTableView, acceptDrop info: NSDraggingInfo,
         row: Int, dropOperation: NSTableView.DropOperation
     ) -> Bool {
-        actions?.libraryPerformDrop(info, intoBin: bin(forDropOn: tableView, row: row)) ?? false
+        let rows = entries(of: tableView)
+        let onBinRow = dropOperation == .on && rows.indices.contains(row) && rows[row].binName != nil
+        return actions?.libraryPerformDrop(info, intoBin: bin(forDropOn: tableView, row: onBinRow ? row : -1)) ?? false
     }
 }
 
 extension LibraryColumnView: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
-        let row = rootTable.row(for: field)
-        guard rootEntries.indices.contains(row), let bin = rootEntries[row].binName else { return }
+        // Either column can hold a bin being renamed, now that bins nest.
+        let table = binTable.row(for: field) >= 0 ? binTable : rootTable
+        let entries = entries(of: table)
+        let row = table.row(for: field)
+        guard entries.indices.contains(row), let bin = entries[row].binName else { return }
         let newName = field.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !newName.isEmpty, newName != bin else {
-            field.stringValue = bin
+        guard !newName.isEmpty, newName != BinPath.leaf(of: bin) else {
+            field.stringValue = BinPath.leaf(of: bin)
             return
         }
         actions?.libraryRenameBin(from: bin, to: newName)

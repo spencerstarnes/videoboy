@@ -2601,12 +2601,14 @@ enum UISelfQA {
                 passed: !names.contains("notes.txt"),
                 detail: names.contains("notes.txt") ? "notes.txt was imported" : "notes.txt skipped"))
 
-            // The folders someone made ARE the grouping they chose; rebuilding it here
-            // would be inventing an organisation they did not ask for.
+            // The folders someone made ARE the grouping they chose — the whole tree of
+            // them, not just the innermost name (owner, 2026-09-28: flattening lost the
+            // hierarchy, and two folders of the same name merged). See BinsSelfQA.
             let deep = items.first { $0.name == "three.mov" }
+            let expected = "\(root.lastPathComponent)/Reel B/Deep"
             check.record(AssertionResult(
-                name: "each folder becomes its own bin",
-                passed: deep?.bin == "Deep",
+                name: "the folder tree becomes the same tree of bins",
+                passed: deep?.bin == expected,
                 detail: "the clip in Reel B/Deep is binned as \(deep?.bin ?? "nothing")"))
         }
 

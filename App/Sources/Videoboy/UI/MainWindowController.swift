@@ -131,8 +131,8 @@ final class MainWindowController: NSWindowController {
                 self?.shellController?.setPreviewFill(fill)
             }
             modes.onRunSetupAssistant = { [weak self] in self?.runSetupAssistant() }
-            modes.onImport = { [weak self] urls, method, destination, bin, optimize in
-                self?.shellController?.importFiles(urls, method: method, destination: destination,
+            modes.onImport = { [weak self] urls, method, destination, bin, root, optimize in
+                self?.shellController?.importFiles(urls, method: method, destination: destination, root: root,
                                                    bin: bin, optimize: optimize)
             }
             modeController = modes

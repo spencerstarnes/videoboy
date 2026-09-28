@@ -1,0 +1,14 @@
+check:    perf/bins
+verdict:  PASS
+when:     2026-09-28T14:26:09Z
+core:     0.4.10
+
+assertions (8/8 passed):
+  PASS  Copy with subfolders rebuilds the folder tree under the destination — a.mov, Day 1/b.mov, Day 2/b.mov, Day 2/Night/c.m2v
+  PASS  …and files the clips into the same tree of bins — a ["Shoot"], b ["Shoot/Day 1", "Shoot/Day 2"], c ["Shoot/Day 2/Night"]
+  PASS  the nested bins are saved in the catalog — Shoot, Shoot/Day 1, Shoot/Day 2, Shoot/Day 2/Night
+  PASS  a dropped folder keeps its tree, and two folders called Day 1 stay two bins — d ["Other/Day 1"]; bins ["Other", "Other/Day 1", "Shoot", "Shoot/Day 1", "Shoot/Day 2", "Shoot/Day 2/Night"]
+  PASS  the top level shows only top-level bins; each bin shows its own bins, then its clips — top ["Other", "Shoot"]; Shoot 3 entries; Day 2 ["Shoot/Day 2/Night"] + ["b.mov"]
+  PASS  Back (reached by hit-test) is named for the bin above, and goes up ONE level — hit true, title 'Shoot', now in Shoot
+  PASS  renaming a bin carries the bins inside it; deleting one lifts its contents up a level — renamed: c ["Shoot/Day Two/Night"]; deleted: c ["Shoot/Night"], b ["Shoot", "Shoot/Day 1"]; catalog c Shoot/Night
+  PASS  column view: left is the level the open bin is in, right is inside it — left ["Shoot/Day 1", "Shoot/Night"], right ["b.mov"]

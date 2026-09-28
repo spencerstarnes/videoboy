@@ -42,10 +42,15 @@ public enum FileTransfer {
     /// Transfers files by `method` into `destination` (ignored for Add).
     ///
     /// - Parameters:
+    ///   - root: when the files were picked from inside one folder, the folders
+    ///     between it and each file are made again under `destination`, so the tree
+    ///     survives the copy (root/Day 1/a.mov → destination/Day 1/a.mov). Nil puts
+    ///     every file directly in `destination`.
     ///   - progress: called before each file with its name.
     ///   - isCancelled: polled between files; what is done stays done.
     public static func transfer(
         _ urls: [URL], method: ImportMethod, to destination: URL?,
+        keepingFoldersBelow root: URL? = nil,
         isCancelled: () -> Bool = { false },
         progress: (String) -> Void = { _ in }
     ) -> Result {
@@ -76,7 +81,14 @@ public enum FileTransfer {
         for url in urls {
             if isCancelled() { break }
             progress(url.lastPathComponent)
-            let target = freeName(for: url.lastPathComponent, in: destination)
+            let folder = targetFolder(for: url, in: destination, keepingFoldersBelow: root)
+            do {
+                try files.createDirectory(at: folder, withIntermediateDirectories: true)
+            } catch {
+                result.failures.append("\(url.lastPathComponent) — \(error.localizedDescription)")
+                continue
+            }
+            let target = freeName(for: url.lastPathComponent, in: folder)
             do {
                 switch method {
                 case .add:
@@ -101,6 +113,15 @@ public enum FileTransfer {
             }
         }
         return result
+    }
+
+    /// The folder a file lands in: `destination`, plus the folders between `root` and
+    /// the file when there is a root and the file is inside it.
+    public static func targetFolder(for url: URL, in destination: URL, keepingFoldersBelow root: URL?) -> URL {
+        guard let root, let folders = BinPath.relativeFolder(of: url, below: root), !folders.isEmpty else {
+            return destination
+        }
+        return destination.appendingPathComponent(folders, isDirectory: true)
     }
 
     /// `name` in `folder`, or "name 2", "name 3"… when taken. Never overwrites.

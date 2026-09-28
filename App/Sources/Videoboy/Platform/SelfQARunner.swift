@@ -72,6 +72,8 @@ enum SelfQARunner {
             verdict = ModeBarSelfQA.run()
         case "import-mode":
             verdict = ImportModeSelfQA.run()
+        case "bins":
+            verdict = BinsSelfQA.run()
         case "ab-roll":
             verdict = ABRollSelfQA.run()
         case "optimize":

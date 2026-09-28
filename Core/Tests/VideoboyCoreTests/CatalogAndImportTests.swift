@@ -157,19 +157,36 @@ final class ImportScanTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    func testAFolderIsWalkedAndEachFolderBecomesABin() {
+    func testAFolderIsWalkedAndItsTreeBecomesNestedBins() {
         let result = ImportScan.scan([root])
         let byName = Dictionary(uniqueKeysWithValues: result.candidates.map { ($0.url.lastPathComponent, $0.bin) })
         XCTAssertEqual(Set(byName.keys), ["top.mov", "one.mov", "two.dv", "three.mov"])
-        XCTAssertEqual(byName["three.mov"], "Deep")
-        XCTAssertEqual(byName["one.mov"], "Reel A")
+        let top = root.lastPathComponent
+        XCTAssertEqual(byName["top.mov"], top)
+        XCTAssertEqual(byName["one.mov"], "\(top)/Reel A")
+        XCTAssertEqual(byName["three.mov"], "\(top)/Reel B/Deep", "the folder tree is kept, not flattened")
         XCTAssertTrue(result.includesFolder)
         XCTAssertTrue(result.rejected.isEmpty, "unplayable files inside a folder are not clips, not errors")
     }
 
-    func testDroppingIntoABinPutsEverythingThere() {
+    func testDroppingIntoABinNestsTheTreeInsideIt() {
         let result = ImportScan.scan([root], intoBin: "Chosen")
-        XCTAssertTrue(result.candidates.allSatisfy { $0.bin == "Chosen" })
+        XCTAssertTrue(result.candidates.allSatisfy { BinPath.isWithin($0.bin ?? "", "Chosen") })
+        let three = result.candidates.first { $0.url.lastPathComponent == "three.mov" }
+        XCTAssertEqual(three?.bin, "Chosen/\(root.lastPathComponent)/Reel B/Deep")
+    }
+
+    /// Import mode hands over FILES, picked from a folder with "Include subfolders".
+    func testFilesKeepTheirFoldersBelowTheImportRoot() {
+        let files = ["top.mov", "Reel A/one.mov", "Reel B/Deep/three.mov"].map { root.appendingPathComponent($0) }
+        let result = ImportScan.scan(files, intoBin: "Shoot", keepingFoldersBelow: root)
+        let byName = Dictionary(uniqueKeysWithValues: result.candidates.map { ($0.url.lastPathComponent, $0.bin) })
+        XCTAssertEqual(byName["top.mov"], "Shoot")
+        XCTAssertEqual(byName["one.mov"], "Shoot/Reel A")
+        XCTAssertEqual(byName["three.mov"], "Shoot/Reel B/Deep")
+        // "No bin" means no bin.
+        let loose = ImportScan.scan(files, intoBin: nil, keepingFoldersBelow: root)
+        XCTAssertTrue(loose.candidates.allSatisfy { $0.bin == nil })
     }
 
     func testADroppedFileThatCannotPlayIsNamed() {

@@ -49,6 +49,25 @@ final class FileTransferTests: XCTestCase {
             "no partial folder left behind")
     }
 
+    /// Two files of the same name in different folders stay apart, each in its folder.
+    func testCopyKeepsTheFolderTreeBelowTheRoot() throws {
+        let picked = root.appendingPathComponent("src/Picked", isDirectory: true)
+        let dest = root.appendingPathComponent("dest")
+        var files: [URL] = []
+        for path in ["a.mov", "Day 1/clip.mov", "Day 2/clip.mov", "Day 2/Night/b.mov"] {
+            let url = picked.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: url.path, contents: Data(path.utf8))
+            files.append(url)
+        }
+        let result = FileTransfer.transfer(files, method: .copy, to: dest, keepingFoldersBelow: picked)
+        XCTAssertEqual(result.failures, [])
+        let landed = result.urls.map { $0.path.replacingOccurrences(of: dest.path + "/", with: "") }
+        XCTAssertEqual(landed, ["a.mov", "Day 1/clip.mov", "Day 2/clip.mov", "Day 2/Night/b.mov"])
+        XCTAssertEqual(try String(contentsOf: dest.appendingPathComponent("Day 2/clip.mov"), encoding: .utf8),
+                       "Day 2/clip.mov", "the right file in the right folder, not a renumbered neighbour")
+    }
+
     func testATakenNameIsNumberedNeverOverwritten() throws {
         let dest = root.appendingPathComponent("dest")
         try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)

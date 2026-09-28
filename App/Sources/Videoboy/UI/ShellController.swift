@@ -604,12 +604,12 @@ final class ShellController {
     ///   bin, because bins are one level deep and the person chose where it goes.
     private func addToLibrary(_ urls: [URL], library: LibraryPanelBody, intoBin bin: String? = nil,
                               method: ImportMethod = .add, destination: URL? = nil,
-                              optimize: OptimizePreset? = nil) {
+                              root: URL? = nil, optimize: OptimizePreset? = nil) {
         // A BACKGROUND JOB, not a loop here: walking folders, reading posters and
         // measuring clips on the main thread froze the window on large drops and
         // looked like a crash (audit 09-26 R1–R3). Clips appear in the library as they
         // are found; the status bar reports when the import is big enough to worry about.
-        let job = ImportJob(urls: urls, intoBin: bin, method: method, destination: destination)
+        let job = ImportJob(urls: urls, intoBin: bin, method: method, destination: destination, root: root)
         job.optimizePreset = method == .copy ? optimize : nil
         job.isLive = { [weak self] in self?.engine.transport.isRunning ?? false }
         job.onProgress = { [weak self] progress in self?.showImportProgress(progress) }
@@ -682,10 +682,11 @@ final class ShellController {
     }
 
     /// Import mode's Import button: Add, Move or Copy, into a bin, as a background job.
-    func importFiles(_ urls: [URL], method: ImportMethod, destination: URL?, bin: String?,
-                     optimize: OptimizePreset? = nil) {
+    /// `root`: the folder the clips were picked from, whose tree is kept (ImportJob).
+    func importFiles(_ urls: [URL], method: ImportMethod, destination: URL?, root: URL? = nil,
+                     bin: String?, optimize: OptimizePreset? = nil) {
         addToLibrary(urls, library: shell.grid.panels.libraryOneBody, intoBin: bin,
-                     method: method, destination: destination, optimize: optimize)
+                     method: method, destination: destination, root: root, optimize: optimize)
     }
 
     // MARK: - Copy + Optimize (0.4.10)

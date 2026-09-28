@@ -296,7 +296,11 @@ final class LibraryFolderView: LibraryCellView {
         countLabel.translatesAutoresizingMaskIntoConstraints = false
         well.addSubview(countLabel)
 
-        caption.onRenamed = { [weak self] old, new in self?.owner?.cellRenamed(bin: old, to: new) }
+        // The caption knows only the bin's own name; the rename needs its path.
+        caption.onRenamed = { [weak self] old, new in
+            guard let self else { return }
+            self.owner?.cellRenamed(bin: self.entry.binName ?? old, to: new)
+        }
         addSubview(caption)
 
         NSLayoutConstraint.activate([
@@ -323,9 +327,10 @@ final class LibraryFolderView: LibraryCellView {
 
     func configure(bin: String, count: Int) {
         entry = .bin(bin)
-        caption.setName(bin)
+        // `bin` is a path; the tile shows the bin's own name, the tooltip where it is.
+        caption.setName(BinPath.leaf(of: bin))
         countLabel.stringValue = "\(count)"
-        toolTip = "\(bin) — \(count) item\(count == 1 ? "" : "s") · double-click to open · "
+        toolTip = "\(BinPath.display(bin)) — \(count) item\(count == 1 ? "" : "s") · double-click to open · "
             + "drop clips here to file them"
         updateAppearance()
     }

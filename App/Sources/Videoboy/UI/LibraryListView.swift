@@ -24,6 +24,7 @@
 //
 
 import AppKit
+import VideoboyCore
 
 /// The list view.
 final class LibraryListView: NSView {
@@ -108,19 +109,39 @@ final class LibraryListView: NSView {
     func reload() {
         outline.sortDescriptors = [NSSortDescriptor(
             key: browser.sortField.rawValue, ascending: browser.sortAscending)]
-        roots = browser.currentEntries().map { entry in
-            let node = ListNode(entry: entry)
-            if let bin = entry.binName {
-                node.children = browser.entries(inBin: bin).map { ListNode(entry: $0, parent: node) }
-            }
-            return node
-        }
+        roots = browser.currentEntries().map { makeNode($0, parent: nil) }
         expandedBins = expandedBins.filter { browser.model.binNames.contains($0) }
         outline.reloadData()
-        for node in roots where node.entry.binName.map(expandedBins.contains) == true {
+        // Outermost first: a bin can only open once the bin holding it has.
+        for node in allNodes() where node.entry.binName.map(expandedBins.contains) == true {
             outline.expandItem(node)
         }
         applySelection()
+    }
+
+    /// A row, and for a bin, the whole tree inside it — bins nest (BinPath).
+    private func makeNode(_ entry: LibraryEntry, parent: ListNode?) -> ListNode {
+        let node = ListNode(entry: entry, parent: parent)
+        if let bin = entry.binName {
+            node.children = browser.entries(inBin: bin).map { makeNode($0, parent: node) }
+        }
+        return node
+    }
+
+    /// Every node, outermost first.
+    private func allNodes() -> [ListNode] {
+        var result: [ListNode] = []
+        func visit(_ node: ListNode) {
+            result.append(node)
+            node.children.forEach(visit)
+        }
+        roots.forEach(visit)
+        return result
+    }
+
+    /// The row node for a bin, at any depth.
+    private func node(forBin bin: String) -> ListNode? {
+        allNodes().first { $0.entry.binName == bin }
     }
 
     /// Makes the rows' selection match the browser's.
@@ -139,7 +160,8 @@ final class LibraryListView: NSView {
 
     /// Puts a bin's name into edit mode.
     func beginRename(bin: String) {
-        guard let node = roots.first(where: { $0.entry.binName == bin }) else { return }
+        guard let node = node(forBin: bin) else { return }
+        if let parent = node.parent { outline.expandItem(parent) }
         let row = outline.row(forItem: node)
         guard row >= 0 else { return }
         outline.scrollRowToVisible(row)
@@ -158,7 +180,7 @@ final class LibraryListView: NSView {
 
     /// Opens or closes a bin row.
     func setExpanded(_ expanded: Bool, bin: String) {
-        guard let node = roots.first(where: { $0.entry.binName == bin }) else { return }
+        guard let node = node(forBin: bin) else { return }
         if expanded { outline.expandItem(node) } else { outline.collapseItem(node) }
     }
 
@@ -271,7 +293,7 @@ extension LibraryListView: NSOutlineViewDataSource {
         guard !operation.isEmpty else { return [] }
         // Retarget onto the folder row itself, or onto the whole list for the open
         // folder — never between rows, which would promise a reordering.
-        let binNode = roots.first { $0.entry.binName == bin && bin != browser.effectiveOpenBin }
+        let binNode = bin.flatMap { $0 == browser.effectiveOpenBin ? nil : node(forBin: $0) }
         outlineView.setDropItem(binNode, dropChildIndex: NSOutlineViewDropOnItemIndex)
         return operation
     }
@@ -298,7 +320,7 @@ extension LibraryListView: NSOutlineViewDelegate {
         let available = entry.item?.isAvailable ?? true
         switch (field, entry) {
         case (.name, .bin(let name)):
-            cell.textField?.stringValue = name
+            cell.textField?.stringValue = BinPath.leaf(of: name)
             cell.imageView?.image = Self.symbol("folder.fill")
             cell.imageView?.contentTintColor = Theme.Color.accent
             // Folder names can be edited in place (Rename, or a click on a selected
@@ -412,8 +434,8 @@ extension LibraryListView: NSTextFieldDelegate {
         let row = outline.row(for: field)
         guard let bin = entry(atRow: row)?.binName else { return }
         let newName = field.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !newName.isEmpty, newName != bin else {
-            field.stringValue = bin
+        guard !newName.isEmpty, newName != BinPath.leaf(of: bin) else {
+            field.stringValue = BinPath.leaf(of: bin)
             return
         }
         actions?.libraryRenameBin(from: bin, to: newName)

@@ -33,7 +33,7 @@ final class ModeController: NSObject {
     var onPreviewFillChanged: ((PreviewFill) -> Void)?
     /// Runs an Import-mode import (the shell's background ImportJob). Set by the owner.
     var onImport: ((_ urls: [URL], _ method: ImportMethod, _ destination: URL?, _ bin: String?,
-                    _ optimize: OptimizePreset?) -> Void)?
+                    _ root: URL?, _ optimize: OptimizePreset?) -> Void)?
     /// Import mode's view, once built — for self-QA.
     var importViewForChecks: ImportModeView? { importView }
     /// Called after every switch (menu check marks).
@@ -113,8 +113,8 @@ final class ModeController: NSObject {
         case .importMedia:
             if importView == nil {
                 let view = ImportModeView(store: store, library: shell.grid.panels.library)
-                view.onImport = { [weak self] urls, method, destination, bin, optimize in
-                    self?.onImport?(urls, method, destination, bin, optimize)
+                view.onImport = { [weak self] urls, method, destination, bin, root, optimize in
+                    self?.onImport?(urls, method, destination, bin, root, optimize)
                 }
                 importView = view
             }
