@@ -97,6 +97,11 @@ final class ImportModeView: NSView {
     private var destination: URL
     /// Where the clips come from, as the Finder shows a path.
     private let sourcePath = NSPathControl()
+    /// The folder `sourcePath` shows (or is resolving). Setting a path control's `url`
+    /// looks up every component's icon on the main thread — ~10 ms cold, far more on a
+    /// card or a network share — so the items are built on `listQueue` instead, once
+    /// per folder rather than on every refresh.
+    private var sourcePathShown: URL?
     /// Where Move/Copy put them: a pop-up path control, AppKit's own "choose a folder".
     let destinationControl = NSPathControl()
     private let destinationNote = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
@@ -572,7 +577,7 @@ final class ImportModeView: NSView {
     /// The summary sentence and the header — for self-QA.
     var summaryForChecks: String { summaryLabel.stringValue }
     var headerForChecks: (title: String, counts: String) {
-        (currentSource.map { sourcePath.url?.lastPathComponent ?? $0.title } ?? "Choose a source", countsLabel.stringValue)
+        (currentSource.map { $0.url.lastPathComponent } ?? "Choose a source", countsLabel.stringValue)
     }
     var isViewerOpen: Bool { !viewerBox.isHidden }
 
@@ -581,14 +586,15 @@ final class ImportModeView: NSView {
     /// The folder's name and path, and what is in it — or why there is nothing.
     private func refreshHeader() {
         guard let source = currentSource else {
-            sourcePath.url = nil
+            sourcePathShown = nil
+            sourcePath.pathItems = []
             sourcePath.placeholderString = "Choose a source on the left"
             countsLabel.stringValue = ""
             emptyState.stringValue = "Choose a folder or device on the left."
             emptyState.isHidden = false
             return
         }
-        sourcePath.url = source.url
+        if sourcePathShown != source.url { showSourcePath(source.url) }
         let total = entries.count
         let fresh = entries.filter { !$0.isDuplicate }.count
         let known = total - fresh
@@ -615,6 +621,36 @@ final class ImportModeView: NSView {
                 ? "Everything here is already in the library." : "Nothing here is in the library yet."
         }
         emptyState.isHidden = !shown.isEmpty && !isReading
+    }
+
+    /// Fills the From: path off the main thread: names and icons from the folder up to
+    /// its volume, as the Finder shows them.
+    private func showSourcePath(_ url: URL) {
+        sourcePathShown = url
+        listQueue.async { [weak self] in
+            var components: [(title: String, icon: NSImage)] = []
+            var current = url.standardizedFileURL
+            while true {
+                // A copy: the workspace may hand back a shared, cached image, and this
+                // one is resized off the main thread.
+                let icon = (NSWorkspace.shared.icon(forFile: current.path).copy() as? NSImage) ?? NSImage()
+                icon.size = NSSize(width: 16, height: 16)
+                components.insert((FileManager.default.displayName(atPath: current.path), icon), at: 0)
+                let volume = (try? current.resourceValues(forKeys: [.isVolumeKey]))?.isVolume ?? false
+                let parent = current.deletingLastPathComponent()
+                if volume || parent.path == current.path { break }
+                current = parent
+            }
+            Self.onMain {
+                guard let self, self.sourcePathShown == url else { return }
+                self.sourcePath.pathItems = components.map { component in
+                    let item = NSPathControlItem()
+                    item.title = component.title
+                    item.image = component.icon
+                    return item
+                }
+            }
+        }
     }
 
     /// The header's counts include how many are ticked; nothing else to refresh.

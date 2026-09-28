@@ -45,6 +45,9 @@ public final class ScopeOverlayNode: Node {
     private let context: MetalContext?
     private var target: MTLTexture?
     private var overlayTexture: MTLTexture?
+    /// Reused for every scope image: a burned scope refreshes several times a second,
+    /// and a fresh texture each time is an allocation on the tick.
+    private var overlayUploader: TextureUploader?
 
     /// Bumped whenever a new image arrives, so the render knows to re-upload.
     private var pendingImage: ImageBuffer?
@@ -110,7 +113,10 @@ public final class ScopeOverlayNode: Node {
         lock.lock()
         if let pending = pendingImage {
             // Uploading only on change is what keeps this off the per-frame budget.
-            overlayTexture = metal.makeTexture(from: pending, label: identifier)
+            if overlayUploader == nil {
+                overlayUploader = TextureUploader(context: metal, label: "\(identifier).scope")
+            }
+            overlayTexture = overlayUploader?.upload(pending)
             pendingImage = nil
         }
         let overlay = overlayTexture

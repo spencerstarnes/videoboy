@@ -52,6 +52,17 @@ final class CanvasGeometryTests: XCTestCase {
         XCTAssertEqual(size.height, 480)
     }
 
+    /// A tagged SD raster is 4:3 or 16:9: DV's ITU 10:11 on 720x480 computes to 1.364,
+    /// which would put thin bars round every DV clip on the SD canvas.
+    func testTaggedSDRastersSnapToFourByThreeOrSixteenByNine() {
+        XCTAssertEqual(CanvasGeometry.displayAspect(width: 720, height: 480, pixelAspect: (10, 11)), 4.0 / 3.0, accuracy: 1e-9)
+        XCTAssertEqual(CanvasGeometry.displayAspect(width: 720, height: 576, pixelAspect: (12, 11)), 4.0 / 3.0, accuracy: 1e-9)
+        XCTAssertEqual(CanvasGeometry.displayAspect(width: 720, height: 480, pixelAspect: (40, 33)), 16.0 / 9.0, accuracy: 1e-9)
+        XCTAssertEqual(CanvasGeometry.displayAspect(width: 720, height: 480, pixelAspect: (1, 1)), 4.0 / 3.0, accuracy: 1e-9)
+        // Not SD: the tag is taken as written (anamorphic HDV).
+        XCTAssertEqual(CanvasGeometry.displayAspect(width: 1440, height: 1080, pixelAspect: (4, 3)), 16.0 / 9.0, accuracy: 1e-9)
+    }
+
     func testFitLetterboxesAWideSourceAndFillCropsIt() {
         let fit = sd.placement(sourceAspect: 16.0 / 9.0, framing: .fit)
         XCTAssertEqual(fit.size.x, 1, accuracy: 1e-6)

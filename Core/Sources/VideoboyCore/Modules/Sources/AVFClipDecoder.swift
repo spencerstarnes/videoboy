@@ -119,8 +119,9 @@ public final class AVFClipDecoder: ClipDecoding {
                extensionKey: kCMFormatDescriptionExtension_PixelAspectRatio) as? [String: Any],
            let horizontal = (pixelAspect[kCMFormatDescriptionKey_PixelAspectRatioHorizontalSpacing as String] as? NSNumber)?.doubleValue,
            let vertical = (pixelAspect[kCMFormatDescriptionKey_PixelAspectRatioVerticalSpacing as String] as? NSNumber)?.doubleValue,
-           horizontal > 0, vertical > 0, abs(horizontal - vertical) > 0.001, stored.height > 0 {
-            storedAspect = Double(stored.width) * horizontal / (Double(stored.height) * vertical)
+           stored.height > 0 {
+            storedAspect = CanvasGeometry.displayAspect(
+                width: stored.width, height: stored.height, pixelAspect: (horizontal, vertical))
         }
         let uprightAspect = turns % 2 == 1 ? 1 / storedAspect : storedAspect
         self.quarterTurns = turns

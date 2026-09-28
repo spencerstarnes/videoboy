@@ -121,11 +121,11 @@ public final class MPEGStreamDecoder: ClipDecoding {
         let codedWidth = Int(stream.pointee.codecpar.pointee.width)
         let codedHeight = Int(stream.pointee.codecpar.pointee.height)
         if codedWidth > 0, codedHeight > 0 {
-            var aspect = CanvasGeometry.displayAspect(width: codedWidth, height: codedHeight)
             let sample = stream.pointee.codecpar.pointee.sample_aspect_ratio
-            if sample.num > 0, sample.den > 0, sample.num != sample.den {
-                aspect = Double(codedWidth) * Double(sample.num) / (Double(codedHeight) * Double(sample.den))
-            }
+            let aspect = sample.num > 0 && sample.den > 0
+                ? CanvasGeometry.displayAspect(width: codedWidth, height: codedHeight,
+                                               pixelAspect: (Double(sample.num), Double(sample.den)))
+                : CanvasGeometry.displayAspect(width: codedWidth, height: codedHeight)
             displayAspectRatio = aspect
             var size = (width: codedWidth, height: codedHeight)
             if let canvas {

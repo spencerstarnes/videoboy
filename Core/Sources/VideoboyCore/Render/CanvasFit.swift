@@ -44,8 +44,29 @@ public struct CanvasGeometry: Equatable, Sendable {
     /// pixels are not square; the pixel ratio for everything else.
     public static func displayAspect(width: Int, height: Int) -> Double {
         guard width > 0, height > 0 else { return 4.0 / 3.0 }
-        let standardRaster = (width == 720 || width == 704) && [480, 486, 576].contains(height)
-        return standardRaster ? 4.0 / 3.0 : Double(width) / Double(height)
+        return isStandardRaster(width: width, height: height) ? 4.0 / 3.0 : Double(width) / Double(height)
+    }
+
+    /// The shown shape of a raster whose file states a pixel aspect ratio.
+    ///
+    /// A standard-definition raster is 4:3 or 16:9 and nothing in between. Its tags are
+    /// the ITU ones, which describe the 704-pixel clean aperture — DV's 10:11 on the
+    /// full 720 computes to 1.364 — so a tagged SD raster snaps to whichever of the two
+    /// it is nearer. Otherwise it would sit in the SD canvas with thin bars, slightly
+    /// squeezed, instead of mapping onto it pixel for pixel.
+    public static func displayAspect(width: Int, height: Int,
+                                     pixelAspect: (horizontal: Double, vertical: Double)) -> Double {
+        guard width > 0, height > 0, pixelAspect.horizontal > 0, pixelAspect.vertical > 0,
+              abs(pixelAspect.horizontal - pixelAspect.vertical) > 0.001 else {
+            return displayAspect(width: width, height: height)
+        }
+        let tagged = Double(width) * pixelAspect.horizontal / (Double(height) * pixelAspect.vertical)
+        guard isStandardRaster(width: width, height: height) else { return tagged }
+        return abs(tagged - 16.0 / 9.0) < abs(tagged - 4.0 / 3.0) ? 16.0 / 9.0 : 4.0 / 3.0
+    }
+
+    private static func isStandardRaster(width: Int, height: Int) -> Bool {
+        (width == 720 || width == 704) && [480, 486, 576].contains(height)
     }
 
     /// How big to decode a source so that, placed in this canvas, it has at least one
