@@ -240,17 +240,24 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
 - ~~**F9: open clips off the main thread.**~~ Done 2026-09-27: `Engine.loadAsync`;
   eject + reload now takes 6.7 ms worst (was 50 ms). See BUGHUNT.
 - **Catalog backup off the launch path** (BUGHUNT S1 follow-up).
-- **Soak memory check reads a sawtooth.** Its least-squares slope swung from −2 to
-  +6 MB/min between two identical 12-min runs, although the troughs stayed flat. Judge
-  leaks by the floor (the lowest sample each 2 min) instead.
+- ~~**Soak memory check reads a sawtooth.**~~ Done 2026-09-28: judged trough to trough
+  (lowest sample in each half of the settled run); under 4 settled minutes it is a note,
+  and `leaks --atExit` is the judge. See AUDIT-2026-09-28.
 - **Import mode viewer:** add a loop toggle (J/K/L, step and I/O are done).
 - **Copy + Optimize, still to do:** the Custom preset (codec, GOP, bitrate, keep audio);
   Re-optimize for stale files after a canvas change (0.4.11 makes that possible); a
   per-hour disk estimate in setup; pausing conversions while output is live.
-- **`selfqa import-mode` main-thread limit** read 36.7 ms twice, both times on the first
-  run after a fresh build. The next 6 runs read 14.0–14.6 ms, including 3 under the
-  sampler, which could not catch it again. Probably one-time code loading; not on the
-  show path.
+- ~~**`selfqa import-mode` main-thread limit**~~ Found 2026-09-28: the From: path
+  control looked up every component's icon on the main thread (~10 ms cold) on each
+  header refresh. Built off the main thread now; show() 0.46 ms, stretch 16.1 ms.
+- **Preview pacing under `push-fade`** read 86.7–95.2% held-2 against a 95% bar over 4
+  runs on 2026-09-28, with the owner's own Videoboy running (53% CPU) on the same
+  display. The automation curve itself is exact. Re-run with no other instance before
+  treating it as a bug (AUDIT-2026-09-28 A6).
+- **DATA BURN text is drawn on the CPU every frame** (timecode changes each frame):
+  stress p95 9.8 ms with burn on vs 6.6 off. Within budget; cache glyphs if it grows.
+- **First AVFoundation open in a process is ~70 ms** (framework warm-up; later opens
+  6–9 ms). Off the main thread since F9; a launch-time warm-up would hide it entirely.
 - 0.4.8 and 0.4.9 need a person's click-through with `VIDEOBOY_FLAGS=modeBar` before
   their boxes are ticked (see docs/BLOCKED.md).
 

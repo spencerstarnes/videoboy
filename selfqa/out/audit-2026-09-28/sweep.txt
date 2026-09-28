@@ -1,0 +1,26 @@
+midi rc=0 7s
+stress rc=0 28s
+modes rc=0 43s
+import-mode rc=1 7s
+import rc=0 30s
+pads rc=1 20s
+bins rc=0 6s
+ab-roll rc=0 44s
+optimize rc=0 66s
+template rc=0 5s
+now-playing rc=0 3s
+framing rc=0 3s
+fullscreen rc=0 90s
+push-fade rc=1 22s
+mosh rc=0 28s
+library rc=0 18s
+isf rc=0 11s
+audit rc=1 2s
+bars rc=0 0s
+blend rc=0 0s
+transitions rc=0 2s
+ave5 rc=0 2s
+shaders rc=0 3s
+import-look rc=0 4s
+decode rc=1 1s
+DONE

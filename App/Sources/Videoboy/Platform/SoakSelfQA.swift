@@ -242,6 +242,20 @@ enum SoakSelfQA {
         let settled = samples.first(where: { $0.minute >= 2 }) ?? first
         let span = max(last.minute - settled.minute, 0.5)
         let footprintSlope = (last.footprintMB - settled.footprintMB) / span
+        // Judged TROUGH to trough, not end to end: the footprint is a sawtooth (decode
+        // buffers come and go), and two endpoints measure where the tooth happened to
+        // be — a 3-minute soak read +3.4 MB/min with 0 leaks. The lowest point in the
+        // first half of the settled samples against the lowest in the second half.
+        let settledSamples = samples.filter { $0.minute >= settled.minute }
+        let halves = (settledSamples.prefix(settledSamples.count / 2), settledSamples.suffix(settledSamples.count / 2))
+        let earlyTrough = halves.0.min { $0.footprintMB < $1.footprintMB }
+        let lateTrough = halves.1.min { $0.footprintMB < $1.footprintMB }
+        let troughSlope: Double? = {
+            guard let earlyTrough, let lateTrough, lateTrough.minute > earlyTrough.minute else { return nil }
+            return (lateTrough.footprintMB - earlyTrough.footprintMB) / (lateTrough.minute - earlyTrough.minute)
+        }()
+        /// Under this many settled minutes a slope is noise; the verdict is left to `leaks`.
+        let minutesToJudgeMemory = 4.0
         let gpuSlope = (last.gpuMB - settled.gpuMB) / span
         let totalFrames = windows.reduce(0) { $0 + $1.frames }
         let totalDropped = windows.reduce(0) { $0 + $1.dropped }
@@ -274,10 +288,17 @@ enum SoakSelfQA {
             name: "under 0.1% of refreshes dropped across the soak",
             passed: Double(totalDropped) <= Double(totalFrames) * 0.001,
             detail: "\(totalDropped) of \(totalFrames)"))
-        check.record(AssertionResult(
-            name: "memory footprint is flat once settled (under 2 MB/min)",
-            passed: footprintSlope < 2,
-            detail: String(format: "%+.2f MB/min from minute %.1f", footprintSlope, settled.minute)))
+        if span >= minutesToJudgeMemory, let troughSlope {
+            check.record(AssertionResult(
+                name: "memory footprint is flat once settled (troughs rise under 2 MB/min)",
+                passed: troughSlope < 2,
+                detail: String(format: "troughs %+.2f MB/min from minute %.1f (end to end %+.2f)",
+                               troughSlope, settled.minute, footprintSlope)))
+        } else {
+            check.note(String(format: "memory slope not judged: %.1f settled minutes, needs %.0f "
+                              + "(end to end %+.2f MB/min; use leaks for a short run)",
+                              span, minutesToJudgeMemory, footprintSlope))
+        }
         check.record(AssertionResult(
             name: "GPU allocation is flat once settled (under 1 MB/min)",
             passed: gpuSlope < 1,

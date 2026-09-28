@@ -3,7 +3,7 @@
 Auto-loaded every session. Keep this short. Operational detail lives in `@docs/BUILD-PLAN.md`; full feature reference is `docs/SPEC.md` (read the relevant section when a phase needs it — do not load it wholesale).
 
 ## What this is
-**Videoboy** — a native macOS app for live analog-style video mixing (product/bundle name: Videoboy). The competitive core ("the wedge") is **musical, playable manipulation of compressed video bitstreams** (DV / MPEG-family) output cleanly to SD (480i) for an analog chain. Everything else is supporting cast. This is NOT a general VJ tool and must not grow into one.
+**Videoboy** — a native macOS app for live analog-style video mixing (product/bundle name: Videoboy). The competitive core ("the wedge") is **musical, playable manipulation of compressed video bitstreams** (MPEG-family; the DV path was removed 2026-09-28) output cleanly to SD (480i) for an analog chain. Everything else is supporting cast. This is NOT a general VJ tool and must not grow into one.
 
 **Canvas (amended 2026-09-26, owner-approved — `docs/PROPOSAL-2026-09-26.md`):** the project canvas is selectable — SD NTSC 720×480, SD PAL 720×576, HD 1920×1080, square 1080×1080, vertical 1080×1920; 23.976–30 fps. **SD NTSC 29.97 is the default and the reference canvas.** The wedge and a clean SD analog output stay first-class and are never degraded to serve another canvas. The import/modes/optimize/catalog work in that proposal is in scope, in its phase order (Phase 0 = decode fixes, 0.4.6).
 
@@ -49,7 +49,7 @@ Every visual/output acceptance item is checked by you via these before it counts
 
 ## Devices & sample media
 - Device names/IDs and paths live in `config/devices.json` (copy from `config/devices.example.json`; the human fills real values). Read device identity from there — never hardcode.
-- Sample videos are in `samples/` with a `samples/manifest.json`. There must be at least one real `.dv` file (DV can't be decoded by AVFoundation, so the libav path and DIF corruptor need a genuine fixture). If `samples/` is empty or has no `.dv`, that's a blocker (rule 5b).
+- Sample videos are in `samples/` with a `samples/manifest.json`. There must be at least one real MPEG-2 file (`motion.m2v`): the libav path and the MPEG corruptor need a genuine bitstream. `.dv` files play as ordinary video through AVFoundation (no bitstream effects); many self-QA checks still use `bars.dv`/`motion.dv` as SD fixtures. If `samples/` is empty or has no `.m2v`, that's a blocker (rule 5b).
 
 ## Smooth playback outranks everything
 
@@ -64,7 +64,7 @@ The rules that follow from that:
   times the whole display-link tick (graph + UI) under full load on a release build.
   The graph-only check in `selfqa ui` cannot see UI or presentation stalls — it missed a
   halved frame rate. Never time a debug build.
-- **Budget is one frame at the project rate — 33.4 ms at 29.97.** Measure on real HD footage too (`VIDEOBOY_SOAK_CLIPS`, `selfqa decode`): the SD fixtures hide decode cost. Measured 0.4.6 (2026-09-26), full load: SD fixtures **mean 6.2 ms, worst ~7 ms**; 10-min soak on 2× 1080p H.264 + ProRes + DV **0 dropped, 0 ticks over 16 ms, worst 16.5 ms, memory flat**. Remaining occasional stall: the GPU fence (~8 per 5 min, up to 19 ms, cause open — `docs/AUDIT-2026-09-26.md`). Headroom is the safety margin, not spare capacity.
+- **Budget is one frame at the project rate — 33.4 ms at 29.97.** Measure on real HD footage too (`VIDEOBOY_SOAK_CLIPS`, `selfqa decode`): the SD fixtures hide decode cost. Measured 0.4.6 (2026-09-26), full load: SD fixtures **mean 6.2 ms, worst ~7 ms**; 10-min soak on 2× 1080p H.264 + ProRes + DV **0 dropped, 0 ticks over 16 ms, worst 16.5 ms, memory flat**. Re-measured 2026-09-28 after the DV removal: stress mean 6.4 ms, p95 6.6, worst 17.8; 10-min soak on 2× 1080p H.264 + ProRes + 4K HEVC **0 dropped, 4 ticks over 16 ms, worst 18.2 ms, memory flat, 0 leaks** (`docs/AUDIT-2026-09-28.md`). Remaining occasional stall: the GPU fence (~8 per 5 min, up to 19 ms, cause open — `docs/AUDIT-2026-09-26.md`). Headroom is the safety margin, not spare capacity.
 - **Nothing expensive on the render path.** No allocation per frame where a cached
   buffer will do, no CPU pixel loops (`ImageBuffer(width:height:r:g:b:)`, not
   `setPixel` in a loop), no synchronous file or network I/O, ever.

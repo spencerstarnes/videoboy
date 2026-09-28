@@ -1,0 +1,42 @@
+check:    perf/soak
+verdict:  PASS
+when:     2026-09-28T18:48:36Z
+core:     0.4.10
+
+notes:
+  clips: hd-h264-2997.mov, hd-prores.mov, hd-h264-25.mov, uhd-hevc-hvc1.mov
+  26 ticks over 14 ms; costliest part in each: source.a ×15, source.b ×11
+    18.47 ms: source.a 5.66, source.b 5.65, ui/onFrame 3.90, gpu fence 1.35, source.c 0.30, source.d 0.27
+    18.25 ms: source.b 5.66, source.a 5.66, ui/onFrame 3.56, gpu fence 1.48, source.c 0.35, source.d 0.28
+    18.21 ms: source.a 5.66, source.b 5.65, ui/onFrame 3.70, gpu fence 1.27, source.c 0.31, source.d 0.28
+    16.41 ms: source.b 5.65, gpu fence 4.64, ui/onFrame 3.57, source.a 0.33, fx.one.mosh 0.25, source.c 0.24
+    15.43 ms: source.b 5.65, source.a 5.65, gpu fence 1.79, ui/onFrame 0.47, source.c 0.32, source.d 0.28
+    15.22 ms: source.a 5.66, source.b 5.66, gpu fence 1.67, ui/onFrame 0.38, source.d 0.35, source.c 0.31
+    15.19 ms: source.a 5.66, source.b 5.65, gpu fence 1.49, ui/onFrame 0.53, source.c 0.33, source.d 0.28
+    15.17 ms: source.a 5.66, source.b 5.65, gpu fence 1.33, ui/onFrame 0.50, source.c 0.32, source.d 0.29
+    15.08 ms: source.a 5.68, source.b 5.65, gpu fence 1.47, ui/onFrame 0.46, source.c 0.31, source.d 0.26
+    15.08 ms: source.a 5.66, source.b 5.65, gpu fence 1.52, ui/onFrame 0.35, source.c 0.32, source.d 0.26
+  action cut: 26×, mean 0.10 ms, worst 0.16 ms
+  action drop clip: 26×, mean 0.17 ms, worst 0.43 ms
+  action effect off/on: 26×, mean 0.01 ms, worst 0.01 ms
+  action eject + reload: 25×, mean 6.15 ms, worst 7.47 ms
+  action fade: 26×, mean 0.01 ms, worst 0.04 ms
+  action scope key: 25×, mean 0.10 ms, worst 0.13 ms
+  action swap A/B: 25×, mean 0.05 ms, worst 0.07 ms
+  6.0 min, 179 actions, 10789 frames = 29.97/s, 0 dropped, 3 ticks over 16 ms, worst 18.47 ms
+  footprint 651 → 426 MB (settled 453, -6.57 MB/min); gpu 142 → 143 MB (+0.00 MB/min)
+  threads 36 → 35 (max 42); file descriptors 14 → 13 (max 14)
+  tick mean first window 5.29 ms, last window 5.71 ms
+
+assertions (11/11 passed):
+  PASS  a replaced Source Controls card is freed — freed
+  PASS  the soak holds the 29.97 content rate — 29.97 frames/s
+  PASS  no tick over one SD frame in the whole soak — worst 18.47 ms, 3 ticks over 16 ms
+  PASS  under 0.1% of refreshes dropped across the soak — 0 of 10789
+  PASS  memory footprint is flat once settled (troughs rise under 2 MB/min) — troughs -1.27 MB/min from minute 2.0 (end to end -6.57)
+  PASS  GPU allocation is flat once settled (under 1 MB/min) — +0.00 MB/min
+  PASS  clip swaps leave no threads behind — 34 settled → 35
+  PASS  clip swaps leave no file handles open — 13 settled → 13
+  PASS  the tick does not get slower over the show — 5.29 → 5.71 ms
+  PASS  the window's view count does not grow over the show — 2282 views at the start, 2282 at the end
+  PASS  no performer action blocks the main thread for longer than a frame — worst: eject + reload 7.47 ms

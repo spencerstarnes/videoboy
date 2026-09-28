@@ -1,44 +1,41 @@
 check:    phase-2/playback
 verdict:  PASS
-when:     2026-09-28T17:11:44Z
+when:     2026-09-28T18:05:16Z
 core:     0.4.10
 
 notes:
-  A = motion.dv, B = bars.dv, through the engine's own graph
-  MPEG damage at a fixed playhead: Frame Drop 0.970, Motion Vector Corrupt 0.560, Reference Hold 0.216
+  A = motion.m2v, B = bars.dv, through the engine's own graph
+  MPEG damage at a fixed playhead: Frame Drop 0.971, Motion Vector Corrupt 0.564, Reference Hold 0.239
   all frames rendered through the engine's own nodes and Metal pipelines
 
-assertions (34/34 passed):
-  PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (61 nodes)
+assertions (31/31 passed):
+  PASS  fixed routing holds — A/B reach ONE, C/D reach TWO, both reach PRIMARY (58 nodes)
   PASS  dimensions — expected 720x480, got 720x480
-  PASS  signal present — luminance variance 4188.7, threshold 25.0
-  PASS  fader at B shows source B — worst bar 0 off by 2.1 (tolerance 45.0)
-  PASS  moving the fader changes PRIMARY — 0.997 of sampled pixels differ, needed >= 0.2
-  PASS  mid-fade is a blend of both — differs from A by 0.93 and from B by 0.99
-  PASS  playback advances the picture — 0.086 of sampled pixels differ, needed >= 0.05
-  PASS  the corruptor damages PRIMARY through the live graph — 0.487 of sampled pixels differ, needed >= 0.05
-  PASS  signal present — luminance variance 3898.0, threshold 25.0
+  PASS  signal present — luminance variance 1204.6, threshold 25.0
+  PASS  fader at B shows source B — worst bar 1 off by 2.0 (tolerance 45.0)
+  PASS  moving the fader changes PRIMARY — 0.904 of sampled pixels differ, needed >= 0.2
+  PASS  mid-fade is a blend of both — differs from A by 0.83 and from B by 0.83
+  PASS  playback advances the picture — 0.717 of sampled pixels differ, needed >= 0.05
+  PASS  the corruptor damages PRIMARY through the live graph — 0.097 of sampled pixels differ, needed >= 0.05
+  PASS  signal present — luminance variance 1516.3, threshold 25.0
   PASS  ordinary video loads into a channel — motion.mov opened through AVFoundation
   PASS  ordinary video offers no bitstream effects — family is None
-  PASS  signal present — luminance variance 3106.4, threshold 25.0
+  PASS  signal present — luminance variance 3134.8, threshold 25.0
   PASS  ordinary video advances through PRIMARY — 0.079 of sampled pixels differ, needed >= 0.05
-  PASS  the PROGRAM data stage reaches the output — 0.505 of sampled pixels differ, needed >= 0.02
-  PASS  PRIMARY carries C/D's picture when cut to TWO, not ONE's — 0.483 of sampled pixels differ, needed >= 0.05
-  PASS  signal present — luminance variance 3893.1, threshold 25.0
-  PASS  NTSC output emulation changes the picture, subtly — 0.781 of sampled pixels differ
-  PASS  the DV round trip runs rather than passing through — 0.0015 of sampled pixels differ at one generation — small because flat colour bars survive 4:1:1 well
-  PASS  each DV generation costs more than the last — 1 generation differs by 0.002, 4 by 0.010
+  PASS  PRIMARY carries C/D's picture when cut to TWO, not ONE's — 0.889 of sampled pixels differ, needed >= 0.05
+  PASS  signal present — luminance variance 1204.6, threshold 25.0
+  PASS  NTSC output emulation changes the picture, subtly — 0.787 of sampled pixels differ
   PASS  freeze holds the picture while the clip runs on — 0.000 of pixels changed over 19 frames of playback
-  PASS  letting go of freeze makes the picture live again — 0.128 of pixels changed after release
-  PASS  a feedback send is recorded against its bus — data.one
+  PASS  letting go of freeze makes the picture live again — 0.977 of pixels changed after release
+  PASS  a feedback send is recorded against its bus — burn.one
   PASS  a bus fed back into its own loop keeps rendering — 20 of 20 frames rendered
-  PASS  the feedback send changes the picture — 0.258 of sampled pixels differ, needed >= 0.02
-  PASS  signal present — luminance variance 4207.1, threshold 25.0
+  PASS  the feedback send changes the picture — 0.960 of sampled pixels differ, needed >= 0.02
+  PASS  signal present — luminance variance 955.5, threshold 25.0
   PASS  MPEG footage offers the MPEG data effects — family is MPEG
-  PASS  every MPEG data effect changes what reaches the screen — Frame Drop 0.970, Motion Vector Corrupt 0.560, Reference Hold 0.216
-  PASS  Frame Drop leaves a picture, not a dead decoder — luminance variance 2365.4
-  PASS  Motion Vector Corrupt leaves a picture, not a dead decoder — luminance variance 1795.3
-  PASS  Reference Hold leaves a picture, not a dead decoder — luminance variance 1967.0
+  PASS  every MPEG data effect changes what reaches the screen — Frame Drop 0.971, Motion Vector Corrupt 0.564, Reference Hold 0.239
+  PASS  Frame Drop leaves a picture, not a dead decoder — luminance variance 2419.6
+  PASS  Motion Vector Corrupt leaves a picture, not a dead decoder — luminance variance 1823.3
+  PASS  Reference Hold leaves a picture, not a dead decoder — luminance variance 2018.8
   PASS  Linear Gradient is read from the generator node, not the file node — source window reads generator.a
   PASS  Linear Gradient draws a picture in its source window — luminance variance 7669.5
   PASS  Checkerboard is read from the generator node, not the file node — source window reads generator.a

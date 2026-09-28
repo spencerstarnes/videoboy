@@ -1,0 +1,2 @@
+Process 25972: 523652 nodes malloced for 547455 KB
+Process 25972: 0 leaks for 0 total leaked bytes.
