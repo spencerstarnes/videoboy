@@ -59,9 +59,27 @@ final class PlaylistView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
-    /// Replaces the whole list. Rebuilt rather than diffed: a queue is a handful of
-    /// rows, and a diff here would be more code than the thing it optimises.
+    /// What is shown, so the common change can be done without a rebuild.
+    private var shownItems: [PlaylistItem] = []
+
+    /// Replaces the list. The one change that happens at a TAKE — ADV taking the top
+    /// clip — only removes the top row and restyles the new top one (the accent
+    /// moves); anything else rebuilds, since a queue is a handful of rows.
     func setItems(_ items: [PlaylistItem]) {
+        defer { shownItems = items }
+        if !shownItems.isEmpty, items == Array(shownItems.dropFirst()),
+           stack.arrangedSubviews.count == shownItems.count {
+            let top = stack.arrangedSubviews[0]
+            stack.removeArrangedSubview(top)
+            top.discardFromSuperview()
+            if let first = items.first, let old = stack.arrangedSubviews.first {
+                stack.removeArrangedSubview(old)
+                old.discardFromSuperview()
+                stack.insertArrangedSubview(row(for: first, position: 0), at: 0)
+            }
+            emptyLabel.isHidden = !items.isEmpty
+            return
+        }
         for view in stack.arrangedSubviews {
             stack.removeArrangedSubview(view)
             view.discardFromSuperview()

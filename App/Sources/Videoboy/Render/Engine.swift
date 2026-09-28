@@ -1118,6 +1118,76 @@ final class Engine {
         }
     }
 
+    // MARK: Pre-opened clips (ADV, zero-wait cuts)
+
+    /// One clip opened AHEAD of need per channel: ADV's next pick, opened as soon as
+    /// it is known so the take only has to swap it in. The decoder is live and its
+    /// first frames are already decoding.
+    private var preparedAhead: [String: (url: URL, clip: ClipSourceNode.PreparedClip?)] = [:]
+
+    /// Opens `url` for `channel` in the background, replacing any earlier pre-open.
+    /// Idempotent for the same URL.
+    func prepareAhead(url: URL, forChannel letter: String, knownFrameCount: Int? = nil) {
+        guard let node = sources[letter] else { return }
+        if preparedAhead[letter]?.url == url { return }
+        preparedAhead[letter] = (url, nil)            // pending
+        let work = node.preparation(url: url, knownFrameCount: knownFrameCount)
+        openQueue.async { [weak self] in
+            let prepared = work()
+            let main = CFRunLoopGetMain()
+            CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
+                guard let self, self.preparedAhead[letter]?.url == url else { return }   // superseded
+                self.preparedAhead[letter] = (url, prepared)
+                Log.info(.dv, "\(letter): pre-opened \(url.lastPathComponent) for ADV")
+            }
+            CFRunLoopWakeUp(main)
+        }
+    }
+
+    /// Swaps in the pre-opened clip if it is `url` and ready: true, and nothing was
+    /// opened on this thread. False when it is not ready (the caller loads normally).
+    func installPrepared(url: URL, intoChannel letter: String) -> Bool {
+        guard let node = sources[letter], let ahead = preparedAhead[letter], ahead.url == url,
+              let prepared = ahead.clip, prepared.opened else { return false }
+        preparedAhead[letter] = nil
+        loadGeneration[letter] = (loadGeneration[letter] ?? 0) + 1   // cancels any older async load
+        guard node.install(prepared) else { return false }
+        registry.register(slot: node.identifier, parameters: node.parameters)
+        // The panel's reaction (rebuilding Source Controls) waits for the next run-loop
+        // turn: the take's turn carries only the swap itself.
+        onAdvanceInstalled?(letter)
+        return true
+    }
+
+    /// Told (on the next run-loop turn) when ADV swapped a pre-opened clip into a
+    /// channel. Separate from `onChannelSourceChanged`, which also moves Source
+    /// Controls to that channel — wrong for an OFF-AIR channel mid-show.
+    var onAdvanceInstalled: ((String) -> Void)? {
+        get { advanceInstalledHandler }
+        set {
+            let handler = newValue
+            advanceInstalledHandler = handler.map { call in
+                { letter in
+                    let main = CFRunLoopGetMain()
+                    CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) { call(letter) }
+                    CFRunLoopWakeUp(main)
+                }
+            }
+        }
+    }
+    private var advanceInstalledHandler: ((String) -> Void)?
+
+    /// Whether `url` is pre-opened and ready on `channel` — for self-QA.
+    func isPrepared(_ url: URL, onChannel letter: String) -> Bool {
+        preparedAhead[letter]?.url == url && preparedAhead[letter]?.clip?.opened == true
+    }
+
+    /// Drops a channel's pre-open (the plan changed). Released off the main thread.
+    func discardPrepared(channel letter: String) {
+        guard let dropped = preparedAhead.removeValue(forKey: letter) else { return }
+        openQueue.async { withExtendedLifetime(dropped) {} }
+    }
+
     /// Takes whatever is loaded out of a channel. Safe to call on an empty one.
     ///
     /// Returns false only when the letter names no source at all, so a caller can

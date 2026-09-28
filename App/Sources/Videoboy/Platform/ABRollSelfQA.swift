@@ -244,6 +244,92 @@ enum ABRollSelfQA {
             detail: String(format: "worst tick %.2f ms of %d, %d dropped (%d in 5 s without cuts)",
                            worst, ticks.count, drops, dropsWithout)))
 
+        // 10. ZERO-WAIT ADV on real HD / 4K: every take served from a clip opened in
+        // advance; no dropped frame, no stall at the cut, and the incoming clip plays
+        // from its first frames without holding.
+        let hdNames = ["hd-h264-2997.mov", "hd-prores.mov", "uhd-hevc-hvc1.mov", "hd-h264-25.mov"]
+        let hd = hdNames.map { RepoPaths.samples.appendingPathComponent($0) }
+        if hd.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }) {
+            reset(roll: true, advance: false)
+            for letter in ["C", "D"] { engine.setPlaying(true, channel: letter) }
+            for round in 0..<4 {
+                shell.queueForChecks(hd[round % 4], channel: "A")
+                shell.queueForChecks(hd[(round + 2) % 4], channel: "B")
+            }
+            shell.setAdvance(true, on: slot)
+            spin(3)   // the first plan opens
+            let before = shell.advanceCountsForChecks
+            var awake = 0.0, worstStretch = 0.0
+            var longSpans: [(start: CFTimeInterval, end: CFTimeInterval)] = []
+            let sampler = ProcessInfo.processInfo.environment["VIDEOBOY_MAIN_SAMPLER"] == "1" ? MainThreadSampler() : nil
+            let observer = CFRunLoopObserverCreateWithHandler(
+                nil, CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue,
+                true, 0) { _, activity in
+                let now = CACurrentMediaTime()
+                if activity == .afterWaiting { awake = now } else if awake > 0 {
+                    let ms = (now - awake) * 1000
+                    worstStretch = max(worstStretch, ms)
+                    if ms > 16 { longSpans.append((awake, now)) }
+                }
+            }
+            engine.tickCostsForChecks = []
+            let baseDrops = engine.droppedFrames
+            spin(4)
+            let dropsWithout = engine.droppedFrames - baseDrops
+            engine.tickCostsForChecks = []
+            CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+            MainThreadCosts.byLabel = [:]
+            sampler?.start()
+            let dropsBefore = engine.droppedFrames
+            var incomingHeld = 0
+            var incomingStarted = 0
+            var cuts = 0
+            for interval in [1.5, 1.5, 1.5, 1.5, 1.0, 1.0, 1.0, 1.0] {
+                let current = engine.registry.value(slot: slot, code: .crossfadeAB) ?? 0
+                let incoming = current >= 0.5 ? "A" : "B"
+                let heldBefore = engine.sources[incoming]?.heldFrames ?? 0
+                body.onCutRequested?()
+                cuts += 1
+                spin(0.25)
+                if let source = engine.sources[incoming], source.isPlaying, source.playheadFrame > 0 { incomingStarted += 1 }
+                incomingHeld += (engine.sources[incoming]?.heldFrames ?? 0) - heldBefore
+                spin(interval - 0.25)
+            }
+            CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+            sampler?.stop()
+            if let sampler {
+                try? sampler.report(for: longSpans).write(
+                    to: RepoPaths.selfQAOutput.appendingPathComponent("perf/ab-roll/main-sampler.txt"),
+                    atomically: true, encoding: .utf8)
+            }
+            check.note("take costs, worst: " + (MainThreadCosts.byLabel ?? [:])
+                .filter { $0.key.hasPrefix("adv.") }
+                .map { String(format: "%@ %.2f ms", $0.key, $0.value.max() ?? 0) }.sorted().joined(separator: ", "))
+            MainThreadCosts.byLabel = nil
+            let ticks = engine.tickCostsForChecks ?? []
+            engine.tickCostsForChecks = nil
+            let drops = engine.droppedFrames - dropsBefore
+            let after = shell.advanceCountsForChecks
+            let instant = after.instant - before.instant, waited = after.waited - before.waited
+            check.record(AssertionResult(
+                name: "ADV on HD/4K: every take swaps in a clip that was already open (nothing opened at the cut)",
+                passed: instant == cuts && waited == 0,
+                detail: "\(instant) of \(cuts) takes instant, \(waited) opened at the take"))
+            check.record(AssertionResult(
+                name: "ADV on HD/4K: the incoming clip plays from its first frames without holding a picture",
+                passed: incomingStarted == cuts && incomingHeld == 0,
+                detail: "\(incomingStarted) of \(cuts) rolled at once; \(incomingHeld) held frames on the incoming side"))
+            check.record(AssertionResult(
+                name: "ADV on HD/4K: no dropped frame and no main-thread stall at the cuts",
+                passed: drops <= dropsWithout && (ticks.max() ?? 0) < 1000 / StandardDefinition.frameRate
+                    && worstStretch < 1000 / StandardDefinition.frameRate / 2,
+                detail: String(format: "%d dropped (%d in 4 s without cuts), worst tick %.2f ms, longest main-thread stretch %.1f ms",
+                               drops, dropsWithout, ticks.max() ?? 0, worstStretch)))
+            shell.setAdvance(false, on: slot)
+        } else {
+            check.note("HD fixtures missing — run scripts/make-fixtures.sh; the zero-wait ADV section was skipped")
+        }
+
         window.orderOut(nil)
         withExtendedLifetime(controller) {}
         return check.finish()

@@ -659,7 +659,18 @@ final class MetalPreviewView: NSView {
             return
         }
 
+        // NEVER BLOCK THE TICK ON A DRAWABLE. `nextDrawable()` waits (up to a second)
+        // when every drawable is still queued or on screen — seen as 27–35 ms, and
+        // once 1.1 s, stretches under a busy desktop (in-process sampler, 2026-09-27).
+        // A preview skips this refresh instead when none is free; one skipped preview
+        // frame is invisible, a blocked tick is not. The output window (display-synced)
+        // is exempt: it is the show, and paces itself on its own display.
+        if !metalLayer.displaySyncEnabled, !drawableIsFree(metalLayer) {
+            skippedPresentsForChecks += 1
+            return
+        }
         guard let texture, let drawable = metalLayer.nextDrawable() else { return }
+        track(drawable)
 
         let descriptor = MTLRenderPassDescriptor()
         descriptor.colorAttachments[0].texture = drawable.texture
@@ -690,9 +701,37 @@ final class MetalPreviewView: NSView {
         commandBuffer.commit()
     }
 
+    // MARK: Drawables in flight
+
+    /// Drawables handed out and not yet shown. Written from the presented handler's
+    /// thread, so under a lock.
+    private let flightLock = NSLock()
+    private var drawablesAwaitingPresent = 0
+    /// Presents skipped because no drawable was free — self-QA and the log.
+    private(set) var skippedPresentsForChecks = 0
+
+    /// True when `nextDrawable()` will return at once: one drawable is on screen, so
+    /// the rest of the pool minus those still awaiting presentation must be free.
+    private func drawableIsFree(_ layer: CAMetalLayer) -> Bool {
+        flightLock.lock(); defer { flightLock.unlock() }
+        return drawablesAwaitingPresent < layer.maximumDrawableCount - 1
+    }
+
+    private func track(_ drawable: CAMetalDrawable) {
+        flightLock.lock(); drawablesAwaitingPresent += 1; flightLock.unlock()
+        drawable.addPresentedHandler { [weak self] _ in
+            guard let self else { return }
+            self.flightLock.lock()
+            self.drawablesAwaitingPresent = max(self.drawablesAwaitingPresent - 1, 0)
+            self.flightLock.unlock()
+        }
+    }
+
     /// Presents an empty drawable, so the layer stops showing whatever it last held.
     private func clearLayer(context: MetalContext, layer: CAMetalLayer) {
+        if !layer.displaySyncEnabled, !drawableIsFree(layer) { return }
         guard let drawable = layer.nextDrawable() else { return }
+        track(drawable)
         let descriptor = MTLRenderPassDescriptor()
         descriptor.colorAttachments[0].texture = drawable.texture
         descriptor.colorAttachments[0].loadAction = .clear

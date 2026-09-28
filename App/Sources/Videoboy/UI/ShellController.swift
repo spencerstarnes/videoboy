@@ -160,6 +160,31 @@ final class ShellController {
 
     /// Pushes the queues back into whichever library shows them.
     private func refreshPlaylists() {
+        // A queue edit can change ADV's next clip: plan (and pre-open) again.
+        if advanceOn.values.contains(true) { replanAdvance() }
+        refreshPlaylistViews()
+    }
+
+    private var playlistChannelsToRefresh: Set<String> = []
+
+    /// Redraws one channel's Up Next list on the next run-loop turn (coalesced).
+    private func schedulePlaylistViewRefresh(_ channel: String) {
+        let first = playlistChannelsToRefresh.isEmpty
+        playlistChannelsToRefresh.insert(channel)
+        guard first else { return }
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
+            guard let self else { return }
+            let channels = self.playlistChannelsToRefresh
+            self.playlistChannelsToRefresh = []
+            let panels = self.shell.grid.panels
+            for channel in channels {
+                let panel = ["A", "B"].contains(channel) ? panels.libraryOneBody : panels.libraryTwoBody
+                panel.setPlaylist(self.playlists[channel], forChannel: channel)
+            }
+        }
+    }
+
+    private func refreshPlaylistViews() {
         let panels = shell.grid.panels
         for channel in ["A", "B"] {
             panels.libraryOneBody.setPlaylist(playlists[channel], forChannel: channel)
@@ -1552,6 +1577,14 @@ final class ShellController {
         guard Self.abRollBuses[slot] != nil else { return }
         advanceOn[slot] = on
         Self.faderBody(for: slot, panels: shell.grid.panels)?.setAdvance(on: on)
+        if on {
+            replanAdvance()
+        } else if let bus = Self.abRollBuses[slot] {
+            for channel in [bus.left, bus.right] {
+                advancePlans[channel] = nil
+                engine.discardPrepared(channel: channel)
+            }
+        }
         Log.info(.app, "ADV \(on ? "on" : "off") for \(slot)")
     }
 
@@ -1589,63 +1622,174 @@ final class ShellController {
     }
 
     /// What happens to the source that just left air.
+    ///
+    /// ZERO WAIT: ADV's next clip for this channel was chosen and OPENED in advance
+    /// (`planAdvance`, after the previous take), so here it is only swapped in — no file
+    /// is opened at the take. If the plan went stale (the queue or the fallback changed,
+    /// or a different clip is on air) the pick is made now and opened off the main
+    /// thread as before.
     private func settleOutgoing(_ take: ABRoll.Take, slot: String, busKey: String) {
         let rolls = rollOn[slot] == true
         let channel = take.outgoing
-        if advanceOn[slot] == true, let pick = nextClip(for: channel, onAir: take.incoming, busKey: busKey) {
-            let library = shell.grid.panels.library
-            let item = library.items.first {
-                $0.url?.standardizedFileURL == pick.url.standardizedFileURL
-            }
-            // ROLL's pause-and-re-cue has to wait for the new clip to be in: done in
-            // the load's completion (the clip opens off the main thread).
-            loadClip(pick.url, into: channel, range: item.flatMap { library.markedRange(for: $0.id) }) { [weak self] _ in
-                guard rolls else { return }
-                self?.setChannelPlaying(channel, false)
-                self?.engine.sources[channel]?.seek(toNormalised: 0)
-            }
-            refreshPlaylists()
-            if pick.fromQueue {
-                announcedFallback.remove(channel)
-            } else if preferences.preferences.announcesAdvanceFallback, !announcedFallback.contains(channel) {
-                announcedFallback.insert(channel)
-                let how = pick.fallback?.displayName.lowercased() ?? "library"
-                shell.statusBar.showNotice(
-                    "Up Next \(channel) was empty — cued \(pick.url.lastPathComponent) (\(how))",
-                    detail: "ADV loads from the library when a queue runs out. "
-                        + "Settings ▸ Defaults ▸ When Up Next runs out.",
-                    isWarning: false)
-            }
-            Log.info(.app, "ADV: \(channel) cued \(pick.url.lastPathComponent)"
-                + (pick.fromQueue ? " from Up Next" : " (\(pick.fallback?.rawValue ?? "?"))"))
+        guard advanceOn[slot] == true else {
+            if rolls { recue(channel) }
             return
         }
-        if rolls {
-            // Paused on its head (the in point when trimmed), waiting to roll.
-            setChannelPlaying(channel, false)
-            engine.sources[channel]?.seek(toNormalised: 0)
+        let pick: NextClipPicker.Pick?
+        if let plan = advancePlans.removeValue(forKey: channel), isStillValid(plan, channel: channel, busKey: busKey, onAir: take.incoming) {
+            playlists[channel] = plan.queueAfter
+            pickers[busKey] = plan.pickerAfter
+            pick = plan.pick
+        } else {
+            engine.discardPrepared(channel: channel)
+            pick = nextClip(for: channel, onAir: take.incoming, busKey: busKey)
         }
+        guard let pick else {
+            if rolls { recue(channel) }
+            return
+        }
+        let library = shell.grid.panels.library
+        let item = library.items.first { $0.url?.standardizedFileURL == pick.url.standardizedFileURL }
+        let range = item.flatMap { library.markedRange(for: $0.id) }
+        let after: (Bool) -> Void = { [weak self] _ in
+            guard let self else { return }
+            if rolls { self.recue(channel) }
+            // The channel now on air is the next to leave it: choose and open ITS next
+            // clip now, while it plays, so that take is instant too.
+            self.planAdvance(for: take.incoming, onAir: channel, slot: slot, busKey: busKey)
+        }
+        let playing = playbackTarget(for: pick.url)
+        var installed = false
+        MainThreadCosts.measure("adv.install") {
+            installed = engine.installPrepared(url: playing.url, intoChannel: channel)
+        }
+        if installed {
+            advanceInstantCount += 1
+            engine.sources[channel]?.playbackRange = range
+            MainThreadCosts.measure("adv.clipLoaded") { clipLoaded(pick.url, into: channel, range: range, loaded: true) }
+            MainThreadCosts.measure("adv.plan") { after(true) }
+        } else {
+            advanceWaitedCount += 1
+            loadClip(pick.url, into: channel, range: range, then: after)
+        }
+        // The Up Next list redraws on the next turn — only this channel's — and without
+        // re-planning: the take plans the next channel itself (`after`).
+        schedulePlaylistViewRefresh(channel)
+        if pick.fromQueue {
+            announcedFallback.remove(channel)
+        } else if preferences.preferences.announcesAdvanceFallback, !announcedFallback.contains(channel) {
+            announcedFallback.insert(channel)
+            let how = pick.fallback?.displayName.lowercased() ?? "library"
+            shell.statusBar.showNotice(
+                "Up Next \(channel) was empty — cued \(pick.url.lastPathComponent) (\(how))",
+                detail: "ADV loads from the library when a queue runs out. "
+                    + "Settings ▸ Defaults ▸ When Up Next runs out.",
+                isWarning: false)
+        }
+        Log.info(.app, "ADV: \(channel) cued \(pick.url.lastPathComponent)"
+            + (pick.fromQueue ? " from Up Next" : " (\(pick.fallback?.rawValue ?? "?"))"))
     }
 
-    /// The next clip for a channel leaving air, or nil.
-    private func nextClip(for channel: String, onAir: String, busKey: String) -> NextClipPicker.Pick? {
-        let panel = busKey == "one" ? shell.grid.panels.libraryOneBody : shell.grid.panels.libraryTwoBody
-        let shown = panel.browser.fallbackOrder()
-        let candidates = shown.compactMap { item in item.url.map { LibraryCandidate(url: $0, bin: item.bin) } }
-        let outgoingURL = engine.sources[channel]?.mediaURL
-        let outgoing = outgoingURL.map { url in
-            LibraryCandidate(url: url, bin: shown.first { $0.url?.standardizedFileURL == url.standardizedFileURL }?.bin)
+    /// Paused on its head (the in point when trimmed), waiting to roll.
+    private func recue(_ channel: String) {
+        setChannelPlaying(channel, false)
+        engine.sources[channel]?.seek(toNormalised: 0)
+    }
+
+    // MARK: ADV planning — the next clip, chosen and opened ahead of the take
+
+    /// ADV's decision for one channel, made early. Commits at the take only if what it
+    /// was based on has not changed.
+    private struct AdvancePlan {
+        let pick: NextClipPicker.Pick
+        let pickerAfter: NextClipPicker
+        let queueBefore: Playlist
+        let queueAfter: Playlist
+        let fallback: ABRollFallback
+        let onAirURL: URL?
+    }
+    private var advancePlans: [String: AdvancePlan] = [:]
+    /// Takes whose next clip was already open (instant) vs. opened at the take — self-QA.
+    private(set) var advanceInstantCount = 0
+    private(set) var advanceWaitedCount = 0
+
+    private func isStillValid(_ plan: AdvancePlan, channel: String, busKey: String, onAir: String) -> Bool {
+        plan.queueBefore == playlists[channel]
+            && plan.fallback == (preferences.preferences.advanceFallback[busKey] ?? .inOrder)
+            && plan.onAirURL == engine.sources[onAir]?.mediaURL
+    }
+
+    /// Chooses `channel`'s next ADV clip WITHOUT consuming anything (on copies of the
+    /// queue and the picker), and starts opening it in the background.
+    private func planAdvance(for channel: String, onAir: String, slot: String, busKey: String) {
+        guard advanceOn[slot] == true else { return }
+        // Keep a plan that still holds: re-picking would open a different clip for a
+        // shuffle and waste the open already under way.
+        if let existing = advancePlans[channel], isStillValid(existing, channel: channel, busKey: busKey, onAir: onAir) {
+            return
         }
         var queue = playlists[channel]
         var picker = pickers[busKey] ?? NextClipPicker()
-        let pick = picker.pick(
-            queue: &queue, library: candidates,
+        guard let pick = pickNext(for: channel, onAir: onAir, busKey: busKey, queue: &queue, picker: &picker) else {
+            advancePlans[channel] = nil
+            engine.discardPrepared(channel: channel)
+            return
+        }
+        advancePlans[channel] = AdvancePlan(
+            pick: pick, pickerAfter: picker, queueBefore: playlists[channel], queueAfter: queue,
             fallback: preferences.preferences.advanceFallback[busKey] ?? .inOrder,
-            onAir: engine.sources[onAir]?.mediaURL, outgoing: outgoing)
+            onAirURL: engine.sources[onAir]?.mediaURL)
+        let target = playbackTarget(for: pick.url)
+        engine.prepareAhead(url: target.url, forChannel: channel, knownFrameCount: target.knownFrameCount)
+    }
+
+    /// Re-plans the channel on air on every bus with ADV on — when ADV is switched on
+    /// and whenever a queue changes.
+    private func replanAdvance() {
+        for (slot, bus) in Self.abRollBuses where advanceOn[slot] == true {
+            let position = engine.registry.value(slot: slot, code: slot == GraphTopology.subMixOne ? .crossfadeAB : .crossfadeCD) ?? 0
+            let take = ABRoll.take(channels: (bus.left, bus.right), target: position)
+            // On air now = the next to leave: plan for it.
+            planAdvance(for: take.incoming, onAir: take.outgoing, slot: slot, busKey: bus.key)
+        }
+    }
+
+    /// The file that would actually be PLAYED for a clip (its optimized file when
+    /// there is one), and the catalog's frame count for it.
+    private func playbackTarget(for url: URL) -> (url: URL, knownFrameCount: Int?) {
+        let library = shell.grid.panels.library
+        let playing = preferences.preferences.usesOptimizedMedia
+            ? library.playbackURL(for: url, canvas: ClipOptimizer.canvasTag) : (url: url, optimized: false)
+        return (playing.url, playing.optimized ? nil : library.frameCount(forPath: url.path))
+    }
+
+    /// The next clip for a channel leaving air, or nil (commits the choice).
+    private func nextClip(for channel: String, onAir: String, busKey: String) -> NextClipPicker.Pick? {
+        var queue = playlists[channel]
+        var picker = pickers[busKey] ?? NextClipPicker()
+        let pick = pickNext(for: channel, onAir: onAir, busKey: busKey, queue: &queue, picker: &picker)
         pickers[busKey] = picker
         playlists[channel] = queue
         return pick
     }
+
+    private func pickNext(for channel: String, onAir: String, busKey: String,
+                          queue: inout Playlist, picker: inout NextClipPicker) -> NextClipPicker.Pick? {
+        let panel = busKey == "one" ? shell.grid.panels.libraryOneBody : shell.grid.panels.libraryTwoBody
+        let shown = panel.browser.fallbackOrder()
+        let candidates = shown.compactMap { item in item.url.map { LibraryCandidate(url: $0, bin: item.bin) } }
+        let outgoing = engine.sources[channel]?.mediaURL.map { url in
+            LibraryCandidate(url: url, bin: shown.first { $0.url?.standardizedFileURL == url.standardizedFileURL }?.bin)
+        }
+        return picker.pick(
+            queue: &queue, library: candidates,
+            fallback: preferences.preferences.advanceFallback[busKey] ?? .inOrder,
+            onAir: engine.sources[onAir]?.mediaURL, outgoing: outgoing,
+            random: { Double.random(in: 0..<1) })
+    }
+
+    /// ADV takes served from a pre-opened clip vs. opened at the take — for self-QA.
+    var advanceCountsForChecks: (instant: Int, waited: Int) { (advanceInstantCount, advanceWaitedCount) }
 
     /// ROLL / ADV state — for self-QA.
     func abRollStateForChecks(_ slot: String) -> (roll: Bool, advance: Bool) {
@@ -1952,8 +2096,25 @@ final class ShellController {
     /// Rebuilds only the pinned card, leaving the chain and its scroll alone.
     private func refreshSourceCard(_ bus: Bus) {
         let panel = panel(bus)
-        panel.sourceCard = makeSourceCard(bus)
+        let card = makeSourceCard(bus)
+        sourceCardSignature[bus] = Self.signature(card)
+        panel.sourceCard = card
         panel.refreshMappingAddresses()
+    }
+
+    /// What the Source Controls card SHOWS: its title and its controls. Two clips in a
+    /// row give the same card, so an ADV swap need not rebuild it (a rebuild is an Auto
+    /// Layout pass — ~7 ms of main thread next to a take).
+    private var sourceCardSignature: [Bus: String] = [:]
+    private static func signature(_ card: EffectCardModel) -> String {
+        (card.subtitle ?? "") + "|" + (card.badge ?? "") + "|" + card.parameters.map(\.code).joined(separator: ",")
+    }
+
+    /// Rebuilds the card only if what it shows changed.
+    private func refreshSourceCardIfChanged(_ bus: Bus) {
+        let card = makeSourceCard(bus)
+        guard Self.signature(card) != sourceCardSignature[bus] else { return }
+        refreshSourceCard(bus)
     }
 
     /// The pinned card for the channel its selector points at: that source's own
@@ -2187,6 +2348,13 @@ final class ShellController {
             refreshCards(bus)
         }
         // A channel pointed at a different source shows that source's controls.
+        // ADV's swap: refresh Source Controls if it is showing that channel, but do not
+        // move it there (the channel just went OFF air).
+        engine.onAdvanceInstalled = { [weak self] letter in
+            guard let self else { return }
+            let bus: Bus = ChainBus.one.channels.contains(letter) ? .one : .two
+            if self.sourceChannel(bus: bus) == letter { self.refreshSourceCardIfChanged(bus) }
+        }
         engine.onChannelSourceChanged = { [weak self] letter in
             guard let self else { return }
             let bus: Bus = ChainBus.one.channels.contains(letter) ? .one : .two

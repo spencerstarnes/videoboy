@@ -794,6 +794,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             fetched = prefetcher?.image(at: frameIndex, damage: damage)
         }
         guard let image = fetched else {
+            heldFrames += 1
             // A frame that will not decode at all keeps the previous picture on
             // screen rather than flashing black.
             //
@@ -898,4 +899,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// True while the clip is failing to decode and the previous picture is being held.
     /// Exists so the failure is logged as a transition rather than once per frame.
     private var isHoldingLastPicture = false
+    /// Renders that had no new picture in time and held the previous one. Only ever
+    /// incremented — self-QA reads the difference across a take.
+    public private(set) var heldFrames = 0
 }
