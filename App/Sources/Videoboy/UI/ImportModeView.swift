@@ -1,14 +1,16 @@
 //
 //  ImportModeView.swift — Import mode, the Lightroom-model import window (proposal §5).
 //
-//  Purpose : Sources on the left, the media grid in the centre (with a viewer above it),
-//            Add / Move / Copy on the right. Pick a source, tick clips, Import.
+//  Purpose : Lightroom Classic's importer, for video: FROM ▸ Add / Move / Copy ▸ TO
+//            across the top, sources on the left, the clips in the middle (a viewer
+//            opens above them on a double-click), options on the right, and the count
+//            and Import along the bottom. Pick a source, tick clips, Import.
 //  Inputs  : the preference store (destination, favorites), the library (for DUP and
 //            bin names), and an import action handed in by the owner.
 //  Outputs : an import request — URLs, method, destination, bin — which the owner runs
 //            as the usual background `ImportJob` into the library and catalog.
 //  Connects: ModeController (shows it), ImportSources (sidebar), HoverScrubView (the
-//            library tile's hover-scrub, reused), LocationRow (destination),
+//            library tile's hover-scrub, reused),
 //            ShellController.importFiles(_:method:destination:bin:).
 //  Extend  : Copy + Optimize (0.4.10) enables `optimizeCheck` and its preset for Copy.
 //
@@ -67,31 +69,48 @@ final class ImportModeView: NSView {
     private var rows: [(header: String?, source: ImportSource?)] = []
     private(set) var currentSource: ImportSource?
 
-    // Grid
-    private let filter = Controls.segmented(["All", "New", "In library"], selected: 0)
+    // Centre: header, filter bar, viewer (only once a clip is opened), grid
+    private let titleLabel = Controls.label("Import", font: Theme.Import.titleFont, color: Theme.Color.textPrimary)
+    private let pathLabel = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
+    private let countsLabel = Controls.label("", font: Theme.Import.bodyFont, color: Theme.Color.textSecondary)
+    /// Which clips the grid shows. Its labels carry their counts.
+    private let filter = Controls.segmented(["All Clips", "New Clips", "In Library"], selected: 0)
     private let includeSubfolders = NSButton(checkboxWithTitle: "Include subfolders", target: nil, action: nil)
-    private let sizeSlider = NSSlider(value: 150, minValue: 100, maxValue: 260, target: nil, action: nil)
+    private let sizeSlider = NSSlider(value: 170, minValue: 120, maxValue: 280, target: nil, action: nil)
     private let collection = NSCollectionView()
     private let layout = NSCollectionViewFlowLayout()
-    private let gridStatus = Controls.label("Choose a source on the left.", color: Theme.Color.textTertiary)
+    /// Shown over the grid when there is nothing in it, saying why.
+    private let emptyState = Controls.label("Choose a folder or device on the left.",
+                                            font: Theme.Import.bodyFont, color: Theme.Color.textTertiary)
+    private var isReading = false
     private(set) var entries: [ImportEntry] = []
     private var shown: [Int] = []  // indices into `entries` after the filter
 
-    // Viewer
+    // Viewer: closed until a clip is double-clicked, so it is never a black box
+    // taking a third of the screen for nothing.
     let playerView = AVPlayerView()
+    private let viewerBox = NSStackView()
+    private let viewerTitle = Controls.label("", font: Theme.Import.emphasisFont, color: Theme.Color.textPrimary)
     private var viewerHeight: NSLayoutConstraint?
-    private let viewerToggle = NSButton(title: "Hide Viewer", target: nil, action: nil)
 
-    // Right pane
-    let methodControl = Controls.segmented(["ADD", "MOVE", "COPY"], selected: 0)
-    private(set) var destinationRow: LocationRow!
+    // Inspector
+    let methodControl = Controls.segmented(["Add", "Move", "Copy"], selected: 0)
+    private let methodDescription = Controls.label("", font: Theme.Import.bodyFont, color: Theme.Color.textSecondary)
     private var destination: URL
-    let subfolderCheck = NSButton(checkboxWithTitle: "Into subfolder", target: nil, action: nil)
+    private let destinationName = Controls.label("", font: Theme.Import.emphasisFont, color: Theme.Color.textPrimary)
+    private let destinationPath = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
+    private let destinationIcon = NSImageView()
+    let destinationButton = NSButton(title: "Change…", target: nil, action: nil)
+    private let destinationNote = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
+    let subfolderCheck = NSButton(checkboxWithTitle: "Put them in a subfolder", target: nil, action: nil)
     private let subfolderField = NSTextField(string: "")
     let binPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
-    let skipDuplicates = NSButton(checkboxWithTitle: "Skip duplicates", target: nil, action: nil)
-    let optimizeCheck = NSButton(checkboxWithTitle: "Optimize while copying", target: nil, action: nil)
+    let skipDuplicates = NSButton(checkboxWithTitle: "Skip clips already in the library", target: nil, action: nil)
+    let optimizeCheck = NSButton(checkboxWithTitle: "Convert copies for the SD canvas", target: nil, action: nil)
     let optimizePreset = SetupChoices.popUp(SetupChoices.optimizePresetItems)
+    private let optimizeNote = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
+    /// What pressing Import will do, in a sentence.
+    private let summaryLabel = Controls.label("", font: Theme.Import.bodyFont, color: Theme.Color.textSecondary)
     let importButton = NSButton(title: "Import", target: nil, action: nil)
 
     init(store: PreferenceStore, library: LibraryModel) {
@@ -111,30 +130,133 @@ final class ImportModeView: NSView {
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
     // MARK: - Layout
+    //
+    // Three columns (proposal §5): SOURCES | the clips | an inspector saying how they
+    // come in. Redesigned 2026-09-28 (owner: "ugly and confusing"): the centre opens
+    // on a header naming the folder and what is new in it, not on an empty black
+    // viewer; the two "All"s (a filter and a tick-everything) are no longer side by
+    // side; the inspector reads top to bottom as a sentence — HOW, WHERE, OPTIMIZE,
+    // LIBRARY — and ends in a line saying exactly what Import will do, above one
+    // large Import button.
 
     private func build() {
+        let header = buildHeader()
         let sidebar = buildSidebar()
         let centre = buildCentre()
         let right = buildRightPane()
-        for view in [sidebar, centre, right] {
+        let footer = buildFooter()
+        for view in [header, sidebar, centre, right, footer] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
+        let pad = Theme.Import.padding
         NSLayoutConstraint.activate([
-            sidebar.topAnchor.constraint(equalTo: topAnchor),
-            sidebar.bottomAnchor.constraint(equalTo: bottomAnchor),
+            header.topAnchor.constraint(equalTo: topAnchor),
+            header.leadingAnchor.constraint(equalTo: leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: Theme.Import.headerHeight),
+            footer.bottomAnchor.constraint(equalTo: bottomAnchor),
+            footer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            footer.heightAnchor.constraint(equalToConstant: Theme.Import.footerHeight),
+
+            sidebar.topAnchor.constraint(equalTo: header.bottomAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: footer.topAnchor),
             sidebar.leadingAnchor.constraint(equalTo: leadingAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 220),
-            right.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            right.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -12),
-            right.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            right.widthAnchor.constraint(equalToConstant: 300),
-            centre.topAnchor.constraint(equalTo: topAnchor),
-            centre.bottomAnchor.constraint(equalTo: bottomAnchor),
-            centre.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 10),
-            centre.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -14)
+            sidebar.widthAnchor.constraint(equalToConstant: Theme.Import.sidebarWidth),
+            right.topAnchor.constraint(equalTo: header.bottomAnchor),
+            right.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            right.trailingAnchor.constraint(equalTo: trailingAnchor),
+            right.widthAnchor.constraint(equalToConstant: Theme.Import.inspectorWidth),
+            centre.topAnchor.constraint(equalTo: header.bottomAnchor),
+            centre.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            centre.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: pad),
+            centre.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -pad)
         ])
         applyMethodRules()
+    }
+
+    /// FROM ▸ how ▸ TO, across the top — Lightroom's sentence. What will happen is
+    /// readable before anything else is touched.
+    private func buildHeader() -> NSView {
+        func tag(_ text: String) -> NSTextField {
+            let label = Controls.label(text, font: Theme.Import.sectionFont, color: Theme.Color.textSecondary)
+            label.wantsLayer = true
+            label.layer?.backgroundColor = Theme.Color.panelFill.cgColor
+            label.layer?.cornerRadius = Theme.Import.pillCornerRadius
+            label.alignment = .center
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.widthAnchor.constraint(equalToConstant: 34).isActive = true
+            return label
+        }
+        func arrow() -> NSImageView {
+            let view = NSImageView(image: NSImage(systemSymbolName: "arrow.right.circle.fill", accessibilityDescription: nil) ?? NSImage())
+            view.symbolConfiguration = .init(pointSize: 18, weight: .regular)
+            view.contentTintColor = Theme.Color.textSecondary
+            return view
+        }
+        pathLabel.lineBreakMode = .byTruncatingHead
+        titleLabel.lineBreakMode = .byTruncatingMiddle
+        for label in [pathLabel, titleLabel, destinationName, destinationPath] {
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+        let fromTexts = Controls.column([titleLabel, pathLabel], spacing: 1)
+        fromTexts.alignment = .leading
+        let from = Controls.row([tag("FROM"), fromTexts], spacing: 10)
+
+        methodControl.target = self
+        methodControl.action = #selector(methodChanged)
+        methodControl.setAccessibilityIdentifier("import-method")
+        methodControl.segmentDistribution = .fillEqually
+        methodControl.controlSize = .large
+        methodControl.translatesAutoresizingMaskIntoConstraints = false
+        methodControl.widthAnchor.constraint(equalToConstant: 240).isActive = true
+        methodDescription.alignment = .center
+        let how = Controls.column([methodControl, methodDescription], spacing: 4)
+        how.alignment = .centerX
+
+        destinationIcon.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)
+        destinationIcon.symbolConfiguration = .init(pointSize: 18, weight: .regular)
+        destinationName.lineBreakMode = .byTruncatingMiddle
+        destinationPath.lineBreakMode = .byTruncatingHead
+        destinationButton.bezelStyle = .rounded
+        destinationButton.target = self
+        destinationButton.action = #selector(chooseDestination)
+        destinationButton.setAccessibilityIdentifier("choose-destination")
+        showDestination()
+        let toTexts = Controls.column([destinationName, destinationPath], spacing: 1)
+        toTexts.alignment = .leading
+        let to = Controls.row([tag("TO"), destinationIcon, toTexts, destinationButton], spacing: 10)
+
+        for side in [from, to] {
+            side.translatesAutoresizingMaskIntoConstraints = false
+        }
+        let bar = NSView()
+        bar.wantsLayer = true
+        bar.layer?.backgroundColor = Theme.Color.bar.cgColor
+        let fromArrow = arrow(), toArrow = arrow()
+        for view in [from, fromArrow, how, toArrow, to] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            bar.addSubview(view)
+        }
+        let pad = Theme.Import.padding
+        NSLayoutConstraint.activate([
+            how.centerXAnchor.constraint(equalTo: bar.centerXAnchor),
+            how.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            from.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: pad),
+            from.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            fromArrow.leadingAnchor.constraint(greaterThanOrEqualTo: from.trailingAnchor, constant: 10),
+            fromArrow.trailingAnchor.constraint(equalTo: how.leadingAnchor, constant: -24),
+            fromArrow.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            toArrow.leadingAnchor.constraint(equalTo: how.trailingAnchor, constant: 24),
+            toArrow.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            to.leadingAnchor.constraint(greaterThanOrEqualTo: toArrow.trailingAnchor, constant: 10),
+            to.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -pad),
+            to.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            from.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
+            to.widthAnchor.constraint(lessThanOrEqualToConstant: 360)
+        ])
+        return bar
     }
 
     private func buildSidebar() -> NSView {
@@ -142,7 +264,7 @@ final class ImportModeView: NSView {
         sourcesTable.addTableColumn(column)
         sourcesTable.headerView = nil
         sourcesTable.style = .sourceList
-        sourcesTable.rowHeight = 24
+        sourcesTable.rowHeight = 26
         sourcesTable.dataSource = self
         sourcesTable.delegate = self
         sourcesTable.setAccessibilityIdentifier("import-sources")
@@ -151,55 +273,83 @@ final class ImportModeView: NSView {
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
 
-        let add = Controls.button("+", target: self, action: #selector(addFavorite))
+        // Named, not bare glyphs: "+ − ⏏" said nothing until hovered.
+        let add = Controls.button("Add Folder…", target: self, action: #selector(addFavorite))
         add.toolTip = "Add a folder to Favorites"
-        let remove = Controls.button("−", target: self, action: #selector(removeFavorite))
+        let remove = Controls.button("Remove", target: self, action: #selector(removeFavorite))
         remove.toolTip = "Remove the selected favorite"
-        let eject = Controls.button("⏏", target: self, action: #selector(ejectSelected))
+        let eject = NSButton(image: NSImage(systemSymbolName: "eject", accessibilityDescription: "Eject") ?? NSImage(),
+                             target: self, action: #selector(ejectSelected))
+        eject.bezelStyle = .rounded
         eject.toolTip = "Eject the selected device"
-        let buttons = Controls.row([add, remove, eject, Controls.spacer()], spacing: 4)
+        let buttons = Controls.row([add, remove, Controls.spacer(), eject], spacing: 6)
 
-        let stack = Controls.column([scroll, buttons], spacing: 6)
+        let heading = Controls.label("SOURCE", font: Theme.Import.sectionFont, color: Theme.Color.textTertiary)
+        let stack = Controls.column([heading, scroll, includeSubfolders, buttons], spacing: 8)
+        stack.alignment = .leading
+        includeSubfolders.target = self
+        includeSubfolders.action = #selector(subfoldersChanged)
+        includeSubfolders.state = .on
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
+        for view in [scroll, buttons] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            view.widthAnchor.constraint(equalToConstant: Theme.Import.sidebarWidth - 16).isActive = true
+        }
         stack.wantsLayer = true
         stack.layer?.backgroundColor = Theme.Color.panelFillNested.cgColor
-        stack.edgeInsets = NSEdgeInsets(top: 10, left: 6, bottom: 8, right: 6)
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 8, bottom: 10, right: 8)
         stack.setHuggingPriority(.defaultLow, for: .vertical)
         return stack
     }
 
     private func buildCentre() -> NSView {
+        // Filter tabs centred above the grid, each with its count.
+        filter.target = self
+        filter.action = #selector(filterChanged)
+        filter.setAccessibilityIdentifier("import-filter")
+        filter.controlSize = .regular
+        filter.font = Theme.Import.bodyFont
+        let tabs = NSView()
+        filter.translatesAutoresizingMaskIntoConstraints = false
+        tabs.addSubview(filter)
+        NSLayoutConstraint.activate([
+            filter.centerXAnchor.constraint(equalTo: tabs.centerXAnchor),
+            filter.topAnchor.constraint(equalTo: tabs.topAnchor),
+            filter.bottomAnchor.constraint(equalTo: tabs.bottomAnchor)
+        ])
+
+        // Viewer: a strip with the clip's name and a close key, then the player.
         playerView.controlsStyle = .inline
         playerView.videoGravity = .resizeAspect   // letterboxed, never deformed
         playerView.setAccessibilityIdentifier("import-viewer")
         playerView.translatesAutoresizingMaskIntoConstraints = false
-        let height = playerView.heightAnchor.constraint(equalToConstant: 260)
+        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close viewer") ?? NSImage(),
+                             target: self, action: #selector(toggleViewer))
+        close.isBordered = false
+        close.toolTip = "Close the viewer (V)"
+        let viewerHeaderRow = Controls.row([viewerTitle, Controls.spacer(),
+                                            Controls.label("J K L shuttle · I O marks", font: Theme.Font.label,
+                                                           color: Theme.Color.textTertiary), close], spacing: 10)
+        viewerBox.orientation = .vertical
+        viewerBox.spacing = 6
+        viewerBox.addArrangedSubview(viewerHeaderRow)
+        viewerBox.addArrangedSubview(playerView)
+        viewerBox.translatesAutoresizingMaskIntoConstraints = false
+        let height = viewerBox.heightAnchor.constraint(equalToConstant: 0)
         height.isActive = true
         viewerHeight = height
-        viewerToggle.bezelStyle = .rounded
-        viewerToggle.target = self
-        viewerToggle.action = #selector(toggleViewer)
+        viewerBox.isHidden = true
+        for view in [viewerHeaderRow, playerView] as [NSView] {
+            view.widthAnchor.constraint(equalTo: viewerBox.widthAnchor).isActive = true
+        }
 
-        filter.target = self
-        filter.action = #selector(filterChanged)
-        let all = Controls.button("All", target: self, action: #selector(checkAll))
-        let none = Controls.button("None", target: self, action: #selector(checkNone))
-        includeSubfolders.target = self
-        includeSubfolders.action = #selector(subfoldersChanged)
-        includeSubfolders.state = .on
-        sizeSlider.target = self
-        sizeSlider.action = #selector(sizeChanged)
-        sizeSlider.translatesAutoresizingMaskIntoConstraints = false
-        sizeSlider.widthAnchor.constraint(equalToConstant: 100).isActive = true
-        let bar = Controls.row([filter, all, none, includeSubfolders, Controls.spacer(),
-                                Controls.label("Size", color: Theme.Color.textTertiary), sizeSlider,
-                                viewerToggle], spacing: 10)
-
-        layout.itemSize = NSSize(width: 150, height: 130)
-        layout.minimumInteritemSpacing = 8
-        layout.minimumLineSpacing = 8
-        layout.sectionInset = NSEdgeInsets(top: 6, left: 2, bottom: 6, right: 2)
+        let pictureWidth = CGFloat(sizeSlider.doubleValue)
+        layout.itemSize = NSSize(width: pictureWidth,
+                                 height: pictureWidth * Theme.Import.pictureAspect + Theme.Import.captionHeight)
+        layout.minimumInteritemSpacing = Theme.Import.tileSpacing
+        layout.minimumLineSpacing = Theme.Import.tileSpacing
+        layout.sectionInset = NSEdgeInsets(top: 4, left: 0, bottom: 12, right: 0)
         collection.collectionViewLayout = layout
         collection.dataSource = self
         collection.backgroundColors = [.clear]
@@ -211,96 +361,272 @@ final class ImportModeView: NSView {
         scroll.drawsBackground = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.setContentHuggingPriority(.defaultLow, for: .vertical)
+        emptyState.alignment = .center
+        emptyState.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(emptyState)
+        NSLayoutConstraint.activate([
+            emptyState.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+            emptyState.centerYAnchor.constraint(equalTo: scroll.centerYAnchor, constant: -40)
+        ])
 
-        let stack = Controls.column([playerView, bar, gridStatus, scroll], spacing: 8)
+        // Below the grid: tick everything or nothing, and how big.
+        let checkAll = Controls.button("Check All", target: self, action: #selector(checkAll))
+        let uncheckAll = Controls.button("Uncheck All", target: self, action: #selector(checkNone))
+        checkAll.setAccessibilityIdentifier("import-check-all")
+        sizeSlider.target = self
+        sizeSlider.action = #selector(sizeChanged)
+        sizeSlider.controlSize = .small
+        sizeSlider.translatesAutoresizingMaskIntoConstraints = false
+        sizeSlider.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        let bar = Controls.row([checkAll, uncheckAll, Controls.spacer(),
+                                Controls.label("Thumbnails", font: Theme.Font.label, color: Theme.Color.textTertiary),
+                                sizeSlider], spacing: 10)
+
+        let stack = Controls.column([tabs, viewerBox, scroll, bar], spacing: 10)
         stack.edgeInsets = NSEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
-        for view in [playerView, bar, scroll] as [NSView] {
+        for view in [tabs, viewerBox, scroll, bar] as [NSView] {
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
+        refreshHeader()
         return stack
     }
 
+    /// Options only: how files are handled, where exactly they go, which bin.
     private func buildRightPane() -> NSView {
-        methodControl.target = self
-        methodControl.action = #selector(methodChanged)
-        methodControl.setAccessibilityIdentifier("import-method")
-        destinationRow = LocationRow(
-            caption: "Destination", current: destination,
-            prompt: "Where should moved or copied clips go?"
-        ) { [weak self] url in self?.destination = url }
+        methodDescription.lineBreakMode = .byWordWrapping
+        methodDescription.maximumNumberOfLines = 2
         subfolderCheck.target = self
         subfolderCheck.action = #selector(methodChanged)
         subfolderField.placeholderString = "Subfolder name"
+        subfolderField.target = self
+        subfolderField.action = #selector(methodChanged)
         binPopUp.target = self
         binPopUp.action = #selector(binChanged)
         skipDuplicates.state = .on
-        optimizeCheck.toolTip = "Convert each copy for the SD canvas (DV or MPEG-2), linked to "
+        skipDuplicates.target = self
+        skipDuplicates.action = #selector(methodChanged)
+        optimizeCheck.toolTip = "Convert each copy to DV or MPEG-2 for the SD canvas, linked to "
             + "the original and played in its place"
         optimizeCheck.target = self
         optimizeCheck.action = #selector(methodChanged)
         optimizePreset.selectItem(at: store.preferences.optimizePreset == OptimizePreset.compact.rawValue ? 1 : 0)
+        optimizePreset.target = self
+        optimizePreset.action = #selector(methodChanged)
+        refreshBins()
+
+        func section(_ title: String, _ views: [NSView]) -> NSStackView {
+            let heading = Controls.label(title.uppercased(), font: Theme.Import.sectionFont,
+                                         color: Theme.Color.textTertiary)
+            let column = Controls.column([heading] + views, spacing: 8)
+            column.alignment = .leading
+            return column
+        }
+        let bin = Controls.row([Controls.label("Bin", font: Theme.Import.bodyFont, color: Theme.Color.textSecondary),
+                                binPopUp], spacing: 8)
+        let preset = Controls.row([Controls.label("Preset", font: Theme.Import.bodyFont,
+                                                  color: Theme.Color.textSecondary), optimizePreset], spacing: 8)
+        let pane = Controls.column([
+            section("File handling", [skipDuplicates, optimizeCheck, preset, optimizeNote]),
+            section("Destination", [subfolderCheck, subfolderField, destinationNote]),
+            section("Library", [bin]),
+            Controls.spacer()
+        ], spacing: Theme.Import.sectionSpacing)
+        pane.alignment = .leading
+        let pad = Theme.Import.padding
+        pane.edgeInsets = NSEdgeInsets(top: pad, left: pad, bottom: pad, right: pad)
+        pane.wantsLayer = true
+        pane.layer?.backgroundColor = Theme.Color.panelFillNested.cgColor
+        subfolderField.translatesAutoresizingMaskIntoConstraints = false
+        subfolderField.widthAnchor.constraint(equalToConstant: Theme.Import.inspectorWidth - 2 * pad).isActive = true
+        for note in [optimizeNote, destinationNote] {
+            note.lineBreakMode = .byWordWrapping
+            note.maximumNumberOfLines = 3
+            note.preferredMaxLayoutWidth = Theme.Import.inspectorWidth - 2 * pad
+        }
+        return pane
+    }
+
+    /// The count and size on the left, what Import will do in the middle, Import on the
+    /// right — one place to finish.
+    private func buildFooter() -> NSView {
+        countsLabel.alignment = .left
+        summaryLabel.lineBreakMode = .byTruncatingTail
+        summaryLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         importButton.bezelStyle = .rounded
-        importButton.keyEquivalent = "\r"
+        importButton.controlSize = .large
+        importButton.keyEquivalent = "\r"          // Return imports
+        importButton.bezelColor = Theme.Color.accent   // the one primary action, lit even when the window is not key
         importButton.target = self
         importButton.action = #selector(importPressed)
         importButton.setAccessibilityIdentifier("import-go")
-        refreshBins()
-
-        func heading(_ text: String) -> NSTextField {
-            Controls.label(text, font: Theme.Font.panelTitle, color: Theme.Color.textPrimary)
-        }
-        return Controls.column([
-            methodControl,
-            Controls.note("Add catalogs clips where they are. Move puts them in the destination. "
-                + "Copy copies them there and leaves the originals.", width: 290),
-            heading("Destination"), destinationRow,
-            Controls.row([subfolderCheck, subfolderField], spacing: 6),
-            heading("Optimize media"), optimizeCheck,
-            Controls.row([Controls.label("Preset", color: Theme.Color.textSecondary), optimizePreset], spacing: 6),
-            heading("Library"),
-            Controls.row([Controls.label("Into bin", color: Theme.Color.textSecondary), binPopUp], spacing: 6),
-            skipDuplicates,
-            Controls.row([Controls.spacer(), importButton], spacing: 6)
-        ], spacing: 10)
+        importButton.translatesAutoresizingMaskIntoConstraints = false
+        importButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
+        let row = Controls.row([countsLabel, Controls.spacer(), summaryLabel, importButton], spacing: 16)
+        let pad = Theme.Import.padding
+        row.edgeInsets = NSEdgeInsets(top: 0, left: pad, bottom: 0, right: pad)
+        row.wantsLayer = true
+        row.layer?.backgroundColor = Theme.Color.bar.cgColor
+        return row
     }
 
-    // MARK: - Greying (proposal §5: greyed, never hidden)
+    // MARK: - Greying (proposal §5: greyed, never hidden) and the summary
 
     var method: ImportMethod {
         [ImportMethod.add, .move, .copy][max(methodControl.selectedSegment, 0)]
     }
 
-    /// Destination and Optimize follow the method; Move follows the source.
+    /// Destination and Optimize follow the method; Move follows the source. Greyed
+    /// controls say WHY they are grey, in a line under them.
     private func applyMethodRules() {
         let allowsMove = currentSource?.allowsMove ?? true
         methodControl.setEnabled(allowsMove, forSegment: 1)
         if !allowsMove, methodControl.selectedSegment == 1 { methodControl.selectedSegment = 2 }
+        switch method {
+        case .add:
+            methodDescription.stringValue = "Leave the files where they are and add them to the library."
+        case .move:
+            methodDescription.stringValue = "Move the files into the destination folder, then add them."
+        case .copy:
+            methodDescription.stringValue = "Copy the files into the destination folder and add the copies. "
+                + "The originals stay where they are."
+        }
         let usesDestination = method.usesDestination
-        destinationRow.chooseButton.isEnabled = usesDestination
-        destinationRow.pathLabel.textColor = usesDestination ? Theme.Color.textSecondary : Theme.Color.textTertiary
+        destinationButton.isEnabled = usesDestination
+        destinationName.textColor = usesDestination ? Theme.Color.textPrimary : Theme.Color.textTertiary
+        destinationIcon.contentTintColor = usesDestination ? Theme.Color.accent : Theme.Color.textTertiary
         subfolderCheck.isEnabled = usesDestination
         subfolderField.isEnabled = usesDestination && subfolderCheck.state == .on
+        destinationNote.stringValue = usesDestination ? ""
+            : "Not used — Add leaves the files where they are."
+        if !allowsMove { destinationNote.stringValue += (destinationNote.stringValue.isEmpty ? "" : " ")
+            + "Move is off: this source is read-only or removable." }
+        destinationNote.isHidden = destinationNote.stringValue.isEmpty
         // Optimize only with COPY (proposal §5: Add and Move grey it out).
         optimizeCheck.isEnabled = method == .copy
         optimizePreset.isEnabled = method == .copy && optimizeCheck.state == .on
+        optimizeNote.stringValue = method == .copy ? "" : "Only when copying."
+        optimizeNote.isHidden = optimizeNote.stringValue.isEmpty
         updateImportButton()
     }
 
     private func updateImportButton() {
         let count = importableURLs().count
-        importButton.title = count == 1 ? "Import 1" : "Import \(count)"
+        importButton.title = count == 0 ? "Import" : count == 1 ? "Import 1 Clip" : "Import \(count) Clips"
         importButton.isEnabled = count > 0
+        refreshSummary(count: count)
+        refreshSelectionMenu()
+    }
+
+    /// One sentence: what Import will do, with what, where.
+    private func refreshSummary(count: Int) {
+        guard currentSource != nil else {
+            summaryLabel.stringValue = "Choose a source on the left to see its clips."
+            return
+        }
+        guard count > 0 else {
+            summaryLabel.stringValue = entries.isEmpty ? "Nothing to import here." : "Tick the clips you want to import."
+            return
+        }
+        let clips = count == 1 ? "1 clip" : "\(count) clips"
+        var sentence: String
+        switch method {
+        case .add: sentence = "Add \(clips) to the library, where they are"
+        case .move: sentence = "Move \(clips) to \(resolvedDestination?.lastPathComponent ?? "the destination")"
+        case .copy: sentence = "Copy \(clips) to \(resolvedDestination?.lastPathComponent ?? "the destination")"
+        }
+        if let bin = chosenBin { sentence += ", in the bin “\(BinPath.leaf(of: bin))”" }
+        sentence += "."
+        if method == .copy, optimizeCheck.state == .on {
+            sentence += " Each is also converted for the SD canvas."
+        }
+        let skipped = entries.filter { $0.isChecked && $0.isDuplicate }.count
+        if skipDuplicates.state == .on, skipped > 0 {
+            sentence += " \(skipped) already in the library \(skipped == 1 ? "is" : "are") skipped."
+        }
+        summaryLabel.stringValue = sentence
+    }
+
+    /// The folder a Move or Copy goes to.
+    private func showDestination() {
+        destinationName.stringValue = destination.lastPathComponent
+        destinationPath.stringValue = destination.deletingLastPathComponent().path
+            .replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        destinationButton.toolTip = destination.path
+    }
+
+    @objc private func chooseDestination() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        panel.message = "Where should moved or copied clips go?"
+        panel.directoryURL = destination
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        destination = url
+        showDestination()
+        updateImportButton()
     }
 
     /// Points Move/Copy somewhere else — for self-QA (scratch folders only).
     func setDestinationForChecks(_ url: URL) {
         destination = url
-        destinationRow.pathLabel.stringValue = url.path
+        showDestination()
+        updateImportButton()
     }
 
     /// Whether the destination controls are live — for self-QA.
-    var destinationEnabled: Bool { destinationRow.chooseButton.isEnabled }
+    var destinationEnabled: Bool { destinationButton.isEnabled }
     var moveEnabled: Bool { methodControl.isEnabled(forSegment: 1) }
+    /// The summary sentence and the header — for self-QA.
+    var summaryForChecks: String { summaryLabel.stringValue }
+    var headerForChecks: (title: String, counts: String) { (titleLabel.stringValue, countsLabel.stringValue) }
+    var isViewerOpen: Bool { !viewerBox.isHidden }
+
+    // MARK: - Header, filter counts, the selection menu
+
+    /// The folder's name and path, and what is in it — or why there is nothing.
+    private func refreshHeader() {
+        guard let source = currentSource else {
+            titleLabel.stringValue = "Choose a source"
+            pathLabel.stringValue = "a folder or device on the left"
+            countsLabel.stringValue = ""
+            emptyState.stringValue = "Choose a folder or device on the left."
+            emptyState.isHidden = false
+            return
+        }
+        titleLabel.stringValue = source.title
+        pathLabel.stringValue = source.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        let total = entries.count
+        let fresh = entries.filter { !$0.isDuplicate }.count
+        let known = total - fresh
+        if isReading {
+            countsLabel.stringValue = "Reading…"
+        } else if total == 0 {
+            countsLabel.stringValue = ""
+        } else {
+            let bytes = entries.reduce(0) { $0 + $1.size }
+            let ticked = entries.filter(\.isChecked).count
+            countsLabel.stringValue = "\(ticked) of \(total) clip\(total == 1 ? "" : "s") checked · "
+                + ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+        }
+        filter.setLabel("All Clips  \(total)", forSegment: 0)
+        filter.setLabel("New Clips  \(fresh)", forSegment: 1)
+        filter.setLabel("In Library  \(known)", forSegment: 2)
+        if isReading {
+            emptyState.stringValue = "Reading \(source.title)…"
+        } else if total == 0 {
+            emptyState.stringValue = "No video clips in \(source.title)"
+                + (includeSubfolders.state == .on ? "." : ". Try including subfolders.")
+        } else if shown.isEmpty {
+            emptyState.stringValue = filter.selectedSegment == 1
+                ? "Everything here is already in the library." : "Nothing here is in the library yet."
+        }
+        emptyState.isHidden = !shown.isEmpty && !isReading
+    }
+
+    /// The header's counts include how many are ticked; nothing else to refresh.
+    private func refreshSelectionMenu() { refreshHeader() }
 
     // MARK: - Sources
 
@@ -328,7 +654,7 @@ final class ImportModeView: NSView {
         let deep = includeSubfolders.state == .on
         let libraryPaths = library.filePaths()
         libraryIDs = library.idsByPath()
-        gridStatus.stringValue = "Reading \(source.title)…"
+        isReading = true
         entries = []
         applyFilter()
         listQueue.async { [weak self] in
@@ -336,9 +662,7 @@ final class ImportModeView: NSView {
             Self.onMain {
                 guard let self, self.generation == wanted else { return }
                 self.entries = listed
-                self.gridStatus.stringValue = listed.isEmpty
-                    ? "No clips in \(source.title)."
-                    : "\(listed.count) clips in \(source.title)"
+                self.isReading = false
                 self.applyFilter()
             }
         }
@@ -456,6 +780,7 @@ final class ImportModeView: NSView {
         }
         collection.reloadData()
         updateImportButton()
+        refreshHeader()
     }
 
     fileprivate func toggle(_ shownIndex: Int, checked: Bool) {
@@ -471,7 +796,8 @@ final class ImportModeView: NSView {
         playerView.player?.pause()
         playerView.player = player
         player.play()
-        if viewerHeight?.constant == 0 { toggleViewer() }
+        viewerTitle.stringValue = url.lastPathComponent
+        if viewerBox.isHidden { toggleViewer() }
         shuttle = 0
         window?.makeFirstResponder(self)
     }
@@ -603,12 +929,12 @@ final class ImportModeView: NSView {
     // MARK: - Actions
 
     @objc private func methodChanged() { applyMethodRules() }
-    @objc private func binChanged() {}
+    @objc private func binChanged() { updateImportButton() }
     @objc private func filterChanged() { applyFilter() }
     @objc private func subfoldersChanged() { if let currentSource { show(currentSource) } }
     @objc private func sizeChanged() {
         let width = CGFloat(sizeSlider.doubleValue)
-        layout.itemSize = NSSize(width: width, height: width * 0.62 + 36)
+        layout.itemSize = NSSize(width: width, height: width * Theme.Import.pictureAspect + Theme.Import.captionHeight)
     }
     @objc private func checkAll() { setAllChecked(true) }
     @objc private func checkNone() { setAllChecked(false) }
@@ -619,11 +945,13 @@ final class ImportModeView: NSView {
         updateImportButton()
     }
 
-    @objc private func toggleViewer() {
-        let collapsed = viewerHeight?.constant == 0
-        viewerHeight?.constant = collapsed ? 260 : 0
-        playerView.isHidden = !collapsed
-        viewerToggle.title = collapsed ? "Hide Viewer" : "Show Viewer"
+    /// Opens or closes the viewer (its ✕, or V). Closing pauses it.
+    @objc func toggleViewer() {
+        let opening = viewerBox.isHidden
+        guard opening == false || playerView.player != nil else { return }   // nothing to show yet
+        viewerBox.isHidden = !opening
+        viewerHeight?.constant = opening ? Theme.Import.viewerHeight : 0
+        if !opening { playerView.player?.pause() }
     }
 
     @objc private func addFavorite() {
@@ -716,46 +1044,63 @@ extension ImportModeView: NSCollectionViewDataSource {
     }
 }
 
-/// A tile: the library's hover-scrub picture, a checkbox, badges and the name.
+/// A tile, Lightroom's way: a cell with the checkbox in its corner, the picture
+/// (the library's hover-scrub, I/O marks and all), the name and size under it, and
+/// solid pills for what matters — wedge-ready, a shape that does not fit, already in
+/// the library. Checked cells are lit; unchecked ones step back.
 final class ImportTileItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("import-tile")
 
     private let picture = HoverScrubView()
     private let check = NSButton(checkboxWithTitle: "", target: nil, action: nil)
-    private let badges = Controls.label("", font: Theme.Font.tinyLabel, color: Theme.Color.displayWarning)
-    private let name = Controls.label("", font: Theme.Font.tinyLabel, color: Theme.Color.textSecondary)
+    private let name = Controls.label("", font: Theme.Import.bodyFont, color: Theme.Color.textPrimary)
+    private let size = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
+    private let pills = NSStackView()
     private var url: URL?
+    private var badgeParts: [String] = []
     var onChecked: ((Bool) -> Void)?
     var onOpen: ((URL) -> Void)?
     var onMarks: ((URL, ImportModeView.Marks) -> Void)?
 
     override func loadView() {
         let tile = ImportTileView()
+        tile.wantsLayer = true
+        tile.layer?.cornerRadius = Theme.Import.tileCornerRadius
+        tile.layer?.borderWidth = 1
         tile.onDoubleClick = { [weak self] in if let url = self?.url { self?.onOpen?(url) } }
         picture.onMarksChanged = { [weak self] inPoint, outPoint in
             if let url = self?.url { self?.onMarks?(url, (inPoint, outPoint)) }
         }
+        picture.wantsLayer = true
+        picture.layer?.cornerRadius = 3
+        picture.layer?.masksToBounds = true
         name.lineBreakMode = .byTruncatingMiddle
         check.target = self
         check.action = #selector(checkChanged)
-        for view in [picture, check, badges, name] as [NSView] {
+        pills.orientation = .horizontal
+        pills.spacing = 4
+        let inset: CGFloat = 6
+        for view in [check, picture, name, size, pills] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             tile.addSubview(view)
         }
         NSLayoutConstraint.activate([
-            picture.topAnchor.constraint(equalTo: tile.topAnchor),
-            picture.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
-            picture.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
-            picture.bottomAnchor.constraint(equalTo: name.topAnchor, constant: -4),
             check.topAnchor.constraint(equalTo: tile.topAnchor, constant: 4),
-            check.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: 4),
-            badges.topAnchor.constraint(equalTo: tile.topAnchor, constant: 5),
-            badges.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -5),
-            name.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
-            name.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
-            name.bottomAnchor.constraint(equalTo: tile.bottomAnchor),
-            name.heightAnchor.constraint(equalToConstant: 16)
+            check.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: inset),
+            pills.centerYAnchor.constraint(equalTo: check.centerYAnchor),
+            pills.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -inset),
+            pills.leadingAnchor.constraint(greaterThanOrEqualTo: check.trailingAnchor, constant: 4),
+            picture.topAnchor.constraint(equalTo: check.bottomAnchor, constant: 4),
+            picture.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: inset),
+            picture.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -inset),
+            picture.bottomAnchor.constraint(equalTo: name.topAnchor, constant: -4),
+            name.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: inset),
+            name.trailingAnchor.constraint(lessThanOrEqualTo: size.leadingAnchor, constant: -6),
+            name.bottomAnchor.constraint(equalTo: tile.bottomAnchor, constant: -5),
+            size.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -inset),
+            size.firstBaselineAnchor.constraint(equalTo: name.firstBaselineAnchor)
         ])
+        size.setContentCompressionResistancePriority(.required, for: .horizontal)
         view = tile
     }
 
@@ -763,10 +1108,38 @@ final class ImportTileItem: NSCollectionViewItem {
         url = entry.url
         picture.item = ShellController.libraryItem(for: entry.url)
         check.state = entry.isChecked ? .on : .off
-        badges.stringValue = [entry.isDuplicate ? "DUP" : nil, entry.wedge, entry.mismatch]
-            .compactMap { $0 }.joined(separator: " ")
         name.stringValue = entry.url.lastPathComponent
-        view.alphaValue = entry.isDuplicate ? 0.55 : 1   // duplicates greyed
+        size.stringValue = ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file)
+        badgeParts = [entry.isDuplicate ? "DUP" : nil, entry.wedge, entry.mismatch].compactMap { $0 }
+        pills.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        if let wedge = entry.wedge { pills.addArrangedSubview(Self.pill(wedge, Theme.Import.wedgePill)) }
+        if let mismatch = entry.mismatch {
+            pills.addArrangedSubview(Self.pill(mismatch.replacingOccurrences(of: "⚠", with: "⚠ "), Theme.Import.mismatchPill))
+        }
+        if entry.isDuplicate { pills.addArrangedSubview(Self.pill("IN LIBRARY", Theme.Import.duplicatePill)) }
+        view.toolTip = entry.isDuplicate ? "Already in the library" : nil
+        applyLook()
+    }
+
+    /// Lit when checked; unchecked cells (and clips already in the library) step back.
+    private func applyLook() {
+        let checked = check.state == .on
+        view.layer?.backgroundColor = (checked ? NSColor(white: 1, alpha: 0.10) : NSColor(white: 1, alpha: 0.04)).cgColor
+        view.layer?.borderColor = (checked ? Theme.Color.accent.withAlphaComponent(0.8) : NSColor.clear).cgColor
+        picture.alphaValue = checked ? 1 : 0.55
+        name.textColor = checked ? Theme.Color.textPrimary : Theme.Color.textSecondary
+    }
+
+    private static func pill(_ text: String, _ colour: NSColor) -> NSView {
+        let label = Controls.label(text, font: Theme.Import.pillFont, color: .black)
+        label.alignment = .center
+        label.wantsLayer = true
+        label.layer?.backgroundColor = colour.cgColor
+        label.layer?.cornerRadius = Theme.Import.pillCornerRadius
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.heightAnchor.constraint(equalToConstant: Theme.Import.pillHeight).isActive = true
+        label.widthAnchor.constraint(greaterThanOrEqualToConstant: label.intrinsicContentSize.width + 8).isActive = true
+        return label
     }
 
     func showMarks(_ marks: ImportModeView.Marks) {
@@ -777,9 +1150,12 @@ final class ImportTileItem: NSCollectionViewItem {
     var pictureForChecks: HoverScrubView { picture }
 
     /// The badge text — for self-QA.
-    var badgeText: String { badges.stringValue }
+    var badgeText: String { badgeParts.joined(separator: " ") }
 
-    @objc private func checkChanged() { onChecked?(check.state == .on) }
+    @objc private func checkChanged() {
+        applyLook()
+        onChecked?(check.state == .on)
+    }
 }
 
 /// The tile's view: a double-click opens the clip in the viewer. Single presses on the

@@ -1,0 +1,14 @@
+check:    perf/import-look
+verdict:  PASS
+when:     2026-09-28T16:53:54Z
+core:     0.4.10
+
+notes:
+  window photo: /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/import-look/window.png
+
+assertions (5/5 passed):
+  PASS  before a source: FROM asks for one; after: it names the folder, and the footer counts what is checked — before 'Choose a source'; after 'Tape 07', '3 of 5 clips checked · 186.6 MB'
+  PASS  no viewer until a clip is opened (no empty black box) — viewer open false
+  PASS  the line above Import says what will happen, and changes with Add / Copy — Add: 'Add 3 clips to the library, where they are, in the bin “Tape 07”.' · Copy: 'Copy 3 clips to Media, in the bin “Tape 07”.' · button 'Import 3 Clips'
+  PASS  Add greys the destination; Copy lights it — destination enabled on Copy true
+  PASS  with nothing checked Import is off and says why — enabled false, 'Tick the clips you want to import.'

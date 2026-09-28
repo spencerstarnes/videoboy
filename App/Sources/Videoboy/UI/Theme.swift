@@ -568,6 +568,43 @@ enum Theme {
 
     // MARK: - Type
 
+    /// Import mode (redesigned 2026-09-28): a full-screen browsing mode, not a
+    /// performance panel, so it reads at document size rather than at the grid's
+    /// dense 10–11 pt.
+    enum Import {
+        static let headerHeight: CGFloat = 64
+        static let footerHeight: CGFloat = 48
+        static let sidebarWidth: CGFloat = 220
+        static let inspectorWidth: CGFloat = 300
+        /// Inside the inspector and around the centre column.
+        static let padding: CGFloat = 16
+        /// Between the inspector's sections.
+        static let sectionSpacing: CGFloat = 20
+        static let viewerHeight: CGFloat = 270
+        static let tileCornerRadius: CGFloat = 6
+        static let tileSpacing: CGFloat = 14
+        /// The picture's share of a tile's width (the 4:3 canvas).
+        static let pictureAspect: CGFloat = 0.75
+        /// Below the picture: the name and the size.
+        static let captionHeight: CGFloat = 34
+        static let checkDiameter: CGFloat = 20
+        static let pillHeight: CGFloat = 16
+        static let pillCornerRadius: CGFloat = 4
+        static let importButtonHeight: CGFloat = 32
+
+        static let titleFont = NSFont.systemFont(ofSize: 17, weight: .semibold)
+        static let sectionFont = NSFont.systemFont(ofSize: 10, weight: .semibold)
+        static let bodyFont = NSFont.systemFont(ofSize: 12, weight: .regular)
+        static let emphasisFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        static let pillFont = NSFont.systemFont(ofSize: 9.5, weight: .bold)
+
+        /// Pill colours: wedge-ready (the bitstream effects work), a shape that does
+        /// not fit the canvas, and already in the library.
+        static let wedgePill = NSColor.systemGreen.withAlphaComponent(0.85)
+        static let mismatchPill = Color.displayWarning.withAlphaComponent(0.9)
+        static let duplicatePill = NSColor(white: 0.35, alpha: 0.9)
+    }
+
     enum Font {
         /// Panel titles.
         static let panelTitle = NSFont.systemFont(ofSize: 11, weight: .medium)

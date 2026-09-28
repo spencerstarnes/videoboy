@@ -131,6 +131,9 @@ case "$CHECK" in
   # Clip Pads: drop, instant load, restart, AUTO, ⌥ take, side switch, number keys,
   # MIDI, ⌥⌘ beat arming, saved with the show, presses under live render. Silent.
   pads)      run_app_check pads ;;
+  # Import mode reads clearly (2026-09-28 redesign): FROM/TO, no empty viewer, counts,
+  # the sentence above Import. Silent; real window photo.
+  import-look) VIDEOBOY_FLAGS="${VIDEOBOY_FLAGS:+$VIDEOBOY_FLAGS,}modeBar" run_app_check import-look ;;
   bins)      VIDEOBOY_FLAGS="${VIDEOBOY_FLAGS:+$VIDEOBOY_FLAGS,}modeBar" run_app_check bins ;;
   push-fade) run_app_check push-fade ;;
   # The real window at the main screen's full size, all four channels playing, every
@@ -161,5 +164,5 @@ case "$CHECK" in
     run_loopback
     run_app_check calibrate
     ;;
-  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, bars, import, modes, import-mode, bins, pads, ab-roll, optimize, template, now-playing, framing, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
+  *) fail "unknown check '$CHECK' (try: offscreen, midi, ui, playback, analog, blend, transitions, ave5, stream, record, audit, shaders, library, isf, stress, soak, decode, bars, import, modes, import-mode, bins, pads, import-look, ab-roll, optimize, template, now-playing, framing, push-fade, fullscreen, mosh, displays, output, loopback, calibrate, emu, emu-probe, all)" ;;
 esac

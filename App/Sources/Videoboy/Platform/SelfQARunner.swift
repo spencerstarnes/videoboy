@@ -74,6 +74,8 @@ enum SelfQARunner {
             verdict = ImportModeSelfQA.run()
         case "bins":
             verdict = BinsSelfQA.run()
+        case "import-look":
+            verdict = ImportLookSelfQA.run()
         case "pads":
             verdict = PadsSelfQA.run()
         case "ab-roll":
