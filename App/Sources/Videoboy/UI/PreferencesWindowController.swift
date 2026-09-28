@@ -117,6 +117,8 @@ final class PreferencesWindowController: NSWindowController {
     /// Called when the picture fill changes, so open previews follow immediately
     /// rather than at the next relaunch.
     var onPreviewFillChanged: ((PreviewFill) -> Void)?
+    /// MIDI mappings were removed here, so the main window re-reads what is driven.
+    var onMappingsChanged: (() -> Void)?
     /// "Run Setup Assistant…" pressed (Project pane).
     var onRunSetupAssistant: (() -> Void)?
 

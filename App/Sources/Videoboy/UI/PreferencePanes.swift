@@ -459,8 +459,12 @@ extension PreferencesWindowController {
                     color: Theme.Color.textSecondary)
                 let source = Controls.monoLabel(
                     binding.source.description, color: Theme.Color.accent)
+                // One mapping at a time — Remove All was the only way out before.
+                let remove = Controls.button("Remove", target: self, action: #selector(removeMapping(_:)))
+                remove.identifier = NSUserInterfaceItemIdentifier(binding.source.description)
+                remove.toolTip = "Remove this mapping (Shift-click the control and press ⌫ does the same)"
                 rows.append(Controls.row(
-                    [source, target, Controls.spacer()], spacing: 12))
+                    [source, target, Controls.spacer(), remove], spacing: 12))
             }
             rows.append(spacer(10))
             rows.append(Controls.button(
@@ -469,10 +473,20 @@ extension PreferencesWindowController {
         return Controls.column(rows, spacing: 6)
     }
 
+    @objc func removeMapping(_ sender: NSButton) {
+        guard let described = sender.identifier?.rawValue,
+              let binding = engine.registry.bindings.first(where: { $0.source.description == described }) else { return }
+        engine.registry.unbind(source: binding.source)
+        onMappingsChanged?()
+        Log.info(.midi, "removed mapping \(described) -> \(binding.slot)/\(binding.code.rawValue)")
+        rebuildPane(.midiMapping)
+    }
+
     @objc func removeAllMappings() {
         for binding in engine.registry.bindings {
             engine.registry.unbind(source: binding.source)
         }
+        onMappingsChanged?()
         Log.info(.midi, "all MIDI mappings removed from preferences")
         rebuildPane(.midiMapping)
     }

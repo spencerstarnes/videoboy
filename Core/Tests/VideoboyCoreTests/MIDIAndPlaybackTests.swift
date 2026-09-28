@@ -78,11 +78,19 @@ final class MIDIAndPlaybackTests: XCTestCase {
         XCTAssertEqual(event.source, .midiControlChange(channel: 0, controller: 21))
         XCTAssertEqual(event.value, 1.0, accuracy: 1e-9)
 
-        // A Note On, channel 3, note 60, velocity 64.
+        // A Note On, channel 3, note 60, velocity 64: a note is a switch, so full on.
         let noteOn: UInt32 = (0x2 << 28) | (0x92 << 16) | (60 << 8) | 64
         let note = try! XCTUnwrap(MIDIInput.decode(word: noteOn))
         XCTAssertEqual(note.source, .midiNote(channel: 2, note: 60))
-        XCTAssertEqual(note.value, 64.0 / 127.0, accuracy: 1e-9)
+        XCTAssertEqual(note.value, 1.0, accuracy: 1e-9)
+
+        // A SOFT hit (velocity 20) still presses: under 0.5 it fired nothing before.
+        let soft: UInt32 = (0x2 << 28) | (0x92 << 16) | (60 << 8) | 20
+        XCTAssertEqual(try! XCTUnwrap(MIDIInput.decode(word: soft)).value, 1.0, accuracy: 1e-9)
+
+        // Note On at velocity 0 is a Note Off (MIDI running status).
+        let zeroVelocity: UInt32 = (0x2 << 28) | (0x92 << 16) | (60 << 8) | 0
+        XCTAssertEqual(try! XCTUnwrap(MIDIInput.decode(word: zeroVelocity)).value, 0, accuracy: 1e-9)
 
         // A Note Off must read as the same address at zero, so a mapping releases.
         let noteOff: UInt32 = (0x2 << 28) | (0x82 << 16) | (60 << 8) | 0

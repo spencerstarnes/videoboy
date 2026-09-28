@@ -31,6 +31,7 @@ final class ModeController: NSObject {
     /// Set by the owner: the setup assistant's "run again" and the preview fill.
     var onRunSetupAssistant: (() -> Void)?
     var onPreviewFillChanged: ((PreviewFill) -> Void)?
+    var onMappingsChanged: (() -> Void)?
     /// Runs an Import-mode import (the shell's background ImportJob). Set by the owner.
     var onImport: ((_ urls: [URL], _ method: ImportMethod, _ destination: URL?, _ bin: String?,
                     _ root: URL?, _ optimize: OptimizePreset?) -> Void)?
@@ -124,6 +125,7 @@ final class ModeController: NSObject {
                 let controller = PreferencesWindowController(store: store, engine: engine)
                 controller.onRunSetupAssistant = { [weak self] in self?.onRunSetupAssistant?() }
                 controller.onPreviewFillChanged = { [weak self] fill in self?.onPreviewFillChanged?(fill) }
+                controller.onMappingsChanged = { [weak self] in self?.onMappingsChanged?() }
                 settings = controller
                 _ = controller.detachRootViewForEmbedding()
             }

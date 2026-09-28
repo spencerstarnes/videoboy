@@ -1034,6 +1034,16 @@ final class Engine {
     /// Loads started and not yet installed — for self-QA.
     private(set) var loadsInFlight = 0
 
+    /// Drops any clip still opening for a channel, so it cannot land after the
+    /// performer has moved on. An HD or 4K open takes 50–200 ms; ejecting, or
+    /// switching the channel to a generator or camera, inside that window used to be
+    /// undone a moment later by the clip arriving anyway.
+    func cancelPendingLoad(channel letter: String) {
+        guard loadsInFlight > 0 else { return }
+        loadGeneration[letter] = (loadGeneration[letter] ?? 0) + 1
+        Log.info(.clip, "\(letter): a clip still opening was cancelled")
+    }
+
     /// Loads a clip without blocking the main thread. The channel keeps playing what
     /// it had until the new clip is open and its first frames are decoding; then it is
     /// swapped in on the main run loop and `completion` is called there.
@@ -1222,6 +1232,7 @@ final class Engine {
     @discardableResult
     func unload(channel letter: String) -> Bool {
         guard let node = sources[letter] else { return false }
+        cancelPendingLoad(channel: letter)
         node.unload()
         onChannelSourceChanged?(letter)
         return true
@@ -1379,6 +1390,9 @@ final class Engine {
     }
 
     func setChannelSource(_ kind: ChannelSourceKind, channel letter: String) {
+        // A clip still opening would otherwise land on the file node and pull the
+        // caption back to it after the performer chose something else.
+        if kind != .file { cancelPendingLoad(channel: letter) }
         // A configured source's node is created lazily — see `ensureCaptureNode` — so
         // it must exist before the edge below can name it. Every other kind's node was
         // already added in `buildGraph`.

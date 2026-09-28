@@ -29,6 +29,10 @@ final class ShellController {
     private lazy var router = OutputRouter(store: preferences, metal: MetalContext.shared)
     /// Shift-to-detect. Exposed so the self-QA render can arm it.
     private(set) var detectSession: DetectSession?
+    /// The control a MIDI learn is armed for, until a message maps it or it is
+    /// cancelled (Esc) or cleared (⌫) — what the learn keys act on.
+    private(set) var pendingLearn: (slot: String, code: ParamCode)?
+    private var learnKeyMonitor: Any?
     /// The top bar's Clip Pads (docs/specs/clip-pads.md).
     private(set) var clipPads: ClipPadController?
 
@@ -855,14 +859,20 @@ final class ShellController {
         slot: String, code: ParamCode, accepting: MIDIInput.DetectFilter = .anything
     ) {
         engine.midi.beginDetect(slot: slot, code: code, accepting: accepting)
+        pendingLearn = (slot, code)
+        installLearnKeys()
         // The status line says what to DO, not only what is happening. "Press a button
         // or pad" is the difference between a learn that works first time and one where
-        // a stray knob takes the mapping and nobody knows why.
-        shell.statusBar.setMIDIDevice("learning \(code.displayName) — \(accepting.prompt)")
+        // a stray knob takes the mapping and nobody knows why. And how to get OUT:
+        // Esc backs out, ⌫ takes this control's mapping away.
+        shell.statusBar.setMIDIDevice(
+            "learning \(code.displayName) — \(accepting.prompt) · ⌫ unmaps · esc cancels")
         Log.info(.midi, "detect armed for \(slot)/\(code.rawValue)")
         engine.midi.onDetectCompleted = { [weak self] binding in
-            DispatchQueue.main.async {
+            // MIDI is drained on the main thread already; hop only if it ever is not.
+            let finish = {
                 guard let self else { return }
+                self.pendingLearn = nil
                 self.shell.statusBar.setMIDIDevice(self.engine.midi.connectedSourceNames.first)
                 self.refreshDrivenParameters()
                 // Light the effect's MIDI badge when the thing just mapped is that
@@ -872,7 +882,71 @@ final class ShellController {
                 self.lightEffectBadge(forSlot: slot, code: code, source: .midi)
                 Log.info(.midi, "learned \(binding.source.description) for \(binding.slot)/\(binding.code.rawValue)")
             }
+            if Thread.isMainThread { finish() } else { DispatchQueue.main.async(execute: finish) }
         }
+    }
+
+    /// Esc and ⌫ while a learn is armed. One monitor for the window's life; it only
+    /// takes those two keys, and only while `pendingLearn` is set.
+    private func installLearnKeys() {
+        guard learnKeyMonitor == nil else { return }
+        learnKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, self.handleLearnKey(event) else { return event }
+            return nil
+        }
+    }
+
+    /// Esc cancels an armed learn, ⌫ unmaps its control. True when it took the key.
+    /// Separate from the monitor so a check can deliver a real key event through it.
+    @discardableResult
+    func handleLearnKey(_ event: NSEvent) -> Bool {
+        guard pendingLearn != nil else { return false }
+        switch event.keyCode {
+        case 53: cancelLearn()                 // Esc
+        case 51, 117: unmapPendingLearn()      // Delete, Forward Delete
+        default: return false
+        }
+        return true
+    }
+
+    /// Backs out of an armed learn: nothing is mapped, nothing is changed.
+    func cancelLearn() {
+        guard pendingLearn != nil else { return }
+        engine.midi.cancelDetect()
+        pendingLearn = nil
+        shell.statusBar.setMIDIDevice(engine.midi.connectedSourceNames.first)
+        Log.info(.midi, "learn cancelled")
+    }
+
+    /// Removes every MIDI mapping on the control a learn is armed for, and disarms.
+    /// The one-control undo: Shift-click it, press ⌫.
+    func unmapPendingLearn() {
+        guard let (slot, code) = pendingLearn else { return }
+        let removed = removeMappings(slot: slot, code: code)
+        cancelLearn()
+        presentNotice(
+            removed > 0 ? "Unmapped \(code.displayName)" : "\(code.displayName) had no MIDI mapping",
+            removed > 0 ? "Its MIDI mapping is removed. The control stays where it is." : "Nothing was changed.")
+    }
+
+    /// Settings removed mappings: re-read the driven outlines and the card badges.
+    func mappingsChangedElsewhere() {
+        refreshDrivenParameters()
+        refreshCards(.one)
+        refreshCards(.two)
+    }
+
+    /// Removes the MIDI mappings on one parameter; returns how many there were.
+    @discardableResult
+    func removeMappings(slot: String, code: ParamCode) -> Int {
+        let matching = engine.registry.bindings.filter { $0.slot == slot && $0.code == code }
+        for binding in matching { engine.registry.unbind(source: binding.source) }
+        if !matching.isEmpty {
+            lightEffectBadge(forSlot: slot, code: code, source: .midi, isActive: false)
+            refreshDrivenParameters()
+            Log.info(.midi, "unmapped \(slot)/\(code.rawValue) (\(matching.count) mapping(s))")
+        }
+        return matching.count
     }
 
     // MARK: - Wiring
@@ -2025,6 +2099,17 @@ final class ShellController {
         }
     }
 
+    /// Which badges should be lit for an effect's wet/dry — what the badges drive.
+    private func activeModulationBadges(slot: String) -> Set<String> {
+        var lit: Set<String> = []
+        if engine.registry.bindings.contains(where: { $0.slot == slot && $0.code == .wetDry }) {
+            lit.insert(ModulationSource.midi.badge)
+        }
+        if engine.audioReactivity.isDriven(slot: slot, code: .wetDry) { lit.insert(ModulationSource.audio.badge) }
+        if engine.lfos.isDriven(slot: slot, code: .wetDry) { lit.insert(ModulationSource.lfo.badge) }
+        return lit
+    }
+
     /// Builds a panel's cards from its chain, top card first.
     private func makeCards(_ bus: Bus) -> [EffectCardModel] {
         let chainBus = chainBus(bus)
@@ -2053,7 +2138,7 @@ final class ShellController {
             let available = module?.isAvailable ?? false
             let parameters = parameterModels(
                 controls: module?.controls ?? [], declared: declared, slot: slot, available: available)
-            cards.append(EffectCardModel(
+            var card = EffectCardModel(
                 name: name, id: entry.instanceID,
                 badge: module?.origin.badge ?? "missing",
                 status: status(of: node),
@@ -2061,7 +2146,12 @@ final class ShellController {
                 isImplemented: available,
                 parameters: parameters,
                 channelOptions: chainBus.channels,
-                initialChannelIndex: entry.target))
+                initialChannelIndex: entry.target)
+            // The badges say what is ACTUALLY driving this card, read from the engine.
+            // Left empty, every rebuild (adding, removing or reordering any card)
+            // turned every badge dark while its MIDI, LFO or audio kept driving.
+            card.activeModulation = activeModulationBadges(slot: slot)
+            cards.append(card)
         }
 
         // The corruptor is a fixed stage on the sources, not a chain module; its card
@@ -3177,12 +3267,13 @@ final class ShellController {
 
     /// Opens the MIDI / audio / LFO menu for a parameter and applies the choice.
     /// Lights an effect's badge when the mapping just made is that effect's wet/dry.
-    private func lightEffectBadge(forSlot slot: String, code: ParamCode, source: ModulationSource) {
+    private func lightEffectBadge(forSlot slot: String, code: ParamCode, source: ModulationSource,
+                                  isActive: Bool = true) {
         guard code == .wetDry else { return }
         for bus in [Bus.one, .two] {
             let names = Array((cardInstances[bus] ?? [:]).keys) + [PanelSet.corruptorCardName]
             for name in names where self.slot(forEffect: name, bus: bus) == slot {
-                panel(bus).setEffectModulationActive(effect: name, source: source, isActive: true)
+                panel(bus).setEffectModulationActive(effect: name, source: source, isActive: isActive)
             }
         }
     }
@@ -3250,14 +3341,15 @@ final class ShellController {
             case .clear:
                 switch badge {
                 case "M":
-                    for binding in self.engine.registry.bindings
-                    where binding.slot == slot && binding.code == parameter {
-                        self.engine.registry.unbind(source: binding.source)
-                    }
+                    self.removeMappings(slot: slot, code: parameter)
                 case "S":
-                    self.engine.audioReactivity.remove(slot: slot, code: parameter)
+                    self.engine.audioReactivity.remove(slot: slot, code: parameter, restoringIn: self.engine.registry)
                 default:
-                    self.engine.lfos.remove(slot: slot, code: parameter)
+                    self.engine.lfos.remove(slot: slot, code: parameter, restoringIn: self.engine.registry)
+                }
+                // The switch shows the restored wet/dry, so it and the engine agree.
+                if parameter == .wetDry {
+                    panel.setEnabled(effectName: name, isOn: (self.engine.registry.value(slot: slot, code: .wetDry) ?? 0) > 0.5)
                 }
                 panel.setEffectModulationActive(effect: name, source: source, isActive: false)
             }

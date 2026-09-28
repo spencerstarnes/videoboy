@@ -538,6 +538,36 @@ final class DatamoshNodeTests: XCTestCase {
         XCTAssertFalse(node.isRunning)
     }
 
+    /// A mosh whose encoder dies mid-run (sleep, a media-server restart) must come back
+    /// on its own. Before the watchdog the picture froze on its last moshed frame
+    /// until the card was switched off and on.
+    func testAStalledMoshRestartsItselfAndPicturesFlowAgain() throws {
+        guard let metal = MetalContext.shared else { throw XCTSkip("no Metal") }
+        let frames = try clip("motion.mov", count: 60)
+        let node = DatamoshNode(identifier: "test.mosh.watchdog", context: metal)
+        let uploader = TextureUploader(context: metal, label: "test-watchdog")
+        node.mosh = 0.4
+        var index = 0
+        func run(_ count: Int) throws {
+            for _ in 0..<count {
+                let input = try XCTUnwrap(uploader.upload(frames[index % frames.count]))
+                _ = node.render(inputs: [input], context: RenderContext(
+                    frameIndex: index, presentationTime: Double(index) / 29.97, musicalPosition: nil))
+                metal.waitForIdle()
+                RunLoop.main.run(until: Date().addingTimeInterval(1.0 / 29.97))
+                index += 1
+            }
+        }
+        try run(40)
+        XCTAssertGreaterThan(node.statistics.emitted, 10, "moshing before the loss: \(node.statistics)")
+
+        node.simulateEncoderLossForChecks()
+        try run(DatamoshNode.stallLimit + 50)
+        XCTAssertGreaterThanOrEqual(node.watchdogRestarts, 1, "the stall was noticed")
+        XCTAssertTrue(node.isRunning)
+        XCTAssertGreaterThan(node.statistics.emitted, 10, "pictures flow again after the restart: \(node.statistics)")
+    }
+
     func testTheNodeMoshesACutLiveWithoutEverWaitingOnTheTick() throws {
         guard let metal = MetalContext.shared else { throw XCTSkip("no Metal") }
         let bars = try clip("bars.dv", count: 20)

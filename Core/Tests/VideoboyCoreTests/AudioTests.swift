@@ -179,6 +179,18 @@ final class AudioTests: XCTestCase {
         XCTAssertEqual(try! XCTUnwrap(registry.value(slot: "fx", code: .opacity)), 0.5, accuracy: 1e-6)
     }
 
+    /// Removing an audio binding puts the parameter back to its value from before.
+    func testRemovingAnAudioBindingRestoresThePreviousValue() {
+        let (bus, registry) = makeBus()
+        registry.setValue(0.8, slot: "fx", code: .opacity)
+        bus.assign(ReactivityAssignment(
+            tap: .rms, shape: .direct, slot: "fx", code: .opacity, gain: 1.0, threshold: 0))
+        bus.update(with: AudioFrame(rms: 0.1, peak: 0.1, bands: [], flux: 0, onset: false), into: registry)
+        XCTAssertEqual(try XCTUnwrap(registry.value(slot: "fx", code: .opacity)), 0.1, accuracy: 1e-6)
+        bus.remove(slot: "fx", code: .opacity, restoringIn: registry)
+        XCTAssertEqual(try XCTUnwrap(registry.value(slot: "fx", code: .opacity)), 0.8, accuracy: 1e-6)
+    }
+
     func testValuesAreScaledIntoTheParameterRange() {
         let (bus, registry) = makeBus()
         bus.assign(ReactivityAssignment(

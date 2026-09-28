@@ -130,6 +130,7 @@ final class MainWindowController: NSWindowController {
             modes.onPreviewFillChanged = { [weak self] fill in
                 self?.shellController?.setPreviewFill(fill)
             }
+            modes.onMappingsChanged = { [weak self] in self?.shellController?.mappingsChangedElsewhere() }
             modes.onRunSetupAssistant = { [weak self] in self?.runSetupAssistant() }
             modes.onImport = { [weak self] urls, method, destination, bin, root, optimize in
                 self?.shellController?.importFiles(urls, method: method, destination: destination, root: root,

@@ -165,6 +165,20 @@ public final class DatamoshNode: Node, ParameterApplying {
 
     private var uploader: TextureUploader?
     private var shownGeneration = 0
+    /// Rendered frames since the pipeline last produced a picture, while it should
+    /// be producing one every frame. See `stallLimit`.
+    private var framesWithoutPicture = 0
+    /// Restarts the watchdog has made this run of stalls, for backing off.
+    private var stallRestarts = 0
+    /// Times the watchdog restarted a stalled pipeline, for evidence.
+    public private(set) var watchdogRestarts = 0
+
+    /// Frames (1.5 s) with no new picture before a running mosh is restarted. A
+    /// healthy pipeline delivers one per frame — a paused clip still encodes as tiny
+    /// P-frames, bloom replays its loop — so a silence this long means the encoder or
+    /// decoder has died (a VideoToolbox session invalidated by sleep, a media-server
+    /// restart). Before this the picture froze until the card was switched off and on.
+    static let stallLimit = 45
     private var lastOutput: MTLTexture?
     private var blendTarget: MTLTexture?
 
@@ -270,7 +284,20 @@ public final class DatamoshNode: Node, ParameterApplying {
         if submitForEncoding(input, encoder: encoder, forceKeyframe: keyframeWanted, metal: metal) {
             keyframeWanted = false
         }
-        return output(dry: input, metal: metal)
+        let shown = output(dry: input, metal: metal)
+        // WATCHDOG. Backs off (1.5 s, 3 s, 4.5 s …) so a machine that cannot mosh at all
+        // is retried calmly rather than every second and a half forever.
+        if framesWithoutPicture > Self.stallLimit * (stallRestarts + 1) {
+            watchdogRestarts += 1
+            stallRestarts += 1
+            let restarts = stallRestarts
+            Log.warn(.mosh, "\(identifier) produced no picture for \(framesWithoutPicture) frames — "
+                + "restarting its encoder and decoder (attempt \(restarts))")
+            start(width: input.width, height: input.height, metal: metal)
+            stallRestarts = restarts
+            return input
+        }
+        return shown
     }
 
     /// Asks for one clean keyframe: from the encoder on the next frame that is
@@ -329,6 +356,10 @@ public final class DatamoshNode: Node, ParameterApplying {
             if uploader == nil { uploader = TextureUploader(context: metal, label: "\(identifier)-mosh") }
             if let uploaded = uploader?.upload(latest) { lastOutput = uploaded }
             shownGeneration = generation
+            framesWithoutPicture = 0
+            stallRestarts = 0
+        } else {
+            framesWithoutPicture += 1
         }
         if landed { envelope.keyframeShown() }
         guard let wet = lastOutput, wet.width == dry.width, wet.height == dry.height else { return dry }
@@ -389,6 +420,7 @@ public final class DatamoshNode: Node, ParameterApplying {
         }
         prepareStaging(width: width, height: height, metal: metal)
         appliedBlocks = -1
+        framesWithoutPicture = 0
         envelope.reset()
         keyframeWanted = false
         healCount = 0
@@ -469,6 +501,12 @@ public final class DatamoshNode: Node, ParameterApplying {
             }
             $0.statistics = statistics
         }
+    }
+
+    /// Kills the encoder the way sleep or a media-server restart does — the session is
+    /// gone but the node still holds it — so a check can prove the watchdog recovers.
+    func simulateEncoderLossForChecks() {
+        encoder?.invalidate(completingPending: false)
     }
 
     // MARK: - Staging

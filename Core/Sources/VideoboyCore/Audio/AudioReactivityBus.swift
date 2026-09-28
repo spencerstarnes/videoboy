@@ -109,6 +109,9 @@ public final class AudioReactivityBus {
     private(set) public var assignments: [ReactivityAssignment] = []
     /// Per-assignment running state for the shapes that have memory.
     private var shapeState: [String: Double] = [:]
+    /// Each driven parameter's value from before audio first wrote to it — what
+    /// removing the binding puts back (see `LFOBank`'s, same reason).
+    private var baseValues: [String: Double] = [:]
 
     public init() {}
 
@@ -119,10 +122,14 @@ public final class AudioReactivityBus {
         Log.info(.clock, "audio \(assignment.tap.displayName) (\(assignment.shape.rawValue)) -> \(assignment.slot)/\(assignment.code.rawValue)")
     }
 
-    /// Removes the audio binding on a parameter.
-    public func remove(slot: String, code: ParamCode) {
+    /// Removes the audio binding on a parameter and — given the registry — puts the
+    /// parameter back to the value it had before audio took it.
+    public func remove(slot: String, code: ParamCode, restoringIn registry: ParamRegistry? = nil) {
         assignments.removeAll { $0.slot == slot && $0.code == code }
-        shapeState.removeValue(forKey: "\(slot)/\(code.rawValue)")
+        let key = "\(slot)/\(code.rawValue)"
+        shapeState.removeValue(forKey: key)
+        let base = baseValues.removeValue(forKey: key)
+        if let registry, let base { registry.setValue(base, slot: slot, code: code) }
     }
 
     /// True when a parameter is audio-driven — the UI lights the `S` badge.
@@ -162,6 +169,9 @@ public final class AudioReactivityBus {
 
             guard let parameter = registry.parameter(slot: assignment.slot, code: assignment.code) else {
                 continue
+            }
+            if baseValues[key] == nil {
+                baseValues[key] = registry.value(slot: assignment.slot, code: assignment.code)
             }
             registry.setValue(
                 parameter.denormalise(shaped), slot: assignment.slot, code: assignment.code)

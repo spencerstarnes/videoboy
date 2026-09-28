@@ -203,6 +203,32 @@ final class LFOTests: XCTestCase {
             try XCTUnwrap(registry.value(slot: "fx", code: .feedbackZoom)), 1.25, accuracy: 1e-6)
     }
 
+    /// Removing an LFO puts the parameter back where it was before the LFO took it —
+    /// not wherever its last frame happened to leave it.
+    func testRemovingAnLFORestoresThePreviousValue() {
+        let transport = Transport(beatsPerMinute: 120)
+        transport.start(atHostTime: 0)
+        let registry = ParamRegistry()
+        registry.register(slot: "fx", parameters: [Parameter(code: .wetDry, range: 0...1, defaultValue: 0)])
+        registry.setValue(1, slot: "fx", code: .wetDry)       // the effect was ON
+
+        let bank = LFOBank(transport: transport)
+        bank.assign(LFOBank.Assignment(lfo: LFO(shape: .square, rate: .subdivision(.quarter)),
+                                       slot: "fx", code: .wetDry))
+        bank.update(atHostTime: 0.3, into: registry)          // gating it
+        bank.update(atHostTime: 0.9, into: registry)
+        bank.remove(slot: "fx", code: .wetDry, restoringIn: registry)
+        XCTAssertEqual(registry.value(slot: "fx", code: .wetDry), 1, "back ON, as it was")
+        XCTAssertFalse(bank.isDriven(slot: "fx", code: .wetDry))
+
+        // Removing without a registry (the old call) leaves the value alone.
+        bank.assign(LFOBank.Assignment(lfo: LFO(shape: .rampUp, rate: .subdivision(.quarter)),
+                                       slot: "fx", code: .wetDry))
+        bank.update(atHostTime: 0.25, into: registry)
+        bank.remove(slot: "fx", code: .wetDry)
+        XCTAssertEqual(try XCTUnwrap(registry.value(slot: "fx", code: .wetDry)), 0.5, accuracy: 1e-6)
+    }
+
     func testBankCompensatesForNodeLatency() {
         // An LFO on a node with latency must be evaluated at the time the frame will
         // be SEEN, not the time it is computed, or beat-synced motion lands late.

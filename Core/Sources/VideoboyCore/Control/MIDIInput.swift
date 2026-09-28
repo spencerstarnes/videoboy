@@ -305,7 +305,11 @@ public final class MIDIInput {
             return ControlEvent(
                 source: .midiControlChange(channel: channel, controller: data1), value: normalised)
         case 0x90:
-            return ControlEvent(source: .midiNote(channel: channel, note: data1), value: normalised)
+            // A note is a switch: on is full, whatever the velocity. Velocity as the
+            // value made a soft hit on a velocity-sensitive pad (an MPK's) land under
+            // the 0.5 every trigger fires at — CUT, a Clip Pad, MOSH silently did
+            // nothing. Velocity 0 is note-off by the MIDI spec.
+            return ControlEvent(source: .midiNote(channel: channel, note: data1), value: data2 > 0 ? 1 : 0)
         case 0x80:
             // Note Off is the same address at zero, so a mapped note releases cleanly.
             return ControlEvent(source: .midiNote(channel: channel, note: data1), value: 0)

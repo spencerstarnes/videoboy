@@ -230,6 +230,11 @@ public final class LFOBank {
 
     private(set) public var assignments: [Assignment] = []
     private let transport: Transport
+    /// Each driven parameter's value from BEFORE its LFO first wrote to it, by
+    /// "slot/code" — what removing the LFO puts back. Without it a removed LFO left
+    /// the parameter wherever its last frame put it: an LFO gating an effect's
+    /// wet/dry left the effect randomly on or off, disagreeing with its switch.
+    private var baseValues: [String: Double] = [:]
 
     public init(transport: Transport) {
         self.transport = transport
@@ -245,9 +250,12 @@ public final class LFOBank {
         Log.info(.clock, "LFO \(assignment.lfo.shape.rawValue) at \(assignment.lfo.rate.displayName) -> \(assignment.slot)/\(assignment.code.rawValue)")
     }
 
-    /// Removes the LFO driving a parameter, if any.
-    public func remove(slot: String, code: ParamCode) {
+    /// Removes the LFO driving a parameter, if any, and — given the registry — puts
+    /// the parameter back to the value it had before the LFO took it.
+    public func remove(slot: String, code: ParamCode, restoringIn registry: ParamRegistry? = nil) {
         assignments.removeAll { $0.slot == slot && $0.code == code }
+        let base = baseValues.removeValue(forKey: "\(slot)/\(code.rawValue)")
+        if let registry, let base { registry.setValue(base, slot: slot, code: code) }
     }
 
     /// True when a parameter is being driven by an LFO — the UI lights the `C` badge.
@@ -277,6 +285,10 @@ public final class LFOBank {
             // The registry scales the 0...1 output into the parameter's own range.
             guard let parameter = registry.parameter(slot: assignment.slot, code: assignment.code) else {
                 continue
+            }
+            let key = "\(assignment.slot)/\(assignment.code.rawValue)"
+            if baseValues[key] == nil {
+                baseValues[key] = registry.value(slot: assignment.slot, code: assignment.code)
             }
             registry.setValue(
                 parameter.denormalise(normalised), slot: assignment.slot, code: assignment.code)

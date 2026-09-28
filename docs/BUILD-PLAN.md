@@ -256,6 +256,10 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
   treating it as a bug (AUDIT-2026-09-28 A6).
 - **DATA BURN text is drawn on the CPU every frame** (timecode changes each frame):
   stress p95 9.8 ms with burn on vs 6.6 off. Within budget; cache glyphs if it grows.
+- **Take-backs not yet proven:** grabbing a fader while its ⌥⌘ sweep runs (does the
+  hand win?), and a mosh fader resting just above 0 (any mosh > 0 drops every keyframe,
+  so a MIDI knob or LFO parked at 1/127 keeps the picture moshed with nothing on screen
+  saying why). Check both with the owner's controller.
 - **First AVFoundation open in a process is ~70 ms** (framework warm-up; later opens
   6–9 ms). Off the main thread since F9; a launch-time warm-up would hide it entirely.
 - 0.4.8 and 0.4.9 need a person's click-through with `VIDEOBOY_FLAGS=modeBar` before
@@ -332,6 +336,16 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       61K–68K, 69J/6AJ). Clips kept pre-opened (Engine.preparePad); saved with the
       show (template v4). `selfqa pads` 12/12 ×3: 8 HD presses under live render all
       instant (~1 ms main thread), 0 dropped, 0 held; stress 10/10.
+- [x] **Take-backs** (owner, 2026-09-28: "a consistent bug … being unable to undo
+      things"). Eject, or choosing a generator/camera, cancels a clip still opening
+      (it used to land afterwards). MIDI learn: Esc cancels, ⌫ unmaps the Shift-clicked
+      control; Settings ▸ MIDI Mapping removes one mapping at a time. Removing an LFO or
+      audio driver restores the value from before it (a wet/dry LFO left the effect
+      randomly on/off). Card badges are rebuilt from the engine (they went dark on any
+      card rebuild). Datamosh restarts itself after 1.5 s without a picture (a dead
+      encoder froze it until reset). A MIDI note is a full press at any velocity (soft
+      MPK hits fired nothing). `selfqa undo` 5/5 (fails 3/5 with the fixes reverted);
+      Core tests for the watchdog, LFO/audio restore, note velocity.
 - [x] **Hot Punch — the (!) key** (owner, 2026-09-28; spec `docs/specs/clip-pads.md`).
       Armed (red), a pad press loads, plays and cuts its sub-mix AND Program to it; beat
       fires never punch; MIDI 6BJ toggles; Settings ▸ Defaults ▸ "Hot Punch armed at
