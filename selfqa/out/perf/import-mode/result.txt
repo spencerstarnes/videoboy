@@ -1,0 +1,22 @@
+check:    perf/import-mode
+verdict:  PASS
+when:     2026-09-28T01:37:30Z
+core:     0.4.10
+
+notes:
+  labelled main-thread work, worst: import 3× 0.0 ms, import.add 3× 0.6 ms, import.facts 3× 0.4 ms, import.progress 11× 0.0 ms, thumbnail 116× 0.1 ms
+  longest main-thread stretch by phase: after import 0 12.0 ms, after import 1 11.9 ms, after import 2 19.6 ms, between 6.2 ms, import 0 7.6 ms, import 1 8.8 ms, import 2 7.5 ms
+
+assertions (12/12 passed):
+  PASS  a source lists off the main thread (the call returns at once, tiles arrive later) — show() 0.24 ms; 4 of 4 clips listed
+  PASS  DV and MPEG are marked wedge-ready; a 16:9 HD clip is marked ⚠16:9 — bars.dv: DV -, hd-h264-2997.mov: - ⚠16:9, motion.m2v: MPEG -, motion.mov: - -
+  PASS  greying: Add greys the destination; Optimize only with Copy; no Move from a read-only source — as the table says
+  PASS  Add catalogs the clips where they are and leaves the files alone — 4 of 4 in the catalog
+  PASS  clips already in the library show DUP, and skip-duplicates imports none of them — 4 DUP; 0 would import
+  PASS  Move puts the files in the destination, empties the source, catalogs the new paths — out of source true, in destination true, 4 cataloged
+  PASS  Copy puts whole copies in the destination, keeps the originals, leaves no partial files — originals kept true, full-size copies true, no partial folder true, 4 cataloged
+  PASS  an I mark set in Import mode before Copy lands in the catalog on the copied clip — waiting before import 1; catalog in point 0.500; still waiting 0
+  PASS  an O mark on a clip already in the library is stored in the catalog straight away — catalog out point 0.000
+  PASS  the viewer shuttles with J/K/L and steps a frame with → — rates [1.0, 2.0, 0.0, -1.0]; stepped forward true
+  PASS  the main thread never stays busy for 25 ms while importing — longest 19.6 ms
+  PASS  the viewer plays the clip in its own player and leaves the engine's channels alone — viewer: motion.mov; channels unchanged true

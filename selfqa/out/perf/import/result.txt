@@ -1,0 +1,29 @@
+check:    perf/import
+verdict:  PASS
+when:     2026-09-28T14:33:40Z
+core:     0.4.10
+
+notes:
+  baseline, no import, 10 s: 300 ticks, worst 13.63 ms, 0 dropped; 0 stretches over 25 ms, longest 
+  AppKit layout/display passes over 10 ms: 0 of 1342, longest 
+  long stretches at: 
+  main thread busy stretches over 25 ms: 0, longest 
+    import: 1× total 0 ms, worst 0.1 ms
+    import.add: 5× total 8 ms, worst 2.7 ms
+    import.facts: 44× total 30 ms, worst 0.9 ms
+    import.progress: 89× total 12 ms, worst 0.4 ms
+    thumbnail: 30× total 0 ms, worst 0.0 ms
+  library rebuilds during the import: 89, mean 1.8 ms, worst 3.5 ms
+  1000 clips in 11.6 s; 365 ticks, worst 6.34 ms, 0 dropped; 86 names shown
+
+assertions (10/10 passed):
+  PASS  three loose clips import without the status bar — no bar
+  PASS  the show never stutters while 1,000 clips import — worst tick 6.34 ms, 0 dropped of 365
+  PASS  the status bar appears for a big import, with folder chips and a count — bar true, folder chips true, reading count true
+  PASS  the status bar flashes the names of the clips being imported — 86 different names shown
+  PASS  every clip arrives, in its folder's bin — 1000 clips in 25 bins
+  PASS  every imported clip is measured (length and frame count) — 1000 of 1000
+  PASS  the catalog holds every clip — 1010 stored, 1010 in the library (10 seeded)
+  PASS  a reloaded library is the same library, marks and frame counts included — 1010 items, marks (inPoint: Optional(0.2), outPoint: Optional(0.8)), frames 119
+  PASS  the status bar hides itself after the import — ￼ IMPORTED |  | ￼ Reel 24 40  +24 folders | 1000 added
+  PASS  ✕ stops an import, keeping what was added — 600 of 600 added before stopping; bar: ￼ STOPPED |  | ￼ Reel 00 60  +9 folders | 600 added

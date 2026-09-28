@@ -49,9 +49,8 @@ public final class OffscreenRenderer {
         // THE STAGING TEXTURE AND ITS BYTES ARE CACHED, not rebuilt per call.
         //
         // Despite living under SelfQA this is on the live frame path in three places:
-        // the recorder (once per armed feed), the streamer (once per destination) and
-        // `BusCodecNode` (once per bus with interchange on). Recording every feed with
-        // DV on all three buses is ten calls a FRAME, and each one used to allocate a
+        // the recorder (once per armed feed) and the streamer (once per destination).
+        // Recording every feed is several calls a FRAME, and each one used to allocate a
         // fresh 1.38 MB `.shared` texture plus a 1.38 MB array — roughly 400 MB/s
         // through the allocator at 29.97 fps, which is where a long run's IOSurface and
         // wired-memory fragmentation comes from.

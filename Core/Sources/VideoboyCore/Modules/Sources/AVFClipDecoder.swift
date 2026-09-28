@@ -1,16 +1,15 @@
 //
 //  AVFClipDecoder.swift — ordinary video files, decoded to our own playhead.
 //
-//  Purpose : Everything AVFoundation can open — .mov, .mp4, ProRes, H.264 — so the
-//            app stops being a DV-only player. The wedge still needs DV, and that is
-//            fine: this is for the other 90% of footage people actually have, which
-//            until now showed a badge and no picture.
+//  Purpose : Everything AVFoundation can open — .mov, .mp4, ProRes, H.264, HEVC.
+//            The MPEG wedge has its own decoder (MPEGStreamDecoder); this is for the
+//            rest of the footage people actually have.
 //  Inputs  : a media URL and a frame index.
 //  Outputs : decoded RGBA frames.
 //  Connects: ClipSourceNode, through `ClipDecoding`.
 //  Extend  : nothing here knows about playback rules — loop modes, musical stepping
-//            and in/out points all live in the node and work identically for DV and
-//            for this. Only decoding belongs here.
+//            and in/out points all live in the node and work identically for every
+//            decoder. Only decoding belongs here.
 //
 //  Why AVAssetReader and not AVPlayer: the app's playhead is authoritative. Frames
 //  are shown because the render clock or the musical clock says so, and step playback
@@ -90,7 +89,7 @@ public final class AVFClipDecoder: ClipDecoding {
         // Synchronous loading: this runs when a clip is loaded, not per frame, and
         // the source panel is waiting for a yes or no answer.
         guard let track = asset.tracks(withMediaType: .video).first else {
-            Log.error(.dv, "\(url.lastPathComponent) has no video track")
+            Log.error(.clip, "\(url.lastPathComponent) has no video track")
             return nil
         }
         self.asset = asset
@@ -101,7 +100,7 @@ public final class AVFClipDecoder: ClipDecoding {
 
         let duration = CMTimeGetSeconds(asset.duration)
         guard duration.isFinite, duration > 0 else {
-            Log.error(.dv, "\(url.lastPathComponent) has no usable duration")
+            Log.error(.clip, "\(url.lastPathComponent) has no usable duration")
             return nil
         }
         self.frameCount = max(Int((duration * self.frameRate).rounded()), 1)
@@ -138,7 +137,7 @@ public final class AVFClipDecoder: ClipDecoding {
             self.decodeSize = nil
         }
 
-        Log.info(.dv, "opened \(url.lastPathComponent): \(frameCount) frames at "
+        Log.info(.clip, "opened \(url.lastPathComponent): \(frameCount) frames at "
             + String(format: "%.2f", self.frameRate) + " fps, "
             + "\(Int(track.naturalSize.width))x\(Int(track.naturalSize.height))"
             + (decodeSize.map { ", decoded at \($0.width)x\($0.height)" } ?? "")
@@ -147,10 +146,10 @@ public final class AVFClipDecoder: ClipDecoding {
         if HEV1Reader.applies(to: track) {
             guard let direct = HEV1Reader(asset: asset, track: track, frameRate: frameRate,
                                           decodeSize: decodeSize) else {
-                Log.error(.dv, "\(url.lastPathComponent) is HEVC tagged hev1 and could not be decoded")
+                Log.error(.clip, "\(url.lastPathComponent) is HEVC tagged hev1 and could not be decoded")
                 return nil
             }
-            Log.info(.dv, "\(url.lastPathComponent) is HEVC tagged hev1: decoding through VideoToolbox directly")
+            Log.info(.clip, "\(url.lastPathComponent) is HEVC tagged hev1: decoding through VideoToolbox directly")
             self.hev1 = direct
         }
 
@@ -234,7 +233,7 @@ public final class AVFClipDecoder: ClipDecoding {
         reader?.cancelReading()
 
         guard let newReader = try? AVAssetReader(asset: asset) else {
-            Log.error(.dv, "could not create a reader for \(asset)")
+            Log.error(.clip, "could not create a reader for \(asset)")
             return false
         }
         // BGRA because that is what Metal and ImageBuffer both want; letting
@@ -256,7 +255,7 @@ public final class AVFClipDecoder: ClipDecoding {
             newReader.timeRange = CMTimeRange(start: start, duration: .positiveInfinity)
         }
         guard newReader.startReading() else {
-            Log.error(.dv, "reader refused to start: \(newReader.error?.localizedDescription ?? "unknown")")
+            Log.error(.clip, "reader refused to start: \(newReader.error?.localizedDescription ?? "unknown")")
             return false
         }
 
@@ -304,7 +303,7 @@ public final class AVFClipDecoder: ClipDecoding {
             return vImagePermuteChannels_ARGB8888(&source, &target, map, vImage_Flags(kvImageNoFlags))
         }
         guard result == kvImageNoError else {
-            Log.error(.dv, "vImage could not convert a decoded frame (\(result))")
+            Log.error(.clip, "vImage could not convert a decoded frame (\(result))")
             return nil
         }
         return ImageBuffer(width: width, height: height, pixels: pixels)

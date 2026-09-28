@@ -1,7 +1,7 @@
 check:    phase-3/analog-chain
 verdict:  PASS
-when:     2026-09-24T06:03:34Z
-core:     0.3.0
+when:     2026-09-28T17:11:45Z
+core:     0.4.10
 
 notes:
   A = bars.dv, through the engine's ONE bus: composite -> echo -> feedback

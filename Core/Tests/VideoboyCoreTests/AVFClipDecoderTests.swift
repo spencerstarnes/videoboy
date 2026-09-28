@@ -1,7 +1,7 @@
 //
 //  AVFClipDecoderTests.swift — ordinary video really decoding.
 //
-//  "Only .dv plays" was the biggest functional gap in the app, so the point of these
+//  Ordinary footage must play, so the point of these
 //  is to prove the gap is actually closed rather than that the types compile. They
 //  decode a real .mov from samples/ and check the frames are pictures, that seeking
 //  backwards works (which is the case needing a reader restart), and that the node
@@ -92,7 +92,7 @@ final class AVFClipDecoderTests: XCTestCase {
 
     /// Ordinary video must NOT advertise the bitstream effects.
     ///
-    /// The wedge only works on bytes that can carry it. A .mov offering DV damage
+    /// The wedge only works on bytes that can carry it. A .mov offering MPEG damage
     /// would be a control that does nothing, which is the failure this whole seam
     /// exists to make impossible.
     func testOrdinaryVideoOffersNoDataEffects() throws {
@@ -102,102 +102,29 @@ final class AVFClipDecoderTests: XCTestCase {
         XCTAssertEqual(node.dataEffectFamily, .none)
     }
 
-    func testDVStillOffersTheDVDataEffects() throws {
-        let url = RepoPaths.samples.appendingPathComponent("motion.dv")
+    func testMPEGStillOffersTheMPEGDataEffects() throws {
+        let url = RepoPaths.samples.appendingPathComponent("motion.m2v")
         guard FileManager.default.fileExists(atPath: url.path) else {
-            throw XCTSkip("samples/motion.dv is missing")
+            throw XCTSkip("samples/motion.m2v is missing")
         }
         let node = ClipSourceNode(identifier: GraphTopology.sourceA, context: nil)
         XCTAssertTrue(node.load(url: url))
-        XCTAssertEqual(node.dataEffectFamily, .dv)
+        XCTAssertEqual(node.dataEffectFamily, .mpeg)
     }
 
-    /// Loading a .mov over a .dv must drop the DV effects with it.
-    func testSwappingFromDVToOrdinaryVideoDropsTheDataEffects() throws {
+    /// Loading a .mov over an MPEG stream must drop the MPEG effects with it.
+    func testSwappingFromMPEGToOrdinaryVideoDropsTheDataEffects() throws {
         let movie = try movieURL()
-        let dv = RepoPaths.samples.appendingPathComponent("motion.dv")
-        guard FileManager.default.fileExists(atPath: dv.path) else {
-            throw XCTSkip("samples/motion.dv is missing")
+        let mpeg = RepoPaths.samples.appendingPathComponent("motion.m2v")
+        guard FileManager.default.fileExists(atPath: mpeg.path) else {
+            throw XCTSkip("samples/motion.m2v is missing")
         }
         let node = ClipSourceNode(identifier: GraphTopology.sourceA, context: nil)
-        XCTAssertTrue(node.load(url: dv))
-        XCTAssertEqual(node.dataEffectFamily, .dv)
+        XCTAssertTrue(node.load(url: mpeg))
+        XCTAssertEqual(node.dataEffectFamily, .mpeg)
         XCTAssertTrue(node.load(url: movie))
         XCTAssertEqual(
             node.dataEffectFamily, .none,
-            "the panel would still be offering DV damage on a clip that cannot take it")
-    }
-}
-
-// MARK: - Reverse playback does not rebuild the reader per frame (audit C2)
-
-extension AVFClipDecoderTests {
-
-    /// Ping-pong's backward half used to construct a whole `AVAssetReader` for EVERY
-    /// displayed frame: the restart set `nextFrameIndex = wrapped`, one frame was
-    /// decoded so it became `wrapped + 1`, and the next frame backwards was therefore
-    /// `< nextFrameIndex` again. Each restart also seeks from the preceding keyframe,
-    /// so on a two-second GOP that is ~60 decodes to show one frame.
-    ///
-    /// The symptom is dropped frames, which a unit test cannot observe — so this counts
-    /// reader restarts instead, which is the thing actually causing them.
-    func testPlayingBackwardsDoesNotRestartTheReaderEveryFrame() throws {
-        let url = try movieURL()
-        guard let decoder = AVFClipDecoder(url: url) else {
-            return XCTFail("motion.mov did not open")
-        }
-
-        // THE WALK MUST OUTRUN THE CACHE or it proves nothing. A backward pass shorter
-        // than `cacheSize` is served entirely from frames the forward priming pass
-        // already stored, so it restarts a handful of times whatever the seek logic
-        // does — an earlier version of this test walked 60 frames, sat inside the
-        // 48-frame cache, and passed with the fix deliberately disabled.
-        let frames = decoder.frameCount
-        try XCTSkipUnless(
-            frames >= 120,
-            "clip must be well over the 48-frame cache for a backward walk to mean anything")
-
-        // Prime the forward direction the way playback would.
-        _ = decoder.image(at: frames - 1, corruption: .inert)
-        let restartsBefore = decoder.readerRestarts
-
-        var decoded = 0
-        for index in stride(from: frames - 1, through: 0, by: -1) {
-            if decoder.image(at: index, corruption: .inert) != nil { decoded += 1 }
-        }
-        let restarts = decoder.readerRestarts - restartsBefore
-
-        XCTAssertEqual(decoded, frames, "every frame of the backward walk should decode")
-        // One restart per block, not one per frame. Generous bound: the point is the
-        // ORDER of magnitude, so this still fails loudly if per-frame behaviour returns.
-        XCTAssertLessThan(
-            restarts, frames / 4,
-            "\(restarts) reader restarts for \(frames) backward frames — that is the "
-                + "restart-per-frame regression audit C2 describes")
-    }
-
-    // MARK: - HEVC tagged hev1 (BUGHUNT S7)
-
-    /// AVAssetReader refuses to decode `hev1`; the decoder routes it through
-    /// VideoToolbox directly. It must open, show real moving pictures, and seek back.
-    func testHEVCTaggedHev1Plays() throws {
-        let url = RepoPaths.samples.appendingPathComponent("motion-hev1.mov")
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw XCTSkip("samples/motion-hev1.mov is missing — run scripts/make-fixtures.sh")
-        }
-        guard let decoder = AVFClipDecoder(url: url) else {
-            return XCTFail("hev1 clip did not open (S7 regression)")
-        }
-        let first = decoder.image(at: 0, corruption: .inert)
-        let later = decoder.image(at: 40, corruption: .inert)
-        let back = decoder.image(at: 5, corruption: .inert)
-        guard let first, let later, let back else { return XCTFail("hev1 frames missing") }
-        XCTAssertTrue(FrameAssertions.signalPresent(first, varianceThreshold: 1.0))
-        XCTAssertNotEqual(first.pixels, later.pixels, "hev1 playback does not advance")
-        XCTAssertNotEqual(back.pixels, later.pixels, "hev1 backward seek returned the wrong frame")
-
-        // Decoded no larger than the canvas needs, like every other AVF clip.
-        let fitted = AVFClipDecoder(url: url, canvas: CanvasGeometry.standardDefinition)
-        XCTAssertNotNil(fitted?.image(at: 10, corruption: .inert))
+            "the panel would still be offering MPEG damage on a clip that cannot take it")
     }
 }

@@ -192,7 +192,7 @@ final class ParamAndTemplateTests: XCTestCase {
                         ParamCode.corruptAmount.rawValue: 0.42,
                         ParamCode.playbackSpeed.rawValue: 1.0
                     ],
-                    mediaPath: "samples/motion.dv"
+                    mediaPath: "samples/motion.m2v"
                 ),
                 TemplateNode(identifier: GraphTopology.subMixOne, moduleType: "CrossfadeNode",
                              parameters: [ParamCode.crossfadeAB.rawValue: 0.25])

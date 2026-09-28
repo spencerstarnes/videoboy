@@ -1,7 +1,7 @@
 check:    phase-5/scopes
 verdict:  PASS
-when:     2026-09-24T07:25:08Z
-core:     0.3.0
+when:     2026-09-28T17:10:53Z
+core:     0.4.10
 
 notes:
   colour bars read: 12.5% crushed

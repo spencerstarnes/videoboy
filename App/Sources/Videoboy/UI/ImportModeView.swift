@@ -104,8 +104,7 @@ final class ImportModeView: NSView {
     private let subfolderField = NSTextField(string: "")
     let binPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let skipDuplicates = NSButton(checkboxWithTitle: "Skip clips already in the library", target: nil, action: nil)
-    let optimizeCheck = NSButton(checkboxWithTitle: "Convert copies for SD", target: nil, action: nil)
-    let optimizePreset = SetupChoices.popUp(SetupChoices.optimizePresetItems)
+    let optimizeCheck = NSButton(checkboxWithTitle: "Convert copies to MPEG-2", target: nil, action: nil)
     private let optimizeNote = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
     /// What pressing Import will do, in a sentence.
     private let summaryLabel = Controls.label("", font: Theme.Import.bodyFont, color: Theme.Color.textSecondary)
@@ -399,13 +398,10 @@ final class ImportModeView: NSView {
         skipDuplicates.state = .on
         skipDuplicates.target = self
         skipDuplicates.action = #selector(methodChanged)
-        optimizeCheck.toolTip = "Convert each copy to DV or MPEG-2 for the SD canvas, linked to "
-            + "the original and played in its place"
+        optimizeCheck.toolTip = "Convert each copy to MPEG-2 on the SD canvas (the bitstream effects "
+            + "work on it), linked to the original and played in its place"
         optimizeCheck.target = self
         optimizeCheck.action = #selector(methodChanged)
-        optimizePreset.selectItem(at: store.preferences.optimizePreset == OptimizePreset.compact.rawValue ? 1 : 0)
-        optimizePreset.target = self
-        optimizePreset.action = #selector(methodChanged)
         refreshBins()
 
         func label(_ text: String) -> NSTextField {
@@ -419,9 +415,9 @@ final class ImportModeView: NSView {
         let subfolder = Controls.row([subfolderCheck, subfolderField], spacing: 4)
         let empty = NSGridCell.emptyContentView
         let grid = NSGridView(views: [
+            // Row indices matter to the padding below: keep them in step.
             [label("Duplicates:"), skipDuplicates],
             [label("Optimize:"), optimizeCheck],
-            [label("Preset:"), optimizePreset],
             [empty, optimizeNote],
             [label("Subfolder:"), subfolder],
             [empty, destinationNote],
@@ -432,9 +428,9 @@ final class ImportModeView: NSView {
         grid.rowSpacing = 10
         grid.columnSpacing = 8
         // A little air between the three groups (duplicates · optimize · where).
-        grid.row(at: 1).topPadding = 8
-        grid.row(at: 4).topPadding = 8
-        grid.row(at: 6).topPadding = 8
+        grid.row(at: 1).topPadding = 8   // Optimize
+        grid.row(at: 3).topPadding = 8   // Subfolder
+        grid.row(at: 5).topPadding = 8   // Bin
         subfolderField.translatesAutoresizingMaskIntoConstraints = false
         subfolderField.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
 
@@ -514,7 +510,6 @@ final class ImportModeView: NSView {
         destinationNote.isHidden = destinationNote.stringValue.isEmpty
         // Optimize only with COPY (proposal §5: Add and Move grey it out).
         optimizeCheck.isEnabled = method == .copy
-        optimizePreset.isEnabled = method == .copy && optimizeCheck.state == .on
         optimizeNote.stringValue = method == .copy ? "" : "Only when copying."
         optimizeNote.isHidden = optimizeNote.stringValue.isEmpty
         updateImportButton()
@@ -901,7 +896,7 @@ final class ImportModeView: NSView {
             }
         }
         let optimize = method == .copy && optimizeCheck.state == .on
-            ? SetupChoices.optimizePreset(at: optimizePreset.indexOfSelectedItem) : nil
+            ? OptimizePreset.compact : nil
         onImport?(urls, method, resolvedDestination, chosenBin, importRoot, optimize)
     }
 

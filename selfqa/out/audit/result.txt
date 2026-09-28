@@ -1,10 +1,10 @@
 check:    audit
 verdict:  FAIL
-when:     2026-09-27T05:09:39Z
-core:     0.4.7
+when:     2026-09-28T14:53:45Z
+core:     0.4.10
 
 notes:
-  1265 controls found: 746 live, 519 disabled, 0 enabled-but-unwired
+  1407 controls found: 826 live, 581 disabled, 0 enabled-but-unwired
 
 assertions (10/11 passed):
   PASS  every fader can be mapped by Shift-clicking it — 98 enabled faders, all carrying a slot and a param code
@@ -17,36 +17,36 @@ assertions (10/11 passed):
   PASS  no label in the output bar is cut off — every label fits
   PASS  no modulation badge is cut off — MIDI, AUD and LFO all fit in both chains
   PASS  no control is enabled but unwired — every enabled control has an action
-  PASS  the interface has controls at all — 1265 found
+  PASS  the interface has controls at all — 1407 found
 
 recent log:
-  1790485778.218 INFO [graph] graph built: 61 nodes, max latency 1 frames
-  1790485778.218 INFO [clock] subscription 1: 1/4, latency 1 frames (33.4ms)
-  1790485778.219 INFO [clock] subscription 2: 1/4, latency 1 frames (33.4ms)
-  1790485778.219 INFO [clock] subscription 3: 1/4, latency 1 frames (33.4ms)
-  1790485778.219 INFO [clock] subscription 4: 1/4, latency 1 frames (33.4ms)
-  1790485778.219 INFO [clock] subscription 5: 1/4, latency 0 frames (0.0ms)
-  1790485778.219 INFO [clock] subscription 6: 1/4, latency 0 frames (0.0ms)
-  1790485778.219 INFO [clock] subscription 7: 1/4, latency 0 frames (0.0ms)
-  1790485778.257 INFO [bitstream] opened motion.m2v: 180 MPEG frames at 25.00 fps
-  1790485778.285 INFO [app] panel 'Output' expanded
-  1790485778.286 INFO [app] panel grid built with 16 panels
-  1790485778.293 INFO [titler] titler assets: 96 backdrops, 234 pages, 102 symbols, 18 fonts
-  1790485778.361 INFO [param] 0 fader sweep(s) armed
-  1790485778.424 INFO [param] 0 fader sweep(s) armed
-  1790485778.425 INFO [isf] watching 2 ISF folder(s) for changes
-  1790485778.443 INFO [app] record indicators on 1, 2, A, B, C, D, P
-  1790485778.444 INFO [render] picture fill is now Fit
-  1790485778.444 INFO [param] 0 parameters have a driver
-  1790485778.453 INFO [render] render clock on 'BenQ PD3200U'
-  1790485779.040 INFO [midi] connected 1 MIDI source(s): MPK mini 3
-  1790485779.040 INFO [render] render clock started
-  1790485779.040 INFO [app] main window built at 1766x970
-  1790485779.041 INFO [selfqa] audit: PASS  the main window refuses full screen — fullScreenNone is set
-  1790485779.041 INFO [selfqa] audit: PASS  the main window can still be maximised — the zoom button is enabled, and with fullScreenNone set it zooms rather than going full screen
-  1790485779.042 INFO [selfqa] audit: PASS  maximising fills the screen rather than best-fitting the content — standard frame 1920x1055, visible frame 1920x1055
-  1790485779.045 INFO [selfqa] audit: PASS  no panel header hides its panel and leaves the cell reserved — 6 headers collapse their group, 10 are deliberately inert
-  1790485779.045 INFO [selfqa] audit: PASS  no label in the output bar is cut off — every label fits
-  1790485779.049 INFO [selfqa] audit: PASS  no modulation badge is cut off — MIDI, AUD and LFO all fit in both chains
-  1790485779.049 INFO [selfqa] audit: PASS  no control is enabled but unwired — every enabled control has an action
-  1790485779.049 INFO [selfqa] audit: PASS  the interface has controls at all — 1265 found
+  1790607225.375 INFO [graph] graph built: 61 nodes, max latency 1 frames
+  1790607225.375 INFO [clock] subscription 1: 1/4, latency 1 frames (33.4ms)
+  1790607225.375 INFO [clock] subscription 2: 1/4, latency 1 frames (33.4ms)
+  1790607225.375 INFO [clock] subscription 3: 1/4, latency 1 frames (33.4ms)
+  1790607225.375 INFO [clock] subscription 4: 1/4, latency 1 frames (33.4ms)
+  1790607225.375 INFO [clock] subscription 5: 1/4, latency 0 frames (0.0ms)
+  1790607225.375 INFO [clock] subscription 6: 1/4, latency 0 frames (0.0ms)
+  1790607225.375 INFO [clock] subscription 7: 1/4, latency 0 frames (0.0ms)
+  1790607225.418 INFO [bitstream] opened motion.m2v: 180 MPEG frames at 25.00 fps
+  1790607225.444 INFO [app] panel 'Output' expanded
+  1790607225.445 INFO [app] panel grid built with 16 panels
+  1790607225.452 INFO [titler] titler assets: 96 backdrops, 234 pages, 102 symbols, 18 fonts
+  1790607225.525 INFO [param] 0 fader sweep(s) armed
+  1790607225.590 INFO [param] 0 fader sweep(s) armed
+  1790607225.591 INFO [isf] watching 2 ISF folder(s) for changes
+  1790607225.611 INFO [app] record indicators on 1, 2, A, B, C, D, P
+  1790607225.611 INFO [render] picture fill is now Fit
+  1790607225.611 INFO [param] 0 parameters have a driver
+  1790607225.622 INFO [render] render clock on 'BenQ PD3200U'
+  1790607225.634 INFO [midi] connected 1 MIDI source(s): MPK mini 3
+  1790607225.634 INFO [render] render clock started
+  1790607225.634 INFO [app] main window built at 1766x970
+  1790607225.634 INFO [selfqa] audit: PASS  the main window refuses full screen — fullScreenNone is set
+  1790607225.634 INFO [selfqa] audit: PASS  the main window can still be maximised — the zoom button is enabled, and with fullScreenNone set it zooms rather than going full screen
+  1790607225.635 INFO [selfqa] audit: PASS  maximising fills the screen rather than best-fitting the content — standard frame 1920x1055, visible frame 1920x1055
+  1790607225.635 INFO [selfqa] audit: PASS  no panel header hides its panel and leaves the cell reserved — 6 headers collapse their group, 10 are deliberately inert
+  1790607225.635 INFO [selfqa] audit: PASS  no label in the output bar is cut off — every label fits
+  1790607225.636 INFO [selfqa] audit: PASS  no modulation badge is cut off — MIDI, AUD and LFO all fit in both chains
+  1790607225.636 INFO [selfqa] audit: PASS  no control is enabled but unwired — every enabled control has an action
+  1790607225.636 INFO [selfqa] audit: PASS  the interface has controls at all — 1407 found

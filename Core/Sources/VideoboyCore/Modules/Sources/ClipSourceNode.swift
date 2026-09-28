@@ -4,19 +4,18 @@
 //  Purpose : One of A/B/C/D. Owns the playhead, the loop modes, the musical step
 //            playback, the in/out points and the pre-decode damage — everything about
 //            WHEN a frame is shown. What turns bytes into a picture is behind
-//            `ClipDecoding`, so DV and ordinary video share all of this rather than
-//            being two source modules with two sets of playback bugs.
+//            `ClipDecoding`, so MPEG streams and ordinary video share all of this
+//            rather than being two source modules with two sets of playback bugs.
 //  Inputs  : a media file, a param registry, and the render context's musical clock.
 //  Outputs : one `MTLTexture` per frame, plus the last decoded `ImageBuffer` for
 //            headless checks.
-//  Connects: ClipDecoding (DV or AVFoundation), DIFCorruptor via the DV decoder,
-//            Scheduler (beat-synced reseeds), the source panels.
+//  Connects: ClipDecoding (the MPEG bitstream decoder, AVFoundation, image
+//            sequences), Scheduler (beat-synced reseeds), the source panels.
 //  Extend  : a new container is a new `ClipDecoding`, not a new node. Playback rules
 //            added here are then true of every format at once, which is the point.
 //
-//  It is still named for clips rather than for DV because it is no longer about DV:
-//  the wedge lives in `DVClipDecoder`, where it can only be applied to bytes that can
-//  carry it.
+//  The wedge lives in the decoder (MPEGStreamDecoder), where it can only be applied
+//  to bytes that can carry it.
 //
 import Foundation
 import Metal
@@ -146,16 +145,17 @@ public enum LoopMode: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// Plays a DV file into the render graph, corrupting it before decode.
+/// Plays a clip into the render graph, damaging its bitstream before decode when it
+/// has one (MPEG).
 public final class ClipSourceNode: Node, DataEffectProvider {
 
     public let identifier: String
     public let kind: NodeKind = .source
 
-    /// Decoding a DV frame is not instantaneous, and the mixer must compensate for
-    /// it when scheduling a cut so the result lands on the beat (SPEC 4b). One frame
-    /// is measured-conservative: DV decode runs well under a frame period, but the
-    /// upload and composite that follow it occupy the rest of the frame.
+    /// Decoding a frame is not instantaneous, and the mixer must compensate for it
+    /// when scheduling a cut so the result lands on the beat (SPEC 4b). One frame is
+    /// measured-conservative: decode runs ahead on the prefetcher, but the upload and
+    /// composite that follow it occupy the rest of the frame.
     public let latencyInFrames = 1
 
     public var parameters: [Parameter] {
@@ -190,9 +190,10 @@ public final class ClipSourceNode: Node, DataEffectProvider {
 
     /// What is decoding the loaded clip, or nil when nothing is loaded.
     ///
-    /// DV for the wedge, AVFoundation for everything else. Which one is in use is
-    /// the only thing that differs between a .dv and a .mov here — the playhead, the
-    /// loop modes, the musical stepping and the in/out points are the same code.
+    /// The MPEG bitstream decoder for the wedge, AVFoundation for everything else.
+    /// Which one is in use is the only thing that differs between a .m2v and a .mov
+    /// here — the playhead, the loop modes, the musical stepping and the in/out points
+    /// are the same code.
     public private(set) var clipDecoder: ClipDecoding?
     /// Decodes ahead of the playhead, off the main thread. Owns every DECODE of
     /// `clipDecoder`; the node reads only the decoder's fixed facts directly.
@@ -444,14 +445,12 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         if isSequence {
             opened = try? ImageSequenceDecoder(folder: url)
         } else {
-            // DV to the DV decoder, the MPEG families to the bitstream decoder (the
-            // wedge needs the packet), everything else to AVFoundation — see
-            // ClipDecoders. A .dv that will not open is NOT retried as ordinary video:
-            // it would then play without the effects that are the reason to use DV.
+            // The MPEG families to the bitstream decoder (the wedge needs the packet),
+            // everything else to AVFoundation — see ClipDecoders.
             opened = ClipDecoders.open(url, canvas: canvas, knownFrameCount: knownFrameCount)
         }
         guard let decoder = opened, decoder.frameCount > 0 else {
-            Log.error(.dv, "\(label) could not load \(url.lastPathComponent)")
+            Log.error(.clip, "\(label) could not load \(url.lastPathComponent)")
             return PreparedClip(url: url, decoder: nil, prefetcher: nil, isSequence: isSequence)
         }
         // The first frames start decoding now, on the prefetcher's own queue, so the
@@ -522,14 +521,14 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             // honest default; the STEP button walks either way from it. A video file
             // is untouched by this — `.continuous` is the right reading of one.
             self.timing = .stepped(subdivision: .quarter, frames: 1)
-            Log.info(.dv, "\(identifier) loaded \(prepared.url.lastPathComponent): "
+            Log.info(.clip, "\(identifier) loaded \(prepared.url.lastPathComponent): "
                 + "\(decoder.frameCount) photographs, one per 1/4 note")
             return true
         }
         self.isPlayingBackwards = false
         self.textureFrameIndex = -1
         self.playbackRange = nil
-        Log.info(.dv, "\(identifier) loaded \(prepared.url.lastPathComponent) "
+        Log.info(.clip, "\(identifier) loaded \(prepared.url.lastPathComponent) "
             + "(\(decoder.dataEffectFamily.displayName) data effects)")
         return true
     }
@@ -564,7 +563,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         texture = nil
         textureFrameIndex = -1
         playbackRange = nil
-        Log.info(.dv, "\(identifier) ejected")
+        Log.info(.clip, "\(identifier) ejected")
     }
 
     /// Steps the playhead if a subdivision boundary has been crossed since the last one.
@@ -624,7 +623,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             break
         case .atOut:
             isPlaying = false
-            Log.info(.dv, "\(identifier) reached the end of its clip (one shot)")
+            Log.info(.clip, "\(identifier) reached the end of its clip (one shot)")
             onReachedEnd?()
         case .atIn:
             // Running backwards into the in point is equally "finished".
@@ -805,14 +804,14 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             // repetition told nobody anything and cost a syscall a frame.
             if !isHoldingLastPicture {
                 isHoldingLastPicture = true
-                Log.warn(.dv, "\(identifier) frame \(frameIndex) produced no picture; "
+                Log.warn(.clip, "\(identifier) frame \(frameIndex) produced no picture; "
                     + "holding the last one (further frames will not be logged)")
             }
             return texture
         }
         if isHoldingLastPicture {
             isHoldingLastPicture = false
-            Log.info(.dv, "\(identifier) is decoding again")
+            Log.info(.clip, "\(identifier) is decoding again")
         }
 
         lastImage = image
@@ -826,7 +825,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     }
 
     /// The uploaded picture as the canvas needs it: untouched when it already is the
-    /// canvas's size and shape (DV on an SD canvas — the common case costs nothing),
+    /// canvas's size and shape (an SD clip on an SD canvas costs nothing),
     /// otherwise fitted, upright, by one GPU pass.
     private func conformed(
         _ uploaded: MTLTexture, decoder: ClipDecoding, metal: MetalContext, renderContext: RenderContext
@@ -869,9 +868,6 @@ public final class ClipSourceNode: Node, DataEffectProvider {
             corruption.amount = amount
         }
         if let mode = registry.value(slot: identifier, code: .corruptMode) {
-            corruption.mode = CorruptionMode.from(normalised: mode)
-            // Kept alongside, so a family with a different mode list reads the
-            // fader rather than the DV enum it happens to have been quantised to.
             corruption.modePosition = mode
         }
         if let speed = registry.value(slot: identifier, code: .playbackSpeed) {

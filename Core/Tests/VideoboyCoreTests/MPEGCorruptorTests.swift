@@ -1,7 +1,7 @@
 //
 //  MPEGCorruptorTests.swift — the MPEG half of the wedge, on a real bitstream.
 //
-//  The DV corruptor has had tests since Phase 1. These are the equivalent for MPEG,
+//  The MPEG wedge's tests,
 //  and they are checked against a genuine MPEG-2 elementary stream because the whole
 //  feature is about real bitstream structure — a synthetic buffer would prove the
 //  arithmetic and nothing about whether the format was understood.

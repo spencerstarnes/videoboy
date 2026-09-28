@@ -3,15 +3,15 @@
 //
 //  Purpose : Data effects are not general effects. They rewrite a *compressed
 //            bitstream* before it is decoded, so what is available depends entirely
-//            on what codec is carrying the picture. DV has DIF blocks; MPEG has
-//            GOPs and motion vectors; a PNG or a generator has no bitstream at all
-//            and can offer nothing.
+//            on what codec is carrying the picture. MPEG has GOPs and motion
+//            vectors; a PNG or a generator has no bitstream at all and can offer
+//            nothing.
 //  Inputs  : a media file, or a bus's interchange setting.
 //  Outputs : a family, and the effects that family provides.
 //  Connects: ClipSourceNode and BusCodecNode declare their family; the UI shows the
 //            matching stack, or hides it entirely when there is none.
-//  Extend  : adding MPEG means adding its transforms and flipping `isImplemented`.
-//            Do not add a family that has no bitstream — that is what `.none` is for.
+//  Extend  : a new family adds its transforms and flips `isImplemented`. Do not add
+//            a family that has no bitstream — that is what `.none` is for.
 //
 
 import Foundation
@@ -21,15 +21,12 @@ public enum DataEffectFamily: String, CaseIterable, Codable, Sendable {
     /// No compressed bitstream: stills, generators, raw or already-decoded video.
     /// There is nothing to corrupt, and the UI hides the data stack entirely.
     case none
-    /// DV — fixed-size DIF blocks, intra-frame.
-    case dv
     /// MPEG family — GOPs, motion vectors, reference frames.
     case mpeg
 
     public var displayName: String {
         switch self {
         case .none: "None"
-        case .dv: "DV"
         case .mpeg: "MPEG"
         }
     }
@@ -38,7 +35,6 @@ public enum DataEffectFamily: String, CaseIterable, Codable, Sendable {
     public var isImplemented: Bool {
         switch self {
         case .none: true
-        case .dv: true
         case .mpeg: true
         }
     }
@@ -48,15 +44,6 @@ public enum DataEffectFamily: String, CaseIterable, Codable, Sendable {
         switch self {
         case .none:
             return []
-        case .dv:
-            return CorruptionMode.allCases.map { mode in
-                DataEffectDescriptor(
-                    identifier: mode.rawValue,
-                    displayName: DataEffectFamily.dvDisplayName(for: mode),
-                    family: .dv,
-                    isImplemented: true
-                )
-            }
         case .mpeg:
             return MPEGCorruptionMode.allCases.map { mode in
                 DataEffectDescriptor(
@@ -69,33 +56,19 @@ public enum DataEffectFamily: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    /// Readable names for the DV corruption modes.
-    private static func dvDisplayName(for mode: CorruptionMode) -> String {
-        switch mode {
-        case .shuffleBlocks: "Block Shuffle"
-        case .duplicateBlocks: "Block Smear"
-        case .dropBlocks: "Block Dropout"
-        case .flipCoefficients: "Coefficient Flip"
-        case .swapSequences: "Sequence Swap"
-        case .holdSequences: "Sequence Hold"
-        }
-    }
-
     /// Identifies a family from a file's extension.
     ///
     /// Extension rather than content sniffing, deliberately: this decides what the
     /// interface offers, and being wrong in the safe direction (offering nothing)
-    /// is better than promising DV effects for a file that turns out not to be DV.
+    /// is better than promising MPEG effects for a file that turns out not to be MPEG.
     /// The source node confirms the real answer when it actually opens the file.
     public static func forMediaFile(at url: URL) -> DataEffectFamily {
         switch url.pathExtension.lowercased() {
-        case "dv":
-            return .dv
         case "m2v", "mpg", "mpeg", "ts", "m4v":
             return .mpeg
         case "mov", "mp4":
             // A QuickTime or MP4 container usually holds an MPEG-family stream, but
-            // it can hold anything — ProRes, DV, raw. Until the demuxer reports what
+            // it can hold anything — ProRes, H.264, raw. Until the demuxer reports what
             // is really inside, promising MPEG effects would be a guess.
             return .none
         default:

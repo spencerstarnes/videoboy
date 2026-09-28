@@ -29,19 +29,6 @@ enum SetupChoices {
     static let frameRates: [(title: String, available: Bool)] = [
         ("29.97", true), ("30", false), ("25", false), ("24", false), ("23.976", false)
     ]
-    /// Copy + Optimize presets (0.4.10); Custom is present and disabled until built.
-    static let optimizePresetItems: [(title: String, available: Bool)] = [
-        (OptimizePreset.performance.displayName, true),
-        (OptimizePreset.compact.displayName, true),
-        ("Custom", false)
-    ]
-    static let optimizePresets = optimizePresetItems.map(\.title)
-
-    /// The preset at a pop-up index (nil for Custom / out of range).
-    static func optimizePreset(at index: Int) -> OptimizePreset? {
-        index == 0 ? .performance : (index == 1 ? .compact : nil)
-    }
-
     /// Why SD NTSC 29.97 is preselected, in one line (proposal §8).
     static let canvasReason = "SD NTSC 29.97 is the reference: the bitstream effects and "
         + "the analog output are built for it. Other canvases arrive in 0.4.11."
@@ -189,11 +176,6 @@ extension PreferencesWindowController {
     // MARK: - Optimize
 
     func makeOptimizePane() -> NSView {
-        let preset = SetupChoices.popUp(SetupChoices.optimizePresetItems)
-        preset.target = self
-        preset.action = #selector(optimizePresetChanged(_:))
-        preset.selectItem(at: store.preferences.optimizePreset == OptimizePreset.compact.rawValue ? 1 : 0)
-        preset.setAccessibilityIdentifier("optimize-preset")
         let useOptimized = Controls.toggle(on: store.preferences.usesOptimizedMedia, target: self,
                                            action: #selector(useOptimizedChanged(_:)))
         let location = LocationRow(
@@ -203,21 +185,14 @@ extension PreferencesWindowController {
         return Controls.column([
             header(.optimize),
             spacer(14),
-            field("Preset", preset),
             field("Use optimized media", useOptimized),
             location,
             spacer(8),
-            Controls.note("Copy + Optimize (Import mode, COPY) converts each copied clip to the "
-                + "SD canvas: DV keeps the DV wedge; MPEG-2 GOP 6 keeps the MPEG wedge at a third "
-                + "of the size. The original stays the library's clip; the optimized file is "
+            Controls.note("Copy + Optimize (Import mode, COPY) converts each copied clip to "
+                + "MPEG-2 GOP 6 on the SD canvas, which the bitstream effects work on. The original stays the library's clip; the optimized file is "
                 + "linked to it and played in its place. A missing optimized file falls back to "
                 + "the original.", width: Self.noteWidth)
         ], spacing: 8)
-    }
-
-    @objc func optimizePresetChanged(_ sender: NSPopUpButton) {
-        guard let preset = SetupChoices.optimizePreset(at: sender.indexOfSelectedItem) else { return }
-        store.preferences.optimizePreset = preset.rawValue
     }
 
     @objc func useOptimizedChanged(_ sender: NSSwitch) {

@@ -1,9 +1,8 @@
 //
 //  MPEGFormat.swift — just enough MPEG-2 structure to damage it on purpose.
 //
-//  Purpose : The wedge is bitstream manipulation of the DV *and MPEG* families
-//            (CLAUDE.md, SPEC 5). DV has had a corruptor since Phase 1; this is the
-//            structure the MPEG one needs. It is deliberately not a decoder — it
+//  Purpose : The wedge is bitstream manipulation of the MPEG family (CLAUDE.md,
+//            SPEC 5); this is the structure its corruptor needs. It is deliberately not a decoder — it
 //            finds the boundaries that matter and nothing else, because everything
 //            past those boundaries is libavcodec's job.
 //  Inputs  : MPEG-2 elementary-stream bytes.

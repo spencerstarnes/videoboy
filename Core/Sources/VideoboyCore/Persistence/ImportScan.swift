@@ -40,7 +40,7 @@ public enum ImportScan {
 
     /// What this build can open.
     public static let playableExtensions: Set<String> = [
-        "dv", "mov", "mp4", "m4v", "m2v", "mpg", "mpeg", "ts", "m2t", "m2ts"
+        "mov", "mp4", "m4v", "m2v", "mpg", "mpeg", "ts", "m2t", "m2ts"
     ]
 
     /// How deep a dropped folder is walked: deep enough for year/shoot/reel filing,

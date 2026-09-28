@@ -105,8 +105,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var announcesAdvanceFallback: Bool = true
     /// Play a clip's linked optimized file when there is one (0.4.10, proposal §5).
     public var usesOptimizedMedia: Bool = true
-    /// What Copy + Optimize writes ("performance" = DV, "compact" = MPEG-2 GOP 6).
-    public var optimizePreset: String = "performance"
+    /// What Copy + Optimize writes. Only "compact" (MPEG-2 GOP 6) exists; any other
+    /// stored value reads as it.
+    public var optimizePreset: String = "compact"
     /// Templates opened or saved, newest first (File ▸ Open Recent).
     public var recentTemplates: [String] = []
 
@@ -128,7 +129,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var previewFill: PreviewFill = .fit
 
     /// Every live source the person has added in Settings — cameras, captured
-    /// windows, IP cameras, DV decks. See `ConfiguredSource`.
+    /// windows, IP cameras. See `ConfiguredSource`.
     ///
     /// Replaces what used to be a single `captureDeviceName: String?`. That shape
     /// could remember at most one camera and nothing else; this remembers any number
@@ -219,7 +220,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         advanceFallback = decode(.advanceFallback, [String: ABRollFallback]())
         announcesAdvanceFallback = decode(.announcesAdvanceFallback, true)
         usesOptimizedMedia = decode(.usesOptimizedMedia, true)
-        optimizePreset = decode(.optimizePreset, "performance")
+        // Anything but a known preset reads as the one that exists.
+        let storedPreset = decode(.optimizePreset, "compact")
+        optimizePreset = OptimizePreset(rawValue: storedPreset)?.rawValue ?? OptimizePreset.compact.rawValue
         recentTemplates = decode(.recentTemplates, [String]())
         autoSave = decode(.autoSave, AutoSaveCadence.never)
         defaultClockSource = decode(.defaultClockSource, "Internal")

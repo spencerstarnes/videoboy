@@ -363,7 +363,7 @@ public enum FrameAssertions {
     /// `differingPixelFraction` compares luma, which is right for motion, corruption
     /// and cuts — and blind to anything that changes only colour. A luma-weighted
     /// desaturation preserves luma by definition, so black-and-white reads as "no
-    /// change" to it; so do chroma bleed and DV's 4:1:1 subsampling. Those are real
+    /// change" to it; so do chroma bleed and 4:1:1 subsampling. Those are real
     /// effects and the harness has to be able to see them.
     public static func differingColourFraction(
         _ first: ImageBuffer, _ second: ImageBuffer, threshold: Double = 8.0

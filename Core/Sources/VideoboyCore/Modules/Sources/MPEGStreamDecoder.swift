@@ -11,7 +11,7 @@
 //  Outputs : a decoded `ImageBuffer`, usually a wrong one on purpose.
 //  Connects: ClipSourceNode through `ClipDecoding`, MPEGCorruptor, MPEGFormat.
 //  Extend  : another long-GOP family (MPEG-4, H.264) is another decoder here with its
-//            own corruptor. The playback rules stay in the node, as they do for DV.
+//            own corruptor. The playback rules stay in the node.
 //
 //  On decoding a damaged stream: libavcodec complains loudly and keeps going, which
 //  is exactly what is wanted. Its log is silenced for this path — the errors are the
@@ -43,7 +43,7 @@ public final class MPEGStreamDecoder: ClipDecoding {
     public private(set) var frameRate = StandardDefinition.frameRate
 
     /// MPEG footage offers the MPEG data effects. This is what makes the source panel
-    /// show the frame-drop and reference-hold controls rather than the DV ones.
+    /// show the frame-drop, motion-vector and reference-hold controls.
     public var dataEffectFamily: DataEffectFamily { .mpeg }
 
     private var cache: [Int: ImageBuffer] = [:]

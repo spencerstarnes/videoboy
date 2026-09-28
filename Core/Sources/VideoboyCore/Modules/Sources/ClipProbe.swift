@@ -42,14 +42,6 @@ public enum ClipProbe {
             return ClipFacts(duration: Double(count) / 30.0, frameCount: count, frameRate: 30)
         }
         let ext = url.pathExtension.lowercased()
-        if ext == "dv" {
-            let path = url.resolvingSymlinksInPath().path
-            guard let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int,
-                  let standard = DVStandard.inferred(fromByteCount: size) else { return nil }
-            let count = size / standard.frameBytes
-            return ClipFacts(duration: Double(count) / standard.frameRate,
-                             frameCount: count, frameRate: standard.frameRate)
-        }
         if ClipDecoders.mpegExtensions.contains(ext), let decoder = MPEGStreamDecoder(url: url),
            decoder.frameCount > 0 {
             return ClipFacts(duration: Double(decoder.frameCount) / decoder.frameRate,

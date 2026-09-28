@@ -1,0 +1,30 @@
+check:    perf/modes
+verdict:  PASS
+when:     2026-09-28T17:14:17Z
+core:     0.4.10
+
+notes:
+  1460x912 unstable without the bar: (726.0, 33.0, 98.0, 11.0) / (726.0, 33.0, 98.0, 11.0) | (57.0, 111.40740740740739, 67.0, 22.0) / (57.0, 111.40740740740739, 67.0, 22.0) | (65.0, 114.5, 39.0, 14.0) / (65.0, 114.5, 39.0, 14.0) | (124.0, 112.40740740740739, 52.0, 17.0) / (124.0, 112.40740740740739, 52.0, 17.0)
+  1920x1100 unstable without the bar: (287.0, 398.0, 0.0, 9.0) / (287.0, 398.0, 394.0, 9.0) | (289.0, 396.0, 31.0, 13.0) / (683.0, 396.0, 31.0, 13.0) | (322.0, 398.0, 394.0, 9.0) / (716.0, 398.0, 0.0, 9.0) | (758.6666666666667, 398.0, 0.0, 9.0) / (758.6666666666667, 398.0, 0.0, 9.0)
+  1200x800 unstable without the bar: (596.0, 20.0, 46.0, 11.0) / (596.0, 20.0, 46.0, 11.0) | (57.0, 87.33333333333337, 34.0, 22.0) / (57.0, 87.33333333333337, 34.0, 22.0) | (65.0, 90.5, 7.0, 14.0) / (65.0, 90.5, 7.0, 14.0) | (91.0, 88.33333333333337, 52.0, 17.0) / (91.0, 88.33333333333337, 52.0, 17.0)
+  baseline, no switching, 10 s: 300 frames, 1 dropped, worst tick 18.41 ms
+  longest main-thread stretch after switching to: Import 14.4 ms, Settings 15.4 ms, VJ 11.6 ms
+
+assertions (17/17 passed):
+  PASS  1460x912: the strip is 32 pt with the mode bar, 22 pt without — 32.0 / 22.0
+  PASS  1460x912: no toolbar or grid control moves except by the strip change — 503 controls × 6/6 shells; 0 moved; 16 vary between identical shells (pre-existing)
+  PASS  1920x1100: the strip is 32 pt with the mode bar, 22 pt without — 32.0 / 22.0
+  PASS  1920x1100: no toolbar or grid control moves except by the strip change — 503 controls × 6/6 shells; 0 moved; 6 vary between identical shells (pre-existing)
+  PASS  1200x800: the strip is 32 pt with the mode bar, 22 pt without — 32.0 / 22.0
+  PASS  1200x800: no toolbar or grid control moves except by the strip change — 503 controls × 6/5 shells; 0 moved; 20 vary between identical shells (pre-existing)
+  PASS  every mode-bar segment is reached by hitTest at its centre — 3 of 3
+  PASS  clicking a segment switches to its mode — 3 of 3
+  PASS  ⌘1 / ⌘2 / ⌘3 switch modes through the View menu — 3 of 3; items ["Import ⌘1", "VJ ⌘2", "Settings ⌘3"]
+  PASS  each mode shows its own view over the grid (hitTest lands in it); VJ shows the grid — 3 of 3
+  PASS  back in VJ, every grid control is exactly where it was — 1331 controls
+  PASS  switching modes never interrupts the show (20 switches in 10 s) — 29.98 frames/s, 0 dropped (1 in the same time without switching), worst tick 13.92 ms of 302
+  PASS  no switch holds the main thread for half a frame (tick included) — longest 15.4 ms
+  PASS  Settings mode shows every Preferences pane, Project first — 13 tabs, embedded in the main window: true
+  PASS  Project: SD NTSC 720×480 selected, other canvases present and disabled — SD NTSC 720×480; others disabled true
+  PASS  the setup assistant finishes on Continue ▸ … ▸ Done with every default — 5 presses; setupCompleted true; media /Users/spencerstarnes/Movies/Videoboy/Media
+  PASS  the setup assistant is a sheet, never an app-modal window — no modal window

@@ -26,11 +26,9 @@ public enum ClipDecoders {
     /// Opens a video file with the decoder playback uses for it, or nil.
     ///
     /// - Parameter canvas: decode no larger than this canvas needs; nil for full size.
-    ///   DV is always SD and ignores it.
     /// - Parameter knownFrameCount: from the catalog; saves an MPEG stream a full scan.
     public static func open(_ url: URL, canvas: CanvasGeometry? = nil, knownFrameCount: Int? = nil) -> ClipDecoding? {
         let ext = url.pathExtension.lowercased()
-        if ext == "dv" { return try? DVClipDecoder(url: url) }
         if mpegExtensions.contains(ext) {
             return MPEGStreamDecoder(url: url, canvas: canvas, knownFrameCount: knownFrameCount)
                 ?? AVFClipDecoder(url: url, canvas: canvas)
@@ -40,17 +38,8 @@ public enum ClipDecoders {
 
     /// A clip's length in seconds, or nil when it cannot be read.
     ///
-    /// Opens the file, so call it off the main thread. DV is measured from its size
-    /// alone — frames are a fixed number of bytes — rather than by opening a reader,
-    /// which loads the whole file into memory.
+    /// Opens the file, so call it off the main thread.
     public static func duration(of url: URL) -> Double? {
-        if url.pathExtension.lowercased() == "dv" {
-            // The file's size, not a symlink's: samples/ and many media folders link.
-            let path = url.resolvingSymlinksInPath().path
-            guard let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int,
-                  let standard = DVStandard.inferred(fromByteCount: size) else { return nil }
-            return Double(size / standard.frameBytes) / standard.frameRate
-        }
         guard let decoder = open(url), decoder.frameCount > 0, decoder.frameRate > 0 else { return nil }
         return Double(decoder.frameCount) / decoder.frameRate
     }

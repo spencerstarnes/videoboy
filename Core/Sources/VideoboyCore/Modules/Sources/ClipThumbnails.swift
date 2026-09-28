@@ -14,7 +14,7 @@
 //  appeared were what froze large imports (audit 09-26 R1). The cache is LRU-bounded.
 //
 //  On the cache: a fixed number of evenly spaced positions per clip rather than a
-//  frame per pixel. A thumbnail is about 80 pixels wide and decoding 80 DV frames to
+//  frame per pixel. A thumbnail is about 80 pixels wide and decoding 80 frames to
 //  cross it would be both slow and pointless — the eye reads a filmstrip of a dozen
 //  frames as motion perfectly well, and every position afterwards is free.
 //
@@ -25,7 +25,7 @@ import Foundation
 public final class ClipThumbnails {
 
     /// Shared cache. Thumbnails are the same wherever they are shown, and decoding
-    /// them once per panel would mean three copies of every DV frame in the window.
+    /// them once per panel would mean three copies of every frame in the window.
     public static let shared = ClipThumbnails()
 
     /// How many positions are sampled across a clip.
@@ -129,7 +129,7 @@ public final class ClipThumbnails {
         if let cached = cachedFrame(key) { return cached }
         guard let decoded = decode(url: url, step: key.step) else {
             lock.lock(); failed.insert(url.path); lock.unlock()
-            Log.warn(.dv, "no thumbnail for \(url.lastPathComponent)")
+            Log.warn(.clip, "no thumbnail for \(url.lastPathComponent)")
             return nil
         }
         lock.lock()

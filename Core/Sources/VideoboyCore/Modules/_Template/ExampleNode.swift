@@ -12,8 +12,7 @@
 //  Inputs  : whatever the graph's edges feed it (none, for a source).
 //  Outputs : one texture.
 //  Connects: the `Node` protocol, which is the app's ONE extension point.
-//  Extend  : see docs/ADD-A-MODULE.md for the recipe, worked through with the DV
-//            corruptor as a real example.
+//  Extend  : see docs/ADD-A-MODULE.md for the recipe.
 //
 //  ─────────────────────────────────────────────────────────────────────────────
 //  THE FOUR THINGS TO FILL IN

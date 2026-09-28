@@ -1,7 +1,7 @@
 //
 //  ClipOptimizerTests.swift — Copy + Optimize's conversion (0.4.10).
 //
-//  An HD 16:9 clip becomes NTSC DV that the app's own DV path reads, at the canvas
+//  An HD 16:9 clip becomes SD MPEG-2 that the app's own MPEG path reads, at the canvas
 //  rate, letterboxed rather than stretched; MPEG-2 output reads through the MPEG
 //  decoder; a 25 fps clip is conformed to 29.97.
 //
@@ -29,13 +29,13 @@ final class ClipOptimizerTests: XCTestCase {
         return url
     }
 
-    func testHDBecomesLetterboxedNTSCDVAtTheCanvasRate() throws {
+    func testHDBecomesLetterboxedSDMPEG2AtTheCanvasRate() throws {
         let source = try fixture("hd-h264-2997.mov")
-        let output = directory.appendingPathComponent("out.dv")
-        let frames = try ClipOptimizer.optimize(source, to: output, preset: .performance)
+        let output = directory.appendingPathComponent("out.m2v")
+        let frames = try ClipOptimizer.optimize(source, to: output, preset: .compact)
         XCTAssertEqual(frames, 600, accuracy: 2, "20 s at 29.97")
-        let decoder = try XCTUnwrap(ClipDecoders.open(output), "the app reads its own DV")
-        XCTAssertEqual(decoder.frameCount, frames)
+        let decoder = try XCTUnwrap(ClipDecoders.open(output), "the app reads its own MPEG-2")
+        XCTAssertEqual(decoder.frameCount, frames, accuracy: 2)
         let picture = try XCTUnwrap(decoder.image(at: 100, corruption: .inert))
         XCTAssertEqual(picture.width, 720)
         XCTAssertEqual(picture.height, 480)
@@ -55,12 +55,12 @@ final class ClipOptimizerTests: XCTestCase {
 
     func test25fpsIsConformedTo2997() throws {
         let source = try fixture("hd-h264-25.mov")
-        let output = directory.appendingPathComponent("conform.dv")
-        let frames = try ClipOptimizer.optimize(source, to: output, preset: .performance)
+        let output = directory.appendingPathComponent("conform.m2v")
+        let frames = try ClipOptimizer.optimize(source, to: output, preset: .compact)
         XCTAssertEqual(frames, 599, accuracy: 2, "20 s of 25 fps becomes 20 s of 29.97")
     }
 
-    func testCompactWritesMPEG2TheWedgeReads() throws {
+    func testTheOutputIsMPEG2TheWedgeReads() throws {
         let source = try fixture("motion.mov")
         let output = directory.appendingPathComponent("out.m2v")
         let frames = try ClipOptimizer.optimize(source, to: output, preset: .compact)
@@ -72,8 +72,8 @@ final class ClipOptimizerTests: XCTestCase {
 
     func testCancelStops() throws {
         let source = try fixture("motion.mov")
-        let output = directory.appendingPathComponent("cancel.dv")
-        XCTAssertThrowsError(try ClipOptimizer.optimize(source, to: output, preset: .performance,
+        let output = directory.appendingPathComponent("cancel.m2v")
+        XCTAssertThrowsError(try ClipOptimizer.optimize(source, to: output, preset: .compact,
                                                          isCancelled: { true }))
     }
 }

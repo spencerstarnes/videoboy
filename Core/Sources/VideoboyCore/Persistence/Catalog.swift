@@ -32,7 +32,7 @@ public struct CatalogClip: Equatable, Sendable, Codable {
     /// A bookmark, so a moved or renamed file can be found again (relink, 0.4.9).
     public var bookmark: Data?
     public var name: String
-    /// DV, MOV, MPG, SEQ…
+    /// MOV, MPG, SEQ…
     public var badge: String
     public var bin: String?
     public var duration: Double?

@@ -1,6 +1,6 @@
 check:    perf/bins
 verdict:  PASS
-when:     2026-09-28T14:26:09Z
+when:     2026-09-28T15:45:25Z
 core:     0.4.10
 
 assertions (8/8 passed):

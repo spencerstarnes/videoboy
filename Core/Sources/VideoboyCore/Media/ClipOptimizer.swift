@@ -3,9 +3,9 @@
 //
 //  Purpose : Copy + Optimize's conversion (proposal §7). Decodes with whatever reads
 //            the source (AVFoundation / VideoToolbox for camera and phone formats, the
-//            bitstream decoders for DV and MPEG), turns it upright, FITS it into the
+//            bitstream decoder for MPEG), turns it upright, FITS it into the
 //            4:3 SD canvas (letterbox / pillarbox, never stretched), conforms it to
-//            29.97 by time, and encodes DV (Performance) or MPEG-2 GOP 6 (Compact).
+//            29.97 by time, and encodes MPEG-2 GOP 6 — which keeps the MPEG wedge.
 //  Inputs  : a source URL, an output URL, a preset.
 //  Outputs : the file (written by the caller's rules — see OptimizeQueue), a frame count.
 //  Connects: `Videoboy --optimize` (the out-of-process helper), which runs this.
@@ -17,21 +17,15 @@
 import Accelerate
 import Foundation
 
-/// What Copy + Optimize writes.
+/// What Copy + Optimize writes. One format; the raw value "compact" is what saved
+/// preferences and the helper's command line use.
 public enum OptimizePreset: String, CaseIterable, Sendable {
-    /// DV on the SD NTSC canvas: keeps the DV wedge.
-    case performance
-    /// MPEG-2 GOP 6, no B-frames, 6 Mb/s: keeps the MPEG wedge, a third of DV's size.
+    /// MPEG-2 GOP 6, no B-frames, 6 Mb/s, on the SD canvas: keeps the MPEG wedge.
     case compact
 
-    public var displayName: String {
-        switch self {
-        case .performance: "Performance (DV)"
-        case .compact: "Compact (MPEG-2 GOP 6)"
-        }
-    }
+    public var displayName: String { "MPEG-2 (SD, GOP 6)" }
 
-    public var fileExtension: String { self == .performance ? "dv" : "m2v" }
+    public var fileExtension: String { "m2v" }
 }
 
 public enum ClipOptimizer {
@@ -74,11 +68,9 @@ public enum ClipOptimizer {
         }
         defer { try? handle.close() }
 
-        let dv: DVEncoder?
-        let mpeg: MPEG2Encoder?
+        let mpeg: MPEG2Encoder
         do {
-            dv = preset == .performance ? try DVEncoder(standard: .ntsc) : nil
-            mpeg = preset == .compact ? try MPEG2Encoder() : nil
+            mpeg = try MPEG2Encoder()
         } catch {
             throw OptimizeError.encoder("\(error)")
         }
@@ -94,17 +86,11 @@ public enum ClipOptimizer {
                                 displayAspect: decoder.displayAspectRatio)
                 lastSource = sourceIndex
             }
-            let bytes: [UInt8]
-            if let dv {
-                guard let frame = dv.encode(image: canvas) else { throw OptimizeError.encoder("DV frame \(index)") }
-                bytes = frame
-            } else {
-                bytes = mpeg?.encode(canvas) ?? []
-            }
+            let bytes = mpeg.encode(canvas)
             if !bytes.isEmpty { handle.write(Data(bytes)) }
             if index % 15 == 0 || index == total - 1 { progress(index + 1, total) }
         }
-        if let mpeg { handle.write(Data(mpeg.finish())) }
+        handle.write(Data(mpeg.finish()))
         return total
     }
 

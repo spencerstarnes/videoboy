@@ -1,0 +1,83 @@
+check:    isf/trial
+verdict:  FAIL
+when:     2026-09-24T21:25:56Z
+core:     0.4.1
+
+notes:
+  41 files in /private/tmp/claude-501/-Users-spencerstarnes-dev-videoboy-perf/708b0a55-a23b-4fa2-b522-0449ea7fc24a/scratchpad/eth-unzipped
+  kinds: 41 generator
+
+assertions (39/41 passed):
+  PASS  bloom compiles and draws — generator, 3 controls, 0.26 ms at 720x480
+  PASS  bulb volumetrics compiles and draws — generator, 10 controls, 2.55 ms at 720x480
+  PASS  color fractal nayk compiles and draws — generator, 5 controls, 0.39 ms at 720x480
+  PASS  day 15 jeyko compiles and draws — generator, 44 controls, 10.84 ms at 720x480
+  PASS  deepseek r1 audiovisual compiles and draws — generator, 11 controls, 0.41 ms at 720x480
+  PASS  diatribes -water cavern mod compiles and draws — generator, 7 controls, 4.30 ms at 720x480
+  PASS  drostled compiles and draws — generator, 7 controls, 0.27 ms at 720x480
+  PASS  evvvvil dna tracer compiles and draws — generator, 9 controls, 5.67 ms at 720x480
+  PASS  evvvvil frankenslug compiles and draws — generator, 15 controls, 4.55 ms at 720x480
+  PASS  fol mod compiles and draws — generator, 6 controls, 0.46 ms at 720x480
+  PASS  Fork of 4th eye compiles and draws — generator, 4 controls, 0.32 ms at 720x480
+  PASS  fork phantom star (nikolaerceg) compiles and draws — generator, 4 controls, 1.97 ms at 720x480
+  PASS  gamma xor compiles and draws — generator, 11 controls, 2.86 ms at 720x480
+  PASS  iq - line fractal tunnel compiles and draws — generator, 7 controls, 4.40 ms at 720x480
+  PASS  julia compiles and draws — generator, 3 controls, 0.33 ms at 720x480
+  PASS  kabbalistic fractal circles compiles and draws — generator, 9 controls, 0.56 ms at 720x480
+  FAIL  kali electromagnetic politics compiles and draws — generator, 12 controls, 0.87 ms at 720x480 — frame is flat, rgba 2 1 1 255
+  PASS  kali inversion machine compiles and draws — generator, 6 controls, 0.86 ms at 720x480
+  PASS  kali liberation of the true self compiles and draws — generator, 11 controls, 0.85 ms at 720x480
+  PASS  kali psychoid mod compiles and draws — generator, 9 controls, 0.29 ms at 720x480
+  PASS  kali the artist parody compiles and draws — generator, 23 controls, 0.30 ms at 720x480
+  PASS  mrange - colorful failure compiles and draws — generator, 7 controls, 3.57 ms at 720x480
+  PASS  nayk spherical remake compiles and draws — generator, 9 controls, 0.44 ms at 720x480
+  FAIL  Neon psy compiles and draws — generator, 3 controls, 0.25 ms at 720x480 — frame is flat, rgba 0 0 0 255
+  PASS  neon psychedelic lydianlights mod compiles and draws — generator, 6 controls, 0.44 ms at 720x480
+  PASS  nested octahedron modded compiles and draws — generator, 10 controls, 4.06 ms at 720x480
+  PASS  phreax blue lotus compiles and draws — generator, 108 controls, 25.71 ms at 720x480
+  PASS  phreax butterfly effect compiles and draws — generator, 10 controls, 2.32 ms at 720x480
+  PASS  phreax hexflower compiles and draws — generator, 17 controls, 0.44 ms at 720x480
+  PASS  phreax portal compiles and draws — generator, 6 controls, 2.50 ms at 720x480
+  PASS  phreax twisted carbon compiles and draws — generator, 76 controls, 4.76 ms at 720x480
+  PASS  polyhedral compiles and draws — generator, 4 controls, 0.31 ms at 720x480
+  PASS  posthelios sky is sinus compiles and draws — generator, 10 controls, 0.63 ms at 720x480
+  PASS  rhodium fractalscape virgil compiles and draws — generator, 25 controls, 4.99 ms at 720x480
+  PASS  Rotating circles compiles and draws — generator, 3 controls, 0.23 ms at 720x480
+  PASS  spiral riders kali compiles and draws — generator, 9 controls, 3.11 ms at 720x480
+  PASS  tail of the dragon - diatribes compiles and draws — generator, 12 controls, 3.83 ms at 720x480
+  PASS  torus thingy 2 compiles and draws — generator, 15 controls, 2.87 ms at 720x480
+  PASS  Tryptamine visions (sleeplessmonk original) compiles and draws — generator, 3 controls, 0.46 ms at 720x480
+  PASS  waves compiles and draws — generator, 2 controls, 0.22 ms at 720x480
+  PASS  xor ascend compiles and draws — generator, 5 controls, 1.01 ms at 720x480
+
+recent log:
+  1790285151.105 INFO [selfqa] isf/trial: PASS  phreax blue lotus compiles and draws — generator, 108 controls, 25.71 ms at 720x480
+  1790285151.398 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/phreax butterfly effect.png
+  1790285151.416 INFO [selfqa] isf/trial: PASS  phreax butterfly effect compiles and draws — generator, 10 controls, 2.32 ms at 720x480
+  1790285151.675 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/phreax hexflower.png
+  1790285151.693 INFO [selfqa] isf/trial: PASS  phreax hexflower compiles and draws — generator, 17 controls, 0.44 ms at 720x480
+  1790285151.979 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/phreax portal.png
+  1790285151.997 INFO [selfqa] isf/trial: PASS  phreax portal compiles and draws — generator, 6 controls, 2.50 ms at 720x480
+  1790285153.076 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/phreax twisted carbon.png
+  1790285153.095 INFO [selfqa] isf/trial: PASS  phreax twisted carbon compiles and draws — generator, 76 controls, 4.76 ms at 720x480
+  1790285153.341 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/polyhedral.png
+  1790285153.360 INFO [selfqa] isf/trial: PASS  polyhedral compiles and draws — generator, 4 controls, 0.31 ms at 720x480
+  1790285153.628 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/posthelios sky is sinus.png
+  1790285153.648 INFO [selfqa] isf/trial: PASS  posthelios sky is sinus compiles and draws — generator, 10 controls, 0.63 ms at 720x480
+  1790285154.008 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/rhodium fractalscape virgil.png
+  1790285154.027 INFO [selfqa] isf/trial: PASS  rhodium fractalscape virgil compiles and draws — generator, 25 controls, 4.99 ms at 720x480
+  1790285154.273 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/Rotating circles.png
+  1790285154.293 INFO [selfqa] isf/trial: PASS  Rotating circles compiles and draws — generator, 3 controls, 0.23 ms at 720x480
+  1790285154.592 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/spiral riders kali.png
+  1790285154.611 INFO [selfqa] isf/trial: PASS  spiral riders kali compiles and draws — generator, 9 controls, 3.11 ms at 720x480
+  1790285154.933 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/tail of the dragon - diatribes.png
+  1790285154.952 INFO [selfqa] isf/trial: PASS  tail of the dragon - diatribes compiles and draws — generator, 12 controls, 3.83 ms at 720x480
+  1790285155.254 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/torus thingy 2.png
+  1790285155.273 INFO [selfqa] isf/trial: PASS  torus thingy 2 compiles and draws — generator, 15 controls, 2.87 ms at 720x480
+  1790285155.530 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/Tryptamine visions (sleeplessmonk original).png
+  1790285155.549 INFO [selfqa] isf/trial: PASS  Tryptamine visions (sleeplessmonk original) compiles and draws — generator, 3 controls, 0.46 ms at 720x480
+  1790285155.800 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/waves.png
+  1790285155.819 INFO [selfqa] isf/trial: PASS  waves compiles and draws — generator, 2 controls, 0.22 ms at 720x480
+  1790285156.079 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/isf/trial/xor ascend.png
+  1790285156.099 INFO [selfqa] isf/trial: PASS  xor ascend compiles and draws — generator, 5 controls, 1.01 ms at 720x480
+  1790285156.099 INFO [selfqa] isf/trial: kinds: 41 generator

@@ -38,7 +38,7 @@ public enum CompositePath: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// Chroma subsampling before encoding. DV is 4:1:1 on NTSC.
+/// Chroma subsampling before encoding, as the era's tape formats did.
 public enum ChromaSubsampling: String, CaseIterable, Codable, Sendable {
     case full444
     case half422

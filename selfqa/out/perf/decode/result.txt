@@ -1,52 +1,48 @@
 check:    perf/decode
 verdict:  FAIL
-when:     2026-09-26T19:25:11Z
-core:     0.4.5
+when:     2026-09-27T07:27:43Z
+core:     0.4.7
 
 notes:
-  bars.dv: open 0.8 ms, first frame 3.2 ms, steady 2.10 ms (worst 2.4), 720x480, decoder ~19 MB, cold thumbnail 2.5 ms
-  motion.dv: open 0.6 ms, first frame 3.1 ms, steady 2.52 ms (worst 2.9), 720x480, decoder ~-2 MB, cold thumbnail 2.8 ms
-  motion.m2v: open 7.3 ms, first frame 3.8 ms, steady 0.92 ms (worst 1.5), 720x480, decoder ~27 MB, cold thumbnail 9.0 ms
-  motion.mov: open 61.6 ms, first frame 13.4 ms, steady 0.92 ms (worst 3.1), 720x480, decoder ~30 MB, cold thumbnail 8.3 ms
-  hd-h264.mp4: open 4.1 ms, first frame 17.9 ms, steady 1.85 ms (worst 3.6), 720x480, decoder ~30 MB, cold thumbnail 20.5 ms
-  uhd-hevc.mov: open 5.2 ms, first frame 32.1 ms, steady 5.80 ms (worst 12.5), 720x480, decoder ~22 MB, cold thumbnail 33.4 ms
-  hd-prores.mov: open 10.1 ms, first frame 8.4 ms, steady 1.89 ms (worst 3.1), 720x480, decoder ~49 MB, cold thumbnail 12.6 ms
-  phone-portrait.mov: open 4.7 ms, first frame 17.8 ms, steady 2.10 ms (worst 23.2), 720x480, decoder ~43 MB, cold thumbnail 24.1 ms
-  sd-dv-60s.dv: open 1.3 ms, first frame 6.3 ms, steady 3.77 ms (worst 4.8), 720x480, decoder ~0 MB, cold thumbnail 4.1 ms
-  sd-mpeg2-gop15-60s.m2v: open 94.5 ms, first frame 6.3 ms, steady 1.01 ms (worst 3.5), 720x480, decoder ~3 MB, cold thumbnail 98.0 ms
+  bars.dv: open 2.6 ms, first frame 6.6 ms, steady 2.16 ms (worst 2.6), 720x480, decoder ~15 MB, cold thumbnail 2.4 ms
+  motion.dv: open 0.1 ms, first frame 3.9 ms, steady 2.63 ms (worst 3.1), 720x480, decoder ~-1 MB, cold thumbnail 2.6 ms
+  motion.m2v: open 10.1 ms, first frame 5.0 ms, steady 0.92 ms (worst 1.6), 720x480, decoder ~35 MB, cold thumbnail 9.0 ms
+  motion.mov: open 84.6 ms, first frame 13.4 ms, steady 0.61 ms (worst 2.0), 720x480, decoder ~31 MB, cold thumbnail 6.4 ms
+  D-4k-hevc.mov: could not load
+  D-4k-hevc-hvc1tag.mov: open 11.1 ms, first frame 102.7 ms, steady 4.43 ms (worst 15.3), 720x480, decoder ~61 MB, cold thumbnail 55.5 ms
 
 assertions (1/2 passed):
-  PASS  every clip decodes fast enough for four channels to share a frame — 10 clips under a quarter frame
-  FAIL  every clip opens within one frame on the main thread — slow to open: motion.mov 62 ms, sd-mpeg2-gop15-60s.m2v 95 ms (long .m2v files count their pictures at open — stored in the catalog from 0.4.7)
+  PASS  every clip decodes fast enough for four channels to share a frame — 6 clips under a quarter frame
+  FAIL  every clip opens within one frame on the main thread — slow to open: motion.mov 85 ms (long .m2v files count their pictures at open — stored in the catalog from 0.4.7)
 
 recent log:
-  1790450704.962 INFO [dv] opened uhd-hevc.mov: 300 frames at 29.97 fps, 3840x2160, decoded at 426x240
-  1790450706.730 INFO [selfqa] perf/decode: uhd-hevc.mov: open 5.2 ms, first frame 32.1 ms, steady 5.80 ms (worst 12.5), 720x480, decoder ~22 MB, cold thumbnail 33.4 ms
-  1790450706.734 INFO [dv] opened hd-prores.mov: 300 frames at 29.97 fps, 1920x1080, decoded at 854x480
-  1790450706.741 INFO [dv] bench.hd-prores.mov loaded hd-prores.mov (None data effects)
-  1790450707.037 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/decode/hd-prores.mov.png
-  1790450707.037 INFO [dv] bench.hd-prores.mov ejected
-  1790450707.038 INFO [dv] opened hd-prores.mov: 300 frames at 29.97 fps, 1920x1080, decoded at 426x240
-  1790450707.911 INFO [selfqa] perf/decode: hd-prores.mov: open 10.1 ms, first frame 8.4 ms, steady 1.89 ms (worst 3.1), 720x480, decoder ~49 MB, cold thumbnail 12.6 ms
-  1790450707.913 INFO [dv] opened phone-portrait.mov: 120 frames at 29.97 fps, 1920x1080, decoded at 1138x640, turned 270°
-  1790450707.916 INFO [dv] bench.phone-portrait.mov loaded phone-portrait.mov (None data effects)
-  1790450708.274 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/decode/phone-portrait.mov.png
-  1790450708.282 INFO [dv] bench.phone-portrait.mov ejected
-  1790450708.283 INFO [dv] opened phone-portrait.mov: 120 frames at 29.97 fps, 1920x1080, decoded at 568x320, turned 270°
-  1790450708.535 INFO [selfqa] perf/decode: phone-portrait.mov: open 4.7 ms, first frame 17.8 ms, steady 2.10 ms (worst 23.2), 720x480, decoder ~43 MB, cold thumbnail 24.1 ms
-  1790450708.537 INFO [dv] opened sd-dv-60s.dv: 1798 NTSC frames, 720x480
-  1790450708.537 INFO [dv] DV decoder ready (libavcodec 9.0.1)
-  1790450708.537 INFO [dv] bench.sd-dv-60s.dv loaded sd-dv-60s.dv (DV data effects)
-  1790450709.127 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/decode/sd-dv-60s.dv.png
-  1790450709.127 INFO [dv] bench.sd-dv-60s.dv ejected
-  1790450709.128 INFO [dv] opened sd-dv-60s.dv: 1798 NTSC frames, 720x480
-  1790450709.128 INFO [dv] DV decoder ready (libavcodec 9.0.1)
-  1790450709.165 INFO [selfqa] perf/decode: sd-dv-60s.dv: open 1.3 ms, first frame 6.3 ms, steady 3.77 ms (worst 4.8), 720x480, decoder ~0 MB, cold thumbnail 4.1 ms
-  1790450709.259 INFO [bitstream] opened sd-mpeg2-gop15-60s.m2v: 1798 MPEG frames at 25.00 fps
-  1790450709.259 INFO [dv] bench.sd-mpeg2-gop15-60s.m2v loaded sd-mpeg2-gop15-60s.m2v (MPEG data effects)
-  1790450709.433 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/decode/sd-mpeg2-gop15-60s.m2v.png
-  1790450709.435 INFO [dv] bench.sd-mpeg2-gop15-60s.m2v ejected
-  1790450709.529 INFO [bitstream] opened sd-mpeg2-gop15-60s.m2v: 1798 MPEG frames at 25.00 fps
-  1790450711.272 INFO [selfqa] perf/decode: sd-mpeg2-gop15-60s.m2v: open 94.5 ms, first frame 6.3 ms, steady 1.01 ms (worst 3.5), 720x480, decoder ~3 MB, cold thumbnail 98.0 ms
-  1790450711.274 INFO [selfqa] perf/decode: PASS  every clip decodes fast enough for four channels to share a frame — 10 clips under a quarter frame
-  1790450711.274 ERROR [selfqa] perf/decode: FAIL  every clip opens within one frame on the main thread — slow to open: motion.mov 62 ms, sd-mpeg2-gop15-60s.m2v 95 ms (long .m2v files count their pictures at open — stored in the catalog from 0.4.7)
+  1790494056.391 INFO [dv] bench.motion.dv loaded motion.dv (DV data effects)
+  1790494056.793 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/decode/motion.dv.png
+  1790494056.794 INFO [dv] bench.motion.dv ejected
+  1790494056.794 INFO [dv] opened motion.dv: 179 NTSC frames, 720x480
+  1790494056.794 INFO [dv] DV decoder ready (libavcodec 9.0.1)
+  1790494056.820 INFO [selfqa] perf/decode: motion.dv: open 0.1 ms, first frame 3.9 ms, steady 2.63 ms (worst 3.1), 720x480, decoder ~-1 MB, cold thumbnail 2.6 ms
+  1790494056.831 INFO [bitstream] opened motion.m2v: 180 MPEG frames at 25.00 fps
+  1790494056.831 INFO [dv] bench.motion.m2v loaded motion.m2v (MPEG data effects)
+  1790494056.995 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/decode/motion.m2v.png
+  1790494056.996 INFO [dv] bench.motion.m2v ejected
+  1790494057.003 INFO [bitstream] opened motion.m2v: 180 MPEG frames at 25.00 fps
+  1790494057.153 INFO [selfqa] perf/decode: motion.m2v: open 10.1 ms, first frame 5.0 ms, steady 0.92 ms (worst 1.6), 720x480, decoder ~35 MB, cold thumbnail 9.0 ms
+  1790494057.164 INFO [dv] opened motion.mov: 180 frames at 29.97 fps, 720x480, decoded at 640x480
+  1790494057.238 INFO [dv] bench.motion.mov loaded motion.mov (None data effects)
+  1790494057.350 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/decode/motion.mov.png
+  1790494057.352 INFO [dv] bench.motion.mov ejected
+  1790494057.352 INFO [dv] opened motion.mov: 180 frames at 29.97 fps, 720x480, decoded at 320x240
+  1790494057.451 INFO [selfqa] perf/decode: motion.mov: open 84.6 ms, first frame 13.4 ms, steady 0.61 ms (worst 2.0), 720x480, decoder ~31 MB, cold thumbnail 6.4 ms
+  1790494059.091 INFO [dv] opened D-4k-hevc.mov: 600 frames at 29.97 fps, 3840x2160, decoded at 854x480
+  1790494059.097 ERROR [dv] reader refused to start: Cannot Decode
+  1790494059.097 ERROR [dv] bench.D-4k-hevc.mov could not load D-4k-hevc.mov
+  1790494059.097 INFO [selfqa] perf/decode: D-4k-hevc.mov: could not load
+  1790494059.099 INFO [dv] opened D-4k-hevc-hvc1tag.mov: 600 frames at 29.97 fps, 3840x2160, decoded at 854x480
+  1790494059.108 INFO [dv] bench.D-4k-hevc-hvc1tag.mov loaded D-4k-hevc-hvc1tag.mov (None data effects)
+  1790494059.883 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/decode/D-4k-hevc-hvc1tag.mov.png
+  1790494059.884 INFO [dv] bench.D-4k-hevc-hvc1tag.mov ejected
+  1790494059.886 INFO [dv] opened D-4k-hevc-hvc1tag.mov: 600 frames at 29.97 fps, 3840x2160, decoded at 426x240
+  1790494063.366 INFO [selfqa] perf/decode: D-4k-hevc-hvc1tag.mov: open 11.1 ms, first frame 102.7 ms, steady 4.43 ms (worst 15.3), 720x480, decoder ~61 MB, cold thumbnail 55.5 ms
+  1790494063.370 INFO [selfqa] perf/decode: PASS  every clip decodes fast enough for four channels to share a frame — 6 clips under a quarter frame
+  1790494063.370 ERROR [selfqa] perf/decode: FAIL  every clip opens within one frame on the main thread — slow to open: motion.mov 85 ms (long .m2v files count their pictures at open — stored in the catalog from 0.4.7)

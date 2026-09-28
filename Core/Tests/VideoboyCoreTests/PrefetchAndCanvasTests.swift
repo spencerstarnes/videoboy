@@ -6,7 +6,7 @@
 //            the geometry that decides how big to decode and where a picture sits,
 //            and the prefetcher that hands the tick the SAME picture a direct decode
 //            would have — decoded off the main thread, and ready at a loop wrap.
-//  Inputs  : samples/ (bars.dv, motion.mov), a mock decoder.
+//  Inputs  : samples/ (hd-h264-2997.mov, motion.mov), a mock decoder.
 //  Connects: CanvasGeometry, ClipPrefetcher, ClipSourceNode.
 //
 
@@ -144,7 +144,7 @@ final class ClipSourcePrefetchTests: XCTestCase {
     /// where the old path restarted readers on the tick.
     func testPlaybackThroughALoopWrapIsServedByThePrefetcher() throws {
         guard let metal = MetalContext.shared else { throw XCTSkip("no Metal device") }
-        for name in ["bars.dv", "motion.mov"] {
+        for name in ["hd-h264-2997.mov", "motion.mov"] {
             let url = RepoPaths.samples.appendingPathComponent(name)
             guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("no \(name)") }
             let node = ClipSourceNode(identifier: "test.\(name)", context: metal)
@@ -168,9 +168,9 @@ final class ClipSourcePrefetchTests: XCTestCase {
 
     /// The prefetcher must hand the graph exactly what a direct decode produces.
     func testPrefetchedPicturesMatchADirectDecode() throws {
-        let url = RepoPaths.samples.appendingPathComponent("motion.dv")
-        guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("no motion.dv") }
-        let direct = try DVClipDecoder(url: url)
+        let url = RepoPaths.samples.appendingPathComponent("motion.m2v")
+        guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("no motion.m2v") }
+        let direct = try XCTUnwrap(ClipDecoders.open(url))
         let node = ClipSourceNode(identifier: "test.match", context: nil)
         XCTAssertTrue(node.load(url: url))
         for index in [0, 1, 17, 100] {

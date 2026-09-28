@@ -106,9 +106,6 @@ final class Engine {
     /// Bus data effects: re-encode the mix so its bitstream can be damaged.
     /// One per bus plus one on PROGRAM, since the format leaving the mixer is its
     /// own decision independent of what the sub-mixes carry.
-    private(set) var busCodecOne: BusCodecNode!
-    private(set) var busCodecTwo: BusCodecNode!
-    private(set) var busCodecProgram: BusCodecNode!
     private(set) var compositeProgram: CompositeCodecNode!
 
     /// Configured sources (SPEC 6, SPEC 10) — cameras, captured windows, IP cameras,
@@ -229,51 +226,32 @@ final class Engine {
         graph.add(subMixTwo)
         graph.add(primary)
 
-        // The bus data stage sits at the END of each chain, just before the mix:
-        // it re-encodes whatever the chain produced, so it damages the finished bus
-        // rather than something half-processed.
-        busCodecOne = BusCodecNode(identifier: Engine.busCodecOneSlot, context: metal)
-        busCodecTwo = BusCodecNode(identifier: Engine.busCodecTwoSlot, context: metal)
-        busCodecProgram = BusCodecNode(identifier: Engine.busCodecProgramSlot, context: metal)
-        graph.add(busCodecOne)
-        graph.add(busCodecTwo)
-        graph.add(busCodecProgram)
-
-        // DATA BURN, between each bus's data stage and the mix. After the data stage
-        // so a bus codec cannot chew the burned text up; before the mix so the burn
-        // fades in and out with its sub-mix. It costs NOTHING when nothing is burned:
-        // the node hands its input straight back.
-        for (subMix, codecSlot, burnSlot, anchor) in [
-            (GraphTopology.subMixOne, Engine.busCodecOneSlot, Engine.dataBurnOneSlot,
-             DataBurnAnchor.topLeft),
-            (GraphTopology.subMixTwo, Engine.busCodecTwoSlot, Engine.dataBurnTwoSlot,
-             DataBurnAnchor.topRight)
+        // DATA BURN, at the end of each bus's chain, before the mix, so the burn fades
+        // in and out with its sub-mix. It costs NOTHING when nothing is burned: the
+        // node hands its input straight back. (The chain connects into it — see
+        // `wireChain`.)
+        for (subMix, burnSlot, anchor) in [
+            (GraphTopology.subMixOne, Engine.dataBurnOneSlot, DataBurnAnchor.topLeft),
+            (GraphTopology.subMixTwo, Engine.dataBurnTwoSlot, DataBurnAnchor.topRight)
         ] {
             let burn = ScopeOverlayNode(identifier: burnSlot, context: metal)
             // Opposite corners, so the two blocks never overlap while PROGRAM is
             // crossfading between the sub-mixes.
             burn.textAnchor = anchor
             graph.add(burn)
-            graph.connect(from: codecSlot, to: burnSlot, inputIndex: 0)
             dataBurns[subMix] = burn
         }
         graph.connect(from: Engine.dataBurnOneSlot, to: GraphTopology.primary, inputIndex: 0)
         graph.connect(from: Engine.dataBurnTwoSlot, to: GraphTopology.primary, inputIndex: 1)
 
-        // PROGRAM's own data stage, after the ONE/TWO mix. It was created and added
-        // but never connected, so the programme's data controls moved nothing — the
-        // graph simply terminated at the mix. It is the last thing before output,
-        // which is what makes it the right place for the output emulation too.
-        // The output emulation stage, between the mix and the programme data stage.
-        // NTSC character belongs at the very END of the chain: it is what the signal
+        // The output emulation stage, after the ONE/TWO mix and the last thing before
+        // output. NTSC character belongs at the very END of the chain: it is what the signal
         // picks up on its way out, not something a bus carries into the mix.
         compositeProgram = CompositeCodecNode(
             identifier: Engine.compositeProgramSlot, context: metal)
         graph.add(compositeProgram)
         graph.connect(
             from: GraphTopology.primary, to: Engine.compositeProgramSlot, inputIndex: 0)
-        graph.connect(
-            from: Engine.compositeProgramSlot, to: Engine.busCodecProgramSlot, inputIndex: 0)
 
         // The emulated machine, created up front for the same reason the generators
         // are: so it exists, is addressable and can be assigned to a channel without
@@ -326,9 +304,7 @@ final class Engine {
         // is subtracted from rather than left implicit somewhere else.
         // (Chain nodes are bypassed as they are made, in `makeChainNode`, with the
         // same `liveAtLaunchSlots` exception.)
-        for slot in [Engine.compositeProgramSlot, Engine.busCodecProgramSlot] {
-            registry.setValue(0, slot: slot, code: .wetDry)
-        }
+        registry.setValue(0, slot: Engine.compositeProgramSlot, code: .wetDry)
 
         // The per-channel corruptors too. Their cards read OFF, and a switch that
         // says off while the node is live is the same boot-state lie the bus effects
@@ -390,14 +366,14 @@ final class Engine {
             channelEffects[letter] = nodes
         }
 
-        // The bus copy, from the mix into the bus's data stage.
+        // The bus copy, from the mix through the chain into the bus's DATA BURN.
         var previous = subMix
         for entry in chain.entries {
             let slot = EffectChain.slot(instanceID: entry.instanceID, lane: bus.lane)
             graph.connect(from: previous, to: slot, inputIndex: 0)
             previous = slot
         }
-        graph.connect(from: previous, to: bus == .one ? Engine.busCodecOneSlot : Engine.busCodecTwoSlot, inputIndex: 0)
+        graph.connect(from: previous, to: bus == .one ? Engine.dataBurnOneSlot : Engine.dataBurnTwoSlot, inputIndex: 0)
 
         Log.info(.graph, "chain \(bus.rawValue.uppercased()): "
             + chain.entries.map(\.instanceID).joined(separator: " → "))
@@ -650,9 +626,6 @@ final class Engine {
     static let colourTwoSlot = "fx.two.colour"
     static let echoTwoSlot = "fx.two.echo"
     static let feedbackTwoSlot = "fx.two.feedback"
-    static let busCodecOneSlot = "data.one"
-    static let busCodecTwoSlot = "data.two"
-    static let busCodecProgramSlot = "data.program"
     static let compositeProgramSlot = "fx.program.composite"
     static let freezeOneSlot = "fx.one.freeze"
     static let freezeTwoSlot = "fx.two.freeze"
@@ -670,17 +643,24 @@ final class Engine {
     /// The last node in the graph — what output and the programme preview show.
     ///
     /// Named separately from `GraphTopology.primary` because they are not the same
-    /// thing: primary is the ONE/TWO mix, and the programme data stage runs after it.
-    /// Conflating them is what left that stage unconnected.
+    /// thing: primary is the ONE/TWO mix, and the output emulation runs after it.
     ///
     /// Nothing is burned in after it: DATA BURN happens on the sub-mixes, so burned
     /// data reaches PROGRAM through the mix like any other picture.
-    static var outputSlot: String { busCodecProgramSlot }
+    static var outputSlot: String { compositeProgramSlot }
 
     /// The graph slot for one configured source, by its `ConfiguredSource.id`.
     static func captureSlot(for id: String) -> String { "source.capture.\(id)" }
 
     static let testPatternSlot = "source.testpattern"
+
+    /// The last node of a bus's effect chain — the finished bus, before DATA BURN.
+    /// What the sub-mix scopes read, so burned text never lands in a measurement.
+    func busOutputSlot(_ bus: ChainBus) -> String {
+        let subMix = bus == .one ? GraphTopology.subMixOne : GraphTopology.subMixTwo
+        guard let last = chains[bus]?.entries.last else { return subMix }
+        return EffectChain.slot(instanceID: last.instanceID, lane: bus.lane)
+    }
 
     /// The node for a configured source, creating and registering it the first time
     /// it is asked for.
@@ -712,7 +692,7 @@ final class Engine {
     static let busEffectSlots = [
         moshOneSlot, transformSlot, colourSlot, compositeSlot, echoSlot, feedbackSlot, freezeOneSlot,
         moshTwoSlot, transformTwoSlot, colourTwoSlot, compositeTwoSlot, echoTwoSlot, feedbackTwoSlot, freezeTwoSlot,
-        compositeProgramSlot, busCodecProgramSlot
+        compositeProgramSlot
     ]
 
     /// The generator slot name for a channel letter.
@@ -747,31 +727,6 @@ final class Engine {
                 // Seeding from the beat number keeps a performance reproducible.
                 node.rerollCorruptionSeed(using: UInt64(event.targetBeat * 1000) &+ 17)
             }
-        }
-
-        // Bus data effects re-roll on the beat too, so damage applied to a mix is as
-        // musical as damage applied to a source.
-        //
-        // LOOKED UP THROUGH `self` ON EACH FIRING, never captured. Capturing the node
-        // object meant that anything replacing `busCodecOne` — as the test-pattern
-        // toggle used to — left this closure holding the old instance: the beat reroll
-        // went to a node nothing rendered, and the dead node could never be freed
-        // because the scheduler still owned it. Reading the property each time means a
-        // swap is simply picked up, and nothing here keeps a node alive.
-        for name in ["ONE", "TWO", "PROGRAM"] {
-            scheduler.subscribe(subdivision: .quarter, latencyInFrames: 0) { [weak self] event in
-                guard let codec = self?.busCodec(forBus: name) else { return }
-                codec.rerollCorruptionSeed(using: UInt64(event.targetBeat * 1000) &+ 29)
-            }
-        }
-    }
-
-    /// The data codec on a bus, by the name the schedule and the UI both use.
-    private func busCodec(forBus bus: String) -> BusCodecNode? {
-        switch bus {
-        case "ONE": busCodecOne
-        case "TWO": busCodecTwo
-        default: busCodecProgram
         }
     }
 
@@ -994,9 +949,6 @@ final class Engine {
         for node in isfGenerators.values { node.applyParameters(from: registry) }
         compositeProgram.applyParameters(from: registry)
         for generator in generators.values { generator.applyParameters(from: registry) }
-        busCodecOne.applyParameters(from: registry)
-        busCodecTwo.applyParameters(from: registry)
-        busCodecProgram.applyParameters(from: registry)
     }
 
     /// Evaluates the graph to PRIMARY, in dependency order, and returns every
@@ -1104,7 +1056,7 @@ final class Engine {
                 guard let self else { return }
                 self.loadsInFlight -= 1
                 guard self.loadGeneration[letter] == generation else {
-                    Log.info(.dv, "\(letter): a newer load replaced \(url.lastPathComponent) before it opened")
+                    Log.info(.clip, "\(letter): a newer load replaced \(url.lastPathComponent) before it opened")
                     return
                 }
                 let loaded = node.install(prepared)
@@ -1138,7 +1090,7 @@ final class Engine {
             CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
                 guard let self, self.preparedAhead[letter]?.url == url else { return }   // superseded
                 self.preparedAhead[letter] = (url, prepared)
-                Log.info(.dv, "\(letter): pre-opened \(url.lastPathComponent) for ADV")
+                Log.info(.clip, "\(letter): pre-opened \(url.lastPathComponent) for ADV")
             }
             CFRunLoopWakeUp(main)
         }
@@ -1191,7 +1143,7 @@ final class Engine {
                     return
                 }
                 self.padsAhead[index] = (url, letter, prepared)
-                Log.info(.dv, "pad \(index + 1): \(url.lastPathComponent) ready for \(letter)")
+                Log.info(.clip, "pad \(index + 1): \(url.lastPathComponent) ready for \(letter)")
             }
             CFRunLoopWakeUp(main)
         }
@@ -1348,7 +1300,7 @@ final class Engine {
             route(firstKind, to: second)
         }
 
-        Log.info(.dv, "swapped channel \(first) and channel \(second): "
+        Log.info(.clip, "swapped channel \(first) and channel \(second): "
             + "\(first) now has \(firstNode.mediaURL?.lastPathComponent ?? "nothing"), "
             + "\(second) now has \(secondNode.mediaURL?.lastPathComponent ?? "nothing")")
         return true
@@ -1632,15 +1584,6 @@ final class Engine {
         if correction != 0 { transport.shiftPosition(byBeats: correction) }
     }
 
-    /// Sets a bus's interchange codec, which decides what data effects it offers.
-    func setInterchange(_ codec: InterchangeCodec, forBus bus: String) {
-        switch bus {
-        case "ONE": busCodecOne.interchange = codec
-        case "TWO": busCodecTwo.interchange = codec
-        default: busCodecProgram.interchange = codec
-        }
-    }
-
     /// Which boundary beat-synced moves wait for, from the toolbar's DIV field.
     ///
     /// It was a control that changed a label and nothing else — the scheduler's own
@@ -1708,31 +1651,6 @@ final class Engine {
             registry.setValue(
                 newValue ? 1 : 0, slot: Engine.compositeProgramSlot, code: .wetDry)
             Log.info(.render, "output NTSC emulation \(newValue ? "on" : "off")")
-        }
-    }
-
-    /// Whether the output is passed through DV, giving 4:1:1 colour and 8-bit.
-    ///
-    /// Turning it on sets one generation; the popover can ask for more. Off is zero
-    /// generations rather than one, because one pass is already a real change to the
-    /// picture and "off" has to mean untouched.
-    var isOutputDVEnabled: Bool {
-        get { (registry.value(slot: Engine.busCodecProgramSlot, code: .compositeGeneration) ?? 0) >= 1 }
-        set {
-            setInterchange(newValue ? .dv : .none, forBus: GraphTopology.primary)
-            registry.setValue(
-                newValue ? 1 : 0,
-                slot: Engine.busCodecProgramSlot, code: .compositeGeneration)
-            Log.info(.render, "output DV emulation \(newValue ? "on" : "off")")
-        }
-    }
-
-    /// The data-effect family a bus currently offers.
-    func dataEffectFamily(forBus bus: String) -> DataEffectFamily {
-        switch bus {
-        case "ONE": busCodecOne.dataEffectFamily
-        case "TWO": busCodecTwo.dataEffectFamily
-        default: busCodecProgram.dataEffectFamily
         }
     }
 

@@ -1,7 +1,7 @@
 check:    isf/app
 verdict:  PASS
-when:     2026-09-24T01:50:55Z
-core:     0.3.0
+when:     2026-09-27T22:43:46Z
+core:     0.4.10
 
 assertions (15/15 passed):
   PASS  the Add menu offers built-ins, the imported shader by category, and the broken file greyed — Add effect… | Built-in | Composite · NTSC | Datamosh · H.264 | Feedback | Freeze | Colour | Echo / Trails | Transform | QA Test | QA Invert | Failed to load (1) | QA Broken
@@ -17,5 +17,5 @@ assertions (15/15 passed):
   PASS  a broken save keeps the last good version on screen and says why on the card — status '⚠ edit not applied (running the last good version): line 13:25: use of undeclare'
   PASS  a shader dropped into the folder shows up in the Add menu — 
   PASS  an ISF generator runs as channel A's source, animated, from the Generators tab — listed true, has thumbnail true, kind Optional(Videoboy.ChannelSourceKind.isfGenerator("isf.QA Stripes"))
-  PASS  every generator tile in the Generators tab has a thumbnail — 13 of 13 tiles pictured
+  PASS  every generator tile in the Generators tab has a thumbnail — 14 of 14 tiles pictured
   PASS  ✕ removes the card and every copy of its node — cards: Freeze, Feedback, Echo / Trails, Composite · NTSC, Colour, Transform, Datamosh · H.264

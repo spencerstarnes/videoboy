@@ -1,17 +1,13 @@
 check:    ui/bars
-verdict:  PASS
-when:     2026-09-26T19:11:03Z
-core:     0.4.5
+verdict:  BLOCKED
+when:     2026-09-28T02:34:00Z
+core:     0.4.10
 
 notes:
-  A placement: (0.0, 0.125, 1.0, 0.75)
-  A monitor bars: [(18.0, 126.0, 194.0, 19.0), (18.0, 0.0, 194.0, 19.0)]
-  window capture: window.png (blank without Screen Recording)
+  BLOCKED: set VIDEOBOY_BARS_CLIP to a 16:9 clip
 
-assertions (6/6 passed):
-  PASS  a 16:9 clip sits letterboxed in the 4:3 canvas — picture (0.0, 0.125, 1.0, 0.75)
-  PASS  the bars that go to air are black — top bar pixel (r: 0, g: 0, b: 0, a: 255)
-  PASS  the picture itself is not black — centre pixel (r: 64, g: 67, b: 255, a: 255)
-  PASS  the wide clip's monitor stripes exactly its two bars — 2 bars, heights [19, 19], expected ~18
-  PASS  a 4:3 clip's monitor has no bars — 0 bars
-  PASS  the monitor's bars are grey caution stripes, not black — shade bands seen: [3, 5, 6] (light 6, dark 3)
+assertions (0/0 passed):
+
+recent log:
+  1790562840.180 INFO [app] Videoboy Core 0.4.10 (8 flags on)
+  1790562840.221 INFO [selfqa] running self-QA check 'bars'

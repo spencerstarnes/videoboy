@@ -1,7 +1,7 @@
 check:    phase-3/composite-codec
 verdict:  PASS
-when:     2026-09-24T07:24:33Z
-core:     0.3.0
+when:     2026-09-28T17:10:28Z
+core:     0.4.10
 
 notes:
   NTSC subcarrier 3.5795 MHz, 3.82 samples per cycle at 720 px

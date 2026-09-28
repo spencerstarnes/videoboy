@@ -2,7 +2,7 @@
 //  ImageBuffer.swift — a plain 8-bit RGBA image in memory, and PNG I/O for it.
 //
 //  Purpose : The common currency of the self-QA harness. Anything Claude wants to
-//            look at — an offscreen Metal render, a decoded DV frame, a captured
+//            look at — an offscreen Metal render, a decoded clip frame, a captured
 //            DVC100 frame — becomes an `ImageBuffer` and can then be written to PNG,
 //            asserted on, or diffed against a fixture.
 //  Inputs  : raw RGBA8 bytes (row-major, 4 bytes per pixel, no padding), or a PNG file.

@@ -30,7 +30,7 @@
 //  Extend  : a new move is a branch in `process` plus a field on `MoshControls`.
 //
 //  Pure logic, no codecs: every rule is unit-tested on hand-built streams.
-//  Deterministic given a seed, like the DV corruptor, so a performance repeats.
+//  Deterministic given a seed, like the MPEG corruptor, so a performance repeats.
 //
 
 import Foundation

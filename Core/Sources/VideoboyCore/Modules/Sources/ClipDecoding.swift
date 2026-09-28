@@ -1,16 +1,14 @@
 //
 //  ClipDecoding.swift — what a source node needs from a codec, and nothing more.
 //
-//  Purpose : Until now a source WAS a DV reader: the playhead, the loop modes, the
-//            musical stepping and the DIF corruptor all lived in one type, so "play a
-//            .mov" had no answer that was not a second, parallel source module. This
-//            is the seam. Everything about WHEN a frame is shown stays in the node,
+//  Purpose : The seam between a source node and a codec. Everything about WHEN a frame is shown stays in the node,
 //            because it is identical whatever the codec; everything about HOW the
 //            bytes become a picture lives behind here.
 //  Inputs  : a frame index, and the corruption settings for codecs that can be
 //            damaged before decode.
 //  Outputs : a decoded `ImageBuffer`.
-//  Connects: ClipSourceNode (the only caller), DVClipDecoder, AVFClipDecoder.
+//  Connects: ClipSourceNode (the only caller), MPEGStreamDecoder, AVFClipDecoder,
+//            ImageSequenceDecoder, HEV1Reader.
 //  Extend  : a new container is a new conformer. It reports its own frame count and
 //            rate, and says which data-effect family it belongs to — which is how the
 //            UI knows whether to offer the bitstream effects at all.
@@ -60,40 +58,4 @@ public extension ClipDecoding {
     var nativeHeight: Int? { nil }
     var displayAspectRatio: Double? { nil }
     var quarterTurns: Int { 0 }
-}
-
-/// DV: the wedge's home. Damages DIF blocks before handing them to the decoder.
-public final class DVClipDecoder: ClipDecoding {
-
-    private let reader: DVReader
-    private let decoder: DVDecoder
-
-    public init(url: URL) throws {
-        self.reader = try DVReader(url: url)
-        self.decoder = try DVDecoder()
-    }
-
-    public var frameCount: Int { reader.frameCount }
-    public var frameRate: Double { reader.standard.frameRate }
-    public var dataEffectFamily: DataEffectFamily { .dv }
-
-    /// The DV standard of the loaded file, which the node needs for retiming.
-    public var standard: DVStandard { reader.standard }
-
-    /// Wraps an index into the file, so callers need not.
-    public func wrappedIndex(_ index: Int) -> Int { reader.wrappedIndex(index) }
-
-    public func image(at index: Int, corruption: CorruptionSettings) -> ImageBuffer? {
-        let frameIndex = reader.wrappedIndex(index)
-        guard let clean = reader.frame(at: frameIndex) else { return nil }
-        let previous = reader.frame(at: reader.wrappedIndex(frameIndex - 1))
-
-        // THE WEDGE: damage the compressed bytes, then decode them. Never the other
-        // way round — decoding first and damaging pixels would be an ordinary effect.
-        let bytes = DIFCorruptor.corrupt(
-            frame: clean, settings: corruption,
-            standard: reader.standard, previousFrame: previous
-        )
-        return decoder.decode(frameBytes: bytes)
-    }
 }

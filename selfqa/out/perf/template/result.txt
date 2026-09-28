@@ -1,6 +1,6 @@
 check:    perf/template
 verdict:  PASS
-when:     2026-09-27T22:28:42Z
+when:     2026-09-28T03:09:37Z
 core:     0.4.10
 
 assertions (6/6 passed):

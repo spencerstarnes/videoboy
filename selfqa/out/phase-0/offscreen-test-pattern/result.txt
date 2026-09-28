@@ -1,7 +1,7 @@
 check:    phase-0/offscreen-test-pattern
 verdict:  PASS
-when:     2026-09-24T07:25:09Z
-core:     0.3.0
+when:     2026-09-28T17:11:06Z
+core:     0.4.10
 
 notes:
   rendered SMPTE colour bars through the live blit pipeline

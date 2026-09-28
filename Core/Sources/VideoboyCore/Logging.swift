@@ -17,7 +17,8 @@ import Foundation
 /// The subsystem a log line came from. Printed as `[dv]`, `[clock]`, etc.
 public enum Subsystem: String, Sendable {
     case app
-    case dv
+    /// Clips: opening, loading, playing, ejecting.
+    case clip
     case bitstream
     case clock
     case midi

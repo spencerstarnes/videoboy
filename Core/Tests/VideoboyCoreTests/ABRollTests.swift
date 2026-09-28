@@ -68,12 +68,12 @@ final class ABRollTests: XCTestCase {
     func testShuffleBinStaysInTheOutgoingClipsBin() {
         var picker = NextClipPicker()
         var queue = Playlist()
-        let library = [LibraryCandidate(url: url("t1.dv"), bin: "Tapes"),
-                       LibraryCandidate(url: url("t2.dv"), bin: "Tapes"),
+        let library = [LibraryCandidate(url: url("t1.mov"), bin: "Tapes"),
+                       LibraryCandidate(url: url("t2.mov"), bin: "Tapes"),
                        LibraryCandidate(url: url("p1.mov"), bin: "Phone")]
         for _ in 0..<4 {
             let pick = picker.pick(queue: &queue, library: library, fallback: .shuffleBin,
-                                   onAir: nil, outgoing: LibraryCandidate(url: url("t1.dv"), bin: "Tapes"),
+                                   onAir: nil, outgoing: LibraryCandidate(url: url("t1.mov"), bin: "Tapes"),
                                    isLoadable: always)
             XCTAssertTrue(pick?.url.lastPathComponent.hasPrefix("t") ?? false, "stayed in Tapes: \(String(describing: pick))")
         }

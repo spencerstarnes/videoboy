@@ -32,12 +32,12 @@ final class SelfQAHarnessTests: XCTestCase {
 
     func testFeatureFlagsHonourEnvironmentOverrides() {
         // A '-' prefix turns a flag off; a bare name turns one on.
-        let flags = FeatureFlags(environment: "-dvDecode,isfHost")
-        XCTAssertFalse(flags.isOn(.dvDecode), "leading '-' must disable a flag")
+        let flags = FeatureFlags(environment: "-musicalClock,isfHost")
+        XCTAssertFalse(flags.isOn(.musicalClock), "leading '-' must disable a flag")
         XCTAssertTrue(flags.isOn(.isfHost), "a bare name must enable a flag")
         // An unknown name must be ignored rather than trapping.
         let tolerant = FeatureFlags(environment: "notARealFlag")
-        XCTAssertTrue(tolerant.isOn(.dvDecode), "unknown flags must not disturb the defaults")
+        XCTAssertTrue(tolerant.isOn(.musicalClock), "unknown flags must not disturb the defaults")
     }
 
     // MARK: - ImageBuffer

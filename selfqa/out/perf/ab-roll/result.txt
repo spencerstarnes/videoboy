@@ -1,21 +1,26 @@
 check:    perf/ab-roll
 verdict:  PASS
-when:     2026-09-27T14:12:16Z
-core:     0.4.9
+when:     2026-09-28T15:45:02Z
+core:     0.4.10
 
 notes:
   window photo: /Users/spencerstarnes/dev/videoboy-perf/selfqa/out/perf/ab-roll/window.png
+  take costs, worst: adv.clipLoaded 0.17 ms, adv.install 0.32 ms, adv.plan 1.12 ms
 
-assertions (12/12 passed):
-  PASS  ROLL and ADV move nothing on the fader panel (CUT, FADE, BEAT, bus keys, rate, fader) — 7 controls compared
+assertions (16/16 passed):
+  PASS  440 pt panel: A B CUT FADE ROLL ADV then the rate control, same height, nothing overlapping, no BEAT — order [151, 191, 235, 280], rate x 319 w 58, same height true, overlaps 0, BEAT shown false
+  PASS  640 pt panel: A B CUT FADE ROLL ADV then the rate control, same height, nothing overlapping, no BEAT — order [251, 291, 335, 380], rate x 419 w 58, same height true, overlaps 0, BEAT shown false
   PASS  ROLL and ADV are on the A/B and C/D faders, not on PROGRAM — A/B true, C/D true, program false
   PASS  at a normal window size the ROLL and ADV keys are shown, not squeezed out — window 1840×975; A/B shown true, C/D shown true
   PASS  ROLL off, ADV off: a cut changes nothing but the picture — A bars.dv playing false; B motion.dv playing false
-  PASS  ROLL on: the incoming source rolls; the outgoing one pauses on its head, same clip — B playing true; A paused true at frame 0.0 (was 19.0); A bars.dv
+  PASS  ROLL on: the incoming source rolls; the outgoing one pauses on its head, same clip — B playing true; A paused true at frame 0.0 (was 18.0); A bars.dv
   PASS  ADV on: the outgoing source loads its Up Next clip, and with AUTO on it plays off air — A motion.mov playing true
   PASS  ROLL + ADV: the next clip waits paused at its head and rolls on take — A cued hd-h264-25.mov then rolled true; B cued bars.dv, paused at head true
   PASS  an empty Up Next falls back to the library and says so once, as information — Up Next A was empty — cued hd-h264-25.mov (in order)
   PASS  FADE: the incoming source rolls as the fade starts; the outgoing one changes only after it — mid-fade B playing true, A still bars.dv; after: A hd-h264-25.mov
   PASS  BEAT: nothing rolls or cues until the cut lands on the beat — just after the press: A bars.dv, B playing false; on the beat: B playing true, A hd-h264-2997.mov
   PASS  a MIDI button toggles ROLL and ADV, and the keys light — roll true, adv true
-  PASS  10 ROLL + ADV cuts under live render: no tick over a frame, no extra dropped frames — worst tick 9.61 ms of 150, 0 dropped (0 in 5 s without cuts)
+  PASS  10 ROLL + ADV cuts under live render: no tick over a frame, no extra dropped frames — worst tick 18.50 ms of 150, 0 dropped (0 in 5 s without cuts)
+  PASS  ADV on HD/4K: every take swaps in a clip that was already open (nothing opened at the cut) — 8 of 8 takes instant, 0 opened at the take
+  PASS  ADV on HD/4K: the incoming clip plays from its first frames without holding a picture — 8 of 8 rolled at once; 0 held frames on the incoming side
+  PASS  ADV on HD/4K: no dropped frame and no main-thread stall at the cuts — 0 dropped (0 in 4 s without cuts), worst tick 10.76 ms, longest main-thread stretch 15.9 ms

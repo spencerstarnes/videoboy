@@ -403,13 +403,7 @@ final class DatamoshPipelineTests: XCTestCase {
     func frames(_ name: String, count: Int) throws -> [ImageBuffer] {
         let url = RepoPaths.samples.appendingPathComponent(name)
         guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("\(name) is not in samples/") }
-        let decoder: ClipDecoding
-        if url.pathExtension == "dv" {
-            decoder = try DVClipDecoder(url: url)
-        } else {
-            guard let avf = AVFClipDecoder(url: url) else { throw XCTSkip("\(name) would not open") }
-            decoder = avf
-        }
+        guard let decoder = ClipDecoders.open(url) else { throw XCTSkip("\(name) would not open") }
         return (0..<count).compactMap { decoder.image(at: $0 % max(decoder.frameCount, 1), corruption: .inert) }
     }
 
@@ -435,7 +429,7 @@ final class DatamoshPipelineTests: XCTestCase {
     }
 
     func testACutWhileMoshingPaintsTheNewMotionOntoTheOldPicture() throws {
-        let bars = try frames("bars.dv", count: 15)
+        let bars = try frames("hd-h264-2997.mov", count: 15)
         let motion = try frames("motion.mov", count: 45)
         guard let size = bars.first, motion.first.map({ $0.width == size.width && $0.height == size.height }) == true else {
             throw XCTSkip("the two fixtures differ in size")
@@ -530,13 +524,7 @@ final class DatamoshNodeTests: XCTestCase {
     private func clip(_ name: String, count: Int) throws -> [ImageBuffer] {
         let url = RepoPaths.samples.appendingPathComponent(name)
         guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("\(name) is not in samples/") }
-        let decoder: ClipDecoding
-        if url.pathExtension == "dv" {
-            decoder = try DVClipDecoder(url: url)
-        } else {
-            guard let avf = AVFClipDecoder(url: url) else { throw XCTSkip("\(name) would not open") }
-            decoder = avf
-        }
+        guard let decoder = ClipDecoders.open(url) else { throw XCTSkip("\(name) would not open") }
         return (0..<count).compactMap { decoder.image(at: $0 % max(decoder.frameCount, 1), corruption: .inert) }
     }
 
@@ -552,7 +540,7 @@ final class DatamoshNodeTests: XCTestCase {
 
     func testTheNodeMoshesACutLiveWithoutEverWaitingOnTheTick() throws {
         guard let metal = MetalContext.shared else { throw XCTSkip("no Metal") }
-        let bars = try clip("bars.dv", count: 20)
+        let bars = try clip("hd-h264-2997.mov", count: 20)
         let motion = try clip("motion.mov", count: 60)
         let node = DatamoshNode(identifier: "test.mosh", context: metal)
         let uploader = TextureUploader(context: metal, label: "test-input")

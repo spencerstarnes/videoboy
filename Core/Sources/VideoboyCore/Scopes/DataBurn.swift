@@ -192,7 +192,7 @@ public enum DataBurnText {
         return parts.joined(separator: " ")
     }
 
-    /// `a_very_long_clip_name_from_the_camera.dv` → `a_very_long_cl…_camera.dv`.
+    /// `a_very_long_clip_name_from_the_camera.mov` → `a_very_long_cl…_camera.mov`.
     public static func shortened(_ name: String, limit: Int = nameLimit) -> String {
         guard name.count > limit, limit > 3 else { return name }
         let tail = (limit - 1) / 2

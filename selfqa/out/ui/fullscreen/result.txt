@@ -1,63 +1,63 @@
 check:    ui/fullscreen
 verdict:  PASS
-when:     2026-09-25T23:52:19Z
-core:     0.4.1
+when:     2026-09-28T03:09:32Z
+core:     0.4.10
 
 notes:
   generators labelled 'starts black': 7 — Solid Colour, Circle Trails, Color Organ Polyphonic, Etch-a-Sketch, Histogram Viewer, Radial Spectrogram, Random Shape
   window 1920x1055 on BenQ PD3200U at 2.0x
-  ticks with FILE/TC off: 120, mean 8.7 ms, worst 18.7 ms
+  ticks with FILE/TC off: 120, mean 4.7 ms, worst 7.8 ms
   Diagonal Blur added to the A/B chain: switch on
 
 assertions (129/129 passed):
-  PASS  every generator thumbnail is ready within 30 s of launch — ready after 12.6 s
-  PASS  every generator has a thumbnail — 146 generators; without a picture: none
+  PASS  every generator thumbnail is ready within 30 s of launch — ready after 12.8 s
+  PASS  every generator has a thumbnail — 147 generators; without a picture: none
   PASS  no generator tile is plain black — every tile is a picture or says it starts black
   PASS  every generator tile on screen shows its picture — 56 tiles; blank: none
   PASS  A/B FX: the Source Controls line shows whole (empty) — 'A · empty — load a generator' needs 140pt, has 231pt
   PASS  C/D FX: the Source Controls line shows whole (empty) — 'C · empty — load a generator' needs 140pt, has 231pt
   PASS  A/B FX: the Source Controls line shows whole (a clip loaded) — 'B · clip — speed & scrub on B's panel' needs 179pt, has 231pt
   PASS  C/D FX: the Source Controls line shows whole (a clip loaded) — 'D · clip — speed & scrub on D's panel' needs 181pt, has 231pt
-  PASS  every clip in the library shows a duration — bars.dv 0:04, motion.dv 0:06, motion.m2v 0:07, motion.mov 0:06
-  PASS  Fit: submix1 WFM draws inside its preview — preview (0,0 462x293), scope (319,11 123x87), data hidden
+  PASS  every clip in the library shows a duration — bars.dv 0:04, hd-h264-25.mov 0:20, hd-h264-2997.mov 0:20, hd-prores.mov 0:20, motion-hev1.mov 0:03, motion.dv 0:06, motion.m2v 0:07, motion.mov 0:06, uhd-hevc-hev1.mov 0:20, uhd-hevc-hvc1.mov 0:20
+  PASS  Fit: submix1 WFM draws inside its preview — preview (0,0 462x293), scope (309,11 109x87), data hidden
   PASS  submix1 after WFM: picture behind the scope at 1.0 — picture opacity 1.0
-  PASS  Fit: submix1 RGB draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Fit: submix1 HIST draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Fit: submix1 VEC draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
+  PASS  Fit: submix1 RGB draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Fit: submix1 HIST draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Fit: submix1 VEC draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
   PASS  submix1 after VEC: picture behind the scope at 0.35 — picture opacity 0.35
-  PASS  Fit: submix1 FILE draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (46,241 78x30)
-  PASS  submix1 FILE puts its text on the monitor — text block at (46,241 78x30)
-  PASS  Fit: submix1 TC draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (46,241 148x30)
-  PASS  submix1 TC puts its text on the monitor — text block at (46,241 148x30)
-  PASS  Fit: submix1 OVER draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (46,241 148x30)
+  PASS  Fit: submix1 FILE draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (67,241 69x30)
+  PASS  submix1 FILE puts its text on the monitor — text block at (67,241 69x30)
+  PASS  Fit: submix1 TC draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (67,241 132x30)
+  PASS  submix1 TC puts its text on the monitor — text block at (67,241 132x30)
+  PASS  Fit: submix1 OVER draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (67,241 132x30)
   PASS  submix1 after OVER: picture behind the scope at 0.0 — picture opacity 0.0
-  PASS  Fit: submix1 L3 draws inside its preview — preview (0,0 462x293), scope (29,17 404x87), data (46,241 148x30)
-  PASS  Fit: program WFM draws inside its preview — preview (0,0 463x293), scope (319,11 123x87), data hidden
+  PASS  Fit: submix1 L3 draws inside its preview — preview (0,0 462x293), scope (51,17 359x87), data (67,241 132x30)
+  PASS  Fit: program WFM draws inside its preview — preview (0,0 463x293), scope (309,11 109x87), data hidden
   PASS  program after WFM: picture behind the scope at 1.0 — picture opacity 1.0
-  PASS  Fit: program RGB draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data hidden
-  PASS  Fit: program HIST draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data hidden
-  PASS  Fit: program VEC draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data hidden
+  PASS  Fit: program RGB draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data hidden
+  PASS  Fit: program HIST draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data hidden
+  PASS  Fit: program VEC draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data hidden
   PASS  program after VEC: picture behind the scope at 0.35 — picture opacity 0.35
-  PASS  Fit: program FILE draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data (186,241 89x30)
-  PASS  program FILE puts its text on the monitor — text block at (186,241 89x30)
-  PASS  Fit: program TC draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data (151,241 160x30)
-  PASS  program TC puts its text on the monitor — text block at (151,241 160x30)
-  PASS  Fit: program OVER draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data (151,241 160x30)
+  PASS  Fit: program FILE draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data (191,241 79x30)
+  PASS  program FILE puts its text on the monitor — text block at (191,241 79x30)
+  PASS  Fit: program TC draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data (160,241 142x30)
+  PASS  program TC puts its text on the monitor — text block at (160,241 142x30)
+  PASS  Fit: program OVER draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data (160,241 142x30)
   PASS  program after OVER: picture behind the scope at 0.0 — picture opacity 0.0
-  PASS  Fit: program L3 draws inside its preview — preview (0,0 463x293), scope (29,17 404x87), data (151,241 160x30)
-  PASS  Fit: submix2 WFM draws inside its preview — preview (0,0 462x293), scope (319,11 123x87), data hidden
+  PASS  Fit: program L3 draws inside its preview — preview (0,0 463x293), scope (51,17 359x87), data (160,241 142x30)
+  PASS  Fit: submix2 WFM draws inside its preview — preview (0,0 462x293), scope (309,11 109x87), data hidden
   PASS  submix2 after WFM: picture behind the scope at 1.0 — picture opacity 1.0
-  PASS  Fit: submix2 RGB draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Fit: submix2 HIST draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Fit: submix2 VEC draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
+  PASS  Fit: submix2 RGB draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Fit: submix2 HIST draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Fit: submix2 VEC draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
   PASS  submix2 after VEC: picture behind the scope at 0.35 — picture opacity 0.35
-  PASS  Fit: submix2 FILE draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (331,241 84x30)
-  PASS  submix2 FILE puts its text on the monitor — text block at (331,241 84x30)
-  PASS  Fit: submix2 TC draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (261,241 154x30)
-  PASS  submix2 TC puts its text on the monitor — text block at (261,241 154x30)
-  PASS  Fit: submix2 OVER draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (261,241 154x30)
+  PASS  Fit: submix2 FILE draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (320,241 74x30)
+  PASS  submix2 FILE puts its text on the monitor — text block at (320,241 74x30)
+  PASS  Fit: submix2 TC draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (257,241 137x30)
+  PASS  submix2 TC puts its text on the monitor — text block at (257,241 137x30)
+  PASS  Fit: submix2 OVER draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (257,241 137x30)
   PASS  submix2 after OVER: picture behind the scope at 0.0 — picture opacity 0.0
-  PASS  Fit: submix2 L3 draws inside its preview — preview (0,0 462x293), scope (29,17 404x87), data (261,241 154x30)
+  PASS  Fit: submix2 L3 draws inside its preview — preview (0,0 462x293), scope (51,17 359x87), data (257,241 137x30)
   PASS  Fill: submix1 WFM draws inside its preview — preview (0,0 462x293), scope (323,11 129x87), data hidden
   PASS  Fill: submix1 RGB draws inside its preview — preview (0,0 462x293), scope (0,0 462x293), data hidden
   PASS  Fill: submix1 HIST draws inside its preview — preview (0,0 462x293), scope (0,0 462x293), data hidden
@@ -106,31 +106,31 @@ assertions (129/129 passed):
   PASS  Stretch: submix2 TC draws inside its preview — preview (0,0 462x293), scope (0,0 462x293), data (262,241 162x30)
   PASS  Stretch: submix2 OVER draws inside its preview — preview (0,0 462x293), scope (0,0 462x293), data (262,241 162x30)
   PASS  Stretch: submix2 L3 draws inside its preview — preview (0,0 462x293), scope (18,17 425x87), data (262,241 162x30)
-  PASS  Centre: submix1 WFM draws inside its preview — preview (0,0 462x293), scope (319,11 123x87), data hidden
-  PASS  Centre: submix1 RGB draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Centre: submix1 HIST draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Centre: submix1 VEC draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Centre: submix1 FILE draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (46,241 78x30)
-  PASS  Centre: submix1 TC draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (46,241 148x30)
-  PASS  Centre: submix1 OVER draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (46,241 148x30)
-  PASS  Centre: submix1 L3 draws inside its preview — preview (0,0 462x293), scope (29,17 404x87), data (46,241 148x30)
-  PASS  Centre: program WFM draws inside its preview — preview (0,0 463x293), scope (319,11 123x87), data hidden
-  PASS  Centre: program RGB draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data hidden
-  PASS  Centre: program HIST draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data hidden
-  PASS  Centre: program VEC draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data hidden
-  PASS  Centre: program FILE draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data (186,241 89x30)
-  PASS  Centre: program TC draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data (151,241 160x30)
-  PASS  Centre: program OVER draws inside its preview — preview (0,0 463x293), scope (11,0 439x293), data (151,241 160x30)
-  PASS  Centre: program L3 draws inside its preview — preview (0,0 463x293), scope (29,17 404x87), data (151,241 160x30)
-  PASS  Centre: submix2 WFM draws inside its preview — preview (0,0 462x293), scope (319,11 123x87), data hidden
-  PASS  Centre: submix2 RGB draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Centre: submix2 HIST draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Centre: submix2 VEC draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data hidden
-  PASS  Centre: submix2 FILE draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (331,241 84x30)
-  PASS  Centre: submix2 TC draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (261,241 154x30)
-  PASS  Centre: submix2 OVER draws inside its preview — preview (0,0 462x293), scope (11,0 439x293), data (261,241 154x30)
-  PASS  Centre: submix2 L3 draws inside its preview — preview (0,0 462x293), scope (29,17 404x87), data (261,241 154x30)
-  PASS  FILE + TC on all three monitors keeps the worst tick under 25 ms — 120 ticks, mean 9.0 ms (8.7 off), worst 13.7 ms (18.7 off)
+  PASS  Centre: submix1 WFM draws inside its preview — preview (0,0 462x293), scope (309,11 109x87), data hidden
+  PASS  Centre: submix1 RGB draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Centre: submix1 HIST draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Centre: submix1 VEC draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Centre: submix1 FILE draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (67,241 69x30)
+  PASS  Centre: submix1 TC draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (67,241 132x30)
+  PASS  Centre: submix1 OVER draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (67,241 132x30)
+  PASS  Centre: submix1 L3 draws inside its preview — preview (0,0 462x293), scope (51,17 359x87), data (67,241 132x30)
+  PASS  Centre: program WFM draws inside its preview — preview (0,0 463x293), scope (309,11 109x87), data hidden
+  PASS  Centre: program RGB draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data hidden
+  PASS  Centre: program HIST draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data hidden
+  PASS  Centre: program VEC draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data hidden
+  PASS  Centre: program FILE draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data (191,241 79x30)
+  PASS  Centre: program TC draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data (160,241 142x30)
+  PASS  Centre: program OVER draws inside its preview — preview (0,0 463x293), scope (36,0 390x293), data (160,241 142x30)
+  PASS  Centre: program L3 draws inside its preview — preview (0,0 463x293), scope (51,17 359x87), data (160,241 142x30)
+  PASS  Centre: submix2 WFM draws inside its preview — preview (0,0 462x293), scope (309,11 109x87), data hidden
+  PASS  Centre: submix2 RGB draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Centre: submix2 HIST draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Centre: submix2 VEC draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data hidden
+  PASS  Centre: submix2 FILE draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (320,241 74x30)
+  PASS  Centre: submix2 TC draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (257,241 137x30)
+  PASS  Centre: submix2 OVER draws inside its preview — preview (0,0 462x293), scope (35,0 390x293), data (257,241 137x30)
+  PASS  Centre: submix2 L3 draws inside its preview — preview (0,0 462x293), scope (51,17 359x87), data (257,241 137x30)
+  PASS  FILE + TC on all three monitors keeps the worst tick under 25 ms — 121 ticks, mean 5.1 ms (4.7 off), worst 8.7 ms (7.8 off)
   PASS  source A: every control shows whole and unobstructed — 13 controls in (0,0 245x156)
   PASS  source B: every control shows whole and unobstructed — 13 controls in (0,0 245x156)
   PASS  source C: every control shows whole and unobstructed — 13 controls in (0,0 245x156)

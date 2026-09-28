@@ -70,7 +70,7 @@ final class HEV1Reader {
             extensions: CMFormatDescriptionGetExtensions(original),
             formatDescriptionOut: &description)
         guard made == noErr, let description else {
-            Log.error(.dv, "hev1: could not re-make the format description (\(made))")
+            Log.error(.clip, "hev1: could not re-make the format description (\(made))")
             return nil
         }
 
@@ -88,7 +88,7 @@ final class HEV1Reader {
             imageBufferAttributes: attributes as CFDictionary, outputCallback: nil,
             decompressionSessionOut: &session)
         guard created == noErr, let session else {
-            Log.error(.dv, "hev1: VideoToolbox refused the stream (\(created)); "
+            Log.error(.clip, "hev1: VideoToolbox refused the stream (\(created)); "
                 + "its parameter sets may be in-band only")
             return nil
         }
@@ -114,7 +114,7 @@ final class HEV1Reader {
         startTime = trackStart + seconds
 
         guard let newReader = try? AVAssetReader(asset: asset) else {
-            Log.error(.dv, "hev1: could not create a reader")
+            Log.error(.clip, "hev1: could not create a reader")
             return false
         }
         let passthrough = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
@@ -126,7 +126,7 @@ final class HEV1Reader {
                 start: CMTime(seconds: startTime, preferredTimescale: 600), duration: .positiveInfinity)
         }
         guard newReader.startReading() else {
-            Log.error(.dv, "hev1: reader refused to start: \(newReader.error?.localizedDescription ?? "unknown")")
+            Log.error(.clip, "hev1: reader refused to start: \(newReader.error?.localizedDescription ?? "unknown")")
             return false
         }
         reader = newReader
@@ -178,7 +178,7 @@ final class HEV1Reader {
             sampleCount: count, sampleTimingEntryCount: timingCount, sampleTimingArray: &timing,
             sampleSizeEntryCount: sizeCount, sampleSizeArray: &sizes, sampleBufferOut: &rewrapped)
         guard status == noErr, let rewrapped else {
-            Log.error(.dv, "hev1: could not re-wrap a sample (\(status))")
+            Log.error(.clip, "hev1: could not re-wrap a sample (\(status))")
             return
         }
 
@@ -191,7 +191,7 @@ final class HEV1Reader {
         // Belt and braces: without the asynchronous flag the handler has already run.
         VTDecompressionSessionWaitForAsynchronousFrames(session)
         if decoded != noErr {
-            Log.error(.dv, "hev1: a frame did not decode (\(decoded))")
+            Log.error(.clip, "hev1: a frame did not decode (\(decoded))")
         }
     }
 }

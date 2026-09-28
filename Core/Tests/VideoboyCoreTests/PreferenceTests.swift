@@ -122,15 +122,13 @@ final class PreferenceTests: XCTestCase {
             ConfiguredSource(
                 kind: .windowCapture, name: "OBS Studio", target: "Main Window",
                 windowOwnerName: "OBS"),
-            ConfiguredSource(kind: .ipCamera, name: "Porch Cam", target: "rtsp://10.0.0.4/live"),
-            ConfiguredSource(kind: .dvDeck, name: "GL2 deck")
+            ConfiguredSource(kind: .ipCamera, name: "Porch Cam", target: "rtsp://10.0.0.4/live")
         ]
         let reopened = PreferenceStore(fileURL: fileURL)
-        XCTAssertEqual(reopened.preferences.configuredSources.count, 4)
+        XCTAssertEqual(reopened.preferences.configuredSources.count, 3)
         XCTAssertEqual(reopened.preferences.configuredSources[0].kind, .avfoundation)
         XCTAssertEqual(reopened.preferences.configuredSources[1].windowOwnerName, "OBS")
         XCTAssertEqual(reopened.preferences.configuredSources[2].target, "rtsp://10.0.0.4/live")
-        XCTAssertEqual(reopened.preferences.configuredSources[3].kind, .dvDeck)
     }
 
     /// A preferences file saved before this type existed has no `configuredSources`
@@ -165,18 +163,10 @@ final class PreferenceTests: XCTestCase {
 
 final class ConfiguredSourceKindTests: XCTestCase {
 
-    /// The DV-deck badge must never collide with the "DV" badge a decoded .dv file
-    /// clip already uses — that collision would make a deck entry look like a
-    /// playable clip in the Sources tab, which is a real bug, not a cosmetic one.
-    func testDVDeckBadgeDoesNotCollideWithTheClipBadge() {
-        XCTAssertNotEqual(ConfiguredSourceKind.dvDeck.badge, "DV")
-    }
-
     func testOnlyAVFoundationAndWindowCaptureAreImplemented() {
         XCTAssertTrue(ConfiguredSourceKind.avfoundation.isImplemented)
         XCTAssertTrue(ConfiguredSourceKind.windowCapture.isImplemented)
         XCTAssertFalse(ConfiguredSourceKind.ipCamera.isImplemented)
-        XCTAssertFalse(ConfiguredSourceKind.dvDeck.isImplemented)
     }
 
     /// Every badge must be one the app's existing kind-name lookup already knows

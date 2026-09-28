@@ -49,7 +49,7 @@ final class CatalogTests: XCTestCase {
     func testTheOptimizedLinkIsKept() throws {
         let url = directory.appendingPathComponent("opt.vbcatalog")
         var linked = clip(1)
-        linked.optimizedPath = "/opt/1.dv"
+        linked.optimizedPath = "/opt/1.m2v"
         linked.optimizedCanvas = "SD NTSC 29.97"
         do {
             let catalog = try Catalog(url: url, makesBackups: false)
@@ -72,7 +72,7 @@ final class CatalogTests: XCTestCase {
                 frame_count INTEGER, frame_rate REAL, in_point REAL, out_point REAL,
                 position INTEGER NOT NULL);
             CREATE TABLE bins (name TEXT PRIMARY KEY);
-            INSERT INTO clips (id, path, name, badge, position) VALUES ('old', '/old.dv', 'old.dv', 'DV', 0);
+            INSERT INTO clips (id, path, name, badge, position) VALUES ('old', '/old.mov', 'old.mov', 'MOV', 0);
             PRAGMA user_version = 1;
             """
         XCTAssertEqual(sqlite3_exec(db, v1, nil, nil, nil), SQLITE_OK)
@@ -83,10 +83,10 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(clips.map(\.id), ["old"])
         XCTAssertNil(clips.first?.optimizedPath)
         var updated = clips[0]
-        updated.optimizedPath = "/opt/old.dv"
+        updated.optimizedPath = "/opt/old.mov"
         catalog.save([updated])
         catalog.flush()
-        XCTAssertEqual(catalog.loadClips().first?.optimizedPath, "/opt/old.dv")
+        XCTAssertEqual(catalog.loadClips().first?.optimizedPath, "/opt/old.mov")
     }
 
     func testWritesApplyInOrder() throws {
@@ -146,7 +146,7 @@ final class ImportScanTests: XCTestCase {
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("import-tests-\(UUID().uuidString)", isDirectory: true)
-        for path in ["top.mov", "Reel A/one.mov", "Reel A/two.dv", "Reel B/Deep/three.mov", "Reel B/notes.txt"] {
+        for path in ["top.mov", "Reel A/one.mov", "Reel A/two.m2v", "Reel B/Deep/three.mov", "Reel B/notes.txt"] {
             let url = root.appendingPathComponent(path)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             FileManager.default.createFile(atPath: url.path, contents: Data("x".utf8))
@@ -160,7 +160,7 @@ final class ImportScanTests: XCTestCase {
     func testAFolderIsWalkedAndItsTreeBecomesNestedBins() {
         let result = ImportScan.scan([root])
         let byName = Dictionary(uniqueKeysWithValues: result.candidates.map { ($0.url.lastPathComponent, $0.bin) })
-        XCTAssertEqual(Set(byName.keys), ["top.mov", "one.mov", "two.dv", "three.mov"])
+        XCTAssertEqual(Set(byName.keys), ["top.mov", "one.mov", "two.m2v", "three.mov"])
         let top = root.lastPathComponent
         XCTAssertEqual(byName["top.mov"], top)
         XCTAssertEqual(byName["one.mov"], "\(top)/Reel A")
@@ -240,7 +240,7 @@ final class ClipProbeTests: XCTestCase {
     /// The probe's frame count must be the decoder's, or the playhead wraps early or
     /// shows frames that do not exist.
     func testTheProbeAgreesWithEveryDecoder() throws {
-        for name in ["bars.dv", "motion.dv", "motion.m2v", "motion.mov"] {
+        for name in ["motion.m2v", "motion.mov", "hd-h264-2997.mov"] {
             let url = RepoPaths.samples.appendingPathComponent(name)
             guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("no \(name)") }
             let facts = try XCTUnwrap(ClipProbe.facts(of: url), name)

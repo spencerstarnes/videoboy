@@ -175,8 +175,8 @@ enum ShaderSource {
             float2 uv = float2(x, in.uv.y);
             float2 chromaTapUV = float2(in.uv.x + offset * chromaSpread * texel.x + jitter, in.uv.y);
 
-            // Chroma subsampling happens before encoding: DV is 4:1:1 on NTSC, and
-            // leaning into that is the point (SPEC 9).
+            // Chroma subsampling happens before encoding; leaning into the smeared
+            // colour of the era's tape formats is the point (SPEC 9).
             float2 chromaUV = chromaTapUV;
             if (p.chromaSubsample > 1.5) {
                 float block = p.chromaSubsample * texel.x;

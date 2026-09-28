@@ -1,11 +1,8 @@
 //
-//  MPEGCorruptor.swift — the other half of the wedge (SPEC 5).
+//  MPEGCorruptor.swift — the wedge on MPEG-2 (SPEC 5).
 //
-//  Purpose : DV damage is spatial — blocks land in the wrong place, coefficients
-//            tear. MPEG damage is TEMPORAL, which is what makes it worth having as
-//            well rather than instead: every DV frame is whole, so DV has no notion
-//            of a picture that depends on another one, and these three effects all
-//            live in that dependency. What each actually does is described on its own
+//  Purpose : MPEG damage is TEMPORAL: pictures depend on other pictures, and these
+//            three effects all live in that dependency. What each actually does is described on its own
 //            case below, because they are genuinely different and lumping them
 //            together as "datamoshing" would promise one look for all three.
 //  Inputs  : MPEG-2 elementary-stream bytes, plus settings and a seed.
@@ -16,8 +13,8 @@
 //            transform must leave the stream DECODABLE — the point is a picture that
 //            is wrong, not an error.
 //
-//  Deterministic given a seed, exactly as the DV corruptor is, so the same beat
-//  produces the same damage twice and a performance can be repeated.
+//  Deterministic given a seed, so the same beat produces the same damage twice and a
+//  performance can be repeated.
 //
 
 import Foundation
@@ -89,10 +86,9 @@ public enum MPEGCorruptor {
     ///   - bytes: a decodable MPEG-2 elementary stream, usually one GOP.
     ///   - settings: what to do and how much of it.
     ///   - previousPicture: the bytes of the last picture, for `referenceHold`.
-    /// - Returns: the damaged stream. Unlike the DV corruptor this is NOT
-    ///   length-preserving — dropping a picture means removing its bytes, and an
-    ///   MPEG stream is self-delimiting so its length is free to change. That is the
-    ///   whole difference between the two families.
+    /// - Returns: the damaged stream. NOT length-preserving — dropping a picture
+    ///   means removing its bytes, and an MPEG stream is self-delimiting so its length
+    ///   is free to change.
     public static func corrupt(
         stream bytes: [UInt8],
         settings: MPEGCorruptionSettings,

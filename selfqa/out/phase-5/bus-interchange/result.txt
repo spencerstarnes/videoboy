@@ -1,7 +1,7 @@
 check:    phase-5/bus-interchange
 verdict:  PASS
-when:     2026-09-24T07:24:34Z
-core:     0.3.0
+when:     2026-09-28T17:10:29Z
+core:     0.4.10
 
 notes:
   decoded footage re-encoded to DV, standing in for a mixed bus

@@ -22,7 +22,7 @@ import VideoboyCore
 final class SetupAssistant: NSWindowController {
 
     enum Page: Int, CaseIterable {
-        case welcome, locations, project, optimize, done
+        case welcome, locations, project, done
     }
 
     private let store: PreferenceStore
@@ -142,26 +142,12 @@ final class SetupAssistant: NSWindowController {
             views = heading("Project", SetupChoices.canvasReason)
             views += [Controls.row([Controls.label("Canvas"), SetupChoices.popUp(SetupChoices.canvases)]),
                       Controls.row([Controls.label("Frame rate"), SetupChoices.popUp(SetupChoices.frameRates)])]
-        case .optimize:
-            let preset = SetupChoices.popUp(SetupChoices.optimizePresetItems)
-            preset.selectItem(at: store.preferences.optimizePreset == OptimizePreset.compact.rawValue ? 1 : 0)
-            preset.target = self
-            preset.action = #selector(presetChosen(_:))
-            views = heading("Optimize", "What Copy + Optimize writes. Performance writes DV on the "
-                + "SD NTSC canvas (keeps the DV wedge); Compact writes MPEG-2 at a third of the size.")
-            views += [Controls.row([Controls.label("Preset"), preset])]
         case .done:
             views = heading("Ready", "Canvas SD NTSC 29.97 · library at "
                 + store.preferences.catalogURL.path
                 + ". Open Import to bring clips in, or Done to start in VJ.")
         }
         return Controls.column(views, spacing: 10)
-    }
-
-    @objc private func presetChosen(_ sender: NSPopUpButton) {
-        if let preset = SetupChoices.optimizePreset(at: sender.indexOfSelectedItem) {
-            store.preferences.optimizePreset = preset.rawValue
-        }
     }
 
     @objc private func backPressed() {

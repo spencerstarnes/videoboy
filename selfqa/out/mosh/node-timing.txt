@@ -1,2 +1,2 @@
-render ms: worst 2.597928047180176, p95 1.3870000839233398, median 0.30601024627685547
+render ms: worst 3.787994384765625, p95 0.7970333099365234, median 0.28395652770996094
 statistics: MoshStatistics(received: 79, emitted: 64, droppedKeyframes: 0, droppedCuts: 15, droppedRandom: 0, bloomed: 0, passedUnchanged: 0)

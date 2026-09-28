@@ -12,7 +12,7 @@ import XCTest
 
 final class ThumbnailTests: XCTestCase {
 
-    private func sampleURL(_ name: String = "motion.dv") throws -> URL {
+    private func sampleURL(_ name: String = "motion.m2v") throws -> URL {
         let url = RepoPaths.samples.appendingPathComponent(name)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw XCTSkip("samples/\(name) is missing — run scripts/make-fixtures.sh")
@@ -54,7 +54,7 @@ final class ThumbnailTests: XCTestCase {
 
     func testAnUnreadableFileFailsQuietly() {
         let thumbnails = ClipThumbnails()
-        let missing = URL(fileURLWithPath: "/nonexistent/nope.dv")
+        let missing = URL(fileURLWithPath: "/nonexistent/nope.mov")
         XCTAssertNil(thumbnails.frame(for: missing, at: 0))
         // Twice, because the second call takes the "already failed" path — the one
         // that stops a broken file being re-opened on every pointer move.

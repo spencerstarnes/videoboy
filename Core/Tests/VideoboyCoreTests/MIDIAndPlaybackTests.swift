@@ -1,11 +1,11 @@
 //
-//  MIDIAndPlaybackTests.swift — detect/learn, and DV playback with on-beat corruption.
+//  MIDIAndPlaybackTests.swift — detect/learn, and MPEG playback with on-beat corruption.
 //
 //  Purpose : Phase 2's headless acceptance. Proves that shift-to-detect maps a real
 //            control to a param code, that the mapped parameter then moves, and that
-//            a DV source plays and corrupts on the beat — all without a window, the
+//            an MPEG source plays and corrupts on the beat — all without a window, the
 //            physical controller, or the HDMI card.
-//  Inputs  : a virtual CoreMIDI source, and samples/motion.dv.
+//  Inputs  : a virtual CoreMIDI source, and samples/motion.m2v.
 //  Outputs : assertions plus PNGs under selfqa/out/phase-2/.
 //  Connects: MIDIInput, VirtualMIDISource, ClipSourceNode, Transport, Scheduler.
 //  Extend  : a new control source should be provable the same way — drive it, assert
@@ -142,13 +142,13 @@ final class MIDIAndPlaybackTests: XCTestCase {
 
     // MARK: - Playback
 
-    private func openSource(_ name: String = "motion.dv") throws -> ClipSourceNode {
+    private func openSource(_ name: String = "motion.m2v") throws -> ClipSourceNode {
         let url = RepoPaths.samples.appendingPathComponent(name)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw XCTSkip("samples/\(name) is missing — run scripts/make-fixtures.sh")
         }
         let node = ClipSourceNode(identifier: GraphTopology.sourceA, context: nil)
-        XCTAssertTrue(node.load(url: url), "the DV source must load its file")
+        XCTAssertTrue(node.load(url: url), "the MPEG source must load its file")
         return node
     }
 
@@ -160,7 +160,7 @@ final class MIDIAndPlaybackTests: XCTestCase {
 
     func testMissingFileLeavesTheSourceEmptyRatherThanCrashing() {
         let node = ClipSourceNode(identifier: "test", context: nil)
-        XCTAssertFalse(node.load(url: URL(fileURLWithPath: "/nonexistent/nope.dv")))
+        XCTAssertFalse(node.load(url: URL(fileURLWithPath: "/nonexistent/nope.m2v")))
         XCTAssertEqual(node.frameCount, 0)
         XCTAssertNil(node.renderToImage(frameIndex: 0))
     }
@@ -507,7 +507,7 @@ final class MIDIAndPlaybackTests: XCTestCase {
         let node = try openSource()
         let first = try XCTUnwrap(node.renderToImage(frameIndex: 0))
         let later = try XCTUnwrap(node.renderToImage(frameIndex: 60))
-        // motion.dv moves, so two seconds apart must look different.
+        // motion.m2v moves, so two seconds apart must look different.
         XCTAssertTrue(FrameAssertions.framesDiffer(first, later, minimumFraction: 0.05).passed)
     }
 
@@ -523,7 +523,8 @@ final class MIDIAndPlaybackTests: XCTestCase {
 
         // The corruptor re-rolls its seed on every quarter note, compensated for the
         // source's own decode latency so the change lands on the beat.
-        node.corruption = CorruptionSettings(mode: .shuffleBlocks, amount: 0.65, seed: 1)
+        // Mode position 0.5: MPEG's motion-vector corruption.
+        node.corruption = CorruptionSettings(amount: 0.65, seed: 1, modePosition: 0.5)
         var reseedCount = 0
         scheduler.subscribe(subdivision: .quarter, latencyInFrames: node.latencyInFrames) { event in
             // Derive the seed from the beat so the performance is reproducible.
@@ -612,7 +613,7 @@ final class MIDIAndPlaybackTests: XCTestCase {
         let clean = try XCTUnwrap(node.renderToImage(frameIndex: 30))
 
         // Now push the knob up and re-render the same source frame.
-        node.corruption.mode = .dropBlocks
+        node.corruption.modePosition = 0.5   // motion-vector corruption
         midi.handle(event: ControlEvent(source: knob, value: 1.0))
         node.applyParameters(from: registry)
         XCTAssertEqual(node.corruption.amount, 1.0, accuracy: 1e-9)

@@ -1,0 +1,1339 @@
+{
+  "chains" : {
+    "one" : {
+      "entries" : [
+        {
+          "instanceID" : "native-datamosh",
+          "moduleID" : "native.datamosh",
+          "target" : 2
+        },
+        {
+          "instanceID" : "mosh",
+          "moduleID" : "native.datamosh",
+          "target" : 2
+        },
+        {
+          "instanceID" : "transform",
+          "moduleID" : "builtin.Transform",
+          "target" : 0
+        },
+        {
+          "instanceID" : "colour",
+          "moduleID" : "builtin.Colour",
+          "target" : 2
+        },
+        {
+          "instanceID" : "composite",
+          "moduleID" : "native.composite",
+          "target" : 0
+        },
+        {
+          "instanceID" : "echo",
+          "moduleID" : "builtin.Echo",
+          "target" : 0
+        },
+        {
+          "instanceID" : "feedback",
+          "moduleID" : "native.feedback",
+          "target" : 0
+        },
+        {
+          "instanceID" : "freeze",
+          "moduleID" : "native.freeze",
+          "target" : 0
+        }
+      ]
+    },
+    "two" : {
+      "entries" : [
+        {
+          "instanceID" : "mosh",
+          "moduleID" : "native.datamosh",
+          "target" : 2
+        },
+        {
+          "instanceID" : "transform",
+          "moduleID" : "builtin.Transform",
+          "target" : 0
+        },
+        {
+          "instanceID" : "colour",
+          "moduleID" : "builtin.Colour",
+          "target" : 2
+        },
+        {
+          "instanceID" : "composite",
+          "moduleID" : "native.composite",
+          "target" : 0
+        },
+        {
+          "instanceID" : "echo",
+          "moduleID" : "builtin.Echo",
+          "target" : 0
+        },
+        {
+          "instanceID" : "feedback",
+          "moduleID" : "native.feedback",
+          "target" : 0
+        },
+        {
+          "instanceID" : "freeze",
+          "moduleID" : "native.freeze",
+          "target" : 0
+        }
+      ]
+    }
+  },
+  "channels" : {
+    "A" : {
+      "framing" : "fit",
+      "inPoint" : 0.2,
+      "isPlaying" : true,
+      "loopMode" : "pingPong",
+      "mediaPath" : "/Users/spencerstarnes/dev/videoboy-perf/samples/motion.mov",
+      "outPoint" : 0.7
+    },
+    "B" : {
+      "framing" : "fit",
+      "isPlaying" : false,
+      "loopMode" : "loop"
+    },
+    "C" : {
+      "framing" : "fit",
+      "isPlaying" : false,
+      "loopMode" : "loop",
+      "reference" : "generator:3"
+    },
+    "D" : {
+      "framing" : "fit",
+      "isPlaying" : false,
+      "loopMode" : "loop"
+    }
+  },
+  "clock" : {
+    "beatsPerBar" : 4,
+    "beatsPerMinute" : 97,
+    "subdivision" : "1/4"
+  },
+  "edges" : [
+    {
+      "from" : "data.one",
+      "inputIndex" : 0,
+      "to" : "burn.one"
+    },
+    {
+      "from" : "data.two",
+      "inputIndex" : 0,
+      "to" : "burn.two"
+    },
+    {
+      "from" : "fx.one.freeze",
+      "inputIndex" : 0,
+      "to" : "data.one"
+    },
+    {
+      "from" : "fx.program.composite",
+      "inputIndex" : 0,
+      "to" : "data.program"
+    },
+    {
+      "from" : "fx.two.freeze",
+      "inputIndex" : 0,
+      "to" : "data.two"
+    },
+    {
+      "from" : "fx.a.transform",
+      "inputIndex" : 0,
+      "to" : "fx.a.colour"
+    },
+    {
+      "from" : "fx.a.colour",
+      "inputIndex" : 0,
+      "to" : "fx.a.composite"
+    },
+    {
+      "from" : "fx.a.composite",
+      "inputIndex" : 0,
+      "to" : "fx.a.echo"
+    },
+    {
+      "from" : "fx.a.echo",
+      "inputIndex" : 0,
+      "to" : "fx.a.feedback"
+    },
+    {
+      "from" : "fx.a.feedback",
+      "inputIndex" : 0,
+      "to" : "fx.a.freeze"
+    },
+    {
+      "from" : "fx.a.native-datamosh",
+      "inputIndex" : 0,
+      "to" : "fx.a.mosh"
+    },
+    {
+      "from" : "source.a",
+      "inputIndex" : 0,
+      "to" : "fx.a.native-datamosh"
+    },
+    {
+      "from" : "fx.a.mosh",
+      "inputIndex" : 0,
+      "to" : "fx.a.transform"
+    },
+    {
+      "from" : "fx.b.transform",
+      "inputIndex" : 0,
+      "to" : "fx.b.colour"
+    },
+    {
+      "from" : "fx.b.colour",
+      "inputIndex" : 0,
+      "to" : "fx.b.composite"
+    },
+    {
+      "from" : "fx.b.composite",
+      "inputIndex" : 0,
+      "to" : "fx.b.echo"
+    },
+    {
+      "from" : "fx.b.echo",
+      "inputIndex" : 0,
+      "to" : "fx.b.feedback"
+    },
+    {
+      "from" : "fx.b.feedback",
+      "inputIndex" : 0,
+      "to" : "fx.b.freeze"
+    },
+    {
+      "from" : "fx.b.native-datamosh",
+      "inputIndex" : 0,
+      "to" : "fx.b.mosh"
+    },
+    {
+      "from" : "source.b",
+      "inputIndex" : 0,
+      "to" : "fx.b.native-datamosh"
+    },
+    {
+      "from" : "fx.b.mosh",
+      "inputIndex" : 0,
+      "to" : "fx.b.transform"
+    },
+    {
+      "from" : "fx.c.transform",
+      "inputIndex" : 0,
+      "to" : "fx.c.colour"
+    },
+    {
+      "from" : "fx.c.colour",
+      "inputIndex" : 0,
+      "to" : "fx.c.composite"
+    },
+    {
+      "from" : "fx.c.composite",
+      "inputIndex" : 0,
+      "to" : "fx.c.echo"
+    },
+    {
+      "from" : "fx.c.echo",
+      "inputIndex" : 0,
+      "to" : "fx.c.feedback"
+    },
+    {
+      "from" : "fx.c.feedback",
+      "inputIndex" : 0,
+      "to" : "fx.c.freeze"
+    },
+    {
+      "from" : "generator.c",
+      "inputIndex" : 0,
+      "to" : "fx.c.mosh"
+    },
+    {
+      "from" : "fx.c.mosh",
+      "inputIndex" : 0,
+      "to" : "fx.c.transform"
+    },
+    {
+      "from" : "fx.d.transform",
+      "inputIndex" : 0,
+      "to" : "fx.d.colour"
+    },
+    {
+      "from" : "fx.d.colour",
+      "inputIndex" : 0,
+      "to" : "fx.d.composite"
+    },
+    {
+      "from" : "fx.d.composite",
+      "inputIndex" : 0,
+      "to" : "fx.d.echo"
+    },
+    {
+      "from" : "fx.d.echo",
+      "inputIndex" : 0,
+      "to" : "fx.d.feedback"
+    },
+    {
+      "from" : "fx.d.feedback",
+      "inputIndex" : 0,
+      "to" : "fx.d.freeze"
+    },
+    {
+      "from" : "source.d",
+      "inputIndex" : 0,
+      "to" : "fx.d.mosh"
+    },
+    {
+      "from" : "fx.d.mosh",
+      "inputIndex" : 0,
+      "to" : "fx.d.transform"
+    },
+    {
+      "from" : "fx.one.transform",
+      "inputIndex" : 0,
+      "to" : "fx.one.colour"
+    },
+    {
+      "from" : "fx.one.colour",
+      "inputIndex" : 0,
+      "to" : "fx.one.composite"
+    },
+    {
+      "from" : "fx.one.composite",
+      "inputIndex" : 0,
+      "to" : "fx.one.echo"
+    },
+    {
+      "from" : "fx.one.echo",
+      "inputIndex" : 0,
+      "to" : "fx.one.feedback"
+    },
+    {
+      "from" : "fx.one.feedback",
+      "inputIndex" : 0,
+      "to" : "fx.one.freeze"
+    },
+    {
+      "from" : "fx.one.native-datamosh",
+      "inputIndex" : 0,
+      "to" : "fx.one.mosh"
+    },
+    {
+      "from" : "mix.one",
+      "inputIndex" : 0,
+      "to" : "fx.one.native-datamosh"
+    },
+    {
+      "from" : "fx.one.mosh",
+      "inputIndex" : 0,
+      "to" : "fx.one.transform"
+    },
+    {
+      "from" : "mix.primary",
+      "inputIndex" : 0,
+      "to" : "fx.program.composite"
+    },
+    {
+      "from" : "fx.two.transform",
+      "inputIndex" : 0,
+      "to" : "fx.two.colour"
+    },
+    {
+      "from" : "fx.two.colour",
+      "inputIndex" : 0,
+      "to" : "fx.two.composite"
+    },
+    {
+      "from" : "fx.two.composite",
+      "inputIndex" : 0,
+      "to" : "fx.two.echo"
+    },
+    {
+      "from" : "fx.two.echo",
+      "inputIndex" : 0,
+      "to" : "fx.two.feedback"
+    },
+    {
+      "from" : "fx.two.feedback",
+      "inputIndex" : 0,
+      "to" : "fx.two.freeze"
+    },
+    {
+      "from" : "mix.two",
+      "inputIndex" : 0,
+      "to" : "fx.two.mosh"
+    },
+    {
+      "from" : "fx.two.mosh",
+      "inputIndex" : 0,
+      "to" : "fx.two.transform"
+    },
+    {
+      "from" : "fx.a.freeze",
+      "inputIndex" : 0,
+      "to" : "mix.one"
+    },
+    {
+      "from" : "fx.b.freeze",
+      "inputIndex" : 1,
+      "to" : "mix.one"
+    },
+    {
+      "from" : "burn.one",
+      "inputIndex" : 0,
+      "to" : "mix.primary"
+    },
+    {
+      "from" : "burn.two",
+      "inputIndex" : 1,
+      "to" : "mix.primary"
+    },
+    {
+      "from" : "fx.c.freeze",
+      "inputIndex" : 0,
+      "to" : "mix.two"
+    },
+    {
+      "from" : "fx.d.freeze",
+      "inputIndex" : 1,
+      "to" : "mix.two"
+    }
+  ],
+  "layout" : {
+    "collapsedPanels" : [
+
+    ]
+  },
+  "mappings" : [
+    {
+      "code" : "61A",
+      "slot" : "mix.one",
+      "source" : {
+        "midiControlChange" : {
+          "channel" : 0,
+          "controller" : 21
+        }
+      }
+    }
+  ],
+  "name" : "QA Show",
+  "nodes" : [
+    {
+      "identifier" : "burn.one",
+      "moduleType" : "ScopeOverlayNode",
+      "parameters" : {
+
+      }
+    },
+    {
+      "identifier" : "burn.two",
+      "moduleType" : "ScopeOverlayNode",
+      "parameters" : {
+
+      }
+    },
+    {
+      "identifier" : "data.one",
+      "moduleType" : "BusCodecNode",
+      "parameters" : {
+        "02A" : 1,
+        "31B" : 0,
+        "32B" : 0,
+        "33B" : 0.25,
+        "34B" : 1,
+        "75A" : 0
+      }
+    },
+    {
+      "identifier" : "data.program",
+      "moduleType" : "BusCodecNode",
+      "parameters" : {
+        "02A" : 0,
+        "31B" : 0,
+        "32B" : 0,
+        "33B" : 0.25,
+        "34B" : 1,
+        "75A" : 0
+      }
+    },
+    {
+      "identifier" : "data.two",
+      "moduleType" : "BusCodecNode",
+      "parameters" : {
+        "02A" : 1,
+        "31B" : 0,
+        "32B" : 0,
+        "33B" : 0.25,
+        "34B" : 1,
+        "75A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.a.colour",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "51A" : 1,
+        "52A" : 1,
+        "53A" : 0,
+        "54A" : 0,
+        "55A" : 0,
+        "56A" : 0,
+        "57A" : 1,
+        "58A" : 1
+      }
+    },
+    {
+      "identifier" : "fx.a.composite",
+      "moduleType" : "CompositeCodecNode",
+      "parameters" : {
+        "02A" : 0,
+        "71A" : 0.6,
+        "72A" : 0.5,
+        "73A" : 0.2,
+        "74A" : 0,
+        "75A" : 1,
+        "76A" : 0.7,
+        "77A" : 1,
+        "78A" : 0.3
+      }
+    },
+    {
+      "identifier" : "fx.a.echo",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "21A" : 0.8,
+        "22A" : 0.6,
+        "23A" : 0.15
+      }
+    },
+    {
+      "identifier" : "fx.a.feedback",
+      "moduleType" : "FeedbackNode",
+      "parameters" : {
+        "02A" : 0,
+        "43C" : 0.5,
+        "44C" : 1,
+        "45C" : 1.02,
+        "46C" : 0,
+        "47C" : 0.05
+      }
+    },
+    {
+      "identifier" : "fx.a.freeze",
+      "moduleType" : "FreezeNode",
+      "parameters" : {
+        "02A" : 0,
+        "24A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.a.mosh",
+      "moduleType" : "DatamoshNode",
+      "parameters" : {
+        "01A" : 1,
+        "02A" : 0,
+        "35B" : 0,
+        "36B" : 0,
+        "37B" : 0,
+        "38B" : 0.5,
+        "39B" : 0,
+        "3AB" : 0.2,
+        "3BB" : 0,
+        "3CB" : 0.25,
+        "3DB" : 0,
+        "3EB" : 0,
+        "3FB" : 0
+      }
+    },
+    {
+      "identifier" : "fx.a.native-datamosh",
+      "moduleType" : "DatamoshNode",
+      "parameters" : {
+        "01A" : 1,
+        "02A" : 0,
+        "35B" : 0,
+        "36B" : 0,
+        "37B" : 0,
+        "38B" : 0.5,
+        "39B" : 0,
+        "3AB" : 0.2,
+        "3BB" : 0,
+        "3CB" : 0.25,
+        "3DB" : 0,
+        "3EB" : 0,
+        "3FB" : 0
+      }
+    },
+    {
+      "identifier" : "fx.a.transform",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "11A" : 1,
+        "12A" : 0,
+        "13A" : 0,
+        "14A" : 0,
+        "15A" : 0,
+        "16A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.b.colour",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "51A" : 1,
+        "52A" : 1,
+        "53A" : 0,
+        "54A" : 0,
+        "55A" : 0,
+        "56A" : 0,
+        "57A" : 1,
+        "58A" : 1
+      }
+    },
+    {
+      "identifier" : "fx.b.composite",
+      "moduleType" : "CompositeCodecNode",
+      "parameters" : {
+        "02A" : 0,
+        "71A" : 0.6,
+        "72A" : 0.5,
+        "73A" : 0.2,
+        "74A" : 0,
+        "75A" : 1,
+        "76A" : 0.7,
+        "77A" : 1,
+        "78A" : 0.3
+      }
+    },
+    {
+      "identifier" : "fx.b.echo",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "21A" : 0.8,
+        "22A" : 0.6,
+        "23A" : 0.15
+      }
+    },
+    {
+      "identifier" : "fx.b.feedback",
+      "moduleType" : "FeedbackNode",
+      "parameters" : {
+        "02A" : 0,
+        "43C" : 0.5,
+        "44C" : 1,
+        "45C" : 1.02,
+        "46C" : 0,
+        "47C" : 0.05
+      }
+    },
+    {
+      "identifier" : "fx.b.freeze",
+      "moduleType" : "FreezeNode",
+      "parameters" : {
+        "02A" : 0,
+        "24A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.b.mosh",
+      "moduleType" : "DatamoshNode",
+      "parameters" : {
+        "01A" : 1,
+        "02A" : 0,
+        "35B" : 0,
+        "36B" : 0,
+        "37B" : 0,
+        "38B" : 0.5,
+        "39B" : 0,
+        "3AB" : 0.2,
+        "3BB" : 0,
+        "3CB" : 0.25,
+        "3DB" : 0,
+        "3EB" : 0,
+        "3FB" : 0
+      }
+    },
+    {
+      "identifier" : "fx.b.native-datamosh",
+      "moduleType" : "DatamoshNode",
+      "parameters" : {
+        "01A" : 1,
+        "02A" : 0,
+        "35B" : 0,
+        "36B" : 0,
+        "37B" : 0,
+        "38B" : 0.5,
+        "39B" : 0,
+        "3AB" : 0.2,
+        "3BB" : 0,
+        "3CB" : 0.25,
+        "3DB" : 0,
+        "3EB" : 0,
+        "3FB" : 0
+      }
+    },
+    {
+      "identifier" : "fx.b.transform",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "11A" : 1,
+        "12A" : 0,
+        "13A" : 0,
+        "14A" : 0,
+        "15A" : 0,
+        "16A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.c.colour",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "51A" : 1,
+        "52A" : 1,
+        "53A" : 0,
+        "54A" : 0,
+        "55A" : 0,
+        "56A" : 0,
+        "57A" : 1,
+        "58A" : 1
+      }
+    },
+    {
+      "identifier" : "fx.c.composite",
+      "moduleType" : "CompositeCodecNode",
+      "parameters" : {
+        "02A" : 0,
+        "71A" : 0.6,
+        "72A" : 0.5,
+        "73A" : 0.2,
+        "74A" : 0,
+        "75A" : 1,
+        "76A" : 0.7,
+        "77A" : 1,
+        "78A" : 0.3
+      }
+    },
+    {
+      "identifier" : "fx.c.echo",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "21A" : 0.8,
+        "22A" : 0.6,
+        "23A" : 0.15
+      }
+    },
+    {
+      "identifier" : "fx.c.feedback",
+      "moduleType" : "FeedbackNode",
+      "parameters" : {
+        "02A" : 0,
+        "43C" : 0.5,
+        "44C" : 1,
+        "45C" : 1.02,
+        "46C" : 0,
+        "47C" : 0.05
+      }
+    },
+    {
+      "identifier" : "fx.c.freeze",
+      "moduleType" : "FreezeNode",
+      "parameters" : {
+        "02A" : 0,
+        "24A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.c.mosh",
+      "moduleType" : "DatamoshNode",
+      "parameters" : {
+        "01A" : 1,
+        "02A" : 0,
+        "35B" : 0,
+        "36B" : 0,
+        "37B" : 0,
+        "38B" : 0.5,
+        "39B" : 0,
+        "3AB" : 0.2,
+        "3BB" : 0,
+        "3CB" : 0.25,
+        "3DB" : 0,
+        "3EB" : 0,
+        "3FB" : 0
+      }
+    },
+    {
+      "identifier" : "fx.c.transform",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "11A" : 1,
+        "12A" : 0,
+        "13A" : 0,
+        "14A" : 0,
+        "15A" : 0,
+        "16A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.d.colour",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "51A" : 1,
+        "52A" : 1,
+        "53A" : 0,
+        "54A" : 0,
+        "55A" : 0,
+        "56A" : 0,
+        "57A" : 1,
+        "58A" : 1
+      }
+    },
+    {
+      "identifier" : "fx.d.composite",
+      "moduleType" : "CompositeCodecNode",
+      "parameters" : {
+        "02A" : 0,
+        "71A" : 0.6,
+        "72A" : 0.5,
+        "73A" : 0.2,
+        "74A" : 0,
+        "75A" : 1,
+        "76A" : 0.7,
+        "77A" : 1,
+        "78A" : 0.3
+      }
+    },
+    {
+      "identifier" : "fx.d.echo",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "21A" : 0.8,
+        "22A" : 0.6,
+        "23A" : 0.15
+      }
+    },
+    {
+      "identifier" : "fx.d.feedback",
+      "moduleType" : "FeedbackNode",
+      "parameters" : {
+        "02A" : 0,
+        "43C" : 0.5,
+        "44C" : 1,
+        "45C" : 1.02,
+        "46C" : 0,
+        "47C" : 0.05
+      }
+    },
+    {
+      "identifier" : "fx.d.freeze",
+      "moduleType" : "FreezeNode",
+      "parameters" : {
+        "02A" : 0,
+        "24A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.d.mosh",
+      "moduleType" : "DatamoshNode",
+      "parameters" : {
+        "01A" : 1,
+        "02A" : 0,
+        "35B" : 0,
+        "36B" : 0,
+        "37B" : 0,
+        "38B" : 0.5,
+        "39B" : 0,
+        "3AB" : 0.2,
+        "3BB" : 0,
+        "3CB" : 0.25,
+        "3DB" : 0,
+        "3EB" : 0,
+        "3FB" : 0
+      }
+    },
+    {
+      "identifier" : "fx.d.transform",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "11A" : 1,
+        "12A" : 0,
+        "13A" : 0,
+        "14A" : 0,
+        "15A" : 0,
+        "16A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.one.colour",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 1,
+        "51A" : 1,
+        "52A" : 1,
+        "53A" : 0.6599999999999999,
+        "54A" : 0,
+        "55A" : 0,
+        "56A" : 0,
+        "57A" : 1,
+        "58A" : 1
+      }
+    },
+    {
+      "identifier" : "fx.one.composite",
+      "moduleType" : "CompositeCodecNode",
+      "parameters" : {
+        "02A" : 0,
+        "71A" : 0.6,
+        "72A" : 0.5,
+        "73A" : 0.2,
+        "74A" : 0,
+        "75A" : 1,
+        "76A" : 0.7,
+        "77A" : 1,
+        "78A" : 0.3
+      }
+    },
+    {
+      "identifier" : "fx.one.echo",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "21A" : 0.8,
+        "22A" : 0.6,
+        "23A" : 0.15
+      }
+    },
+    {
+      "identifier" : "fx.one.feedback",
+      "moduleType" : "FeedbackNode",
+      "parameters" : {
+        "02A" : 0,
+        "43C" : 0.5,
+        "44C" : 1,
+        "45C" : 1.02,
+        "46C" : 0,
+        "47C" : 0.05
+      }
+    },
+    {
+      "identifier" : "fx.one.freeze",
+      "moduleType" : "FreezeNode",
+      "parameters" : {
+        "02A" : 0,
+        "24A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.one.mosh",
+      "moduleType" : "DatamoshNode",
+      "parameters" : {
+        "01A" : 1,
+        "02A" : 0,
+        "35B" : 0,
+        "36B" : 0,
+        "37B" : 0,
+        "38B" : 0.5,
+        "39B" : 0,
+        "3AB" : 0.2,
+        "3BB" : 0,
+        "3CB" : 0.25,
+        "3DB" : 0,
+        "3EB" : 0,
+        "3FB" : 0
+      }
+    },
+    {
+      "identifier" : "fx.one.native-datamosh",
+      "moduleType" : "DatamoshNode",
+      "parameters" : {
+        "01A" : 1,
+        "02A" : 0,
+        "35B" : 0,
+        "36B" : 0,
+        "37B" : 0,
+        "38B" : 0.5,
+        "39B" : 0,
+        "3AB" : 0.2,
+        "3BB" : 0,
+        "3CB" : 0.25,
+        "3DB" : 0,
+        "3EB" : 0,
+        "3FB" : 0
+      }
+    },
+    {
+      "identifier" : "fx.one.transform",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "11A" : 1,
+        "12A" : 0,
+        "13A" : 0,
+        "14A" : 0,
+        "15A" : 0,
+        "16A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.program.composite",
+      "moduleType" : "CompositeCodecNode",
+      "parameters" : {
+        "02A" : 0,
+        "71A" : 0.6,
+        "72A" : 0.5,
+        "73A" : 0.2,
+        "74A" : 0,
+        "75A" : 1,
+        "76A" : 0.7,
+        "77A" : 1,
+        "78A" : 0.3
+      }
+    },
+    {
+      "identifier" : "fx.two.colour",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 1,
+        "51A" : 1,
+        "52A" : 1,
+        "53A" : 0,
+        "54A" : 0,
+        "55A" : 0,
+        "56A" : 0,
+        "57A" : 1,
+        "58A" : 1
+      }
+    },
+    {
+      "identifier" : "fx.two.composite",
+      "moduleType" : "CompositeCodecNode",
+      "parameters" : {
+        "02A" : 0,
+        "71A" : 0.6,
+        "72A" : 0.5,
+        "73A" : 0.2,
+        "74A" : 0,
+        "75A" : 1,
+        "76A" : 0.7,
+        "77A" : 1,
+        "78A" : 0.3
+      }
+    },
+    {
+      "identifier" : "fx.two.echo",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "21A" : 0.8,
+        "22A" : 0.6,
+        "23A" : 0.15
+      }
+    },
+    {
+      "identifier" : "fx.two.feedback",
+      "moduleType" : "FeedbackNode",
+      "parameters" : {
+        "02A" : 0,
+        "43C" : 0.5,
+        "44C" : 1,
+        "45C" : 1.02,
+        "46C" : 0,
+        "47C" : 0.05
+      }
+    },
+    {
+      "identifier" : "fx.two.freeze",
+      "moduleType" : "FreezeNode",
+      "parameters" : {
+        "02A" : 0,
+        "24A" : 0
+      }
+    },
+    {
+      "identifier" : "fx.two.mosh",
+      "moduleType" : "DatamoshNode",
+      "parameters" : {
+        "01A" : 1,
+        "02A" : 0,
+        "35B" : 0,
+        "36B" : 0,
+        "37B" : 0,
+        "38B" : 0.5,
+        "39B" : 0,
+        "3AB" : 0.2,
+        "3BB" : 0,
+        "3CB" : 0.25,
+        "3DB" : 0,
+        "3EB" : 0,
+        "3FB" : 0
+      }
+    },
+    {
+      "identifier" : "fx.two.transform",
+      "moduleType" : "ISFNode",
+      "parameters" : {
+        "02A" : 0,
+        "11A" : 1,
+        "12A" : 0,
+        "13A" : 0,
+        "14A" : 0,
+        "15A" : 0,
+        "16A" : 0
+      }
+    },
+    {
+      "identifier" : "generator.a",
+      "moduleType" : "GeneratorSourceNode",
+      "parameters" : {
+        "01A" : 1,
+        "11A" : 0.5,
+        "12A" : 0,
+        "51A" : 0.5
+      }
+    },
+    {
+      "identifier" : "generator.b",
+      "moduleType" : "GeneratorSourceNode",
+      "parameters" : {
+        "01A" : 1,
+        "11A" : 0.5,
+        "12A" : 0,
+        "51A" : 0.5
+      }
+    },
+    {
+      "identifier" : "generator.c",
+      "moduleType" : "GeneratorSourceNode",
+      "parameters" : {
+        "01A" : 1,
+        "11A" : 0.5,
+        "12A" : 0,
+        "51A" : 0.5
+      }
+    },
+    {
+      "identifier" : "generator.d",
+      "moduleType" : "GeneratorSourceNode",
+      "parameters" : {
+        "01A" : 1,
+        "11A" : 0.5,
+        "12A" : 0,
+        "51A" : 0.5
+      }
+    },
+    {
+      "identifier" : "mix.one",
+      "moduleType" : "CrossfadeNode",
+      "parameters" : {
+        "01A" : 1,
+        "61A" : 0.8,
+        "61E" : 0,
+        "61F" : 0,
+        "61G" : 0,
+        "62E" : 0.25,
+        "62F" : 0.03225806451612903,
+        "62G" : 0,
+        "63E" : 0.2,
+        "63F" : 0,
+        "63G" : 0,
+        "64F" : 0,
+        "64G" : 0,
+        "65A" : 0,
+        "65F" : 0,
+        "65G" : 0,
+        "66A" : 1,
+        "66F" : 0,
+        "66G" : 0,
+        "67F" : 0,
+        "67G" : 0,
+        "68A" : 0,
+        "68F" : 0.5,
+        "68G" : 0,
+        "69A" : 0,
+        "69F" : 0.5,
+        "69G" : 0,
+        "6AA" : 0,
+        "6AG" : 0,
+        "6BA" : 0,
+        "6CA" : 0,
+        "6DA" : 0
+      }
+    },
+    {
+      "identifier" : "mix.primary",
+      "moduleType" : "CrossfadeNode",
+      "parameters" : {
+        "01A" : 1,
+        "61E" : 0,
+        "61F" : 0,
+        "61G" : 0,
+        "62E" : 0.25,
+        "62F" : 0.03225806451612903,
+        "62G" : 0,
+        "63A" : 0.5,
+        "63E" : 0.2,
+        "63F" : 0,
+        "63G" : 0,
+        "64F" : 0,
+        "64G" : 0,
+        "65A" : 0,
+        "65F" : 0,
+        "65G" : 0,
+        "66A" : 1,
+        "66F" : 0,
+        "66G" : 0,
+        "67F" : 0,
+        "67G" : 0,
+        "68A" : 0,
+        "68F" : 0.5,
+        "68G" : 0,
+        "69A" : 0,
+        "69F" : 0.5,
+        "69G" : 0,
+        "6AA" : 0,
+        "6AG" : 0,
+        "6BA" : 0,
+        "6CA" : 0,
+        "6DA" : 0
+      }
+    },
+    {
+      "identifier" : "mix.two",
+      "moduleType" : "CrossfadeNode",
+      "parameters" : {
+        "01A" : 1,
+        "61E" : 0,
+        "61F" : 0,
+        "61G" : 0,
+        "62A" : 0.5,
+        "62E" : 0.25,
+        "62F" : 0.03225806451612903,
+        "62G" : 0,
+        "63E" : 0.2,
+        "63F" : 0,
+        "63G" : 0,
+        "64F" : 0,
+        "64G" : 0,
+        "65A" : 0,
+        "65F" : 0,
+        "65G" : 0,
+        "66A" : 1,
+        "66F" : 0,
+        "66G" : 0,
+        "67F" : 0,
+        "67G" : 0,
+        "68A" : 0,
+        "68F" : 0.5,
+        "68G" : 0,
+        "69A" : 0,
+        "69F" : 0.5,
+        "69G" : 0,
+        "6AA" : 0,
+        "6AG" : 0,
+        "6BA" : 0,
+        "6CA" : 0,
+        "6DA" : 0
+      }
+    },
+    {
+      "identifier" : "source.a",
+      "moduleType" : "ClipSourceNode",
+      "parameters" : {
+        "02A" : 0,
+        "31B" : 0,
+        "32B" : 0,
+        "33B" : 0.25,
+        "34B" : 1,
+        "64A" : 1,
+        "67A" : 0
+      }
+    },
+    {
+      "identifier" : "source.b",
+      "moduleType" : "ClipSourceNode",
+      "parameters" : {
+        "02A" : 0,
+        "31B" : 0,
+        "32B" : 0,
+        "33B" : 0.25,
+        "34B" : 1,
+        "64A" : 1,
+        "67A" : 0
+      }
+    },
+    {
+      "identifier" : "source.c",
+      "moduleType" : "ClipSourceNode",
+      "parameters" : {
+        "02A" : 0,
+        "31B" : 0,
+        "32B" : 0,
+        "33B" : 0.25,
+        "34B" : 1,
+        "64A" : 1,
+        "67A" : 0
+      }
+    },
+    {
+      "identifier" : "source.d",
+      "moduleType" : "ClipSourceNode",
+      "parameters" : {
+        "02A" : 0,
+        "31B" : 0,
+        "32B" : 0,
+        "33B" : 0.25,
+        "34B" : 1,
+        "64A" : 1,
+        "67A" : 0
+      }
+    },
+    {
+      "identifier" : "source.emu",
+      "moduleType" : "EmulatedTitlerNode",
+      "parameters" : {
+        "01A" : 1,
+        "A1A" : 0.5,
+        "A2A" : 0.5,
+        "A3A" : 0.5,
+        "A4A" : 0.5,
+        "A5A" : 0.5,
+        "A6A" : 0.5,
+        "A7A" : 0.5,
+        "A8A" : 0.5,
+        "A9A" : 0.5,
+        "AAA" : 0.5,
+        "ABA" : 0.5,
+        "ACA" : 0.5,
+        "ADA" : 0.5,
+        "AEA" : 0.5,
+        "AFA" : 0.5,
+        "B1A" : 0.5,
+        "B2A" : 0.5,
+        "B3A" : 0.5,
+        "B4A" : 0.5
+      }
+    },
+    {
+      "identifier" : "source.testpattern",
+      "moduleType" : "TestPatternSourceNode",
+      "parameters" : {
+        "01A" : 1
+      }
+    }
+  ],
+  "version" : 3
+}

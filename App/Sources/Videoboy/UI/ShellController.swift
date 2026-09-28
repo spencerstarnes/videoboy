@@ -153,7 +153,7 @@ final class ShellController {
         if autoPlayByChannel[channel] ?? preferences.preferences.playOnLoad {
             engine.setPlaying(true, channel: channel)
         }
-        Log.info(.dv, "loaded \(url.lastPathComponent) into channel \(channel)")
+        Log.info(.clip, "loaded \(url.lastPathComponent) into channel \(channel)")
     }
 
     /// One up-next queue per source (A, B, C, D).
@@ -208,7 +208,7 @@ final class ShellController {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             guard let next = self.playlists[channel].takeNext() else { return }
-            Log.info(.dv, "\(channel) taking \(next.displayName) from its playlist")
+            Log.info(.clip, "\(channel) taking \(next.displayName) from its playlist")
             self.loadClip(next.url, into: channel) { [weak self] loaded in
                 // Up next means up NEXT — it plays, rather than landing paused and
                 // waiting for someone to notice the clip changed.
@@ -265,7 +265,7 @@ final class ShellController {
         // own with nothing behind it. Clearing the marks stops it and takes the STEP
         // key and its ✕ away with them.
         clearSweepsForCorruptor(channel: channel)
-        Log.info(.dv, "ejected channel \(channel)")
+        Log.info(.clip, "ejected channel \(channel)")
     }
 
     /// Points a channel back at its file node, if it is showing anything else.
@@ -752,7 +752,6 @@ final class ShellController {
         let family = DataEffectFamily.forMediaFile(at: url)
         let badge: String
         switch family {
-        case .dv: badge = "DV"
         case .mpeg: badge = "MPG"
         case .none: badge = url.pathExtension.uppercased()
         }
@@ -762,7 +761,7 @@ final class ShellController {
 
     // MARK: - Shift-to-detect
 
-    /// Which slot the crossfaders, shuttles and bus data effects belong to.
+    /// Which slot the crossfaders and shuttles belong to.
     ///
     /// The effect chains have their own tables because a code there means different
     /// slots on different buses. These are one-to-one, so they live here plainly
@@ -781,19 +780,6 @@ final class ShellController {
         for (channel, body) in panels.sourceBodies {
             body.scrubFader?.mappingSlot = Self.slot(forChannel: channel)
             body.scrubFader?.mappingCode = .scrubPosition
-        }
-
-        // The bus data effects: the wedge on the interchange codec, per bus.
-        let busData: [(PreviewPanelBody, String)] = [
-            (panels.subMixOneBody, Engine.busCodecOneSlot),
-            (panels.subMixTwoBody, Engine.busCodecTwoSlot),
-            (panels.programBody, Engine.busCodecProgramSlot)
-        ]
-        for (body, slot) in busData {
-            body.dataAmountFader?.mappingSlot = slot
-            body.dataAmountFader?.mappingCode = .corruptAmount
-            body.dataModeFader?.mappingSlot = slot
-            body.dataModeFader?.mappingCode = .corruptMode
         }
 
         // The effect chains answer per code, because a code names a different slot
@@ -964,7 +950,7 @@ final class ShellController {
             }
             body.onLoopModeChanged = { [weak self] mode in
                 self?.engine.sources[letter]?.loopMode = mode
-                Log.info(.dv, "source \(letter) loop mode is now \(mode.displayName)")
+                Log.info(.clip, "source \(letter) loop mode is now \(mode.displayName)")
             }
         }
     }
@@ -1258,23 +1244,7 @@ final class ShellController {
             (panels.subMixTwoBody, GraphTopology.subMixTwo),
             (panels.programBody, GraphTopology.primary)
         ]
-        // Which engine bus each preview's data controls drive.
-        let busNames: [String: String] = [
-            GraphTopology.subMixOne: "ONE",
-            GraphTopology.subMixTwo: "TWO",
-            GraphTopology.primary: "PROGRAM"
-        ]
-        let busSlots: [String: String] = [
-            GraphTopology.subMixOne: Engine.busCodecOneSlot,
-            GraphTopology.subMixTwo: Engine.busCodecTwoSlot,
-            GraphTopology.primary: Engine.busCodecProgramSlot
-        ]
-
         for composite in composites {
-            composite.body.onInterchangeChanged = { [weak self] codec in
-                guard let self, let bus = busNames[composite.slot] else { return }
-                self.engine.setInterchange(codec, forBus: bus)
-            }
             composite.body.onScopeKeyPressed = { [weak self] key in
                 self?.scopeKeyPressed(key, for: composite.slot, body: composite.body)
             }
@@ -1283,16 +1253,6 @@ final class ShellController {
             // which invites a click that does nothing.
             composite.body.setScopeSelection(
                 scopeSelections[composite.slot] ?? defaultScopeSelection())
-            composite.body.onDataParameterChanged = { [weak self] code, value in
-                guard let self,
-                      let parameter = ParamCode(rawValue: code),
-                      let slot = busSlots[composite.slot],
-                      let declared = self.engine.graph.nodes[slot]?.parameters
-                        .first(where: { $0.code == parameter })
-                else { return }
-                self.engine.registry.setValue(
-                    declared.denormalise(value), slot: slot, code: parameter)
-            }
         }
     }
 
@@ -3113,8 +3073,8 @@ final class ShellController {
 
         let panels = shell.grid.panels
         let composites: [(body: PreviewPanelBody, slot: String, texture: String)] = [
-            (panels.subMixOneBody, GraphTopology.subMixOne, Engine.busCodecOneSlot),
-            (panels.subMixTwoBody, GraphTopology.subMixTwo, Engine.busCodecTwoSlot),
+            (panels.subMixOneBody, GraphTopology.subMixOne, engine.busOutputSlot(.one)),
+            (panels.subMixTwoBody, GraphTopology.subMixTwo, engine.busOutputSlot(.two)),
             // Scopes must read what actually goes OUT, which is the end of the
             // programme chain — but BEFORE the scope overlay, or a sent scope would
             // measure itself and climb until the trace was solid white.
@@ -3460,23 +3420,6 @@ final class ShellController {
                 ],
                 registry: engine.registry
             )
-        case .dv:
-            controller = EmulationPopover(
-                heading: "DV colour",
-                summary: "Passes the output through DV: 4:1:1 colour and 8-bit. Each "
-                    + "generation re-quantises what the last one produced, the way "
-                    + "dubbing a tape does.",
-                slot: Engine.busCodecProgramSlot,
-                variables: [
-                    .init(caption: "Generations", code: .compositeGeneration, range: 0...4),
-                    .init(caption: "Damage", code: .corruptAmount),
-                    .init(
-                        caption: "Rate lock", code: .playbackSpeed,
-                        unavailableNote: "Locking output to 29.97 is not built yet; "
-                            + "the output mode is negotiated in the Output section.")
-                ],
-                registry: engine.registry
-            )
         }
 
         let popover = NSPopover()
@@ -3489,9 +3432,6 @@ final class ShellController {
     private func wireSettingsBar() {
         shell.grid.panels.settingsBarBody.onOutputNTSCToggled = { [weak self] isOn in
             self?.engine.isOutputNTSCEnabled = isOn
-        }
-        shell.grid.panels.settingsBarBody.onOutputDVToggled = { [weak self] isOn in
-            self?.engine.isOutputDVEnabled = isOn
         }
         shell.grid.panels.settingsBarBody.onEmulationDetailRequested = { [weak self] emulation, view in
             self?.presentEmulationDetail(emulation, from: view)

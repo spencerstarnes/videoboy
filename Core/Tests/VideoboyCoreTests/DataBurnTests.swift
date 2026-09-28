@@ -35,8 +35,8 @@ final class DataBurnTests: XCTestCase {
 
     func testAChannelShutOutByItsFaderKeepsItsLabelButLosesItsData() {
         let entries = [
-            DataBurnEntry(label: "S1", name: "a.dv", frame: 8_540, isOnAir: true),
-            DataBurnEntry(label: "S2", name: "b.dv", frame: 10, isOnAir: false)
+            DataBurnEntry(label: "S1", name: "a.mov", frame: 8_540, isOnAir: true),
+            DataBurnEntry(label: "S2", name: "b.mov", frame: 10, isOnAir: false)
         ]
         XCTAssertEqual(
             DataBurnText.lines(entries, showsName: false, showsTimecode: true),
@@ -44,13 +44,13 @@ final class DataBurnTests: XCTestCase {
     }
 
     func testNameAndTimecodeTogether() {
-        let entry = DataBurnEntry(label: "A", name: "night.dv", frame: 30, isOnAir: true)
+        let entry = DataBurnEntry(label: "A", name: "night.mov", frame: 30, isOnAir: true)
         XCTAssertEqual(
             DataBurnText.lines([entry], showsName: true, showsTimecode: true),
-            ["A: night.dv 00:00:01;00"])
+            ["A: night.mov 00:00:01;00"])
         XCTAssertEqual(
             DataBurnText.lines([entry], showsName: true, showsTimecode: false),
-            ["A: night.dv"])
+            ["A: night.mov"])
     }
 
     func testALiveSourceHasANameButNoTimecode() {
@@ -61,16 +61,16 @@ final class DataBurnTests: XCTestCase {
     }
 
     func testNothingAskedForMeansNoLines() {
-        let entry = DataBurnEntry(label: "A", name: "x.dv", frame: 1, isOnAir: true)
+        let entry = DataBurnEntry(label: "A", name: "x.mov", frame: 1, isOnAir: true)
         XCTAssertEqual(DataBurnText.lines([entry], showsName: false, showsTimecode: false), [])
     }
 
     func testLongNamesKeepTheirStartAndExtension() {
-        let short = DataBurnText.shortened("a_very_long_clip_name_straight_off_the_camera.dv")
+        let short = DataBurnText.shortened("a_very_long_clip_name_straight_off_the_camera.mov")
         XCTAssertEqual(short.count, DataBurnText.nameLimit)
         XCTAssertTrue(short.hasPrefix("a_very_long"))
-        XCTAssertTrue(short.hasSuffix("camera.dv"))
-        XCTAssertEqual(DataBurnText.shortened("short.dv"), "short.dv")
+        XCTAssertTrue(short.hasSuffix("camera.mov"))
+        XCTAssertEqual(DataBurnText.shortened("short.mov"), "short.mov")
     }
 
     func testFaderEndsShutOutTheOtherSide() {
@@ -169,7 +169,7 @@ final class DataBurnTests: XCTestCase {
         }
         let node = ScopeOverlayNode(identifier: "test.burn", context: metal)
         var frame = 8_540
-        node.textProvider = { ["A: clip.dv \(Timecode.dropFrame(frame: frame))", "B:"] }
+        node.textProvider = { ["A: clip.mov \(Timecode.dropFrame(frame: frame))", "B:"] }
         let context = RenderContext(frameIndex: 0, presentationTime: 0, musicalPosition: nil)
 
         guard let output = node.render(inputs: [input], context: context),

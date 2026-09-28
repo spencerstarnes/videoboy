@@ -585,10 +585,6 @@ final class PreviewPanelBody: NSView {
     /// Called when the blend mode changes, with the chosen mode.
     var onBlendModeChanged: ((BlendMode) -> Void)?
 
-    /// Called when the bus's interchange codec changes.
-    var onInterchangeChanged: ((InterchangeCodec) -> Void)?
-    /// Called when a bus data-effect parameter moves: (param code, 0...1).
-    var onDataParameterChanged: ((String, Double) -> Void)?
 
     /// Called when one of the scope keys is pressed, with what it means.
     ///
@@ -615,11 +611,6 @@ final class PreviewPanelBody: NSView {
 
     /// The scope keys, so their lit state can be set from the selection.
     private var scopeKeys: [ScopeKey: VBOptionButton] = [:]
-    private var interchangePopUp: NSPopUpButton?
-    private var dataEffectRow: NSStackView?
-    /// The bus data-effect faders, exposed so the shell can address them for MIDI.
-    private(set) var dataAmountFader: VBFader?
-    private(set) var dataModeFader: VBFader?
 
     /// - Parameter showsBlendControls: true for the composites that carry a blend
     ///   mode — the two sub-mixes and the program.
@@ -643,23 +634,6 @@ final class PreviewPanelBody: NSView {
             // BLEND moved to the fader panel beneath this one. It decides how the two
             // layers combine, and the crossfader decides how much of each — they are
             // two halves of one question, and they were two panels apart.
-
-            // The bus interchange codec. A mixed bus is a texture with no bitstream,
-            // so data effects on it are only possible if it is re-encoded first —
-            // this popup is that choice, and it decides which data effects appear.
-            //
-            // IT IS NOT ON THE BAR ANY MORE. It sat at the left of this row as a
-            // full-width popup beside seven scope keys, which is a settings control
-            // taking the most prominent slot on a row of performance controls — and it
-            // made the spacing of everything beside it strange. It moved to the
-            // preview's CONTEXT MENU, which is where this app already puts the detail
-            // behind a control. Removed outright it would have made bus data effects
-            // unreachable, which is a different thing from moving them.
-            let interchange = Controls.popUp(
-                InterchangeCodec.allCases.map(\.displayName),
-                target: self, action: #selector(interchangeChanged(_:))
-            )
-            interchangePopUp = interchange
 
             // The send glyph, off the picture and onto the bar.
             let routing = Controls.glyphButton(
@@ -744,38 +718,10 @@ final class PreviewPanelBody: NSView {
             row.translatesAutoresizingMaskIntoConstraints = false
             addSubview(row)
 
-            // The bus data-effect controls, hidden until an interchange is chosen.
-            // Hidden rather than disabled: with no interchange there is no bitstream,
-            // so these are not "not yet built", they are meaningless.
-            let dataAmount = Controls.fader(
-                value: 0, compact: true, accent: Theme.Color.recordActive,
-                target: self, action: #selector(dataAmountChanged(_:)))
-            let dataMode = Controls.fader(
-                value: 0, compact: true, accent: Theme.Color.recordActive,
-                target: self, action: #selector(dataModeChanged(_:)))
-            dataAmountFader = dataAmount
-            dataModeFader = dataMode
-            let dataRow = Controls.row([
-                Controls.label("dmg", font: Theme.Font.tinyLabel,
-                               color: Theme.Color.textTertiary, holdsWidth: true),
-                dataAmount,
-                Controls.label("mode", font: Theme.Font.tinyLabel,
-                               color: Theme.Color.textTertiary, holdsWidth: true),
-                dataMode
-            ], spacing: 4)
-            dataRow.translatesAutoresizingMaskIntoConstraints = false
-            dataRow.isHidden = true
-            addSubview(dataRow)
-            dataEffectRow = dataRow
-
             NSLayoutConstraint.activate([
-                dataRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Metrics.panelBodyPadding),
-                dataRow.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Metrics.panelBodyPadding),
-                dataRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
-
                 row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Metrics.panelBodyPadding),
                 row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Metrics.panelBodyPadding),
-                row.bottomAnchor.constraint(equalTo: dataRow.topAnchor, constant: -2)
+                row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3)
             ])
             bottomAnchorTarget = row.topAnchor
             bottomConstant = -3
@@ -813,37 +759,6 @@ final class PreviewPanelBody: NSView {
         preview.onRoutingRequested?(sender)
     }
 
-    /// The interchange codec, behind a right-click on the picture.
-    ///
-    /// This app's rule for detail behind a control is the context menu, and this is
-    /// that: a setting you touch when setting a bus up and then leave alone, which has
-    /// no business occupying the most prominent slot on a row of performance keys.
-    override func menu(for event: NSEvent) -> NSMenu? {
-        guard FeatureFlag.busDataStage.isOn,
-              interchangePopUp != nil else { return super.menu(for: event) }
-        let menu = NSMenu()
-        let heading = NSMenuItem(title: "Bus data codec", action: nil, keyEquivalent: "")
-        heading.isEnabled = false
-        menu.addItem(heading)
-        for (index, codec) in InterchangeCodec.allCases.enumerated() {
-            let item = NSMenuItem(
-                title: codec.displayName,
-                action: #selector(interchangeChosen(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = index
-            item.state = index == (interchangePopUp?.indexOfSelectedItem ?? 0) ? .on : .off
-            menu.addItem(item)
-        }
-        return menu
-    }
-
-    @objc private func interchangeChosen(_ sender: NSMenuItem) {
-        guard let popUp = interchangePopUp,
-              sender.tag >= 0, sender.tag < popUp.numberOfItems else { return }
-        popUp.selectItem(at: sender.tag)
-        interchangeChanged(popUp)
-    }
-
     @objc private func scopeKeyPressed(_ sender: VBOptionButton) {
         guard let key = scopeKeys.first(where: { $0.value === sender })?.key else { return }
         onScopeKeyPressed?(key)
@@ -872,23 +787,6 @@ final class PreviewPanelBody: NSView {
         scopeKeys[.overlay]?.isEnabled = selection.isShowing
         scopeKeys[.lowerThird]?.isEnabled = selection.isShowing
         scopeKeys[.burn]?.isEnabled = selection.hasAnything
-    }
-
-    @objc private func interchangeChanged(_ sender: NSPopUpButton) {
-        let codec = InterchangeCodec.allCases[
-            min(sender.indexOfSelectedItem, InterchangeCodec.allCases.count - 1)]
-        // The data controls only exist when there is a bitstream for them to act on.
-        dataEffectRow?.isHidden = (codec == .none)
-        Log.info(.bitstream, "bus interchange set to \(codec.displayName)")
-        onInterchangeChanged?(codec)
-    }
-
-    @objc private func dataAmountChanged(_ sender: VBFader) {
-        onDataParameterChanged?(ParamCode.corruptAmount.rawValue, sender.value)
-    }
-
-    @objc private func dataModeChanged(_ sender: VBFader) {
-        onDataParameterChanged?(ParamCode.corruptMode.rawValue, sender.value)
     }
 
     @objc private func blendModeChanged(_ sender: NSPopUpButton) {

@@ -88,7 +88,7 @@ extension ClipSourceEjectTests {
 
     private func sampleURLs() throws -> (URL, URL) {
         let a = RepoPaths.samples.appendingPathComponent("motion.mov")
-        let b = RepoPaths.samples.appendingPathComponent("bars.dv")
+        let b = RepoPaths.samples.appendingPathComponent("hd-h264-2997.mov")
         for url in [a, b] where !FileManager.default.fileExists(atPath: url.path) {
             throw XCTSkip("\(url.lastPathComponent) is missing — run scripts/make-fixtures.sh")
         }

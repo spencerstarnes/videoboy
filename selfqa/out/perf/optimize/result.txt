@@ -1,0 +1,11 @@
+check:    perf/optimize
+verdict:  PASS
+when:     2026-09-27T20:17:18Z
+core:     0.4.10
+
+assertions (5/5 passed):
+  PASS  Optimize is offered with COPY, with its preset — check true, preset true
+  PASS  Copy + Optimize copies the originals and writes a linked DV file for each — 2 copies cataloged, 2 linked, DV readable true, partial files left false; 38.6 s
+  PASS  the show does not notice: no tick over a frame, no extra dropped frames while optimizing — worst tick 14.75 ms of 1188, 0 dropped (0 in 5 s before)
+  PASS  a clip plays its optimized file; the original when the setting is off or the file is gone — optimized true, setting off → original true, file gone → original true
+  PASS  Cancel stops the conversion: no partial file, no new file, no link — partial [], new files [], unlinked true

@@ -19,11 +19,11 @@
 //
 //  So "the step does the same thing it always does" is not a feature that had to be
 //  built here. It is what happens automatically when a sequence enters through the same
-//  door as a DV file.
+//  door as a video file.
 //
 //  ── AND WHY IT CACHES THE WAY IT DOES ───────────────────────────────────────────
 //
-//  Decoding a JPEG is thousands of times more expensive than reading a DV frame, and at
+//  Decoding a JPEG is far more expensive than reading a video frame ahead, and at
 //  30fps there is 33ms for everything. Decoding one per frame on the render path would
 //  break the rule that outranks every feature in this app.
 //
@@ -104,7 +104,7 @@ public final class ImageSequenceDecoder: ClipDecoding {
         guard !urls.isEmpty else {
             throw SequenceError.noImages(folder.lastPathComponent)
         }
-        Log.info(.dv, "image sequence \(folder.lastPathComponent): "
+        Log.info(.clip, "image sequence \(folder.lastPathComponent): "
             + "\(urls.count) frames at \(Int(frameRate))fps")
 
         // The first few, now, so the very first render has something. Synchronous on
@@ -214,7 +214,7 @@ public final class ImageSequenceDecoder: ClipDecoding {
         let url = urls[index]
 
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
-            Log.warn(.dv, "could not read \(url.lastPathComponent)")
+            Log.warn(.clip, "could not read \(url.lastPathComponent)")
             return nil
         }
         // Thumbnail rather than full decode: these are photographs, often many
@@ -227,7 +227,7 @@ public final class ImageSequenceDecoder: ClipDecoding {
         ]
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(
             source, 0, options as CFDictionary) else {
-            Log.warn(.dv, "could not decode \(url.lastPathComponent)")
+            Log.warn(.clip, "could not decode \(url.lastPathComponent)")
             return nil
         }
         return ImageBuffer(scaling: cgImage, toWidth: width, height: height)

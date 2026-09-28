@@ -1,8 +1,7 @@
 //
 //  ClipDecodersTests.swift — every sample container reports a length.
 //
-//  The library's Duration column comes from here. DV is measured from its size and
-//  must agree with what the DV reader counts; the MPEG and QuickTime samples have no
+//  The library's Duration column comes from here. The MPEG and QuickTime samples have no
 //  frame count in the manifest, which is exactly the imported-clip case.
 //
 
@@ -17,14 +16,6 @@ final class ClipDecodersTests: XCTestCase {
         return url
     }
 
-    func testDVLengthFromSizeMatchesTheReader() throws {
-        Log.echoesToStandardError = false
-        let url = try sample("bars.dv")
-        let reader = try DVReader(url: url)
-        let expected = Double(reader.frameCount) / reader.standard.frameRate
-        XCTAssertEqual(try XCTUnwrap(ClipDecoders.duration(of: url)), expected, accuracy: 1e-9)
-    }
-
     func testMPEGAndQuickTimeReportALength() throws {
         Log.echoesToStandardError = false
         for name in ["motion.m2v", "motion.mov"] {
@@ -36,7 +27,7 @@ final class ClipDecodersTests: XCTestCase {
 
     func testAFileThatIsNotVideoHasNoLength() throws {
         Log.echoesToStandardError = false
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("not-video-\(UUID()).dv")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("not-video-\(UUID()).mov")
         try Data([1, 2, 3]).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         XCTAssertNil(ClipDecoders.duration(of: url))
