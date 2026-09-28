@@ -6,9 +6,9 @@
 //            on what codec is carrying the picture. MPEG has GOPs and motion
 //            vectors; a PNG or a generator has no bitstream at all and can offer
 //            nothing.
-//  Inputs  : a media file, or a bus's interchange setting.
+//  Inputs  : a media file.
 //  Outputs : a family, and the effects that family provides.
-//  Connects: ClipSourceNode and BusCodecNode declare their family; the UI shows the
+//  Connects: ClipSourceNode declares its family; the UI shows the
 //            matching stack, or hides it entirely when there is none.
 //  Extend  : a new family adds its transforms and flips `isImplemented`. Do not add
 //            a family that has no bitstream — that is what `.none` is for.

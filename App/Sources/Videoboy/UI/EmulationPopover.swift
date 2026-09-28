@@ -1,8 +1,8 @@
 //
 //  EmulationPopover.swift — the three variables behind each output emulation toggle.
 //
-//  Purpose : The NTSC and DV toggles on the output bar are meant to be SUBTLE — one
-//            switch each, the right defaults, no dialogue. But each has a few things
+//  Purpose : The NTSC toggle on the output bar is meant to be SUBTLE — one
+//            switch, the right defaults, no dialogue. But it has a few things
 //            worth reaching when the look is not quite right, and burying them in a
 //            preferences pane means nobody finds them mid-set. A popover hung off the
 //            toggle, macOS Look Up-style, keeps them one click away and nowhere else.
@@ -10,7 +10,7 @@
 //  Outputs : values written straight to the registry as the sliders move.
 //  Connects: SettingsBarPanelBody (which hangs it), ParamRegistry.
 //  Extend  : a fourth variable is a fourth row, but resist it. The argument for these
-//            toggles is that they are two switches and not a control panel; a popover
+//            toggle is that it is one switch and not a control panel; a popover
 //            that grows into one has lost that.
 //
 
@@ -21,8 +21,6 @@ import VideoboyCore
 enum OutputEmulation {
     /// The composite signal path: what a picture picks up becoming NTSC.
     case ntsc
-    /// The DV round trip: 4:1:1 colour, 8-bit, and generation loss.
-    case dv
 }
 
 /// A small popover of named sliders bound to param codes on one slot.

@@ -124,11 +124,8 @@ final class ShellController {
         guard loaded else {
             presentNotice(
                 "Could not load \(url.lastPathComponent)",
-                url.pathExtension.lowercased() == "dv"
-                    ? "The file could not be read as DV. It may be truncated, or PAL — "
-                        + "this build reads NTSC."
-                    : "The file could not be opened. It may use a codec macOS cannot "
-                        + "read, or have no video track."
+                "The file could not be opened. It may use a codec macOS cannot "
+                    + "read, or have no video track."
             )
             return
         }

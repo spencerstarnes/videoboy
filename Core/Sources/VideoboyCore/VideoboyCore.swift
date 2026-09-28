@@ -130,6 +130,6 @@ public struct FeatureFlags: Sendable {
 }
 
 public extension FeatureFlag {
-    /// Convenience so call sites read `FeatureFlag.dvDecode.isOn`.
+    /// Convenience so call sites read `FeatureFlag.midiControl.isOn`.
     var isOn: Bool { FeatureFlags.current.isOn(self) }
 }

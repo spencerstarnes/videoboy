@@ -57,7 +57,7 @@ enum RoutingSource: Hashable {
         switch slot {
         case GraphTopology.subMixOne: "A/B Sub Mix"
         case GraphTopology.subMixTwo: "C/D Sub Mix"
-        case GraphTopology.primary, Engine.busCodecProgramSlot: "Program"
+        case GraphTopology.primary, Engine.outputSlot: "Program"
         case GraphTopology.sourceA: "Source A"
         case GraphTopology.sourceB: "Source B"
         case GraphTopology.sourceC: "Source C"
@@ -338,7 +338,7 @@ final class OutputRouter {
     /// Tiles four textures for a four-up send.
     func tiled(_ textures: [MTLTexture?]) -> MTLTexture? {
         guard let metal else { return nil }
-        let (width, height) = DVStandard.ntsc.size
+        let (width, height) = AnalogStandard.ntsc.size
         if tiledTarget == nil {
             tiledTarget = metal.makeRenderTarget(
                 width: width, height: height, label: "four-up")

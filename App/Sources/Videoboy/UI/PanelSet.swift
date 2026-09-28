@@ -218,9 +218,7 @@ final class PanelSet {
         }
         return samples.compactMap { entry in
             guard let file = entry["file"] as? String else { return nil }
-            let badge = (entry["kind"] as? String) == "dv"
-                ? "DV"
-                : (file as NSString).pathExtension.uppercased()
+            let badge = (file as NSString).pathExtension.uppercased()
             // Duration from the manifest's frame count, which is already there — the
             // alternative is opening every file at launch to ask, which is a lot of
             // I/O for a column in a list.
@@ -239,24 +237,24 @@ final class PanelSet {
     /// The live H.264 datamosh card's title (the catalogue's name for the module).
     static let datamoshCardName = "Datamosh · H.264"
 
-    /// The DV DIF corruptor's card — the one card that is not a chain module.
+    /// The bitstream corruptor's card (MPEG) — the one card that is not a chain module.
     ///
     /// It is a FIXED stage, not a layer: it rewrites the bitstream before decode, on the
     /// source itself, so it cannot move in the chain and has no bus copy (ISF-PLAN §4).
     ///
     /// WHY IT IS OMITTED AND NOT GREYED. The house rule is that unfinished work renders
     /// DISABLED rather than absent. This is the opposite case: the effect is FINISHED,
-    /// and it is out because it cannot currently be judged — there is no DV hardware
-    /// here to see it on an analog chain. Nothing is deleted: node, shader, parameters
+    /// and it is out because it cannot currently be judged — there is no analog chain
+    /// here to see it on. Nothing is deleted: node, shader, parameters
     /// and tests are intact behind `FeatureFlag.bitstreamCorruptor`, and
     /// `VIDEOBOY_FLAGS=bitstreamCorruptor` brings the card back for one launch.
-    static let corruptorCardName = "DV · DIF corruptor"
+    static let corruptorCardName = "MPEG · corruptor"
 
     static func corruptorCard(channels: [String]) -> EffectCardModel? {
         guard FeatureFlag.bitstreamCorruptor.isOn else { return nil }
         return
             EffectCardModel(
-                name: "DV · DIF corruptor",
+                name: corruptorCardName,
                 // OFF, like every effect except the grade. The wedge is the loudest
                 // thing in the app and it should be something you switch on, not
                 // something you discover is already on.

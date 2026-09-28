@@ -40,7 +40,6 @@ final class SettingsBarPanelBody: NSView {
     // 4:3 clip on B differently — and the panel showing the wrongly-shaped picture is
     // where you are looking when you notice.
     private let ntscToggle = VBOptionButton(title: "NTSC")
-    private let dvToggle = VBOptionButton(title: "DV")
 
     /// Called when output is switched on or off.
     var onOutputEnabledChanged: ((Bool) -> Void)?
@@ -55,9 +54,7 @@ final class SettingsBarPanelBody: NSView {
     var onBlackFrameInsertionToggled: ((Bool) -> Void)?
     /// NTSC signal emulation on the output was switched.
     var onOutputNTSCToggled: ((Bool) -> Void)?
-    /// DV colour-space emulation on the output was switched.
-    var onOutputDVToggled: ((Bool) -> Void)?
-    /// An emulation toggle was right-clicked, to open its variables. The view is
+    /// The emulation toggle was right-clicked, to open its variables. The view is
     /// what the popover hangs from.
     var onEmulationDetailRequested: ((OutputEmulation, NSView) -> Void)?
 
@@ -95,23 +92,18 @@ final class SettingsBarPanelBody: NSView {
         ntscToggle.onSecondaryClick = { [weak self] anchor in
             self?.onEmulationDetailRequested?(.ntsc, anchor)
         }
-        dvToggle.onSecondaryClick = { [weak self] anchor in
-            self?.onEmulationDetailRequested?(.dv, anchor)
-        }
-        // NTSC and DV signal emulation on the OUTPUT.
+        // NTSC signal emulation on the OUTPUT.
         //
-        // Off, and omitted rather than greyed. Both are judged on a monitor at the end
-        // of an analog chain, not in a preview — with no such chain to look at they
-        // cannot be tuned, and a pair of toggles nobody can evaluate is a pair of
-        // toggles that quietly stays wrong. Nothing is deleted; see
+        // Off, and omitted rather than greyed. It is judged on a monitor at the end
+        // of an analog chain, not in a preview — with no such chain to look at it
+        // cannot be tuned, and a toggle nobody can evaluate is a toggle that quietly
+        // stays wrong. Nothing is deleted; see
         // `FeatureFlag.outputSignalEmulation`.
         var emulationOptions: [NSView] = []
         if FeatureFlag.outputSignalEmulation.isOn {
             emulationOptions = [
                 option(ntscToggle, #selector(outputNTSCChanged),
-                       "NTSC signal character. Right-click for its settings."),
-                option(dvToggle, #selector(outputDVChanged),
-                       "DV colour space. Right-click for its settings.")
+                       "NTSC signal character. Right-click for its settings.")
             ]
         }
         let emulate = Controls.row(emulationOptions, spacing: Theme.BarSpacing.withinGroup)
@@ -161,10 +153,6 @@ final class SettingsBarPanelBody: NSView {
 
     @objc private func outputNTSCChanged(_ sender: VBOptionButton) {
         onOutputNTSCToggled?(sender.isOn)
-    }
-
-    @objc private func outputDVChanged(_ sender: VBOptionButton) {
-        onOutputDVToggled?(sender.isOn)
     }
 
     /// Updates the destination and mode after the output window has negotiated.

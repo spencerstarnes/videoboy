@@ -11,7 +11,7 @@
 //  Connects: `ConfiguredSource`, `Engine.ensureCaptureNode`, `LiveAVFoundationCapture`,
 //            `WindowCaptureSession`.
 //  Extend  : a third implemented kind gets a third dictionary and a third branch in
-//            `start`. `.ipCamera`/`.dvDeck` deliberately have no branch — they are
+//            `start`. `.ipCamera` deliberately has no branch — it is
 //            not started, ever, until a real decode backend exists for them.
 //
 
@@ -25,7 +25,7 @@ final class SourceSessionManager {
     private var windowSessions: [String: WindowCaptureSession] = [:]
 
     /// Starts (or confirms already running) the session for a configured source,
-    /// feeding the engine's node for its id. Does nothing for `.ipCamera`/`.dvDeck` —
+    /// feeding the engine's node for its id. Does nothing for `.ipCamera` —
     /// see `ConfiguredSourceKind.isImplemented`.
     func start(_ source: ConfiguredSource, engine: Engine) {
         let node = engine.ensureCaptureNode(id: source.id)
@@ -41,7 +41,7 @@ final class SourceSessionManager {
             windowSessions[source.id] = session
             Task { await session.start(feeding: node) }
 
-        case .ipCamera, .dvDeck:
+        case .ipCamera:
             Log.warn(.output, "'\(source.name)' is a \(source.kind.displayName) — "
                 + "not connectable yet, see ConfiguredSourceKind.unimplementedReason")
         }

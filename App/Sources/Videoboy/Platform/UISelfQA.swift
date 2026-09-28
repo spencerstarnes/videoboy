@@ -415,7 +415,7 @@ enum UISelfQA {
             withExtendedLifetime(controller) {}
         }
 
-        // The two output-emulation popovers. They are the one place in the app where
+        // The output-emulation popover. It is the one place in the app where
         // a control panel is hidden behind a chevron, so "does it lay out and say
         // what it is" is worth a picture rather than an assumption.
         do {
@@ -430,21 +430,6 @@ enum UISelfQA {
                         .init(caption: "Dot crawl", code: .compositeCrawl),
                         .init(caption: "Chroma bleed", code: .chromaBleed),
                         .init(caption: "Luma bandwidth", code: .lumaBandwidth)
-                    ],
-                    registry: engine.registry)),
-                ("dv", EmulationPopover(
-                    heading: "DV colour",
-                    summary: "Passes the output through DV: 4:1:1 colour and 8-bit. Each "
-                        + "generation re-quantises what the last one produced, the way "
-                        + "dubbing a tape does.",
-                    slot: Engine.busCodecProgramSlot,
-                    variables: [
-                        .init(caption: "Generations", code: .compositeGeneration, range: 0...4),
-                        .init(caption: "Damage", code: .corruptAmount),
-                        .init(
-                            caption: "Rate lock", code: .playbackSpeed,
-                            unavailableNote: "Locking output to 29.97 is not built yet; "
-                                + "the output mode is negotiated in the Output section.")
                     ],
                     registry: engine.registry))
             ]
@@ -1090,7 +1075,7 @@ enum UISelfQA {
             shell.frame = NSRect(origin: .zero, size: NSSize(width: 1460, height: 912))
             shell.layoutSubtreeIfNeeded()
 
-            let corruptorName = "DV · DIF corruptor"
+            let corruptorName = PanelSet.corruptorCardName
 
             // The card is behind a flag now, and with the flag OFF the correct state
             // is that it is ABSENT — so that is what gets asserted, rather than the
@@ -1184,16 +1169,15 @@ enum UISelfQA {
             // `appendingPathComponent` neither throws nor returns an optional, so the
             // `try?` this used to carry only wrapped it in one. The fileExists check
             // below is what actually guards the clip being there.
-            let motionClip = RepoPaths.samples.appendingPathComponent("motion.dv")
+            // MPEG, so the corruptor has a bitstream to damage.
+            let motionClip = RepoPaths.samples.appendingPathComponent("motion.m2v")
             guard FileManager.default.fileExists(atPath: motionClip.path) else {
-                check.note("samples/motion.dv is missing; the C/D chFX render check was skipped")
+                check.note("samples/motion.m2v is missing; the C/D chFX render check was skipped")
                 break section11
             }
             _ = engine.load(url: motionClip, intoChannel: "D")
             engine.registry.setValue(0, slot: GraphTopology.subMixTwo, code: .crossfadeCD) // pure D
             engine.registry.setValue(1, slot: GraphTopology.primary, code: .crossfadeOneTwo) // PROGRAM = TWO
-            engine.setInterchange(.none, forBus: GraphTopology.primary)
-            engine.registry.setValue(0, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
 
             guard let metal = MetalContext.shared, let renderer = OffscreenRenderer(context: metal) else {
                 check.record(AssertionResult(

@@ -74,7 +74,7 @@ final class DVC100CaptureSource: CaptureSource {
                 "the dvc100 tool is not installed (looked in \(Self.candidatePaths.joined(separator: ", ")))")
         }
 
-        let standard: DVStandard = request.expectedFrameRate < 27 ? .pal : .ntsc
+        let standard: AnalogStandard = request.expectedFrameRate < 27 ? .pal : .ntsc
         let (width, height) = standard.size
         let frameBytes = width * height * Self.bytesPerPixel
 

@@ -10,7 +10,7 @@
 //  Inputs  : an RGBA `ImageBuffer` per call.
 //  Outputs : a BGRA texture, the same format and usage `makeTexture` produces, so
 //            blits (freeze, readback) keep working unchanged.
-//  Connects: ClipSourceNode, CaptureSourceNode, BusCodecNode, EmulatedTitlerNode.
+//  Connects: ClipSourceNode, CaptureSourceNode, EmulatedTitlerNode.
 //  Extend  : one uploader per producing node; never share one between nodes.
 //
 //  WHY TWO TEXTURES. The engine fences once per frame (`MetalContext.waitForIdle`), and

@@ -111,7 +111,6 @@ struct LibraryItem {
         case "SCR": "Screen capture"
         case "IP": "Network feed"
         case "CAP": "Capture device"
-        case "FW": "DV deck"
         case "EMU": "Emulator"
         case "IMG": "Still image"
         default: badge

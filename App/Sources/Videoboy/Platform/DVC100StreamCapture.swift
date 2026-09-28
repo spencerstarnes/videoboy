@@ -30,7 +30,7 @@ final class DVC100StreamCapture {
     /// Which connector to read.
     let connector: String
     /// Video standard, which fixes the frame size.
-    let standard: DVStandard
+    let standard: AnalogStandard
 
     private var process: Process?
     private let backupURL: URL
@@ -42,7 +42,7 @@ final class DVC100StreamCapture {
     private let width: Int
     private let height: Int
 
-    init(connector: String = "composite", standard: DVStandard = .ntsc) {
+    init(connector: String = "composite", standard: AnalogStandard = .ntsc) {
         self.connector = connector
         self.standard = standard
         (self.width, self.height) = standard.size

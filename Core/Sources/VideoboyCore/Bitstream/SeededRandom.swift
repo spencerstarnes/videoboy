@@ -7,7 +7,7 @@
 //            so this is the generator the wedge uses.
 //  Inputs  : a 64-bit seed.
 //  Outputs : a `RandomNumberGenerator`.
-//  Connects: DIFCorruptor, and any other module that needs repeatable randomness.
+//  Connects: MPEGCorruptor, and any other module that needs repeatable randomness.
 //  Extend  : do not swap the algorithm. Changing it would silently change every
 //            saved performance that depends on a seed.
 //

@@ -429,7 +429,7 @@ final class DatamoshPipelineTests: XCTestCase {
     }
 
     func testACutWhileMoshingPaintsTheNewMotionOntoTheOldPicture() throws {
-        let bars = try frames("hd-h264-2997.mov", count: 15)
+        let bars = try frames("bars.dv", count: 15)
         let motion = try frames("motion.mov", count: 45)
         guard let size = bars.first, motion.first.map({ $0.width == size.width && $0.height == size.height }) == true else {
             throw XCTSkip("the two fixtures differ in size")
@@ -540,7 +540,7 @@ final class DatamoshNodeTests: XCTestCase {
 
     func testTheNodeMoshesACutLiveWithoutEverWaitingOnTheTick() throws {
         guard let metal = MetalContext.shared else { throw XCTSkip("no Metal") }
-        let bars = try clip("hd-h264-2997.mov", count: 20)
+        let bars = try clip("bars.dv", count: 20)
         let motion = try clip("motion.mov", count: 60)
         let node = DatamoshNode(identifier: "test.mosh", context: metal)
         let uploader = TextureUploader(context: metal, label: "test-input")

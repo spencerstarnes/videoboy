@@ -8,7 +8,7 @@
 //  Inputs  : a parameter value, nominally 0...1 but in practice whatever a modulation
 //            source produced.
 //  Outputs : a clamped value, or an index into a set.
-//  Connects: BlendMode, DIFCorruptor, MPEGCorruptor, GeneratorKind,
+//  Connects: BlendMode, MPEGCorruptor, GeneratorKind,
 //            TitlerAlignment, TitlerWeight, TitlerRollMode, LFOShape, CompositePath,
 //            ChromaSubsampling, BlackFrameInsertion — the `from(normalised:)` on each.
 //  Extend  : if a new sweep needs different rounding, add a parameter here rather

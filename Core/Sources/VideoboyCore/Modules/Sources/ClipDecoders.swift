@@ -13,6 +13,7 @@
 //  Extend  : a new container is a new case in `open`. `duration(of:)` follows.
 //
 
+import CFFmpeg
 import Foundation
 
 /// Chooses a decoder by container, and measures clips.
@@ -22,6 +23,13 @@ public enum ClipDecoders {
     /// AVFoundation. AVFoundation could play them, but hands back finished pictures
     /// with no seam to damage; the wedge needs the packet.
     public static let mpegExtensions: Set<String> = ["m2v", "mpg", "mpeg", "ts", "m2t", "m2ts", "vob"]
+
+    /// Whether the vendored LGPL libav can decode MPEG-2, the wedge's own format.
+    /// Checked at launch so a missing codec shows on the launch screen rather than
+    /// when the first MPEG file fails to open.
+    public static var bitstreamCodecAvailable: Bool {
+        avcodec_find_decoder(AV_CODEC_ID_MPEG2VIDEO) != nil
+    }
 
     /// Opens a video file with the decoder playback uses for it, or nil.
     ///

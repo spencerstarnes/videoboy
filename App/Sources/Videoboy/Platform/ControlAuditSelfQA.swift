@@ -228,8 +228,7 @@ enum ControlAuditSelfQA {
         // would have caught NTSC emulation booting on with its switch reading off.
         var disagreements: [String] = []
         let bootChecks: [(name: String, switchIsOn: Bool, engineIsOn: Bool)] = [
-            ("NTSC output emulation", false, engine.isOutputNTSCEnabled),
-            ("DV output emulation", false, engine.isOutputDVEnabled)
+            ("NTSC output emulation", false, engine.isOutputNTSCEnabled)
         ]
         for bootCheck in bootChecks where bootCheck.switchIsOn != bootCheck.engineIsOn {
             disagreements.append(

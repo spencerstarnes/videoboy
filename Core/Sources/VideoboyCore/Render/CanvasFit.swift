@@ -55,7 +55,8 @@ public struct CanvasGeometry: Equatable, Sendable {
     /// - Parameters:
     ///   - sourceAspect: the source's display aspect, upright.
     ///   - nativeSize: the source's stored pixel size, upright.
-    /// - Returns: an even, upright, square-pixelled size.
+    /// - Returns: an even, upright, square-pixelled size — or `nativeSize` itself when
+    ///   the source needs no reduction.
     public func decodeSize(sourceAspect: Double, nativeSize: (width: Int, height: Int)) -> (width: Int, height: Int) {
         guard sourceAspect > 0, nativeSize.width > 0, nativeSize.height > 0 else {
             return nativeSize
@@ -64,6 +65,10 @@ public struct CanvasGeometry: Equatable, Sendable {
         let canvasHeight = Double(height)
         let neededHeight = max(canvasHeight, canvasHeight * displayAspect / sourceAspect)
         let scale = min(1.0, neededHeight / Double(nativeSize.height))
+        // Nothing to shed: decode as stored. Squaring the pixels anyway would turn a
+        // 720x480 4:3 stream into 640x480 on the 720x480 canvas — fewer decoded pixels
+        // than canvas pixels, stretched back by the GPU, and every SD clip soft.
+        if scale >= 1 { return nativeSize }
         func even(_ value: Double) -> Int { max(2, Int((value / 2).rounded()) * 2) }
         return (even(Double(nativeSize.height) * scale * sourceAspect), even(Double(nativeSize.height) * scale))
     }

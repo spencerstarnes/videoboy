@@ -24,6 +24,29 @@ public enum StandardDefinition {
     public static let frameRate = 30000.0 / 1001.0
 }
 
+/// An analog SD video standard: what a composite signal (the DVC100 grabber, the
+/// output card's SD mode) carries. The raster and rate, nothing codec-specific.
+public enum AnalogStandard: String, Codable, Sendable {
+    case ntsc
+    case pal
+
+    /// Active picture size in pixels.
+    public var size: (width: Int, height: Int) {
+        switch self {
+        case .ntsc: (StandardDefinition.width, StandardDefinition.height)
+        case .pal: (720, 576)
+        }
+    }
+
+    /// Frames per second.
+    public var frameRate: Double {
+        switch self {
+        case .ntsc: StandardDefinition.frameRate
+        case .pal: 25.0
+        }
+    }
+}
+
 /// Builders for known test images.
 public enum TestPattern {
 

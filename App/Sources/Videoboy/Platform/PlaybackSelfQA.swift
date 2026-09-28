@@ -1,12 +1,12 @@
 //
 //  PlaybackSelfQA.swift — drives the real engine and photographs what it produces.
 //
-//  Purpose : Core's tests prove the DV path in isolation. This proves the *app's*
+//  Purpose : Core's tests prove the MPEG path in isolation. This proves the *app's*
 //            path: the graph the Engine builds, the Metal crossfade the mixer runs,
 //            and the PRIMARY texture the output window would present. It renders
 //            through exactly the pipelines the live app uses, so a pass here means
 //            the running app is producing these pixels.
-//  Inputs  : samples/*.dv.
+//  Inputs  : samples/motion.m2v (the wedge's format), samples/bars.dv (colour bars).
 //  Outputs : selfqa/out/phase-2/playback/{*.png,result.txt}.
 //  Connects: Engine, OffscreenRenderer (readback), FrameAssertions.
 //  Extend  : add a stage to `run()` and assert on the texture it produces.
@@ -27,7 +27,9 @@ enum PlaybackSelfQA {
         }
 
         let samples = RepoPaths.samples
-        let fileA = samples.appendingPathComponent("motion.dv")
+        // A is MPEG so the corruptor has a bitstream to damage; B is the colour bars,
+        // which play as ordinary video and can be asserted by colour.
+        let fileA = samples.appendingPathComponent("motion.m2v")
         let fileB = samples.appendingPathComponent("bars.dv")
         for file in [fileA, fileB] where !FileManager.default.fileExists(atPath: file.path) {
             return check.finish(blockedReason: "\(file.lastPathComponent) is missing — run scripts/make-fixtures.sh")
@@ -36,10 +38,10 @@ enum PlaybackSelfQA {
         let engine = Engine()
         guard engine.load(url: fileA, intoChannel: "A"), engine.load(url: fileB, intoChannel: "B") else {
             check.record(AssertionResult(
-                name: "sources load", passed: false, detail: "a DV file failed to load into the engine"))
+                name: "sources load", passed: false, detail: "a sample failed to load into the engine"))
             return check.finish()
         }
-        check.note("A = motion.dv, B = bars.dv, through the engine's own graph")
+        check.note("A = motion.m2v, B = bars.dv, through the engine's own graph")
 
         // This check is about the mixer and the wedge, so the bus effects are held
         // bypassed. The analog chain has its own check (phase-3/analog-chain); left
@@ -79,15 +81,15 @@ enum PlaybackSelfQA {
                 musicalPosition: nil
             )
             // The END of the programme chain, which is what actually goes out. Reading
-            // the ONE/TWO mix instead would skip the programme data stage, and a check
-            // that cannot see a stage cannot tell you it is disconnected.
+            // the ONE/TWO mix instead would skip the output emulation stage, and a
+            // check that cannot see a stage cannot tell you it is disconnected.
             let produced = engine.evaluateGraph(context: context)
             guard let output = produced[Engine.outputSlot] ?? produced[GraphTopology.primary]
             else { return nil }
             return renderer.readback(output)
         }
 
-        // 1. The fader hard over to A: PRIMARY must be motion.dv.
+        // 1. The fader hard over to A: PRIMARY must be motion.m2v.
         engine.registry.setValue(0.0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
         engine.registry.setValue(0.0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
         guard let atA = renderFrame(0) else {
@@ -152,7 +154,11 @@ enum PlaybackSelfQA {
         // before it can damage anything.
         engine.registry.setValue(1, slot: GraphTopology.sourceA, code: .wetDry)
         engine.registry.setValue(0.9, slot: GraphTopology.sourceA, code: .corruptAmount)
-        engine.registry.setValue(0.0, slot: GraphTopology.sourceA, code: .corruptMode)
+        // Motion-vector mode: visible damage. Frame drop (0) only skips ahead, which
+        // "differs" without proving the picture was damaged.
+        engine.registry.setValue(
+            MPEGCorruptionMode.motionVector.normalisedPosition,
+            slot: GraphTopology.sourceA, code: .corruptMode)
         let afterCorruption = renderFrame(35)
         if let beforeCorruption, let afterCorruption {
             _ = try? check.writeImage(beforeCorruption, named: "05-clean.png")
@@ -214,31 +220,6 @@ enum PlaybackSelfQA {
             check.note("samples/motion.mov is missing; the AVFoundation path was not exercised")
         }
 
-        // 7. The PROGRAM data stage reaches output. It was built and added to the
-        // graph but never connected, so its controls moved nothing and the picture
-        // was identical whatever they were set to — which is exactly what a check
-        // comparing before and after catches and a reading of the code did not.
-        engine.load(url: fileA, intoChannel: "A")
-        engine.registry.setValue(0.0, slot: GraphTopology.subMixOne, code: .crossfadeAB)
-        engine.registry.setValue(0.0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
-        engine.setInterchange(.dv, forBus: GraphTopology.primary)
-
-        engine.registry.setValue(0.0, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
-        let programClean = renderFrame(80)
-        engine.registry.setValue(0.95, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
-        engine.registry.setValue(0.0, slot: Engine.busCodecProgramSlot, code: .corruptMode)
-        let programDamaged = renderFrame(80)
-
-        if let programClean, let programDamaged {
-            _ = try? check.writeImage(programDamaged, named: "08-program-data-stage.png")
-            check.record(FrameAssertions.framesDiffer(
-                programClean, programDamaged, minimumFraction: 0.02,
-                name: "the PROGRAM data stage reaches the output"))
-        } else {
-            check.record(AssertionResult(
-                name: "PROGRAM data stage renders", passed: false, detail: "a frame failed to render"))
-        }
-
         // 8. Sources C and D actually reach PRIMARY through the TWO path with real
         // pixels, not just a graph-order check. The routing assertion at the top of
         // this file proves C and D are upstream of PRIMARY in the evaluation order;
@@ -252,10 +233,10 @@ enum PlaybackSelfQA {
         // before it can damage anything.
         engine.registry.setValue(1, slot: GraphTopology.sourceC, code: .wetDry)
         engine.registry.setValue(0.9, slot: GraphTopology.sourceC, code: .corruptAmount)
-        engine.registry.setValue(0.0, slot: GraphTopology.sourceC, code: .corruptMode)
+        engine.registry.setValue(
+            MPEGCorruptionMode.motionVector.normalisedPosition,
+            slot: GraphTopology.sourceC, code: .corruptMode)
         engine.registry.setValue(1.0, slot: GraphTopology.primary, code: .crossfadeOneTwo)
-        engine.setInterchange(.none, forBus: GraphTopology.primary)
-        engine.registry.setValue(0, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
 
         let viaTwo = renderFrame(60)
 
@@ -278,20 +259,11 @@ enum PlaybackSelfQA {
         }
         engine.registry.setValue(0, slot: GraphTopology.sourceC, code: .corruptAmount)
 
-        // 9. The output emulation toggles. Both are meant to be subtle, so "subtle"
-        // is checked as a range rather than just "different": a change too small to
-        // see is as much a failure as one that wrecks the picture.
-        // On ordinary video, not DV. Re-encoding DV to DV is very nearly lossless, so
-        // measuring "what DV emulation costs" against a DV source measures almost
-        // nothing — correctly. The material has to be something DV would actually
-        // change, which is the material the toggle exists for.
+        // 9. The output emulation toggle, on ordinary video.
         let emulationSource = RepoPaths.samples.appendingPathComponent("motion.mov")
         if FileManager.default.fileExists(atPath: emulationSource.path) {
             engine.load(url: emulationSource, intoChannel: "A")
         }
-        engine.setInterchange(.none, forBus: GraphTopology.primary)
-        engine.registry.setValue(0, slot: Engine.busCodecProgramSlot, code: .corruptAmount)
-        engine.registry.setValue(0, slot: Engine.busCodecProgramSlot, code: .compositeGeneration)
         engine.isOutputNTSCEnabled = false
         let outputClean = renderFrame(90)
 
@@ -308,41 +280,6 @@ enum PlaybackSelfQA {
         }
         engine.isOutputNTSCEnabled = false
 
-        engine.isOutputDVEnabled = true
-        let outputDV = renderFrame(92)
-        if let outputClean, let outputDV {
-            _ = try? check.writeImage(outputDV, named: "10-output-dv.png")
-            let difference = FrameAssertions.differingPixelFraction(outputClean, outputDV)
-            // A low bar on purpose. One DV generation over the synthetic colour bars
-            // in samples/ genuinely changes very little: 4:1:1 subsampling preserves
-            // large flat areas almost perfectly, which is what those bars are. The
-            // honest claim is that the round trip RAN and was not a no-op; how much
-            // it costs is a property of the material, and the generations check below
-            // is what proves the stage is really doing work.
-            check.record(AssertionResult(
-                name: "the DV round trip runs rather than passing through",
-                passed: difference > 0.0005,
-                detail: "\(String(format: "%.4f", difference)) of sampled pixels differ at one "
-                    + "generation — small because flat colour bars survive 4:1:1 well"
-            ))
-
-            // Four generations must cost MORE than one, or the generations control is
-            // doing nothing and the DV round trip is running once regardless.
-            engine.registry.setValue(
-                4, slot: Engine.busCodecProgramSlot, code: .compositeGeneration)
-            if let fourth = renderFrame(93) {
-                _ = try? check.writeImage(fourth, named: "11-output-dv-4-generations.png")
-                let oneGeneration = FrameAssertions.differingPixelFraction(outputClean, outputDV)
-                let fourGenerations = FrameAssertions.differingPixelFraction(outputClean, fourth)
-                check.record(AssertionResult(
-                    name: "each DV generation costs more than the last",
-                    passed: fourGenerations > oneGeneration,
-                    detail: "1 generation differs by \(String(format: "%.3f", oneGeneration)), "
-                        + "4 by \(String(format: "%.3f", fourGenerations))"
-                ))
-            }
-        }
-        engine.isOutputDVEnabled = false
 
         // 10. Freeze, through the live graph (the one MX-1 gesture kept when the set
         // was removed, ISF-PLAN §4.1). With the clip running, the picture must stop
@@ -388,10 +325,11 @@ enum PlaybackSelfQA {
         engine.registry.setValue(0, slot: Engine.freezeOneSlot, code: .wetDry)
 
         let withoutSend = renderFrame(150)
-        engine.setFeedbackSend(from: Engine.busCodecOneSlot, toBus: "ONE")
+        // From the end of bus ONE (its DATA BURN, the last node before the mix).
+        engine.setFeedbackSend(from: Engine.dataBurnOneSlot, toBus: "ONE")
         check.record(AssertionResult(
             name: "a feedback send is recorded against its bus",
-            passed: engine.feedbackSend(forBus: "ONE") == Engine.busCodecOneSlot,
+            passed: engine.feedbackSend(forBus: "ONE") == Engine.dataBurnOneSlot,
             detail: engine.feedbackSend(forBus: "ONE") ?? "nothing"
         ))
 
@@ -420,9 +358,9 @@ enum PlaybackSelfQA {
         }
         engine.registry.setValue(0, slot: Engine.feedbackSlot, code: .wetDry)
 
-        // 12. The MPEG half of the wedge, through the live graph. DV damage is
-        // spatial; MPEG damage is temporal, and this is where that shows — the
-        // picture smears along motion paths that are no longer there.
+        // 12. The wedge's MPEG modes, through the live graph. MPEG damage is
+        // temporal, and this is where that shows — the picture smears along motion
+        // paths that are no longer there.
         let mpegSource = RepoPaths.samples.appendingPathComponent("motion.m2v")
         if FileManager.default.fileExists(atPath: mpegSource.path),
            engine.load(url: mpegSource, intoChannel: "A") {

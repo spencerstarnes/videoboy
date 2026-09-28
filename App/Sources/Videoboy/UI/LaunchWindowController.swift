@@ -1,7 +1,7 @@
 //
 //  LaunchWindowController.swift — the startup screen.
 //
-//  Purpose : Videoboy takes a moment to come up: Metal compiles its shaders, the DV
+//  Purpose : Videoboy takes a moment to come up: Metal compiles its shaders, the MPEG-2
 //            decoder opens, MIDI enumerates, the graph builds. Showing what is
 //            happening turns that pause into information rather than a hang, and it
 //            is where the app says whose it is.
@@ -20,7 +20,7 @@ import VideoboyCore
 enum LaunchStage: String, CaseIterable {
     case metal = "Metal render backend"
     case shaders = "Shader library"
-    case codecs = "DV codec (LGPL FFmpeg)"
+    case codecs = "MPEG-2 codec (LGPL FFmpeg)"
     case graph = "Render graph"
     case library = "Library catalog"
     case clock = "Transport and scheduler"

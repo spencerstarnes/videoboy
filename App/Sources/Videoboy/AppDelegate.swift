@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The launch screen goes up first and reports each subsystem as it comes up.
-        // Startup is not instant — Metal compiles its shaders, the DV codec opens,
+        // Startup is not instant — Metal compiles its shaders, the MPEG-2 codec opens,
         // MIDI enumerates — and showing what is happening turns that pause into
         // information rather than a hang.
         let launch = LaunchWindowController()
@@ -45,12 +45,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             launch.skip(.shaders, reason: "no device")
         }
 
-        // The codec is checked rather than assumed: a missing DV decoder is the kind
-        // of thing that should be visible at launch, not when a file fails to open.
-        if (try? DVDecoder()) != nil {
+        // The codec is checked rather than assumed: a missing MPEG-2 decoder is the
+        // kind of thing that should be visible at launch, not when a file fails to open.
+        if ClipDecoders.bitstreamCodecAvailable {
             launch.complete(.codecs)
         } else {
-            launch.skip(.codecs, reason: "DV decoder missing")
+            launch.skip(.codecs, reason: "MPEG-2 decoder missing")
         }
 
         buildMenuBar()

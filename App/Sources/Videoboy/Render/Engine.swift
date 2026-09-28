@@ -30,7 +30,7 @@ enum ChannelSourceKind: Equatable {
     ///
     /// Was a fixed one-node `case capture` before this — a single global camera slot
     /// that nothing could even route a channel to (see `Engine.setChannelSource`'s
-    /// history). Any number of cameras, captured windows, IP cameras and DV decks can
+    /// history). Any number of cameras, captured windows and IP cameras can
     /// exist now, so the case needs to say WHICH one — an id rather than a kind,
     /// because two cameras of the same kind are still two different sources.
     case capture(String)
@@ -109,7 +109,7 @@ final class Engine {
     private(set) var compositeProgram: CompositeCodecNode!
 
     /// Configured sources (SPEC 6, SPEC 10) — cameras, captured windows, IP cameras,
-    /// DV decks — by `ConfiguredSource.id`. One `CaptureSourceNode` per entry, created
+    /// by `ConfiguredSource.id`. One `CaptureSourceNode` per entry, created
     /// the first time it is actually needed (`ensureCaptureNode`) rather than one
     /// fixed instance up front, because the LIST is open-ended: any number can exist,
     /// added and removed at runtime from Settings, unlike the four channels or the one
@@ -1682,12 +1682,8 @@ final class Engine {
 
     /// Switches the program bus between the live mix and the test pattern.
     ///
-    /// This used to REBUILD the three bus codecs on the way out — copy-pasted from
-    /// `buildGraph`, comment and all. That orphaned the scheduler's beat subscriptions
-    /// (which hold the node objects), leaked three nodes with their encoders and
-    /// textures on every toggle, and silently reset each node's `interchange` to none
-    /// while `isOutputDVEnabled` still read ON from the registry. The routing was the
-    /// one thing that copy-paste got right, and it is the only thing needed here.
+    /// Routing only: rebuilding nodes here once orphaned the scheduler's beat
+    /// subscriptions and leaked nodes on every toggle.
     func setProgramShowsTestPattern(_ showsPattern: Bool) {
         guard showsPattern != programShowsTestPattern else { return }
         programShowsTestPattern = showsPattern

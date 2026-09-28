@@ -32,7 +32,7 @@ struct ImportEntry {
     let url: URL
     let size: Int
     let isDuplicate: Bool
-    /// "DV" / "MPEG" for clips the bitstream effects work on; nil otherwise.
+    /// "MPEG" for clips the bitstream effects work on; nil otherwise.
     let wedge: String?
     /// "⚠16:9", "⚠vertical" — a shape that is not the 4:3 canvas; nil when it fits.
     let mismatch: String?
@@ -683,14 +683,14 @@ final class ImportModeView: NSView {
             let duplicate = paths.contains(url.standardizedFileURL.path)
                 || nameSizes.contains("\(url.lastPathComponent.lowercased())|\(bytes)")
             let ext = url.pathExtension.lowercased()
-            let wedge: String? = ext == "dv" ? "DV" : (ClipDecoders.mpegExtensions.contains(ext) ? "MPEG" : nil)
+            let wedge: String? = ClipDecoders.mpegExtensions.contains(ext) ? "MPEG" : nil
             return ImportEntry(url: url, size: bytes, isDuplicate: duplicate, wedge: wedge,
                                mismatch: wedge == nil ? shapeWarning(url) : nil, isChecked: !duplicate)
         }
     }
 
-    /// "⚠16:9" / "⚠vertical" when a clip's upright shape is not 4:3. DV and MPEG are
-    /// SD here and not probed.
+    /// "⚠16:9" / "⚠vertical" when a clip's upright shape is not 4:3. MPEG is SD here
+    /// and not probed.
     private static func shapeWarning(_ url: URL) -> String? {
         let asset = AVURLAsset(url: url)
         guard let track = asset.tracks(withMediaType: .video).first else { return nil }

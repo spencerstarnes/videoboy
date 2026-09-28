@@ -43,6 +43,15 @@ final class CanvasGeometryTests: XCTestCase {
         XCTAssertEqual(size.width, 640)
     }
 
+    /// SD on the SD canvas is the reference path: it must decode at its stored
+    /// 720x480, one decoded pixel per canvas pixel, not squared to 640x480 and
+    /// stretched back (which softened every SD clip).
+    func testAnSDClipOnTheSDCanvasDecodesAtItsOwnSize() {
+        let size = sd.decodeSize(sourceAspect: 4.0 / 3.0, nativeSize: (720, 480))
+        XCTAssertEqual(size.width, 720)
+        XCTAssertEqual(size.height, 480)
+    }
+
     func testFitLetterboxesAWideSourceAndFillCropsIt() {
         let fit = sd.placement(sourceAspect: 16.0 / 9.0, framing: .fit)
         XCTAssertEqual(fit.size.x, 1, accuracy: 1e-6)

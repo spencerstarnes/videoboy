@@ -37,7 +37,7 @@ final class SourceListView: NSView {
     private let scrollView = NSScrollView()
     private let editor = FlippedView()
     private let emptyState = Controls.label(
-        "Press + to add a camera, a captured window, an IP camera or a DV deck.",
+        "Press + to add a camera, a captured window or an IP camera.",
         color: Theme.Color.textTertiary)
     private var selectedIndex: Int?
 
@@ -177,11 +177,6 @@ final class SourceListView: NSView {
         ipItem.target = self
         menu.addItem(ipItem)
 
-        let dvItem = NSMenuItem(
-            title: "DV Deck…", action: #selector(addDVDeck), keyEquivalent: "")
-        dvItem.target = self
-        menu.addItem(dvItem)
-
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height), in: sender)
     }
 
@@ -246,21 +241,6 @@ final class SourceListView: NSView {
         append(ConfiguredSource(kind: .ipCamera, name: named, target: url.stringValue))
     }
 
-    @objc private func addDVDeck() {
-        let alert = NSAlert()
-        alert.messageText = "Add DV Deck"
-        alert.informativeText = "Saved now; live FireWire/IIDC capture is not built — "
-            + "this entry shows greyed in Sources until it is (docs/BUILD-PLAN.md)."
-        let name = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        name.placeholderString = "Name"
-        alert.accessoryView = name
-        alert.addButton(withTitle: "Add")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let named = name.stringValue.isEmpty ? "DV Deck" : name.stringValue
-        append(ConfiguredSource(kind: .dvDeck, name: named))
-    }
-
     private func append(_ source: ConfiguredSource) {
         store.preferences.configuredSources.append(source)
         reload()
@@ -286,10 +266,10 @@ final class SourceListView: NSView {
         var source = store.preferences.configuredSources[index]
         source.name = nameField.stringValue
         // Target is editable only for the kinds where it is free text the person
-        // typed (.ipCamera's URL, .dvDeck's note) — .avfoundation and .windowCapture
+        // typed (.ipCamera's URL) — .avfoundation and .windowCapture
         // were PICKED from a real enumeration and retyping them would just break the
         // match, so their target field stays disabled (see `updateEditor`).
-        if source.kind == .ipCamera || source.kind == .dvDeck {
+        if source.kind == .ipCamera {
             source.target = targetField.stringValue
         }
         store.preferences.configuredSources[index] = source
@@ -317,7 +297,7 @@ final class SourceListView: NSView {
         nameField.stringValue = source.name
         kindLabel.stringValue = source.kind.displayName
         targetField.stringValue = source.target
-        targetField.isEnabled = source.kind == .ipCamera || source.kind == .dvDeck
+        targetField.isEnabled = source.kind == .ipCamera
 
         if let reason = source.kind.unimplementedReason {
             statusLabel.stringValue = reason

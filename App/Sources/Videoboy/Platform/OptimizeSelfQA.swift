@@ -54,7 +54,7 @@ enum OptimizeSelfQA {
         let store = PreferenceStore(fileURL: scratch.appendingPathComponent("prefs.json"))
         store.preferences.mediaLocationPath = media.path
         store.preferences.optimizedMediaLocationPath = optimized.path
-        store.preferences.optimizePreset = OptimizePreset.performance.rawValue
+        store.preferences.optimizePreset = OptimizePreset.compact.rawValue
         let controller = MainWindowController(preferences: store)
         guard let window = controller.window, let screen = NSScreen.main,
               let shell = controller.shellController, let modes = controller.modeController else {
@@ -97,9 +97,9 @@ enum OptimizeSelfQA {
         view.setAllChecked(true)
         view.setDestinationForChecks(media)
         check.record(AssertionResult(
-            name: "Optimize is offered with COPY, with its preset",
-            passed: view.optimizeCheck.isEnabled && view.optimizePreset.isEnabled,
-            detail: "check \(view.optimizeCheck.isEnabled), preset \(view.optimizePreset.isEnabled)"))
+            name: "Optimize is offered with COPY",
+            passed: view.optimizeCheck.isEnabled,
+            detail: "check \(view.optimizeCheck.isEnabled)"))
 
         engine.tickCostsForChecks = []
         let dropsBefore = engine.droppedFrames
@@ -123,14 +123,14 @@ enum OptimizeSelfQA {
         let partialLeft = files.fileExists(atPath: optimized.appendingPathComponent(FileTransfer.partialFolderName).path)
             && !((try? files.contentsOfDirectory(atPath: optimized.appendingPathComponent(FileTransfer.partialFolderName).path)) ?? []).isEmpty
         let decodes = outputs.allSatisfy { path in
-            ClipDecoders.open(URL(fileURLWithPath: path)).map { $0.dataEffectFamily == .dv && $0.frameCount > 0 } ?? false
+            ClipDecoders.open(URL(fileURLWithPath: path)).map { $0.dataEffectFamily == .mpeg && $0.frameCount > 0 } ?? false
         }
         check.record(AssertionResult(
-            name: "Copy + Optimize copies the originals and writes a linked DV file for each",
+            name: "Copy + Optimize copies the originals and writes a linked MPEG-2 file for each",
             passed: linked.count == names.count && outputs.count == names.count && decodes && !partialLeft
                 && outputs.allSatisfy { $0.hasPrefix(optimized.path) }
                 && linked.allSatisfy { $0.optimizedCanvas == ClipOptimizer.canvasTag },
-            detail: "\(linked.count) copies cataloged, \(outputs.count) linked, DV readable \(decodes), "
+            detail: "\(linked.count) copies cataloged, \(outputs.count) linked, MPEG-2 readable \(decodes), "
                 + "partial files left \(partialLeft); \(String(format: "%.1f", seconds)) s"))
         check.record(AssertionResult(
             name: "the show does not notice: no tick over a frame, no extra dropped frames while optimizing",
@@ -166,7 +166,7 @@ enum OptimizeSelfQA {
         let hdID = library.idsByPath()[hd.standardizedFileURL.path]
         if let hdID { library.setOptimized(path: nil, canvas: nil, for: hdID) }
         let before = (try? files.contentsOfDirectory(atPath: optimized.path)) ?? []
-        shell.enqueueOptimize([hd], preset: .performance)
+        shell.enqueueOptimize([hd], preset: .compact)
         RunLoop.main.run(until: Date().addingTimeInterval(1.0))
         shell.optimizeQueue.cancelAll()
         wait(10) { shell.optimizeQueue.countForChecks == 0 }

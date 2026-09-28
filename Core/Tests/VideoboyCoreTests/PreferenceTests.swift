@@ -131,6 +131,25 @@ final class PreferenceTests: XCTestCase {
         XCTAssertEqual(reopened.preferences.configuredSources[2].target, "rtsp://10.0.0.4/live")
     }
 
+    /// A source of a kind this build no longer has (DV decks were removed) is skipped
+    /// on load — the other sources and every other preference survive it.
+    func testASourceOfARemovedKindIsSkippedNotFatal() throws {
+        let store = PreferenceStore(fileURL: fileURL)
+        store.preferences.defaultTempo = 97
+        store.preferences.configuredSources = [
+            ConfiguredSource(kind: .avfoundation, name: "DVC100", target: "DVC100"),
+            ConfiguredSource(kind: .ipCamera, name: "GL2 deck", target: "")
+        ]
+        let saved = try String(contentsOf: fileURL, encoding: .utf8)
+        XCTAssertTrue(saved.contains("\"ipCamera\""))
+        try saved.replacingOccurrences(of: "\"ipCamera\"", with: "\"dvDeck\"")
+            .write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let reopened = PreferenceStore(fileURL: fileURL)
+        XCTAssertEqual(reopened.preferences.configuredSources.map(\.name), ["DVC100"])
+        XCTAssertEqual(reopened.preferences.defaultTempo, 97)
+    }
+
     /// A preferences file saved before this type existed has no `configuredSources`
     /// key at all — must load to the empty list, not fail the whole file.
     func testAFileWithNoConfiguredSourcesKeyLoadsEmpty() throws {

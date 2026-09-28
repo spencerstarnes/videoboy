@@ -38,9 +38,10 @@ public struct ImportCandidate: Equatable, Sendable {
 
 public enum ImportScan {
 
-    /// What this build can open.
+    /// What this build can open. A .dv file plays as ordinary video through
+    /// AVFoundation — it has no bitstream effects, but it is still footage.
     public static let playableExtensions: Set<String> = [
-        "mov", "mp4", "m4v", "m2v", "mpg", "mpeg", "ts", "m2t", "m2ts"
+        "dv", "mov", "mp4", "m4v", "m2v", "mpg", "mpeg", "ts", "m2t", "m2ts"
     ]
 
     /// How deep a dropped folder is walked: deep enough for year/shoot/reel filing,

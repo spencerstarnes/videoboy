@@ -127,8 +127,9 @@ enum ImportModeSelfQA {
         // 2. Badges.
         func entry(_ name: String) -> ImportEntry? { view.entries.first { $0.url.lastPathComponent == name } }
         check.record(AssertionResult(
-            name: "DV and MPEG are marked wedge-ready; a 16:9 HD clip is marked ⚠16:9",
-            passed: entry("bars.dv")?.wedge == "DV" && entry("motion.m2v")?.wedge == "MPEG"
+            name: "MPEG is marked wedge-ready, DV is not; a 16:9 HD clip is marked ⚠16:9",
+            passed: entry("bars.dv")?.wedge == nil && entry("bars.dv")?.mismatch == nil
+                && entry("motion.m2v")?.wedge == "MPEG"
                 && entry("hd-h264-2997.mov")?.mismatch == "⚠16:9" && entry("motion.mov")?.mismatch == nil,
             detail: view.entries.map { "\($0.url.lastPathComponent): \($0.wedge ?? "-") \($0.mismatch ?? "-")" }
                 .joined(separator: ", ")))

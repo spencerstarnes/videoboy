@@ -306,9 +306,9 @@ enum ISFSelfQA {
         while !condition() && Date() < deadline { pump(0.05) }
     }
 
-    /// The bus ONE chain's finished picture: what feeds its data stage.
+    /// The bus ONE chain's finished picture, before DATA BURN.
     private static func capture(_ engine: Engine) -> ImageBuffer? {
-        guard let texture = engine.texture(for: Engine.busCodecOneSlot) else { return nil }
+        guard let texture = engine.texture(for: engine.busOutputSlot(.one)) else { return nil }
         return OffscreenRenderer()?.readback(texture)
     }
 
