@@ -70,8 +70,6 @@ final class ImportModeView: NSView {
     private(set) var currentSource: ImportSource?
 
     // Centre: header, filter bar, viewer (only once a clip is opened), grid
-    private let titleLabel = Controls.label("Import", font: Theme.Import.titleFont, color: Theme.Color.textPrimary)
-    private let pathLabel = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
     private let countsLabel = Controls.label("", font: Theme.Import.bodyFont, color: Theme.Color.textSecondary)
     /// Which clips the grid shows. Its labels carry their counts.
     private let filter = Controls.segmented(["All Clips", "New Clips", "In Library"], selected: 0)
@@ -97,16 +95,16 @@ final class ImportModeView: NSView {
     let methodControl = Controls.segmented(["Add", "Move", "Copy"], selected: 0)
     private let methodDescription = Controls.label("", font: Theme.Import.bodyFont, color: Theme.Color.textSecondary)
     private var destination: URL
-    private let destinationName = Controls.label("", font: Theme.Import.emphasisFont, color: Theme.Color.textPrimary)
-    private let destinationPath = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
-    private let destinationIcon = NSImageView()
-    let destinationButton = NSButton(title: "Change…", target: nil, action: nil)
+    /// Where the clips come from, as the Finder shows a path.
+    private let sourcePath = NSPathControl()
+    /// Where Move/Copy put them: a pop-up path control, AppKit's own "choose a folder".
+    let destinationControl = NSPathControl()
     private let destinationNote = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
     let subfolderCheck = NSButton(checkboxWithTitle: "Put them in a subfolder", target: nil, action: nil)
     private let subfolderField = NSTextField(string: "")
     let binPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let skipDuplicates = NSButton(checkboxWithTitle: "Skip clips already in the library", target: nil, action: nil)
-    let optimizeCheck = NSButton(checkboxWithTitle: "Convert copies for the SD canvas", target: nil, action: nil)
+    let optimizeCheck = NSButton(checkboxWithTitle: "Convert copies for SD", target: nil, action: nil)
     let optimizePreset = SetupChoices.popUp(SetupChoices.optimizePresetItems)
     private let optimizeNote = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
     /// What pressing Import will do, in a sentence.
@@ -141,68 +139,68 @@ final class ImportModeView: NSView {
 
     private func build() {
         let header = buildHeader()
-        let sidebar = buildSidebar()
-        let centre = buildCentre()
-        let right = buildRightPane()
         let footer = buildFooter()
-        for view in [header, sidebar, centre, right, footer] {
+        // Three resizable columns — AppKit's split view, as Mail, Xcode and Lightroom
+        // lay out source list / content / inspector. Widths are remembered.
+        let split = NSSplitView()
+        split.isVertical = true
+        split.dividerStyle = .thin
+        split.autosaveName = "ImportModeColumns"
+        let sidebar = buildSidebar(), centre = buildCentre(), inspector = buildRightPane()
+        let centreHolder = NSView()
+        centre.translatesAutoresizingMaskIntoConstraints = false
+        centreHolder.addSubview(centre)
+        let pad = Theme.Import.padding
+        NSLayoutConstraint.activate([
+            centre.topAnchor.constraint(equalTo: centreHolder.topAnchor),
+            centre.bottomAnchor.constraint(equalTo: centreHolder.bottomAnchor),
+            centre.leadingAnchor.constraint(equalTo: centreHolder.leadingAnchor, constant: pad),
+            centre.trailingAnchor.constraint(equalTo: centreHolder.trailingAnchor, constant: -pad)
+        ])
+        for pane in [sidebar, centreHolder, inspector] { split.addArrangedSubview(pane) }
+        split.setHoldingPriority(.init(260), forSubviewAt: 0)
+        split.setHoldingPriority(.init(250), forSubviewAt: 1)
+        split.setHoldingPriority(.init(260), forSubviewAt: 2)
+        sidebar.widthAnchor.constraint(greaterThanOrEqualToConstant: Theme.Import.sidebarMinimumWidth).isActive = true
+        inspector.widthAnchor.constraint(greaterThanOrEqualToConstant: Theme.Import.inspectorMinimumWidth).isActive = true
+        centreHolder.widthAnchor.constraint(greaterThanOrEqualToConstant: Theme.Import.centreMinimumWidth).isActive = true
+        let sidebarWidth = sidebar.widthAnchor.constraint(equalToConstant: Theme.Import.sidebarWidth)
+        let inspectorWidth = inspector.widthAnchor.constraint(equalToConstant: Theme.Import.inspectorWidth)
+        for width in [sidebarWidth, inspectorWidth] { width.priority = .init(200); width.isActive = true }
+
+        for view in [header, split, footer] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
-        let pad = Theme.Import.padding
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: topAnchor),
             header.leadingAnchor.constraint(equalTo: leadingAnchor),
             header.trailingAnchor.constraint(equalTo: trailingAnchor),
             header.heightAnchor.constraint(equalToConstant: Theme.Import.headerHeight),
+            split.topAnchor.constraint(equalTo: header.bottomAnchor),
+            split.leadingAnchor.constraint(equalTo: leadingAnchor),
+            split.trailingAnchor.constraint(equalTo: trailingAnchor),
+            split.bottomAnchor.constraint(equalTo: footer.topAnchor),
             footer.bottomAnchor.constraint(equalTo: bottomAnchor),
             footer.leadingAnchor.constraint(equalTo: leadingAnchor),
             footer.trailingAnchor.constraint(equalTo: trailingAnchor),
-            footer.heightAnchor.constraint(equalToConstant: Theme.Import.footerHeight),
-
-            sidebar.topAnchor.constraint(equalTo: header.bottomAnchor),
-            sidebar.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            sidebar.leadingAnchor.constraint(equalTo: leadingAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: Theme.Import.sidebarWidth),
-            right.topAnchor.constraint(equalTo: header.bottomAnchor),
-            right.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            right.trailingAnchor.constraint(equalTo: trailingAnchor),
-            right.widthAnchor.constraint(equalToConstant: Theme.Import.inspectorWidth),
-            centre.topAnchor.constraint(equalTo: header.bottomAnchor),
-            centre.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            centre.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: pad),
-            centre.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -pad)
+            footer.heightAnchor.constraint(equalToConstant: Theme.Import.footerHeight)
         ])
         applyMethodRules()
     }
 
-    /// FROM ▸ how ▸ TO, across the top — Lightroom's sentence. What will happen is
-    /// readable before anything else is touched.
+    /// From: ▸ Add | Move | Copy ▸ To: — Lightroom's sentence, in standard controls:
+    /// path controls for the two folders, a segmented control for the method.
     private func buildHeader() -> NSView {
-        func tag(_ text: String) -> NSTextField {
-            let label = Controls.label(text, font: Theme.Import.sectionFont, color: Theme.Color.textSecondary)
-            label.wantsLayer = true
-            label.layer?.backgroundColor = Theme.Color.panelFill.cgColor
-            label.layer?.cornerRadius = Theme.Import.pillCornerRadius
-            label.alignment = .center
-            label.translatesAutoresizingMaskIntoConstraints = false
-            label.widthAnchor.constraint(equalToConstant: 34).isActive = true
-            return label
+        func caption(_ text: String) -> NSTextField {
+            Controls.label(text, font: Theme.Import.bodyFont, color: Theme.Color.textSecondary)
         }
-        func arrow() -> NSImageView {
-            let view = NSImageView(image: NSImage(systemSymbolName: "arrow.right.circle.fill", accessibilityDescription: nil) ?? NSImage())
-            view.symbolConfiguration = .init(pointSize: 18, weight: .regular)
-            view.contentTintColor = Theme.Color.textSecondary
-            return view
-        }
-        pathLabel.lineBreakMode = .byTruncatingHead
-        titleLabel.lineBreakMode = .byTruncatingMiddle
-        for label in [pathLabel, titleLabel, destinationName, destinationPath] {
-            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        }
-        let fromTexts = Controls.column([titleLabel, pathLabel], spacing: 1)
-        fromTexts.alignment = .leading
-        let from = Controls.row([tag("FROM"), fromTexts], spacing: 10)
+        sourcePath.pathStyle = .standard
+        sourcePath.isEditable = false
+        sourcePath.controlSize = .regular
+        sourcePath.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        sourcePath.setAccessibilityIdentifier("import-source-path")
+        let from = Controls.row([caption("From:"), sourcePath], spacing: 6)
 
         methodControl.target = self
         methodControl.action = #selector(methodChanged)
@@ -215,27 +213,16 @@ final class ImportModeView: NSView {
         let how = Controls.column([methodControl, methodDescription], spacing: 4)
         how.alignment = .centerX
 
-        destinationIcon.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)
-        destinationIcon.symbolConfiguration = .init(pointSize: 18, weight: .regular)
-        destinationName.lineBreakMode = .byTruncatingMiddle
-        destinationPath.lineBreakMode = .byTruncatingHead
-        destinationButton.bezelStyle = .rounded
-        destinationButton.target = self
-        destinationButton.action = #selector(chooseDestination)
-        destinationButton.setAccessibilityIdentifier("choose-destination")
-        showDestination()
-        let toTexts = Controls.column([destinationName, destinationPath], spacing: 1)
-        toTexts.alignment = .leading
-        let to = Controls.row([tag("TO"), destinationIcon, toTexts, destinationButton], spacing: 10)
+        destinationControl.pathStyle = .popUp       // its menu ends in "Choose…", as AppKit's does
+        destinationControl.url = destination
+        destinationControl.delegate = self
+        destinationControl.target = self
+        destinationControl.action = #selector(destinationChosen)
+        destinationControl.setAccessibilityIdentifier("choose-destination")
+        let to = Controls.row([caption("To:"), destinationControl], spacing: 6)
 
-        for side in [from, to] {
-            side.translatesAutoresizingMaskIntoConstraints = false
-        }
         let bar = NSView()
-        bar.wantsLayer = true
-        bar.layer?.backgroundColor = Theme.Color.bar.cgColor
-        let fromArrow = arrow(), toArrow = arrow()
-        for view in [from, fromArrow, how, toArrow, to] as [NSView] {
+        for view in [from, how, to] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             bar.addSubview(view)
         }
@@ -244,17 +231,11 @@ final class ImportModeView: NSView {
             how.centerXAnchor.constraint(equalTo: bar.centerXAnchor),
             how.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
             from.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: pad),
+            from.trailingAnchor.constraint(lessThanOrEqualTo: how.leadingAnchor, constant: -pad),
             from.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            fromArrow.leadingAnchor.constraint(greaterThanOrEqualTo: from.trailingAnchor, constant: 10),
-            fromArrow.trailingAnchor.constraint(equalTo: how.leadingAnchor, constant: -24),
-            fromArrow.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            toArrow.leadingAnchor.constraint(equalTo: how.trailingAnchor, constant: 24),
-            toArrow.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            to.leadingAnchor.constraint(greaterThanOrEqualTo: toArrow.trailingAnchor, constant: 10),
             to.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -pad),
-            to.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            from.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
-            to.widthAnchor.constraint(lessThanOrEqualToConstant: 360)
+            to.leadingAnchor.constraint(greaterThanOrEqualTo: how.trailingAnchor, constant: pad),
+            to.centerYAnchor.constraint(equalTo: bar.centerYAnchor)
         ])
         return bar
     }
@@ -264,52 +245,57 @@ final class ImportModeView: NSView {
         sourcesTable.addTableColumn(column)
         sourcesTable.headerView = nil
         sourcesTable.style = .sourceList
-        sourcesTable.rowHeight = 26
+        sourcesTable.rowSizeStyle = .default
         sourcesTable.dataSource = self
         sourcesTable.delegate = self
+        sourcesTable.menu = sourceMenu()
         sourcesTable.setAccessibilityIdentifier("import-sources")
         let scroll = NSScrollView()
         scroll.documentView = sourcesTable
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
 
-        // Named, not bare glyphs: "+ − ⏏" said nothing until hovered.
-        let add = Controls.button("Add Folder…", target: self, action: #selector(addFavorite))
-        add.toolTip = "Add a folder to Favorites"
-        let remove = Controls.button("Remove", target: self, action: #selector(removeFavorite))
-        remove.toolTip = "Remove the selected favorite"
-        let eject = NSButton(image: NSImage(systemSymbolName: "eject", accessibilityDescription: "Eject") ?? NSImage(),
-                             target: self, action: #selector(ejectSelected))
-        eject.bezelStyle = .rounded
-        eject.toolTip = "Eject the selected device"
-        let buttons = Controls.row([add, remove, Controls.spacer(), eject], spacing: 6)
-
-        let heading = Controls.label("SOURCE", font: Theme.Import.sectionFont, color: Theme.Color.textTertiary)
-        let stack = Controls.column([heading, scroll, includeSubfolders, buttons], spacing: 8)
-        stack.alignment = .leading
+        // The source list's own buttons: + and − under the list, small-square, with
+        // the system's template images — as Finder's and System Settings' lists have.
+        func squareButton(_ image: NSImage.Name, _ tip: String, _ action: Selector) -> NSButton {
+            let button = NSButton(image: NSImage(named: image) ?? NSImage(), target: self, action: action)
+            button.bezelStyle = .smallSquare
+            button.toolTip = tip
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.widthAnchor.constraint(equalToConstant: 24).isActive = true
+            return button
+        }
+        let buttons = Controls.row([squareButton(NSImage.addTemplateName, "Add a folder to Favorites", #selector(addFavorite)),
+                                    squareButton(NSImage.removeTemplateName, "Remove the selected favorite", #selector(removeFavorite)),
+                                    Controls.spacer()], spacing: 0)
         includeSubfolders.target = self
         includeSubfolders.action = #selector(subfoldersChanged)
         includeSubfolders.state = .on
+
+        let stack = Controls.column([scroll, includeSubfolders, buttons], spacing: 8)
+        stack.alignment = .leading
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
         for view in [scroll, buttons] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
-            view.widthAnchor.constraint(equalToConstant: Theme.Import.sidebarWidth - 16).isActive = true
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -16).isActive = true
         }
-        stack.wantsLayer = true
-        stack.layer?.backgroundColor = Theme.Color.panelFillNested.cgColor
-        stack.edgeInsets = NSEdgeInsets(top: 12, left: 8, bottom: 10, right: 8)
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
         stack.setHuggingPriority(.defaultLow, for: .vertical)
         return stack
     }
 
+    /// Right-click on a source: Eject for a removable device, Remove for a favorite.
+    private func sourceMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.delegate = self
+        return menu
+    }
+
     private func buildCentre() -> NSView {
-        // Filter tabs centred above the grid, each with its count.
         filter.target = self
         filter.action = #selector(filterChanged)
         filter.setAccessibilityIdentifier("import-filter")
         filter.controlSize = .regular
-        filter.font = Theme.Import.bodyFont
         let tabs = NSView()
         filter.translatesAutoresizingMaskIntoConstraints = false
         tabs.addSubview(filter)
@@ -324,7 +310,7 @@ final class ImportModeView: NSView {
         playerView.videoGravity = .resizeAspect   // letterboxed, never deformed
         playerView.setAccessibilityIdentifier("import-viewer")
         playerView.translatesAutoresizingMaskIntoConstraints = false
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close viewer") ?? NSImage(),
+        let close = NSButton(image: NSImage(named: NSImage.stopProgressTemplateName) ?? NSImage(),
                              target: self, action: #selector(toggleViewer))
         close.isBordered = false
         close.toolTip = "Close the viewer (V)"
@@ -369,7 +355,8 @@ final class ImportModeView: NSView {
             emptyState.centerYAnchor.constraint(equalTo: scroll.centerYAnchor, constant: -40)
         ])
 
-        // Below the grid: tick everything or nothing, and how big.
+        // Below the grid: tick everything or nothing, and the thumbnail size between a
+        // small and a large picture — Finder's and Photos' size control.
         let checkAll = Controls.button("Check All", target: self, action: #selector(checkAll))
         let uncheckAll = Controls.button("Uncheck All", target: self, action: #selector(checkNone))
         checkAll.setAccessibilityIdentifier("import-check-all")
@@ -378,9 +365,14 @@ final class ImportModeView: NSView {
         sizeSlider.controlSize = .small
         sizeSlider.translatesAutoresizingMaskIntoConstraints = false
         sizeSlider.widthAnchor.constraint(equalToConstant: 110).isActive = true
-        let bar = Controls.row([checkAll, uncheckAll, Controls.spacer(),
-                                Controls.label("Thumbnails", font: Theme.Font.label, color: Theme.Color.textTertiary),
-                                sizeSlider], spacing: 10)
+        func picture(_ size: CGFloat) -> NSImageView {
+            let view = NSImageView(image: NSImage(systemSymbolName: "photo", accessibilityDescription: nil) ?? NSImage())
+            view.symbolConfiguration = .init(pointSize: size, weight: .regular)
+            view.contentTintColor = Theme.Color.textTertiary
+            return view
+        }
+        let bar = Controls.row([checkAll, uncheckAll, Controls.spacer(), picture(9), sizeSlider, picture(14)],
+                               spacing: 8)
 
         let stack = Controls.column([tabs, viewerBox, scroll, bar], spacing: 10)
         stack.edgeInsets = NSEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
@@ -391,10 +383,12 @@ final class ImportModeView: NSView {
         return stack
     }
 
-    /// Options only: how files are handled, where exactly they go, which bin.
+    /// Options, as a form: right-aligned "Label:" column, controls beside — System
+    /// Settings' layout (NSGridView). A greyed option carries its reason on the row below.
     private func buildRightPane() -> NSView {
         methodDescription.lineBreakMode = .byWordWrapping
         methodDescription.maximumNumberOfLines = 2
+        subfolderCheck.title = ""
         subfolderCheck.target = self
         subfolderCheck.action = #selector(methodChanged)
         subfolderField.placeholderString = "Subfolder name"
@@ -414,59 +408,78 @@ final class ImportModeView: NSView {
         optimizePreset.action = #selector(methodChanged)
         refreshBins()
 
-        func section(_ title: String, _ views: [NSView]) -> NSStackView {
-            let heading = Controls.label(title.uppercased(), font: Theme.Import.sectionFont,
-                                         color: Theme.Color.textTertiary)
-            let column = Controls.column([heading] + views, spacing: 8)
-            column.alignment = .leading
-            return column
+        func label(_ text: String) -> NSTextField {
+            Controls.label(text, font: Theme.Import.bodyFont, color: Theme.Color.textSecondary)
         }
-        let bin = Controls.row([Controls.label("Bin", font: Theme.Import.bodyFont, color: Theme.Color.textSecondary),
-                                binPopUp], spacing: 8)
-        let preset = Controls.row([Controls.label("Preset", font: Theme.Import.bodyFont,
-                                                  color: Theme.Color.textSecondary), optimizePreset], spacing: 8)
-        let pane = Controls.column([
-            section("File handling", [skipDuplicates, optimizeCheck, preset, optimizeNote]),
-            section("Destination", [subfolderCheck, subfolderField, destinationNote]),
-            section("Library", [bin]),
-            Controls.spacer()
-        ], spacing: Theme.Import.sectionSpacing)
-        pane.alignment = .leading
-        let pad = Theme.Import.padding
-        pane.edgeInsets = NSEdgeInsets(top: pad, left: pad, bottom: pad, right: pad)
-        pane.wantsLayer = true
-        pane.layer?.backgroundColor = Theme.Color.panelFillNested.cgColor
-        subfolderField.translatesAutoresizingMaskIntoConstraints = false
-        subfolderField.widthAnchor.constraint(equalToConstant: Theme.Import.inspectorWidth - 2 * pad).isActive = true
         for note in [optimizeNote, destinationNote] {
             note.lineBreakMode = .byWordWrapping
             note.maximumNumberOfLines = 3
-            note.preferredMaxLayoutWidth = Theme.Import.inspectorWidth - 2 * pad
+            note.preferredMaxLayoutWidth = Theme.Import.inspectorWidth - 110
         }
+        let subfolder = Controls.row([subfolderCheck, subfolderField], spacing: 4)
+        let empty = NSGridCell.emptyContentView
+        let grid = NSGridView(views: [
+            [label("Duplicates:"), skipDuplicates],
+            [label("Optimize:"), optimizeCheck],
+            [label("Preset:"), optimizePreset],
+            [empty, optimizeNote],
+            [label("Subfolder:"), subfolder],
+            [empty, destinationNote],
+            [label("Bin:"), binPopUp]
+        ])
+        grid.column(at: 0).xPlacement = .trailing
+        grid.rowAlignment = .firstBaseline
+        grid.rowSpacing = 10
+        grid.columnSpacing = 8
+        // A little air between the three groups (duplicates · optimize · where).
+        grid.row(at: 1).topPadding = 8
+        grid.row(at: 4).topPadding = 8
+        grid.row(at: 6).topPadding = 8
+        subfolderField.translatesAutoresizingMaskIntoConstraints = false
+        subfolderField.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
+
+        let pane = Controls.column([grid, Controls.spacer()], spacing: 0)
+        // The form stays inside its column: the field gives way, never the edge.
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.widthAnchor.constraint(lessThanOrEqualTo: pane.widthAnchor, constant: -2 * Theme.Import.padding).isActive = true
+        pane.alignment = .leading
+        let pad = Theme.Import.padding
+        pane.edgeInsets = NSEdgeInsets(top: pad, left: pad, bottom: pad, right: pad)
         return pane
     }
 
-    /// The count and size on the left, what Import will do in the middle, Import on the
-    /// right — one place to finish.
+    /// The count and size on the left, what Import will do, then Import — the default
+    /// button (Return), which AppKit draws in the accent colour.
     private func buildFooter() -> NSView {
         countsLabel.alignment = .left
         summaryLabel.lineBreakMode = .byTruncatingTail
         summaryLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         importButton.bezelStyle = .rounded
         importButton.controlSize = .large
-        importButton.keyEquivalent = "\r"          // Return imports
-        importButton.bezelColor = Theme.Color.accent   // the one primary action, lit even when the window is not key
+        importButton.keyEquivalent = "\r"
         importButton.target = self
         importButton.action = #selector(importPressed)
         importButton.setAccessibilityIdentifier("import-go")
-        importButton.translatesAutoresizingMaskIntoConstraints = false
-        importButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
         let row = Controls.row([countsLabel, Controls.spacer(), summaryLabel, importButton], spacing: 16)
         let pad = Theme.Import.padding
         row.edgeInsets = NSEdgeInsets(top: 0, left: pad, bottom: 0, right: pad)
-        row.wantsLayer = true
-        row.layer?.backgroundColor = Theme.Color.bar.cgColor
-        return row
+        let line = NSBox()
+        line.boxType = .separator
+        let footer = NSView()
+        for view in [line, row] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            footer.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            line.topAnchor.constraint(equalTo: footer.topAnchor),
+            line.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
+            line.trailingAnchor.constraint(equalTo: footer.trailingAnchor),
+            row.topAnchor.constraint(equalTo: line.bottomAnchor),
+            row.bottomAnchor.constraint(equalTo: footer.bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: footer.trailingAnchor)
+        ])
+        return footer
     }
 
     // MARK: - Greying (proposal §5: greyed, never hidden) and the summary
@@ -491,9 +504,7 @@ final class ImportModeView: NSView {
                 + "The originals stay where they are."
         }
         let usesDestination = method.usesDestination
-        destinationButton.isEnabled = usesDestination
-        destinationName.textColor = usesDestination ? Theme.Color.textPrimary : Theme.Color.textTertiary
-        destinationIcon.contentTintColor = usesDestination ? Theme.Color.accent : Theme.Color.textTertiary
+        destinationControl.isEnabled = usesDestination
         subfolderCheck.isEnabled = usesDestination
         subfolderField.isEnabled = usesDestination && subfolderCheck.state == .on
         destinationNote.stringValue = usesDestination ? ""
@@ -546,41 +557,28 @@ final class ImportModeView: NSView {
         summaryLabel.stringValue = sentence
     }
 
-    /// The folder a Move or Copy goes to.
-    private func showDestination() {
-        destinationName.stringValue = destination.lastPathComponent
-        destinationPath.stringValue = destination.deletingLastPathComponent().path
-            .replacingOccurrences(of: NSHomeDirectory(), with: "~")
-        destinationButton.toolTip = destination.path
-    }
-
-    @objc private func chooseDestination() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.prompt = "Choose"
-        panel.message = "Where should moved or copied clips go?"
-        panel.directoryURL = destination
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    /// A folder picked from the destination's pop-up ("Choose…" or a parent folder).
+    @objc private func destinationChosen() {
+        guard let url = destinationControl.url else { return }
         destination = url
-        showDestination()
         updateImportButton()
     }
 
     /// Points Move/Copy somewhere else — for self-QA (scratch folders only).
     func setDestinationForChecks(_ url: URL) {
         destination = url
-        showDestination()
+        destinationControl.url = url
         updateImportButton()
     }
 
     /// Whether the destination controls are live — for self-QA.
-    var destinationEnabled: Bool { destinationButton.isEnabled }
+    var destinationEnabled: Bool { destinationControl.isEnabled }
     var moveEnabled: Bool { methodControl.isEnabled(forSegment: 1) }
     /// The summary sentence and the header — for self-QA.
     var summaryForChecks: String { summaryLabel.stringValue }
-    var headerForChecks: (title: String, counts: String) { (titleLabel.stringValue, countsLabel.stringValue) }
+    var headerForChecks: (title: String, counts: String) {
+        (currentSource.map { sourcePath.url?.lastPathComponent ?? $0.title } ?? "Choose a source", countsLabel.stringValue)
+    }
     var isViewerOpen: Bool { !viewerBox.isHidden }
 
     // MARK: - Header, filter counts, the selection menu
@@ -588,15 +586,14 @@ final class ImportModeView: NSView {
     /// The folder's name and path, and what is in it — or why there is nothing.
     private func refreshHeader() {
         guard let source = currentSource else {
-            titleLabel.stringValue = "Choose a source"
-            pathLabel.stringValue = "a folder or device on the left"
+            sourcePath.url = nil
+            sourcePath.placeholderString = "Choose a source on the left"
             countsLabel.stringValue = ""
             emptyState.stringValue = "Choose a folder or device on the left."
             emptyState.isHidden = false
             return
         }
-        titleLabel.stringValue = source.title
-        pathLabel.stringValue = source.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        sourcePath.url = source.url
         let total = entries.count
         let fresh = entries.filter { !$0.isDuplicate }.count
         let known = total - fresh
@@ -1044,18 +1041,20 @@ extension ImportModeView: NSCollectionViewDataSource {
     }
 }
 
-/// A tile, Lightroom's way: a cell with the checkbox in its corner, the picture
-/// (the library's hover-scrub, I/O marks and all), the name and size under it, and
-/// solid pills for what matters — wedge-ready, a shape that does not fit, already in
-/// the library. Checked cells are lit; unchecked ones step back.
+/// A tile, as Photos and Lightroom draw one: the picture (the library's hover-scrub,
+/// I/O marks and all) with a checkbox in its corner; under it the name and, in
+/// secondary text, what matters about the file — codec, size, already in the library.
+/// A shape that does not fit the canvas gets the system's warning symbol. Unchecked
+/// clips step back.
 final class ImportTileItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("import-tile")
 
     private let picture = HoverScrubView()
     private let check = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let name = Controls.label("", font: Theme.Import.bodyFont, color: Theme.Color.textPrimary)
-    private let size = Controls.label("", font: Theme.Font.label, color: Theme.Color.textTertiary)
-    private let pills = NSStackView()
+    private let details = Controls.label("", font: Theme.Font.label, color: Theme.Color.textSecondary)
+    private let warning = NSImageView(image: NSImage(systemSymbolName: "exclamationmark.triangle.fill",
+                                                     accessibilityDescription: "Not the canvas shape") ?? NSImage())
     private var url: URL?
     private var badgeParts: [String] = []
     var onChecked: ((Bool) -> Void)?
@@ -1064,43 +1063,38 @@ final class ImportTileItem: NSCollectionViewItem {
 
     override func loadView() {
         let tile = ImportTileView()
-        tile.wantsLayer = true
-        tile.layer?.cornerRadius = Theme.Import.tileCornerRadius
-        tile.layer?.borderWidth = 1
         tile.onDoubleClick = { [weak self] in if let url = self?.url { self?.onOpen?(url) } }
         picture.onMarksChanged = { [weak self] inPoint, outPoint in
             if let url = self?.url { self?.onMarks?(url, (inPoint, outPoint)) }
         }
         picture.wantsLayer = true
-        picture.layer?.cornerRadius = 3
+        picture.layer?.cornerRadius = Theme.Import.tileCornerRadius
         picture.layer?.masksToBounds = true
         name.lineBreakMode = .byTruncatingMiddle
+        details.lineBreakMode = .byTruncatingTail
+        warning.contentTintColor = .systemYellow
+        warning.symbolConfiguration = .init(pointSize: 11, weight: .regular)
         check.target = self
         check.action = #selector(checkChanged)
-        pills.orientation = .horizontal
-        pills.spacing = Theme.Import.pillSpacing
-        let inset: CGFloat = 6
-        for view in [check, picture, name, size, pills] as [NSView] {
+        let caption = Controls.row([warning, name], spacing: 4)
+        for view in [picture, check, caption, details] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             tile.addSubview(view)
         }
         NSLayoutConstraint.activate([
-            check.topAnchor.constraint(equalTo: tile.topAnchor, constant: 4),
-            check.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: inset),
-            pills.centerYAnchor.constraint(equalTo: check.centerYAnchor),
-            pills.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -inset),
-            pills.leadingAnchor.constraint(greaterThanOrEqualTo: check.trailingAnchor, constant: 4),
-            picture.topAnchor.constraint(equalTo: check.bottomAnchor, constant: 4),
-            picture.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: inset),
-            picture.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -inset),
-            picture.bottomAnchor.constraint(equalTo: name.topAnchor, constant: -4),
-            name.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: inset),
-            name.trailingAnchor.constraint(lessThanOrEqualTo: size.leadingAnchor, constant: -6),
-            name.bottomAnchor.constraint(equalTo: tile.bottomAnchor, constant: -5),
-            size.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -inset),
-            size.firstBaselineAnchor.constraint(equalTo: name.firstBaselineAnchor)
+            picture.topAnchor.constraint(equalTo: tile.topAnchor),
+            picture.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
+            picture.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
+            picture.bottomAnchor.constraint(equalTo: caption.topAnchor, constant: -4),
+            check.topAnchor.constraint(equalTo: picture.topAnchor, constant: 5),
+            check.leadingAnchor.constraint(equalTo: picture.leadingAnchor, constant: 6),
+            caption.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
+            caption.trailingAnchor.constraint(lessThanOrEqualTo: tile.trailingAnchor),
+            caption.bottomAnchor.constraint(equalTo: details.topAnchor, constant: -1),
+            details.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
+            details.trailingAnchor.constraint(lessThanOrEqualTo: tile.trailingAnchor),
+            details.bottomAnchor.constraint(equalTo: tile.bottomAnchor)
         ])
-        size.setContentCompressionResistancePriority(.required, for: .horizontal)
         view = tile
     }
 
@@ -1109,34 +1103,20 @@ final class ImportTileItem: NSCollectionViewItem {
         picture.item = ShellController.libraryItem(for: entry.url)
         check.state = entry.isChecked ? .on : .off
         name.stringValue = entry.url.lastPathComponent
-        size.stringValue = ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file)
+        let size = ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file)
+        details.stringValue = [entry.wedge, size, entry.isDuplicate ? "In Library" : nil]
+            .compactMap { $0 }.joined(separator: " · ")
+        warning.isHidden = entry.mismatch == nil
+        warning.toolTip = entry.mismatch.map { "\($0.replacingOccurrences(of: "⚠", with: "")) — not the canvas's shape; it will be fitted" }
         badgeParts = [entry.isDuplicate ? "DUP" : nil, entry.wedge, entry.mismatch].compactMap { $0 }
-        pills.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        if let wedge = entry.wedge { pills.addArrangedSubview(Self.pill(wedge, Theme.Import.wedgePill)) }
-        if let mismatch = entry.mismatch {
-            // The amber says "does not fit"; a ⚠ glyph beside capitals only sat on its
-            // own baseline. The tooltip says it in words.
-            pills.addArrangedSubview(Self.pill(mismatch.replacingOccurrences(of: "⚠", with: ""), Theme.Import.mismatchPill))
-        }
-        if entry.isDuplicate { pills.addArrangedSubview(Self.pill("IN LIBRARY", Theme.Import.duplicatePill)) }
-        view.toolTip = [entry.isDuplicate ? "Already in the library." : nil,
-                        entry.wedge.map { "\($0): the bitstream effects work on it." },
-                        entry.mismatch.map { _ in "Not the canvas's shape — it will be fitted." }]
-            .compactMap { $0 }.joined(separator: " ").nilIfEmpty
         applyLook()
     }
 
-    /// Lit when checked; unchecked cells (and clips already in the library) step back.
+    /// Unchecked clips step back, so what will be imported stands out.
     private func applyLook() {
         let checked = check.state == .on
-        view.layer?.backgroundColor = (checked ? NSColor(white: 1, alpha: 0.10) : NSColor(white: 1, alpha: 0.04)).cgColor
-        view.layer?.borderColor = (checked ? Theme.Color.accent.withAlphaComponent(0.8) : NSColor.clear).cgColor
-        picture.alphaValue = checked ? 1 : 0.55
-        name.textColor = checked ? Theme.Color.textPrimary : Theme.Color.textSecondary
-    }
-
-    private static func pill(_ text: String, _ colour: NSColor) -> NSView {
-        ImportPill(text: text, colour: colour)
+        picture.alphaValue = checked ? 1 : 0.45
+        name.textColor = checked ? Theme.Color.textPrimary : Theme.Color.textTertiary
     }
 
     func showMarks(_ marks: ImportModeView.Marks) {
@@ -1148,66 +1128,13 @@ final class ImportTileItem: NSCollectionViewItem {
 
     /// The badge text — for self-QA.
     var badgeText: String { badgeParts.joined(separator: " ") }
+    /// The secondary line under the name — for self-QA.
+    var detailsText: String { details.stringValue }
 
     @objc private func checkChanged() {
         applyLook()
         onChecked?(check.state == .on)
     }
-}
-
-/// A codec / shape / library pill, drawn rather than made of a text field.
-///
-/// It was an NSTextField with a layer background and a fixed height: a text field
-/// never centres its text vertically, so every word rode against the pill's top edge;
-/// its cell's own insets made the sides uneven; its background filled the whole frame,
-/// so neighbouring pills touched; and the colours were black bold text on saturated
-/// slabs. Drawn here instead: text centred on its cap height, the same padding either
-/// side, and a tint — coloured text and hairline over a faint wash of the colour.
-final class ImportPill: NSView {
-    private let text: NSAttributedString
-    private let colour: NSColor
-
-    init(text: String, colour: NSColor) {
-        self.colour = colour
-        self.text = NSAttributedString(string: text.uppercased(), attributes: [
-            .font: Theme.Import.pillFont,
-            .foregroundColor: colour,
-            .kern: Theme.Import.pillTracking
-        ])
-        super.init(frame: .zero)
-        setContentHuggingPriority(.required, for: .horizontal)
-        setContentCompressionResistancePriority(.required, for: .horizontal)
-        setAccessibilityElement(true)
-        setAccessibilityLabel(text)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: ceil(text.size().width) + 2 * Theme.Import.pillPaddingX, height: Theme.Import.pillHeight)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let body = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let shape = NSBezierPath(roundedRect: body, xRadius: Theme.Import.pillCornerRadius,
-                                 yRadius: Theme.Import.pillCornerRadius)
-        colour.withAlphaComponent(0.16).setFill()
-        shape.fill()
-        colour.withAlphaComponent(0.45).setStroke()
-        shape.lineWidth = 1
-        shape.stroke()
-        // Centre the CAPITALS, not the line box: capitals have no descenders, so a
-        // line-box centre sits them visibly high.
-        let font = Theme.Import.pillFont
-        let size = text.size()
-        let baseline = bounds.midY - font.capHeight / 2
-        text.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: baseline + font.descender))
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 /// The tile's view: a double-click opens the clip in the viewer. Single presses on the
@@ -1217,5 +1144,33 @@ final class ImportTileView: NSView {
     var onDoubleClick: (() -> Void)?
     override func mouseDown(with event: NSEvent) {
         if event.clickCount == 2 { onDoubleClick?() } else { super.mouseDown(with: event) }
+    }
+}
+
+// MARK: - The destination's pop-up and the source list's menu
+
+extension ImportModeView: NSPathControlDelegate {
+    /// "Choose…" picks a folder, and may make one — AppKit's own panel, configured.
+    func pathControl(_ pathControl: NSPathControl, willDisplay openPanel: NSOpenPanel) {
+        openPanel.canChooseDirectories = true
+        openPanel.canChooseFiles = false
+        openPanel.canCreateDirectories = true
+        openPanel.message = "Where should moved or copied clips go?"
+    }
+}
+
+extension ImportModeView: NSMenuDelegate {
+    /// Right-click on a source: Eject for a removable device, Remove for a favorite.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let row = sourcesTable.clickedRow
+        guard rows.indices.contains(row), let source = rows[row].source else { return }
+        sourcesTable.selectRowIndexes([row], byExtendingSelection: false)
+        if source.isEjectable {
+            menu.addItem(withTitle: "Eject “\(source.title)”", action: #selector(ejectSelected), keyEquivalent: "").target = self
+        }
+        if source.section == .favorites {
+            menu.addItem(withTitle: "Remove from Favorites", action: #selector(removeFavorite), keyEquivalent: "").target = self
+        }
     }
 }

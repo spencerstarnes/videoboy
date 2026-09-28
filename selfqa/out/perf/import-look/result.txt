@@ -1,6 +1,6 @@
 check:    perf/import-look
 verdict:  PASS
-when:     2026-09-28T17:00:56Z
+when:     2026-09-28T17:09:03Z
 core:     0.4.10
 
 notes:

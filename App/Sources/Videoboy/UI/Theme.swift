@@ -575,7 +575,10 @@ enum Theme {
         static let headerHeight: CGFloat = 64
         static let footerHeight: CGFloat = 48
         static let sidebarWidth: CGFloat = 220
-        static let inspectorWidth: CGFloat = 300
+        static let inspectorWidth: CGFloat = 340
+        static let sidebarMinimumWidth: CGFloat = 170
+        static let inspectorMinimumWidth: CGFloat = 280
+        static let centreMinimumWidth: CGFloat = 420
         /// Inside the inspector and around the centre column.
         static let padding: CGFloat = 16
         /// Between the inspector's sections.
@@ -588,29 +591,9 @@ enum Theme {
         /// Below the picture: the name and the size.
         static let captionHeight: CGFloat = 34
         static let checkDiameter: CGFloat = 20
-        /// Codec / shape / library pills: drawn by `ImportPill`, text centred on the
-        /// cap height, even padding either side.
-        static let pillHeight: CGFloat = 15
-        static let pillCornerRadius: CGFloat = 4
-        static let pillPaddingX: CGFloat = 5
-        static let pillSpacing: CGFloat = 4
-        static let importButtonHeight: CGFloat = 32
 
-        static let titleFont = NSFont.systemFont(ofSize: 17, weight: .semibold)
-        static let sectionFont = NSFont.systemFont(ofSize: 10, weight: .semibold)
         static let bodyFont = NSFont.systemFont(ofSize: 12, weight: .regular)
         static let emphasisFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
-        static let pillFont = NSFont.systemFont(ofSize: 9, weight: .semibold)
-        /// Letter-spacing for the pills' capitals, so "MPEG" does not read as a smear.
-        static let pillTracking: CGFloat = 0.4
-
-        /// Pills are TINTS, the way Finder tags and Xcode badges are: the colour is
-        /// in the text and a hairline, over a faint wash of itself — never black text
-        /// on a saturated slab. Green: the bitstream effects work (DV, MPEG). Amber: a
-        /// shape that is not the canvas. Neutral: already in the library.
-        static let wedgePill = NSColor.systemGreen
-        static let mismatchPill = Color.displayWarning
-        static let duplicatePill = NSColor(white: 0.78, alpha: 1)
     }
 
     enum Font {
