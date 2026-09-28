@@ -318,6 +318,16 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
   a second while locked). Which beat is "one" of the bar is still not guessed, and
   output latency to the screen is not compensated — both would need a per-rig
   offset control (SPEC 4b's "offset/nudge") rather than an algorithm.
+- [x] **Every beat-rate key follows one rule** (owner, 2026-09-28: "absolutely 100%
+      universal across all uses… always editable… forward and backwards on right
+      click"). All 93 VBStepButtons — source STEP keys, CUT/FADE/BEAT tap rates,
+      crossfader and effect sweep rates: click faster, right-click/Control-click
+      slower, past either end to home (STEP on source keys, 1/1 on rate keys). Rate
+      keys never walk to off: that disarmed CUT/FADE and hid the key mid-gesture,
+      and stalled sweeps. The CUT/FADE rate keys float outside their panel's bounds
+      and NO click could reach them; PanelView now routes to them
+      (`FloatingHitTargets`), layout unchanged. `selfqa ui` walks every key with
+      real events and hit-tests each visible one.
 - [x] **Nested bins; imports keep the folder tree** (owner, 2026-09-28: "importing
       folders of clips removes the folder hierarchy… there's a check box for this,
       it's not working"; owner chose real nested bins over path-named flat bins).

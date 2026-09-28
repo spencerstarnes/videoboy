@@ -764,6 +764,7 @@ final class EffectChainPanelBody: NSView {
         // armed. A rate control on a fader with no marks would be a control for
         // nothing, on the narrowest rows in the window.
         let sweepKey = VBStepButton()
+        sweepKey.allowsOff = false       // a rate key never walks to off (VBStepButton)
         sweepKey.isHidden = true
         sweepKey.toolTip = "How long one sweep between the marks takes"
 
@@ -817,6 +818,8 @@ final class EffectChainPanelBody: NSView {
             let armed = fader.sweep != nil
             sweepKey?.isHidden = !armed
             sweepCancel?.isHidden = !armed
+            // The rate can change without the key (a saved show, a template): show it.
+            sweepKey?.setTiming(fader.sweepRate)
             self?.onSweepsChanged?()
         }
 

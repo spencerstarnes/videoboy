@@ -879,6 +879,96 @@ enum UISelfQA {
             ))
         }
 
+        // EVERY beat-rate key, one rule (owner, 2026-09-28: "absolutely 100% universal
+        // across all uses and instances… always editable… both forward and backwards").
+        // Every VBStepButton in a real shell — source STEP keys, CUT/FADE tap rates
+        // (armed by a real ⌥⌘-click so they show), crossfader and effect sweep rates —
+        // is walked with real click and right-click events: click is faster, right-
+        // click slower, a rate key never lands on STEP (which disarmed its button and
+        // hid the key), and a key that was showing is still showing and still enabled.
+        do {
+            let shell = ShellView()
+            let engine = Engine()
+            let controller = ShellController(shell: shell, engine: engine)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1460, height: 912),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = shell
+            shell.layoutSubtreeIfNeeded()
+
+            func event(_ type: NSEvent.EventType, on view: NSView, modifiers: NSEvent.ModifierFlags = []) -> NSEvent? {
+                NSEvent.mouseEvent(
+                    with: type, location: view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil),
+                    modifierFlags: modifiers, timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+            }
+            // Arm every tap-rate button that is on screen, so its key is showing.
+            for button in VBOptionButton.all(in: shell) where button.onFlipRateChanged != nil && !button.isAutomated {
+                if let down = event(.leftMouseDown, on: button, modifiers: [.command, .option]) { button.mouseDown(with: down) }
+            }
+            shell.layoutSubtreeIfNeeded()
+
+            func allKeys(in view: NSView) -> [VBStepButton] {
+                view.subviews.flatMap { ($0 as? VBStepButton).map { [$0] } ?? allKeys(in: $0) }
+            }
+            let keys = allKeys(in: shell)
+            var problems: [String] = []
+            var kinds: [String: Int] = [:]
+            for (number, key) in keys.enumerated() {
+                let kind = key.allowsOff ? "source" : "rate"
+                kinds[kind, default: 0] += 1
+                let label = "key \(number) (\(kind)\(key.isHidden ? ", hidden" : ""))"
+                if !key.isWiredForAudit { problems.append("\(label) is wired to nothing") }
+                if !key.isEnabled { problems.append("\(label) is disabled") }
+                let wasShowing = !key.isHidden && key.window != nil
+                    && !(sequence(first: key.superview, next: { $0?.superview }).contains { $0?.isHidden == true })
+                // A real click or right-click reaches the key — nothing drawn over it.
+                if wasShowing, let content = window.contentView {
+                    let centre = content.convert(NSPoint(x: key.bounds.midX, y: key.bounds.midY), from: key)
+                    let hit = content.hitTest(centre)
+                    if hit !== key && hit?.isDescendant(of: key) != true {
+                        let chain = sequence(first: hit, next: { $0?.superview }).prefix(4)
+                            .map { $0.map { "\(type(of: $0))\($0.identifier.map { "#" + $0.rawValue } ?? "")" } ?? "-" }
+                        problems.append("\(label): a click at its centre reaches \(chain.joined(separator: "<"))"
+                            + " (key's parent \(key.superview.map { String(describing: type(of: $0)) } ?? "-"))")
+                    }
+                }
+                let home: PlaybackTiming = key.allowsOff ? .continuous : PlaybackTiming.fastLadder[0]
+                key.setTiming(home)
+                var walked: [String] = []
+                for _ in 0..<10 {
+                    if let right = event(.rightMouseDown, on: key) { key.rightMouseDown(with: right) }
+                    walked.append(key.timing.displayName)
+                }
+                for _ in 0..<10 {
+                    if let left = event(.leftMouseDown, on: key) { key.mouseDown(with: left) }
+                    walked.append(key.timing.displayName)
+                }
+                // From home, one right-click is 2/1 for both kinds; one click faster
+                // is 1/1 (source) or 1/2 (rate).
+                key.setTiming(home)
+                if let right = event(.rightMouseDown, on: key) { key.rightMouseDown(with: right) }
+                let back = key.timing.displayName
+                key.setTiming(home)
+                if let left = event(.leftMouseDown, on: key) { key.mouseDown(with: left) }
+                let forward = key.timing.displayName
+                if back != "2/1" { problems.append("\(label): right-click from home gave \(back), not 2/1") }
+                if forward != (key.allowsOff ? "1/1" : "1/2") { problems.append("\(label): click from home gave \(forward)") }
+                if !key.allowsOff && walked.contains("STEP") { problems.append("\(label) walked to STEP: \(walked)") }
+                if key.allowsOff && !walked.contains("STEP") { problems.append("\(label) never reached STEP") }
+                if wasShowing && (key.isHidden || !key.isEnabled) {
+                    problems.append("\(label) stopped being editable after walking \(walked)")
+                }
+                key.setTiming(home)
+            }
+            check.record(AssertionResult(
+                name: "every beat-rate key follows one rule: click faster, right-click slower, rate keys never off, always editable",
+                passed: problems.isEmpty && (kinds["source"] ?? 0) >= 4 && (kinds["rate"] ?? 0) >= 9,
+                detail: "\(keys.count) keys (\(kinds.sorted { $0.key < $1.key }.map { "\($0.value) \($0.key)" }.joined(separator: ", ")))"
+                    + (problems.isEmpty ? "" : "; " + problems.prefix(6).joined(separator: "; "))))
+            withExtendedLifetime(controller) {}
+        }
+
         // The preview panels must come out 4:3, measured on the panels themselves
         // rather than on the picture inside them.
         for layoutCase in layoutCases {
@@ -1647,12 +1737,16 @@ enum UISelfQA {
                     eventNumber: 0, clickCount: 1, pressure: 1)
                 if let backClick {
                     rateKey.rightMouseDown(with: backClick)  // 1/2 -> 1/1
-                    rateKey.rightMouseDown(with: backClick)  // 1/1 -> STEP
+                    rateKey.rightMouseDown(with: backClick)  // 1/1 -> 2/1, never STEP
                 }
+                // A rate key never walks to off (owner, 2026-09-28): walking back past
+                // 1/1 used to disarm CUT and hide the key mid-gesture. It goes on to
+                // the slower rungs, CUT stays armed, and the key stays editable.
                 check.record(AssertionResult(
-                    name: "right-clicking the tap-rate key back to STEP disarms CUT",
-                    passed: !cut.isAutomated && cut.flipRate == nil && rateKey.isHidden,
-                    detail: "isAutomated=\(cut.isAutomated), flipRate is nil: \(cut.flipRate == nil), "
+                    name: "right-clicking the tap-rate key walks slower past 1/1 and CUT stays armed",
+                    passed: rateKey.timing.displayName == "2/1" && cut.isAutomated
+                        && cut.flipRate == rateKey.timing && !rateKey.isHidden,
+                    detail: "rate \(rateKey.timing.displayName), isAutomated=\(cut.isAutomated), "
                         + "hidden=\(rateKey.isHidden)"
                 ))
 
@@ -1661,9 +1755,12 @@ enum UISelfQA {
                 // default 1/1 that would take a full bar — several seconds at 120bpm —
                 // to cross even one boundary in this short a drive, so walk it up to
                 // 1/16 first the same way a performer reaching for a fast tap would.
-                optionCommandClick(on: cut)
+                // Still armed (walking the key never disarms it); walk up to 1/16.
+                if !cut.isAutomated { optionCommandClick(on: cut) }
                 if let forwardClick {
-                    for _ in 0..<4 { rateKey.mouseDown(with: forwardClick) }  // 1/1 -> 1/16
+                    for _ in 0..<10 where rateKey.timing.displayName != "1/16" {
+                        rateKey.mouseDown(with: forwardClick)
+                    }
                 }
                 var cutCount = 0
                 body.onCutRequested = { cutCount += 1 }

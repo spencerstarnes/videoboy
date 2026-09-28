@@ -7,16 +7,25 @@
 //            the thing you are timing against. Numark's decks solve it with one key —
 //            it reads STEP when off, clicking walks toward faster, control-clicking
 //            walks toward slower.
-//  Inputs  : clicks and control-clicks.
+//  Inputs  : clicks, right-clicks and control-clicks.
 //  Outputs : a `PlaybackTiming`.
-//  Connects: SourcePanelBody, PlaybackTiming's two ladders.
+//  Connects: every beat-rate key in the app — the source panels' STEP key, the
+//            CUT/FADE/BEAT tap rates, the crossfaders' and effect faders' sweep
+//            rates — and PlaybackTiming's two ladders. There is ONE of these, so
+//            they cannot behave differently (owner, 2026-09-28: "absolutely 100%
+//            universal across all uses… always editable… both forward and backwards").
 //  Extend  : a new rung is an entry in `PlaybackTiming.slowLadder` or `fastLadder`.
 //            Do not add a rung to both — the two halves must stay disjoint or a click
 //            and a control-click can land on the same rate and the ladder stalls.
 //
-//  Position is held as a signed index with zero meaning "off": positive walks the
-//  fast ladder, negative the slow one. That is what makes one key do both directions
-//  without a mode, and what makes "back the way you came" work from either side.
+//  THE ONE RULE, for every key: the rungs are a line, slowest to fastest —
+//  8/1 4/1 2/1 [STEP] 1/1 1/2 1/4 1/8 1/16. Click steps one rung FASTER; right-click
+//  (or Control-click) steps one rung SLOWER. A step past either end lands on the
+//  key's HOME rung and carries on from there. Only the source key has STEP (off) on
+//  its line — for a clip, "play normally" is a real choice. A rate key (tap or sweep)
+//  never offers off: a rate of "no rate" disarmed the button it belonged to and hid
+//  the key mid-gesture, or stalled the sweep — the key was there, then not editable.
+//  Its home is 1/1. Turning the automation off is its own gesture (✕, ⌥⌘-click).
 //
 
 import AppKit
@@ -31,32 +40,37 @@ final class VBStepButton: NSControl, AuditableControl {
     /// Driven by a closure rather than target/action, so it answers for itself.
     var isWiredForAudit: Bool { onTimingChanged != nil }
 
-    /// Zero is off. Positive indexes the fast ladder, negative the slow one.
-    private var position = 0
+    /// Whether STEP (off) is a rung — true only for the source panels' step key.
+    /// Set it before the key is used; everything else here follows from it.
+    var allowsOff = true {
+        didSet { setTiming(timing) }
+    }
+
+    /// The rungs this key walks, slowest first.
+    private var rungs: [PlaybackTiming] {
+        PlaybackTiming.slowLadder.reversed() + (allowsOff ? [.continuous] : []) + PlaybackTiming.fastLadder
+    }
+
+    /// Where a step past either end lands: STEP when it is a rung, else 1/1.
+    private var homeIndex: Int {
+        rungs.firstIndex(of: allowsOff ? .continuous : PlaybackTiming.fastLadder[0]) ?? 0
+    }
+
+    /// Index into `rungs`.
+    private lazy var index = homeIndex
 
     private var isHovering = false
     private var isPressed = false
     private var trackingArea: NSTrackingArea?
 
     /// The timing this key currently represents.
-    var timing: PlaybackTiming {
-        if position > 0 {
-            let ladder = PlaybackTiming.fastLadder
-            return ladder[min(position - 1, ladder.count - 1)]
-        }
-        if position < 0 {
-            let ladder = PlaybackTiming.slowLadder
-            return ladder[min(-position - 1, ladder.count - 1)]
-        }
-        return .continuous
-    }
+    var timing: PlaybackTiming { rungs[min(max(index, 0), rungs.count - 1)] }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         translatesAutoresizingMaskIntoConstraints = false
-        toolTip = "Step rate. Click for faster, Control-click for slower, "
-            + "and it returns to STEP at either end."
+        toolTip = "Step rate. Click for faster, right-click for slower."
     }
 
     @available(*, unavailable)
@@ -104,33 +118,26 @@ final class VBStepButton: NSControl, AuditableControl {
         step(by: -1)
     }
 
-    /// Walks the ladder. From off, the direction chooses which half to walk into;
-    /// from a rung, it walks back toward off and out the other side.
+    /// Moves one rung: +1 faster, -1 slower. Past either end, home.
     private func step(by direction: Int) {
-        let fastCount = PlaybackTiming.fastLadder.count
-        let slowCount = PlaybackTiming.slowLadder.count
-
-        var next = position + direction
-        if next > fastCount { next = 0 }
-        if next < -slowCount { next = 0 }
-        position = next
-
+        let next = index + direction
+        index = rungs.indices.contains(next) ? next : homeIndex
         needsDisplay = true
-        Log.info(.app, "step rate is now \(timing.displayName)")
+        Log.info(.app, "beat rate is now \(timing.displayName)")
         onTimingChanged?(timing)
     }
 
-    /// Sets the key without firing its callback, for restoring saved state.
+    /// Sets the key without firing its callback, for restoring saved state and for
+    /// following a rate changed elsewhere. A timing that is not on this key's line
+    /// (STEP on a rate key) shows as home rather than leaving the key stale.
     func setTiming(_ timing: PlaybackTiming) {
-        if case .continuous = timing {
-            position = 0
-        } else if let index = PlaybackTiming.fastLadder.firstIndex(of: timing) {
-            position = index + 1
-        } else if let index = PlaybackTiming.slowLadder.firstIndex(of: timing) {
-            position = -(index + 1)
-        }
+        index = rungs.firstIndex(of: timing) ?? homeIndex
         needsDisplay = true
     }
+
+    /// Steps as a click (+1) or right-click (-1) would — for checks, which cannot
+    /// deliver a real right-click to a window that is not key.
+    func stepForChecks(_ direction: Int) { step(by: direction) }
 
     override func draw(_ dirtyRect: NSRect) {
         let body = bounds.insetBy(dx: 0.5, dy: 0.5)
@@ -141,7 +148,7 @@ final class VBStepButton: NSControl, AuditableControl {
 
         // Lit whenever stepping is ON, so a glance says whether this clip is running
         // or holding — which is the question, not what the rate happens to be.
-        let isStepping = position != 0
+        let isStepping = timing != .continuous
         if isStepping {
             var fill = Theme.Color.accent
             if isPressed { fill = fill.blended(withFraction: 0.3, of: .black) ?? fill }

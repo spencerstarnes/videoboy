@@ -34,6 +34,14 @@ enum BusIdentity {
 }
 
 /// A titled, collapsible panel box.
+/// A panel body with controls drawn OUTSIDE its own bounds (the fader panel's
+/// tap-rate keys float over the header). AppKit never hit-tests such a control, so
+/// the PanelView asks for them and routes clicks to them first.
+protocol FloatingHitTargets: AnyObject {
+    /// The controls to reach, when showing.
+    var floatingHitTargets: [NSView] { get }
+}
+
 final class PanelView: NSView {
 
     /// Title shown in the header.
@@ -55,6 +63,18 @@ final class PanelView: NSView {
 
     /// The view filling the panel body.
     private let body: NSView
+
+    /// Routes a click to a body control that floats outside the body's bounds,
+    /// before the header under it can take it. See `FloatingHitTargets`.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if let floating = body as? FloatingHitTargets {
+            for target in floating.floatingHitTargets where !target.isHiddenOrHasHiddenAncestor {
+                guard let parent = target.superview else { continue }
+                if target.frame.contains(parent.convert(point, from: superview)) { return target }
+            }
+        }
+        return super.hitTest(point)
+    }
 
     /// Which corners stay rounded. A panel butted against a neighbour squares off the
     /// shared edge so the two read as one block (see PanelGridView.GroupEdge).

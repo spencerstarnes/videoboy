@@ -906,7 +906,7 @@ final class PreviewPanelBody: NSView {
 
 /// A crossfader panel: Cut, Fade, cut-on-beat, Auto, mapping badges, the fader
 /// itself and its numeric value (SPEC 14.2).
-final class FaderPanelBody: NSView {
+final class FaderPanelBody: NSView, FloatingHitTargets {
 
     /// The crossfader. 0 is the left source, 1 is the right.
     let fader: VBFader
@@ -979,6 +979,8 @@ final class FaderPanelBody: NSView {
     private func sweepStateChanged() {
         let armed = fader.sweep != nil
         sweepRateKey?.isHidden = !armed
+        // The rate can change without the key (a saved show, a template): show it.
+        sweepRateKey?.setTiming(fader.sweepRate)
         sweepCancelButton?.isHidden = !armed
         for control in manualControls { control.isEnabled = !armed }
         fader.isEnabled = true   // the fader itself stays live so the marks can be re-aimed
@@ -1003,6 +1005,13 @@ final class FaderPanelBody: NSView {
             self.onButtonAutomationChanged?()
         }
     }
+
+    /// The tap-rate keys float just ABOVE CUT and FADE — outside this panel's own
+    /// bounds, over its header. AppKit only hit-tests a view inside its parent's
+    /// bounds, so those keys were drawn but no click or right-click could reach them
+    /// (found 2026-09-28 by the every-rate-key check in selfqa ui). Moving them would
+    /// move controls a performer's hands are on; the PanelView routes to them instead.
+    var floatingHitTargets: [NSView] { [cutRateKey, fadeRateKey, beatRateKey].compactMap { $0 } }
 
     /// The CUT/FADE/BEAT tap-rate keys, for checks that need to see whether arming a
     /// button revealed the right one without walking the view tree by type — there
@@ -1129,6 +1138,7 @@ final class FaderPanelBody: NSView {
         // crossfader's `sweepKey` again, on the SAME ladder: click for faster,
         // right-click (or Control-click) for slower.
         let cutRateKey = VBStepButton()
+        cutRateKey.allowsOff = false     // a rate key never walks to off (VBStepButton)
         cutRateKey.isHidden = true
         cutRateKey.toolTip = "How often CUT taps while armed. "
             + "Option-Command-click CUT to arm or disarm it."
@@ -1156,6 +1166,7 @@ final class FaderPanelBody: NSView {
         // Same gesture on FADE — a fade that repeats on the beat rather than firing
         // once.
         let fadeRateKey = VBStepButton()
+        fadeRateKey.allowsOff = false
         fadeRateKey.isHidden = true
         fadeRateKey.toolTip = "How often FADE taps while armed. "
             + "Option-Command-click FADE to arm or disarm it."
@@ -1178,6 +1189,7 @@ final class FaderPanelBody: NSView {
 
         // And on BEAT itself — flips whether the next cut/fade waits, on the beat.
         let beatRateKey = VBStepButton()
+        beatRateKey.allowsOff = false
         beatRateKey.isHidden = true
         beatRateKey.toolTip = "How often BEAT taps while armed. "
             + "Option-Command-click BEAT to arm or disarm it."
@@ -1265,6 +1277,7 @@ final class FaderPanelBody: NSView {
         // stop it, which made an armed crossfader a thing you could start and not
         // steer.
         let sweepKey = VBStepButton()
+        sweepKey.allowsOff = false
         sweepKey.isHidden = true
         sweepKey.toolTip = "How long one sweep between the marks takes"
         self.sweepRateKey = sweepKey
