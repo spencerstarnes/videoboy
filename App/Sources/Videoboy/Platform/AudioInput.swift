@@ -7,7 +7,9 @@
 //            Core; this file only gets the samples and keeps time on them.
 //  Inputs  : an `AudioCaptureSource`.
 //  Outputs : `AudioFrame`s and `BeatTrackerReport`s, delivered on the analysis queue.
-//  Connects: AudioAnalyzer and BeatTracker (Core), SystemAudioTap (for system and
+//  Connects: AudioAnalyzer, and BeatNetTracker (Core) — or the older BeatTracker
+//            when VIDEOBOY_LEGACY_BEAT=1 or the BeatNet weights are missing —
+//            SystemAudioTap (for system and
 //            app sources), and the Engine, which routes results to the reactivity
 //            bus and the transport.
 //  Extend  : a new kind of source is a new case in `AudioCaptureSource` and a branch
@@ -91,6 +93,13 @@ final class AudioInput {
     // Analysis-queue state.
     private var analyzer: AudioAnalyzer?
     private var tracker: BeatTracker?
+    /// BeatNet, which does the tracking when it is available; `tracker` then only
+    /// stands by. See BeatNetTracker and docs/BEATNET.md.
+    private var beatNet: BeatNetTracker?
+    /// Which tracker the last analysed audio went through: "BeatNet", "onset", or
+    /// "none" before any audio. Written on the analysis queue; read it only once the
+    /// input has stopped (self-QA does, to prove which path it measured).
+    private(set) var trackerInUse = "none"
     private var sampleRate: Double = 0
     /// Samples not yet analysed. Sources deliver whatever buffer size they like,
     /// which is rarely the analyser's window size, so they are accumulated here.
@@ -241,6 +250,7 @@ final class AudioInput {
         analysisQueue.async { [self] in
             analyzer = nil
             tracker = nil
+            beatNet = nil
             pending.removeAll()
         }
         Log.info(.clock, "audio input stopped (\(source.longName))")
@@ -260,6 +270,23 @@ final class AudioInput {
         isRunning = false
     }
 
+    /// BeatNet for this rate, or nil — with the reason logged — to use the older
+    /// tracker. Analysis queue.
+    private static func makeBeatNet(sampleRate: Double) -> BeatNetTracker? {
+        if ProcessInfo.processInfo.environment["VIDEOBOY_LEGACY_BEAT"] == "1" {
+            Log.info(.clock, "beat tracking: the older onset tracker (VIDEOBOY_LEGACY_BEAT=1)")
+            return nil
+        }
+        switch BeatNetWeights.shared {
+        case .success(let weights):
+            Log.info(.clock, "beat tracking: BeatNet at \(Int(sampleRate)) Hz")
+            return BeatNetTracker(weights: weights, inputRate: sampleRate)
+        case .failure(let error):
+            Log.warn(.clock, "beat tracking: BeatNet unavailable (\(error)); using the older onset tracker")
+            return nil
+        }
+    }
+
     /// Hands samples to the analysis queue. Called from whichever thread the source
     /// delivers on.
     private func deliver(_ samples: [Float], sampleRate: Double, hostTime: Double) {
@@ -276,6 +303,9 @@ final class AudioInput {
             self.sampleRate = sampleRate
             analyzer = AudioAnalyzer(sampleRate: sampleRate)
             tracker = BeatTracker(sampleRate: sampleRate)
+            // An input nobody asks for beats from (ISF shaders' audio) skips BeatNet.
+            beatNet = onBeatReport == nil ? nil : Self.makeBeatNet(sampleRate: sampleRate)
+            trackerInUse = onBeatReport == nil ? "none" : (beatNet == nil ? "onset" : "BeatNet")
             pending.removeAll()
         }
         guard let analyzer, let tracker else { return }
@@ -291,11 +321,16 @@ final class AudioInput {
 
         let windowSize = AudioAnalyzer.windowSize
         while pending.count >= windowSize {
-            let frame = analyzer.analyze(samples: Array(pending[0..<windowSize]))
+            let window = Array(pending[0..<windowSize])
+            let frame = analyzer.analyze(samples: window)
             pending.removeFirst(windowSize)
             pendingStartTime += windowDuration
             onFrame?(frame)
-            if let report = tracker.add(frame) {
+            if let beatNet {
+                // Same window, same clock: each report is measured back from the end
+                // of the window just fed, which pendingStartTime now is.
+                for report in beatNet.add(window) { onBeatReport?(report, pendingStartTime) }
+            } else if let report = tracker.add(frame) {
                 // pendingStartTime is now the end of the window just analysed.
                 onBeatReport?(report, pendingStartTime)
             }

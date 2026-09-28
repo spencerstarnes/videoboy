@@ -5,12 +5,14 @@
 //            What those tests cannot see is the part a performer touches: the CLOCK
 //            menu (which used to trap you in Audio), the toolbar staying put while
 //            the sync readout changes, and whether a real system-audio tap actually
-//            hears the Mac and locks. This checks all three in the running app.
+//            hears the Mac and locks. This checks all three in the running app —
+//            the lock through the app's own AudioInput, so it measures whichever
+//            tracker a performer gets (BeatNet unless VIDEOBOY_LEGACY_BEAT=1).
 //  Inputs  : none. Plays its own 124 BPM drum loop through `afplay`, quietly.
 //  Outputs : selfqa/out/phase-4/beat-detection/ — result.txt, toolbar PNGs, and the
 //            tracker's report timeline.
-//  Connects: ClockSourceMenu, TransportToolbarView, SystemAudioTap, AudioAnalyzer,
-//            BeatTracker.
+//  Connects: ClockSourceMenu, TransportToolbarView, AudioInput (SystemAudioTap,
+//            BeatNetTracker or BeatTracker).
 //  Extend  : add a section as a function that records into `check`. Environmental
 //            gaps (no permission, an OS too old for taps) end the check as BLOCKED,
 //            never as a failure — and a section that cannot run skips, it does not
@@ -145,14 +147,16 @@ enum BeatSelfQA {
             return nil
         }
 
-        // All tracker state lives on the tap's queue; the main thread only reads the
-        // collected results after the tap has stopped.
+        // The app's own input, exactly as the CLOCK menu's System Audio starts it.
+        // Reports arrive on its analysis queue; the main thread reads the collected
+        // results only after it has stopped.
         let collector = TapCollector()
-        let tap = SystemAudioTap()
-        do {
-            try tap.start(.system) { samples, sampleRate, _ in collector.add(samples, sampleRate: sampleRate) }
-        } catch {
-            check.record(AssertionResult(name: "system audio tap starts", passed: false, detail: "\(error)"))
+        let input = AudioInput(source: .systemAudio)
+        input.onFrame = { frame in collector.heard(frame) }
+        input.onBeatReport = { report, _ in collector.add(report) }
+        guard input.start() else {
+            check.record(AssertionResult(name: "system audio tap starts", passed: false,
+                                         detail: input.failureReason ?? "unknown reason"))
             return nil
         }
         check.record(AssertionResult(name: "system audio tap starts", passed: true, detail: "tap running"))
@@ -164,7 +168,7 @@ enum BeatSelfQA {
         do {
             try player.run()
         } catch {
-            tap.stop()
+            input.stop()
             return "could not run afplay to play the test loop: \(error)"
         }
         let started = Date()
@@ -172,7 +176,9 @@ enum BeatSelfQA {
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
         if player.isRunning { player.terminate() }
-        tap.stop()
+        input.stop()
+        // Let the analysis queue finish what it has, so the results are complete.
+        Thread.sleep(forTimeInterval: 0.3)
         try? FileManager.default.removeItem(at: loopURL)
 
         let result = collector.snapshot()
@@ -184,6 +190,11 @@ enum BeatSelfQA {
             return "the tap heard only silence. Allow Videoboy under System Settings ▸ Privacy & Security ▸ "
                 + "Screen & System Audio Recording (System Audio Recording Only), and check the output is not muted"
         }
+        let expected = ProcessInfo.processInfo.environment["VIDEOBOY_LEGACY_BEAT"] == "1" ? "onset" : "BeatNet"
+        check.record(AssertionResult(
+            name: "the live input uses the \(expected) tracker",
+            passed: input.trackerInUse == expected,
+            detail: "AudioInput used \(input.trackerInUse)"))
         check.record(AssertionResult(
             name: "tracker locks on the system audio",
             passed: result.lockedTempo != nil,
@@ -197,7 +208,7 @@ enum BeatSelfQA {
         return nil
     }
 
-    /// Gathers tap output on the tap's queue.
+    /// Gathers AudioInput's output on its analysis queue.
     private final class TapCollector: @unchecked Sendable {
         struct Result {
             var peakRMS = 0.0
@@ -208,35 +219,28 @@ enum BeatSelfQA {
         }
         private let lock = NSLock()
         private var result = Result()
-        private var analyzer: AudioAnalyzer?
-        private var tracker: BeatTracker?
-        private var pending: [Float] = []
+        /// When the first audio arrived; times are measured from it by the clock, so
+        /// they do not depend on the tap's sample rate.
+        private var firstHeard: Date?
 
-        func add(_ samples: [Float], sampleRate: Double) {
+        func heard(_ frame: AudioFrame) {
             lock.lock(); defer { lock.unlock() }
-            if analyzer == nil {
-                analyzer = AudioAnalyzer(sampleRate: sampleRate)
-                tracker = BeatTracker(sampleRate: sampleRate)
-            }
-            guard let analyzer, let tracker else { return }
-            pending.append(contentsOf: samples)
-            let size = AudioAnalyzer.windowSize
-            while pending.count >= size {
-                let frame = analyzer.analyze(samples: Array(pending[0..<size]))
-                pending.removeFirst(size)
-                result.secondsHeard += Double(size) / sampleRate
-                result.peakRMS = max(result.peakRMS, frame.rms)
-                if let report = tracker.add(frame) {
-                    let tempo = report.beatsPerMinute.map { String(format: "%6.2f", $0) } ?? "     -"
-                    let state = report.state.rawValue.padding(toLength: 9, withPad: " ", startingAt: 0)
-                    let event = report.event.map { "  \($0)" } ?? ""
-                    result.timeline.append(String(format: "%6.2fs  ", result.secondsHeard) + state
-                        + "  " + tempo + String(format: "  conf %.2f", report.confidence) + event)
-                    if report.state == .locked {
-                        result.lockedTempo = report.beatsPerMinute
-                        if result.firstLockSeconds == nil { result.firstLockSeconds = result.secondsHeard }
-                    }
-                }
+            result.peakRMS = max(result.peakRMS, frame.rms)
+            let now = Date()
+            if firstHeard == nil { firstHeard = now }
+            result.secondsHeard = now.timeIntervalSince(firstHeard ?? now)
+        }
+
+        func add(_ report: BeatTrackerReport) {
+            lock.lock(); defer { lock.unlock() }
+            let tempo = report.beatsPerMinute.map { String(format: "%6.2f", $0) } ?? "     -"
+            let state = report.state.rawValue.padding(toLength: 9, withPad: " ", startingAt: 0)
+            let event = report.event.map { "  \($0)" } ?? ""
+            result.timeline.append(String(format: "%6.2fs  ", result.secondsHeard) + state
+                + "  " + tempo + String(format: "  conf %.2f", report.confidence) + event)
+            if report.state == .locked {
+                result.lockedTempo = report.beatsPerMinute
+                if result.firstLockSeconds == nil { result.firstLockSeconds = result.secondsHeard }
             }
         }
 

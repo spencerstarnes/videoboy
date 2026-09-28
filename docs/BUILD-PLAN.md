@@ -318,6 +318,15 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
   a second while locked). Which beat is "one" of the bar is still not guessed, and
   output latency to the screen is not compensated — both would need a per-rig
   offset control (SPEC 4b's "offset/nudge") rather than an algorithm.
+- **Beat detection now listens with BeatNet** (2026-09-27, owner request: "beat
+  matching is probably the number one priority"). BeatNet's network (CC BY 4.0) is
+  ported to Swift and checked to 2e-3 against PyTorch; its activations replace the
+  hand-made onset envelope in the existing tempo/phase tracker. On six real tracks:
+  locked as often as before (88%), beats on the right video frame 78% vs 69%.
+  `VIDEOBOY_LEGACY_BEAT=1` restores the old tracker. Details, the scores and how to
+  re-run them: `docs/BEATNET.md`. Still open: a wrong 3:2 lock in the first seconds
+  of some tracks (undone in ~15 s), swung lo-fi (Cereal Killa) poor for both
+  trackers, BeatNet's downbeat output not used yet, screen latency uncompensated.
 - **Beat detection picks one metrical level and sticks to it.** On drum & bass it may
   lock at 92.8 rather than 185.6, or at a 4:5 relation (148); it then holds that
   level rather than wandering between them. A ×2 / ÷2 control beside the tempo would

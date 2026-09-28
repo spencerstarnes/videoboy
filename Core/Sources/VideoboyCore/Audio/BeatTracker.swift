@@ -114,9 +114,14 @@ public final class BeatTracker {
     private var candidateCount = 0
     private var unclearCount = 0
 
-    public init(sampleRate: Double = 48_000, tuning: Tuning = Tuning()) {
+    /// - Parameters:
+    ///   - sampleRate, windowSize: set the rate of the envelope `add` receives — one
+    ///     frame per `windowSize` samples. BeatNetTracker feeds 50 frames a second
+    ///     (22,050 Hz, 441); the analyser, ~47 (48 kHz, 1,024).
+    public init(sampleRate: Double = 48_000, windowSize: Int = AudioAnalyzer.windowSize,
+                tuning: Tuning = Tuning()) {
         self.tuning = tuning
-        self.estimator = TempoEstimator(sampleRate: sampleRate)
+        self.estimator = TempoEstimator(sampleRate: sampleRate, windowSize: windowSize)
         let windowsPerSecond = estimator.windowsPerSecond
         self.windowsPerUpdate = max(Int((tuning.updateInterval * windowsPerSecond).rounded()), 1)
         self.windowsForSilence = max(Int(tuning.silenceSeconds * windowsPerSecond), 1)

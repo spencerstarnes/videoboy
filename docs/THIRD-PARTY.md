@@ -55,6 +55,29 @@ linked into or shipped with the app — it is a developer-machine tool used to p
 test files, in the same category as a text editor. The app itself links only the LGPL
 libraries described above.
 
+## BeatNet (beat tracking)
+
+The beat tracker listens with **BeatNet**'s trained network:
+
+> Mojtaba Heydari, Frank Cwitkowitz and Zhiyao Duan, "BeatNet: CRNN and Particle
+> Filtering for Online Joint Beat Downbeat and Meter Tracking", ISMIR 2021.
+> https://github.com/mjhydri/BeatNet — licensed **CC BY 4.0**
+> (https://creativecommons.org/licenses/by/4.0/).
+
+- **What is used:** the weights of BeatNet's model 1, converted unchanged into
+  `App/Resources/BeatNet/beatnet-model1.bin` and shipped in the app bundle, with
+  BeatNet's licence beside them (`LICENSE-BeatNet.txt`). The network, its input
+  features and its particle filter are re-implemented in Swift from BeatNet's source
+  (`Core/Sources/VideoboyCore/Audio/BeatNet/`); no BeatNet or Python code runs.
+- **Changes:** none to the weights. The particle filter differs from BeatNet's in
+  the ways listed in `BeatNetParticleFilter.swift`; the app's default mode feeds the
+  network's output to Videoboy's own tempo tracker instead (`docs/BEATNET.md`).
+- **The filterbank** in the same file was computed by **madmom** (BSD 2-Clause,
+  https://github.com/CPJKU/madmom), whose code BeatNet uses for its features.
+  madmom's own trained models are CC BY-NC-SA and are **not** used or shipped; they
+  appear only in `scripts/beat-eval.py`'s instructions, as a developer-machine
+  reference for scoring, never in the app.
+
 ## Everything else
 
 No other third-party code is vendored. There are no SwiftPM package dependencies

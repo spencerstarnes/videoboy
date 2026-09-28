@@ -49,6 +49,11 @@ log "copying built-in ISF modules"
 mkdir -p "$APP_BUNDLE/Contents/Resources/ISF"
 cp -R "$REPO_ROOT/App/Resources/ISF/Builtin" "$APP_BUNDLE/Contents/Resources/ISF/"
 
+# BeatNet's trained weights and licence (CC BY 4.0), for the beat tracker.
+# BeatNetWeights.bundledURL looks for them at Contents/Resources/BeatNet.
+log "copying BeatNet weights"
+cp -R "$REPO_ROOT/App/Resources/BeatNet" "$APP_BUNDLE/Contents/Resources/"
+
 # The app icon, drawn rather than checked in — see scripts/make-icon.swift. Generated
 # every build so editing the numbers in that file is all it takes to change the icon.
 log "drawing the app icon"
