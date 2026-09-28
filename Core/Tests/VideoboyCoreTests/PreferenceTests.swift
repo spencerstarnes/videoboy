@@ -131,6 +131,14 @@ final class PreferenceTests: XCTestCase {
         XCTAssertEqual(reopened.preferences.configuredSources[2].target, "rtsp://10.0.0.4/live")
     }
 
+    /// Hot Punch is off at launch unless chosen, and the choice survives a reload.
+    func testHotPunchAtLaunchDefaultsOffAndRoundTrips() {
+        let store = PreferenceStore(fileURL: fileURL)
+        XCTAssertFalse(store.preferences.hotPunchArmedAtLaunch)
+        store.preferences.hotPunchArmedAtLaunch = true
+        XCTAssertTrue(PreferenceStore(fileURL: fileURL).preferences.hotPunchArmedAtLaunch)
+    }
+
     /// A source of a kind this build no longer has (DV decks were removed) is skipped
     /// on load — the other sources and every other preference survive it.
     func testASourceOfARemovedKindIsSkippedNotFatal() throws {

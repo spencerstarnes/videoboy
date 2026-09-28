@@ -9,6 +9,9 @@
 //            sub-mix to it. Number keys 1–8 press, ⌥+number takes. Pads learn to MIDI
 //            (61J–68J press, 61K–68K take, 69J/6AJ side switches) and arm on the beat
 //            (⌥⌘, the blue rate box). Saved with the show.
+//            HOT PUNCH (the toolbar's (!) key, 6BJ): armed, every press — click, key,
+//            MIDI — loads, plays and cuts its sub-mix AND Program to it: straight to
+//            air. Pads firing on the beat never punch; nobody pressed them.
 //  Inputs  : the two ClipPadStrips in the toolbar, key presses, the registry (MIDI),
 //            the transport (beat arming), library drops.
 //  Outputs : loads, restarts and cuts, through ShellController's own load path — the
@@ -31,6 +34,9 @@ final class ClipPadController {
     private unowned let shell: ShellController
     private let engine: Engine
     private let strips: [ClipPadStrip]
+    private weak var toolbar: TransportToolbarView?
+    /// HOT PUNCH: every press goes straight to air. The toolbar key shows it.
+    private(set) var isHotPunchArmed = false
     private var pads: [ClipPadView] { strips.flatMap(\.pads) }
     private var keyMonitor: Any?
     /// The beat interval each armed pad last fired on.
@@ -45,14 +51,17 @@ final class ClipPadController {
         self.shell = shell
         self.engine = engine
         self.strips = [toolbar.leftPads, toolbar.rightPads]
+        self.toolbar = toolbar
 
         // The pads' codes, so MIDI learning, mapping and templates see them.
         let momentary = (ParamCode.clipPadPresses + ParamCode.clipPadTakes)
             .map { Parameter(code: $0, range: 0...1, defaultValue: 0) }
         engine.registry.register(slot: Self.slot, parameters: momentary + [
             Parameter(code: .clipPadLeftSide, range: 0...1, defaultValue: 0),
-            Parameter(code: .clipPadRightSide, range: 0...1, defaultValue: 0)
+            Parameter(code: .clipPadRightSide, range: 0...1, defaultValue: 0),
+            Parameter(code: .clipPadHotPunch, range: 0...1, defaultValue: 0)
         ])
+        toolbar.onHotPunchToggled = { [weak self] armed in self?.setHotPunchArmed(armed) }
 
         for strip in strips {
             strip.onSideChanged = { [weak self] side, channel in self?.setChannel(channel, for: side) }
@@ -148,11 +157,24 @@ final class ClipPadController {
         Log.info(.app, "pads \(side == .left ? "1–4" : "5–8") now load into \(channel)")
     }
 
+    // MARK: - Hot Punch
+
+    /// Arms or disarms HOT PUNCH, and shows it on the toolbar key.
+    func setHotPunchArmed(_ armed: Bool) {
+        isHotPunchArmed = armed
+        toolbar?.setHotPunchArmed(armed)
+        Log.info(.app, "hot punch \(armed ? "armed — pad presses go straight to air" : "off")")
+    }
+
     // MARK: - Pressing
 
     /// A press: load (or restart); `take` also plays and cuts the sub-mix to it.
-    func press(_ index: Int, take: Bool) {
+    /// With HOT PUNCH armed every press is a take that also cuts Program — except
+    /// one `fromBeat`, which no hand pressed.
+    func press(_ index: Int, take requestedTake: Bool, fromBeat: Bool = false) {
         guard let pad = bank[pad: index] else { return }
+        let punch = isHotPunchArmed && !fromBeat
+        let take = requestedTake || punch
         let channel = bank.channel(forPad: index)
         let target = shell.playbackTarget(for: pad.url)
         // The channel may hold the optimized file for this clip; that is still "this clip".
@@ -197,6 +219,7 @@ final class ClipPadController {
                 + (installed ? "" : " (opened on demand)"))
         }
         if take { MainThreadCosts.measure("pad.cut") { cut(to: channel) } }
+        if punch { MainThreadCosts.measure("pad.punch") { cutProgram(to: channel) } }
         MainThreadCosts.measure("pad.refresh") { refreshLive() }
     }
 
@@ -205,6 +228,13 @@ final class ClipPadController {
         let panels = shell.shell.grid.panels
         let body = ["A", "B"].contains(channel) ? panels.faderABBody : panels.faderCDBody
         if ["A", "C"].contains(channel) { body.triggerLeftKey() } else { body.triggerRightKey() }
+    }
+
+    /// Takes Program to the bus carrying `channel`: 1 for A/B, 2 for C/D. A hard cut,
+    /// whatever CUT/FADE is set to — the point is the picture NOW.
+    private func cutProgram(to channel: String) {
+        let program = shell.shell.grid.panels.faderOneTwoBody
+        if ["A", "B"].contains(channel) { program.triggerLeftKey() } else { program.triggerRightKey() }
     }
 
     // MARK: - On the beat (⌥⌘)
@@ -238,6 +268,12 @@ final class ClipPadController {
             setChannel(bank.channel(for: side) == channels.first ? channels.second : channels.first, for: side)
         }
 
+        if let value = registry.value(slot: Self.slot, code: .clipPadHotPunch), value > 0.5 {
+            registry.setValue(0, slot: Self.slot, code: .clipPadHotPunch)
+            setHotPunchArmed(!isHotPunchArmed)
+            Log.info(.midi, "hot punch toggled from a mapping")
+        }
+
         guard engine.transport.isRunning else { return }
         let beats = engine.transport.beats(atHostTime: CACurrentMediaTime())
         for index in 0..<ClipPadBank.count {
@@ -248,7 +284,7 @@ final class ClipPadController {
             guard let last = lastFiredInterval[index] else { lastFiredInterval[index] = interval; continue }
             guard interval != last else { continue }
             lastFiredInterval[index] = interval
-            press(index, take: false)
+            press(index, take: false, fromBeat: true)
         }
         if engine.frameIndex % 15 == 0 { refreshLive() }
     }

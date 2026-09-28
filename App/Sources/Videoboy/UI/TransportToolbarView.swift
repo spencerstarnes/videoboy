@@ -15,6 +15,8 @@
 //            The Clip Pads (docs/specs/clip-pads.md) flank the cluster, 1–4 left and
 //            5–8 right, in what was empty bar — also the owner's instruction
 //            (2026-09-28): launching clips on the beat is a transport concern.
+//            HOT PUNCH, the (!) key beside Learn, arms the pads to go straight to
+//            air (owner's instruction, 2026-09-28; docs/specs/clip-pads.md).
 //  Extend  : do not add anything here that is not transport, clock or the pads. The
 //            pads must never move anything else in the bar: they hang off the
 //            cluster's sides and simply hide when a window is too narrow for them.
@@ -92,6 +94,38 @@ final class TransportToolbarView: NSView {
     /// The Shift-to-detect reminder, which lights while Shift is held.
     private let detectButton = Controls.button("⇧ Learn")
 
+    /// HOT PUNCH: armed, every Clip Pad press loads, plays and cuts its sub-mix and
+    /// Program to it. A borderless toggle NSButton showing the (!) symbol: grey when
+    /// off, solid red while armed, like record, because a press then changes what is
+    /// on air. The colour is the symbol's tint, not a bezel colour — AppKit greys a
+    /// bezel tint in an inactive window, and this has to read red regardless.
+    let hotPunchButton = NSButton()
+    /// The key wrapped for Shift-click MIDI learn (6BJ, a note toggles it).
+    private(set) var learnableHotPunch: MappableControl!
+
+    /// Called when HOT PUNCH is armed or disarmed by a click.
+    var onHotPunchToggled: ((Bool) -> Void)?
+
+    /// Shows HOT PUNCH armed or not — from a click, MIDI or the launch setting.
+    func setHotPunchArmed(_ armed: Bool) {
+        hotPunchButton.state = armed ? .on : .off
+        let symbol = armed ? "exclamationmark.circle.fill" : "exclamationmark.circle"
+        hotPunchButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Hot Punch")?
+            .withSymbolConfiguration(.init(pointSize: Self.hotPunchGlyphSize, weight: .semibold))
+        hotPunchButton.contentTintColor = armed ? Theme.Color.recordActive : Theme.Color.textSecondary
+        hotPunchButton.setAccessibilityValue(armed ? "armed" : "off")
+    }
+
+    var isHotPunchArmed: Bool { hotPunchButton.state == .on }
+
+    /// The (!) glyph's point size: about the record key's, so it reads across a room.
+    private static let hotPunchGlyphSize: CGFloat = 20
+
+    @objc private func hotPunchPressed() {
+        setHotPunchArmed(hotPunchButton.state == .on)
+        onHotPunchToggled?(isHotPunchArmed)
+    }
+
     /// Called when the Learn reminder is clicked, to explain the gesture.
     var onDetectExplainRequested: (() -> Void)?
 
@@ -131,6 +165,22 @@ final class TransportToolbarView: NSView {
         detectButton.target = self
         detectButton.action = #selector(detectPressed)
         detectButton.toolTip = "Hold Shift to see every mappable control, then click one to map it"
+
+        hotPunchButton.setButtonType(.pushOnPushOff)
+        hotPunchButton.isBordered = false
+        hotPunchButton.imagePosition = .imageOnly
+        hotPunchButton.imageScaling = .scaleNone
+        hotPunchButton.title = ""
+        hotPunchButton.target = self
+        hotPunchButton.action = #selector(hotPunchPressed)
+        hotPunchButton.toolTip = "Hot Punch: armed (red), a Clip Pad press loads, plays and cuts "
+            + "its sub-mix and Program to it — straight to air"
+        hotPunchButton.setAccessibilityLabel("Hot Punch")
+        hotPunchButton.setAccessibilityIdentifier("hot-punch")
+        setHotPunchArmed(false)
+        learnableHotPunch = MappableControl(
+            content: hotPunchButton, slot: ClipPadController.slot,
+            code: .clipPadHotPunch, detectFilter: .notesOnly)
 
         // Record is a key in the cluster now, not a corner button with two popups
         // beside it. Arming is per-preview, so a popup naming a fixed combination of
@@ -178,7 +228,11 @@ final class TransportToolbarView: NSView {
             group("Panels", panelsLeftControl)
         ], spacing: 10)
 
+        // Punch sits at the INNER end of the right group: the group is pinned to the
+        // window's edge, so adding it here moves Detect and Panels not at all.
         let rightGroup = Controls.row([
+            group("Punch", learnableHotPunch),
+            separator(),
             group("Detect", detectButton),
             separator(),
             group("Panels", panelsRightControl)

@@ -125,6 +125,11 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// beat you do not have during a set, and a channel that is loaded but stopped
     /// looks identical to one that is still empty.
     public var playOnLoad: Bool = true
+    /// Whether HOT PUNCH (the (!) key on the toolbar) is armed when the app opens.
+    /// Armed, every Clip Pad press loads, plays and cuts its sub-mix AND Program to it
+    /// — straight to air. OFF by default: a press that changes what is on air is
+    /// something you choose, not something you discover (docs/specs/clip-pads.md).
+    public var hotPunchArmedAtLaunch: Bool = false
     /// How a picture is placed when its shape and its window's disagree.
     public var previewFill: PreviewFill = .fit
 
@@ -231,6 +236,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         defaultLoopMode = decode(.defaultLoopMode, LoopMode.loop)
         defaultBlendMode = decode(.defaultBlendMode, BlendMode.normal)
         playOnLoad = decode(.playOnLoad, true)
+        hotPunchArmedAtLaunch = decode(.hotPunchArmedAtLaunch, false)
         previewFill = decode(.previewFill, PreviewFill.fit)
         emulatorDiscPath = try? container.decodeIfPresent(String.self, forKey: .emulatorDiscPath)
         // Element by element, same reasoning as `destinations` below: one source of a

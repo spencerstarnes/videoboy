@@ -332,6 +332,12 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       61K–68K, 69J/6AJ). Clips kept pre-opened (Engine.preparePad); saved with the
       show (template v4). `selfqa pads` 12/12 ×3: 8 HD presses under live render all
       instant (~1 ms main thread), 0 dropped, 0 held; stress 10/10.
+- [x] **Hot Punch — the (!) key** (owner, 2026-09-28; spec `docs/specs/clip-pads.md`).
+      Armed (red), a pad press loads, plays and cuts its sub-mix AND Program to it; beat
+      fires never punch; MIDI 6BJ toggles; Settings ▸ Defaults ▸ "Hot Punch armed at
+      launch" (off). `selfqa pads` 16/16 (placement by hitTest, both sides punched, MIDI,
+      off leaves Program, launch setting, red in a real window photo); ui 150/150,
+      modes 17/17, fullscreen 129/129 — nothing else in the bar moved.
 - [x] **Every beat-rate key follows one rule** (owner, 2026-09-28: "absolutely 100%
       universal across all uses… always editable… forward and backwards on right
       click"). All 93 VBStepButtons — source STEP keys, CUT/FADE/BEAT tap rates,

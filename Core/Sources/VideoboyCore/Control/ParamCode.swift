@@ -258,6 +258,9 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     public static let clipPadLeftSide = ParamCode(known: "69J")
     /// Right side switch: 0 loads pads 5–8 into C, 1 into D.
     public static let clipPadRightSide = ParamCode(known: "6AJ")
+    /// HOT PUNCH, the toolbar's (!) key: a press toggles it. Armed, every pad press
+    /// loads, plays and cuts its sub-mix and Program to it.
+    public static let clipPadHotPunch = ParamCode(known: "6BJ")
 
     // MARK: Now Playing generator (7xH)
 
@@ -739,7 +742,8 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .emuBackdrop,
         .emuBox,
         .clipPadLeftSide,
-        .clipPadRightSide
+        .clipPadRightSide,
+        .clipPadHotPunch
     ] + clipPadPresses + clipPadTakes
 
     /// The fixed table by raw value, for validation.

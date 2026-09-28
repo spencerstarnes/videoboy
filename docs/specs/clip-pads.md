@@ -32,6 +32,25 @@ number. Pressing a pad puts its clip into a source at once — no stall, no glit
 Number keys act in VJ mode only, and never while typing in a field. ⌘ and ⌃ combinations
 pass through untouched (⌘1–3 are the mode keys).
 
+## Hot Punch — the (!) key (owner, 2026-09-28)
+
+A toggle in the toolbar's right group, captioned **Punch**, just inside Detect. The
+broadcast name for "a source press goes straight to air" is a *hot punch*; "Push" was
+avoided because Push is already a transition on the Program fader.
+
+- **Off** (grey (!)): pads behave as in the table above.
+- **Armed** (solid red (!), like record): every pad press — click, number key or MIDI
+  press — is a take AND a Program cut: load, play, cut the sub-mix to the source (A/B
+  to A or B, C/D to C or D), and cut Program to that bus (1 for A/B, 2 for C/D). Always a
+  hard cut, whatever CUT/FADE says: the point is the picture now.
+- Pads firing on the beat (⌥⌘) never punch — no hand pressed them.
+- Shift-click learns it to a MIDI note; a note toggles it (6BJ).
+- Settings ▸ Defaults ▸ **Hot Punch armed at launch** (off by default). The armed state
+  is not saved in the show.
+- It sits at the inner end of the right group, which is pinned to the window edge, so
+  Detect and Panels do not move. The pad strips hide ~40 pt sooner in a narrow window;
+  the (!) key never hides.
+
 ## Ready in memory
 
 Each loaded pad keeps its clip **opened and decoding ahead** (the same pre-open ADV
@@ -46,6 +65,7 @@ off-main-thread load — never a blocking one.
 - 61J–68J — pad 1–8 press (momentary): load / reset.
 - 61K–68K — pad 1–8 take (momentary): load, play, cut — MIDI's ⌥-press.
 - 69J — left side switch (0 = A, 1 = B). 6AJ — right side switch (0 = C, 1 = D).
+- 6BJ — Hot Punch (momentary): toggles it.
 
 ## Saved with the show
 

@@ -107,6 +107,11 @@ extension PreferencesWindowController {
         let playOnLoad = Controls.toggle(
             on: store.preferences.playOnLoad,
             target: self, action: #selector(playOnLoadChanged(_:)))
+        let hotPunch = Controls.toggle(
+            on: store.preferences.hotPunchArmedAtLaunch,
+            target: self, action: #selector(hotPunchAtLaunchChanged(_:)))
+        hotPunch.toolTip = "Open with Hot Punch (the (!) key) armed: every Clip Pad press "
+            + "loads, plays and cuts its sub-mix and Program to it"
 
         // How a picture sits in a window that is not its shape. Four choices, named
         // the way AVFoundation and CSS both name them, so nobody has to guess which
@@ -148,6 +153,7 @@ extension PreferencesWindowController {
             field("Loop mode", loop),
             field("Blend mode", blend),
             field("Play on load", playOnLoad),
+            field("Hot Punch armed at launch", hotPunch),
             field("Picture fill", fill),
             field("Up Next empty, A/B", fallbackPopUp("one")),
             field("Up Next empty, C/D", fallbackPopUp("two")),
@@ -211,6 +217,10 @@ extension PreferencesWindowController {
 
     @objc func playOnLoadChanged(_ sender: NSSwitch) {
         store.preferences.playOnLoad = sender.state == .on
+    }
+
+    @objc func hotPunchAtLaunchChanged(_ sender: NSSwitch) {
+        store.preferences.hotPunchArmedAtLaunch = sender.state == .on
     }
 
     @objc func restoreReminders() {

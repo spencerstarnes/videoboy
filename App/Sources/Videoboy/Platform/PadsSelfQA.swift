@@ -311,6 +311,88 @@ enum PadsSelfQA {
                            pads.waitedLoads - waitedStart, drops, dropsWithout,
                            held, ticks.max() ?? 0, worstStretch)))
 
+        // 13. HOT PUNCH — the (!) key beside Learn. Placed without touching anything,
+        // reached by a real hit-test, red when armed; armed, a press loads, plays and
+        // cuts the sub-mix AND Program to it; MIDI 6BJ toggles it; off, Program stays.
+        do {
+            toolbar.layoutSubtreeIfNeeded()
+            let key = toolbar.hotPunchButton
+            let keyFrame = key.convert(key.bounds, to: toolbar)
+            var punchOverlaps: [String] = []
+            for view in [toolbar.leftPads, toolbar.rightPads, toolbar.display] as [NSView]
+                where view.frame.intersects(keyFrame) { punchOverlaps.append("\(type(of: view))") }
+            var reachable = false
+            if let content = window.contentView {
+                let centre = content.convert(NSPoint(x: key.bounds.midX, y: key.bounds.midY), from: key)
+                let hit = content.hitTest(centre)
+                reachable = hit === key || hit?.isDescendant(of: key) == true
+            }
+            check.record(AssertionResult(
+                name: "the (!) Hot Punch key sits right of the pads, overlaps nothing, and a click reaches it",
+                passed: punchOverlaps.isEmpty && reachable && !key.isHidden
+                    && keyFrame.minX > toolbar.rightPads.frame.maxX && !toolbar.rightPads.isHidden,
+                detail: "overlaps \(punchOverlaps), reachable \(reachable), key at x \(Int(keyFrame.minX)), "
+                    + "pads end \(Int(toolbar.rightPads.frame.maxX)), pads shown \(!toolbar.rightPads.isHidden)"))
+
+            key.performClick(nil)
+            let red = key.state == .on && key.contentTintColor == Theme.Color.recordActive
+            // A real screen photo: an offscreen render does not draw AppKit's bezel tint.
+            spin(0.3)
+            let armedShot = RepoPaths.selfQAOutput.appendingPathComponent("perf/pads/window-hot-punch.png")
+            let armedCapture = Process()
+            armedCapture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            armedCapture.arguments = ["-x", "-o", "-l", "\(window.windowNumber)", armedShot.path]
+            if (try? armedCapture.run()) != nil {
+                while armedCapture.isRunning { spin(0.05) }
+                check.note("armed photo: \(armedShot.path)")
+            }
+
+            let ab = GraphTopology.subMixOne, cd = GraphTopology.subMixTwo, program = GraphTopology.primary
+            func value(_ slot: String, _ code: ParamCode) -> Double { engine.registry.value(slot: slot, code: code) ?? -1 }
+            let panels = shell.shell.grid.panels
+            // Left side loads into B (section 7). Everything starts away from it.
+            panels.faderABBody.triggerLeftKey()        // A/B on A
+            panels.faderOneTwoBody.triggerRightKey()   // Program on bus 2
+            shell.setAutoPlayForChecks(false, channel: "B")
+            click(views[1])
+            wait(1) { value(ab, .crossfadeAB) > 0.99 && value(program, .crossfadeOneTwo) < 0.01 }
+            let leftPunched = holds("B") == names[1] && engine.sources["B"]?.isPlaying == true
+                && value(ab, .crossfadeAB) > 0.99 && value(program, .crossfadeOneTwo) < 0.01
+            let leftDetail = "B holds \(holds("B") ?? "nothing"), playing \(String(describing: engine.sources["B"]?.isPlaying)), "
+                + "A/B \(value(ab, .crossfadeAB)), Program \(value(program, .crossfadeOneTwo))"
+            shell.setAutoPlayForChecks(true, channel: "B")
+
+            // Right side (C): C/D on D, Program on bus 1.
+            panels.faderCDBody.triggerRightKey()
+            panels.faderOneTwoBody.triggerLeftKey()
+            click(views[5])
+            wait(1) { value(cd, .crossfadeCD) < 0.01 && value(program, .crossfadeOneTwo) > 0.99 }
+            let rightPunched = holds("C") == names[3]
+                && value(cd, .crossfadeCD) < 0.01 && value(program, .crossfadeOneTwo) > 0.99
+            let rightDetail = "C holds \(holds("C") ?? "nothing"), C/D \(value(cd, .crossfadeCD)), "
+                + "Program \(value(program, .crossfadeOneTwo))"
+            check.record(AssertionResult(
+                name: "Hot Punch armed: the key is red, and a pad press loads, plays and cuts its sub-mix AND Program to it",
+                passed: red && pads.isHotPunchArmed && leftPunched && rightPunched,
+                detail: "red \(red); pad 2 → \(leftDetail); pad 6 → \(rightDetail)"))
+
+            // MIDI: a learned note writes 1 to 6BJ; the tick toggles it off.
+            engine.registry.setValue(1, slot: ClipPadController.slot, code: .clipPadHotPunch)
+            pads.tick()
+            let midiOff = !pads.isHotPunchArmed && key.state == .off
+            // Off: a plain press loads but leaves both faders where they are.
+            panels.faderABBody.triggerLeftKey()
+            panels.faderOneTwoBody.triggerRightKey()
+            click(views[0])
+            spin(0.4)
+            check.record(AssertionResult(
+                name: "MIDI 6BJ toggles Hot Punch off; off, a press loads without cutting the sub-mix or Program",
+                passed: midiOff && holds("B") == names[0]
+                    && value(ab, .crossfadeAB) < 0.01 && value(program, .crossfadeOneTwo) > 0.99,
+                detail: "off \(midiOff), B holds \(holds("B") ?? "nothing"), A/B \(value(ab, .crossfadeAB)), "
+                    + "Program \(value(program, .crossfadeOneTwo))"))
+        }
+
         let shot = RepoPaths.selfQAOutput.appendingPathComponent("perf/pads/window.png")
         let capture = Process()
         capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -323,6 +405,24 @@ enum PadsSelfQA {
         for letter in ["A", "B", "C", "D"] { engine.setPlaying(false, channel: letter) }
         window.orderOut(nil)
         withExtendedLifetime(controller) {}
+
+        // 14. Settings ▸ Defaults ▸ "Hot Punch armed at launch" opens the app armed.
+        do {
+            let armedStore = PreferenceStore(fileURL: scratch.appendingPathComponent("prefs-armed.json"))
+            armedStore.preferences.setupCompleted = true
+            armedStore.preferences.hotPunchArmedAtLaunch = true
+            let armed = MainWindowController(preferences: armedStore)
+            let armedShell = armed.shellController
+            let armedAtLaunch = armedShell?.clipPads?.isHotPunchArmed == true
+                && armedShell?.shell.toolbar.hotPunchButton.state == .on
+            check.record(AssertionResult(
+                name: "with \"Hot Punch armed at launch\" on, the app opens armed (off by default)",
+                passed: armedAtLaunch && !PreferenceStore(fileURL: scratch.appendingPathComponent("fresh.json"))
+                    .preferences.hotPunchArmedAtLaunch,
+                detail: "armed at launch \(armedAtLaunch)"))
+            armed.window?.orderOut(nil)
+            withExtendedLifetime(armed) {}
+        }
         return check.finish()
     }
 }

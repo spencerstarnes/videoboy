@@ -67,6 +67,8 @@ final class ShellController {
         // the same as a file only starts decoding once it is loaded into one.
         // Before Detect, so the pads' codes are registered when Shift first looks.
         clipPads = ClipPadController(shell: self, engine: engine, toolbar: shell.toolbar)
+        // HOT PUNCH starts as Settings ▸ Defaults says (off unless chosen).
+        clipPads?.setHotPunchArmed(preferences.preferences.hotPunchArmedAtLaunch)
         wireDetect()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
