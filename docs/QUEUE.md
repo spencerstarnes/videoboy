@@ -37,4 +37,18 @@ _(empty — next request goes here)_
   `scripts/verify.sh` and `scripts/selfqa.sh ab-roll`, then tick the BUILD-PLAN item.
 
 ## Done
-_(none yet)_
+- **Q3 — Design consult: Playlist / Set / Setlist, MIDI conflicts, where it lives.**
+  Owner wants to perform song sections (e.g. King Gizzard "UQT": ~25 s movement,
+  ~20 s build, ~1 min chorus, ~45 s bridge) with prepared clips per section, cuts on
+  the beat within a section, and a manual hotkey (⌘→ / ⌘←) to advance to the next
+  section, which cuts to the opposite bank, plays, and applies that section's
+  settings. Proposed hierarchy: Playlist (clips) → Set (clips + automation +
+  effects, one source pair, default A/B) → Setlist (ordered sets). Concern: MIDI
+  mappings conflicting across sets. Pitch: a hidden-by-default panel under Program,
+  maybe a pop-out from the Asset Browser like AVE-5. Asked for senior-dev feedback.
+  Answer only; no code.
+  Answered in chat 2026-09-29 (no code). Recommendation: keep the rig-addressed
+  MIDI model; add a show-wide macro layer that each Set assigns; Sets side-relative;
+  ⌘→ GO / ⌘← BACK; docked, not a popover. Next step if approved: fold the decisions
+  into `docs/PROPOSAL-2026-09-28-setlist.md`.
+
