@@ -103,6 +103,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var advanceFallback: [String: ABRollFallback] = [:]
     /// Say in the status strip when ADV fell back to the library (once per dry spell).
     public var announcesAdvanceFallback: Bool = true
+    /// Most clips one channel's Up Next may hold. Nil = Auto (`QueueLimit`, from the
+    /// Mac's memory at launch).
+    public var queueLimit: Int?
     /// Play a clip's linked optimized file when there is one (0.4.10, proposal §5).
     public var usesOptimizedMedia: Bool = true
     /// What Copy + Optimize writes. Only "compact" (MPEG-2 GOP 6) exists; any other
@@ -224,6 +227,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         importFavorites = decode(.importFavorites, [String]())
         advanceFallback = decode(.advanceFallback, [String: ABRollFallback]())
         announcesAdvanceFallback = decode(.announcesAdvanceFallback, true)
+        queueLimit = decode(.queueLimit, nil as Int?)
         usesOptimizedMedia = decode(.usesOptimizedMedia, true)
         // Anything but a known preset reads as the one that exists.
         let storedPreset = decode(.optimizePreset, "compact")

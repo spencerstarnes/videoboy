@@ -233,6 +233,11 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       leaving. Core `Playlist.repeats` + tests; `selfqa ab-roll` steps 4b. Code
       committed without a Mac build; tick once `scripts/verify.sh` and
       `selfqa ab-roll` pass on the Mac Studio.
+- [ ] **Up Next limit + batched queuing** (owner report 2026-09-29: crash after
+      queuing many clips). Queuing N clips was N full list rebuilds + N library
+      re-sorts (quadratic). Now one edit per gesture, in-place list updates, and a
+      per-channel limit (Auto from RAM, or Settings ▸ Defaults). `selfqa ab-roll`
+      step 4c. Tick once verified on the Mac Studio.
 
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)

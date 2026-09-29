@@ -120,29 +120,43 @@ final class PlaylistView: NSView {
     /// What is shown, so the common change can be done without a rebuild.
     private var shownItems: [PlaylistItem] = []
 
-    /// Replaces the list. The changes that happen at a TAKE are done in place: with
-    /// REPEAT off the top row goes; with REPEAT on it moves to the bottom. Either way
-    /// the remaining rows only have their numbers and accent restyled. Anything else
-    /// rebuilds, since a queue is a handful of rows.
+    /// Replaces the list, touching as few rows as it can: a queue can hold up to the
+    /// Up Next limit (hundreds of rows), and this runs on the main thread mid-show.
+    /// In place: unchanged (nothing), one row removed (a take with REPEAT off, or a
+    /// ✕), top row to the bottom (a take with REPEAT on), clips added at the end.
+    /// Only anything else — Play Next, a clear — rebuilds the whole list.
     func setItems(_ items: [PlaylistItem]) {
         defer { shownItems = items }
-        let inPlace = !shownItems.isEmpty && stack.arrangedSubviews.count == shownItems.count
+        let inPlace = stack.arrangedSubviews.count == shownItems.count
             && rowLabels.count == shownItems.count
-        if inPlace, items == Array(shownItems.dropFirst()) {
-            let top = stack.arrangedSubviews[0]
-            stack.removeArrangedSubview(top)
-            top.discardFromSuperview()
-            rowLabels.removeFirst()
+        // Every queue edit refreshes all four lists; the unchanged ones stop here.
+        if inPlace, items == shownItems { return }
+        if inPlace, !shownItems.isEmpty, items.count == shownItems.count - 1,
+           case let gone = items.indices.first(where: { items[$0].id != shownItems[$0].id }) ?? items.count,
+           items == Array(shownItems[..<gone]) + Array(shownItems[(gone + 1)...]) {
+            let row = stack.arrangedSubviews[gone]
+            stack.removeArrangedSubview(row)
+            row.discardFromSuperview()
+            rowLabels.remove(at: gone)
             restyleRows()
             emptyLabel.isHidden = !items.isEmpty
             return
         }
-        if inPlace, items.count > 1, items == Array(shownItems.dropFirst()) + [shownItems[0]] {
+        if inPlace, items.count > 1, items.count == shownItems.count,
+           items == Array(shownItems.dropFirst()) + [shownItems[0]] {
             let top = stack.arrangedSubviews[0]
             stack.removeArrangedSubview(top)
             stack.addArrangedSubview(top)
             rowLabels.append(rowLabels.removeFirst())
             restyleRows()
+            return
+        }
+        if inPlace, items.count > shownItems.count, Array(items.prefix(shownItems.count)) == shownItems {
+            for item in items.dropFirst(shownItems.count) {
+                stack.addArrangedSubview(row(for: item))
+            }
+            restyleRows()
+            emptyLabel.isHidden = true
             return
         }
         for view in stack.arrangedSubviews {
@@ -185,8 +199,12 @@ final class PlaylistView: NSView {
             let isNext = position == 0
             let text = isNext ? "▸" : "\(position + 1)"
             if labels.number.stringValue != text { labels.number.stringValue = text }
-            labels.number.textColor = isNext ? Theme.Color.accent : Theme.Color.textTertiary
-            labels.name.textColor = isNext ? Theme.Color.textPrimary : Theme.Color.textSecondary
+            // Set only on change: every set invalidates the label, and this walks
+            // every row on every take.
+            let numberColor = isNext ? Theme.Color.accent : Theme.Color.textTertiary
+            let nameColor = isNext ? Theme.Color.textPrimary : Theme.Color.textSecondary
+            if labels.number.textColor != numberColor { labels.number.textColor = numberColor }
+            if labels.name.textColor != nameColor { labels.name.textColor = nameColor }
         }
     }
 

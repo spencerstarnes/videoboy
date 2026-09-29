@@ -18,6 +18,11 @@ Two independent keys on the **A/B and C/D** faders (program fader later):
   goes to the BOTTOM, so the queue cycles and the library fallback is reached only
   when the queue is empty. Off, a taken clip leaves the queue (the original rule).
   Per channel; not yet saved in the show (neither are the queues).
+- **Up Next limit** (added 2026-09-29): each channel's queue holds at most N clips.
+  Settings ▸ Defaults ▸ Up Next limit: **Auto** (from the Mac's memory at launch —
+  1% of RAM across the four queue lists at ~150 KB per row, clamped 50–1000) or a
+  number by hand. A selection is queued in ONE edit (one redraw, one ADV re-plan);
+  clips past the limit are not added and the status strip says how many.
 
 | ROLL | ADV | Result |
 |---|---|---|

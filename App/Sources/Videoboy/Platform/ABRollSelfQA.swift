@@ -192,6 +192,23 @@ enum ABRollSelfQA {
             passed: repeatView != nil && !queueOff.repeats && queueOff.isEmpty && name("A") == "motion.mov",
             detail: "view \(repeatView != nil); repeats \(queueOff.repeats); queue \(queueOff.items.map(\.displayName)); "
                 + "A \(name("A"))"))
+        // 4c. A big selection queued at once is ONE edit: bounded by the limit, and
+        // quick on the main thread (per-clip edits were quadratic and crashed).
+        shell.clearQueueForChecks("B")
+        let batch = Array(repeating: clips[2], count: 2 * shell.queueLimit)
+        let batchStart = CACurrentMediaTime()
+        shell.queue(batch, on: "B", playNext: false)
+        spin(0.1)   // the list redraw lands on the next turn
+        let batchMs = (CACurrentMediaTime() - batchStart) * 1000
+        let queuedB = shell.queueStateForChecks("B").count
+        check.record(AssertionResult(
+            name: "queuing twice the Up Next limit in one go stops at the limit, in well under a second",
+            passed: queuedB == shell.queueLimit && batchMs < 1000
+                && (shell.shell.statusBar.noticeTextForChecks ?? "").contains("Up Next B is full"),
+            detail: "\(queuedB) of \(batch.count) queued (limit \(shell.queueLimit)) in "
+                + String(format: "%.0f ms", batchMs) + "; notice: \(shell.shell.statusBar.noticeTextForChecks ?? "none")"))
+        shell.clearQueueForChecks("B")
+
         repeatView?.toggleRepeatForChecks()
         check.record(AssertionResult(
             name: "Up Next REPEAT key and the queue agree after switching it back on",

@@ -85,6 +85,27 @@ public struct Playlist: Equatable, Codable, Sendable {
     /// bottom (same id, so a view can show it as a move); with REPEAT off it is gone.
     /// Returns nil only when the queue is empty, which is how a one-shot clip knows
     /// to just stop the way it always did.
+    /// Adds several clips to the END, in order, stopping at `limit` items in the
+    /// queue. Returns how many went in — the rest did not fit. One call for a whole
+    /// selection, so the caller redraws once rather than once per clip.
+    @discardableResult
+    public mutating func append(urls: [URL], limit: Int) -> Int {
+        let room = max(0, limit - items.count)
+        let taken = urls.prefix(room)
+        items.append(contentsOf: taken.map { PlaylistItem(url: $0) })
+        return taken.count
+    }
+
+    /// Puts several clips at the FRONT, keeping their order (the first plays first),
+    /// stopping at `limit` items in the queue. Returns how many went in.
+    @discardableResult
+    public mutating func insertNext(urls: [URL], limit: Int) -> Int {
+        let room = max(0, limit - items.count)
+        let taken = urls.prefix(room)
+        items.insert(contentsOf: taken.map { PlaylistItem(url: $0) }, at: 0)
+        return taken.count
+    }
+
     public mutating func takeNext() -> PlaylistItem? {
         guard !items.isEmpty else { return nil }
         let item = items.removeFirst()
@@ -133,5 +154,44 @@ public struct PlaylistSet: Equatable, Codable, Sendable {
     /// Total queued across all four, for a status readout.
     public var totalCount: Int {
         playlists.values.reduce(0) { $0 + $1.count }
+    }
+}
+
+/// How many clips one channel's Up Next may hold.
+///
+/// Queued clips are not opened — ADV opens only the next one — but every queued clip
+/// is a row in the queue list, and on a layer-backed panel each row keeps rendered
+/// text bitmaps. The limit keeps that bounded. Auto is set once at launch from the
+/// Mac's memory; Settings ▸ Defaults can set it by hand (`Preferences.queueLimit`).
+public enum QueueLimit {
+
+    /// Estimated memory one queued row costs in the list (two text labels and a ✕
+    /// button, rendered at 2×). An estimate, deliberately on the high side.
+    public static let estimatedBytesPerRow: UInt64 = 150 * 1024
+    /// The share of physical memory Auto lets the four queue lists use together.
+    public static let memoryShare: Double = 0.01
+    /// Auto never goes below this (small Macs) or above `automaticCeiling`.
+    public static let automaticFloor = 50
+    public static let automaticCeiling = 1000
+    /// What Settings offers as a manual limit, in clips per channel.
+    public static let manualChoices = [50, 100, 250, 500, 1000, 2000]
+    /// A stored manual limit is kept inside these bounds.
+    public static let manualRange = 10...5000
+
+    /// Auto's limit for a Mac with `physicalMemory` bytes: its share of memory, split
+    /// across the four channels, divided by the cost of a row, clamped.
+    public static func automatic(physicalMemory: UInt64) -> Int {
+        let perChannel = Double(physicalMemory) * memoryShare / Double(PlaylistSet.channels.count)
+        let rows = Int(perChannel / Double(estimatedBytesPerRow))
+        return min(max(rows, automaticFloor), automaticCeiling)
+    }
+
+    /// Auto's limit for this Mac, worked out once at launch.
+    public static let automaticAtLaunch = automatic(physicalMemory: ProcessInfo.processInfo.physicalMemory)
+
+    /// The limit in force: the manual one when set (clamped), else Auto.
+    public static func resolved(manual: Int?) -> Int {
+        guard let manual else { return automaticAtLaunch }
+        return min(max(manual, manualRange.lowerBound), manualRange.upperBound)
     }
 }

@@ -13,7 +13,11 @@ request goes here before any work starts; nothing is worked outside it.
 4. Items are never deleted. A dropped item moves to *Done* marked "dropped by owner".
 
 ## In progress
-_(none)_
+- **Q2 — Queue memory limit.** "video boy seems to be crashing if I load too many
+  things into the queue. I think the queue needs a limit on how many clips it loads
+  at once. Right now it seems to just load everything, maybe we have a number that's
+  automatically set by how much memory is available at launch. We can have a setting
+  in the settings menu where you can manually define it."
 
 ## Queued
 _(empty — next request goes here)_

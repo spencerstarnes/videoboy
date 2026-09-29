@@ -191,6 +191,32 @@ final class ShellController {
         }
     }
 
+    /// The most clips one channel's Up Next may hold: Settings' manual value, or
+    /// Auto (from the Mac's memory at launch).
+    var queueLimit: Int { QueueLimit.resolved(manual: preferences.preferences.queueLimit) }
+
+    /// Adds a whole selection to a channel's Up Next in ONE edit — one redraw, one ADV
+    /// re-plan — up to the queue limit. Per-clip edits rebuilt the list and re-sorted
+    /// the library once per clip: quadratic, and 1,000 clips made ~500,000 rows.
+    func queue(_ urls: [URL], on channel: String, playNext: Bool) {
+        guard !urls.isEmpty else { return }
+        let limit = queueLimit
+        let added = playNext
+            ? playlists[channel].insertNext(urls: urls, limit: limit)
+            : playlists[channel].append(urls: urls, limit: limit)
+        Log.info(.app, "queued \(added) clip(s) on \(channel)" + (playNext ? " (next)" : "")
+            + (added < urls.count ? "; \(urls.count - added) over the limit of \(limit)" : ""))
+        if added < urls.count {
+            let auto = preferences.preferences.queueLimit == nil
+            shell.statusBar.showNotice(
+                "Up Next \(channel) is full at \(limit) clips — \(urls.count - added) not added",
+                detail: "Limit per channel: \(auto ? "Auto, from this Mac's memory" : "set by hand"). "
+                    + "Settings ▸ Defaults ▸ Up Next limit.",
+                isWarning: true)
+        }
+        if added > 0 { refreshPlaylists() }
+    }
+
     /// Queue REPEAT for one channel: on, a clip taken from the queue goes to its
     /// bottom; off, it leaves. A queue edit like any other, so ADV re-plans.
     func setQueueRepeats(_ repeats: Bool, channel: String) {
@@ -435,16 +461,8 @@ final class ShellController {
                 }
                 Log.info(.app, "auto-play on load \(isOn ? "on" : "off")")
             }
-            library.onItemQueued = { [weak self] item, channel, playNext in
-                guard let self, let url = item.url else { return }
-                if playNext {
-                    self.playlists[channel].insertNext(url: url)
-                } else {
-                    self.playlists[channel].append(url: url)
-                }
-                Log.info(.app, "queued \(url.lastPathComponent) on \(channel)"
-                    + (playNext ? " (next)" : ""))
-                self.refreshPlaylists()
+            library.onItemsQueued = { [weak self] items, channel, playNext in
+                self?.queue(items.compactMap(\.url), on: channel, playNext: playNext)
             }
             library.onQueuedItemRemoved = { [weak self] channel, id in
                 guard let self else { return }

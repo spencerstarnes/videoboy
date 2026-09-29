@@ -91,6 +91,51 @@ final class PlaylistTests: XCTestCase {
         XCTAssertFalse(round.repeats, "REPEAT off survives a round trip")
     }
 
+    func testBatchAppendKeepsOrderAndStopsAtTheLimit() {
+        var playlist = Playlist()
+        playlist.append(url: url("already.mov"))
+        let added = playlist.append(urls: ["a", "b", "c", "d"].map { url("\($0).mov") }, limit: 3)
+        XCTAssertEqual(added, 2, "room for two: the queue already held one")
+        XCTAssertEqual(playlist.items.map(\.displayName), ["already.mov", "a.mov", "b.mov"])
+        XCTAssertEqual(playlist.append(urls: [url("e.mov")], limit: 3), 0, "a full queue takes nothing")
+    }
+
+    func testBatchPlayNextKeepsTheSelectionsOrderInFront() {
+        var playlist = Playlist()
+        playlist.append(url: url("later.mov"))
+        let added = playlist.insertNext(urls: [url("one.mov"), url("two.mov")], limit: 10)
+        XCTAssertEqual(added, 2)
+        XCTAssertEqual(playlist.items.map(\.displayName), ["one.mov", "two.mov", "later.mov"],
+                       "the first selected plays first")
+    }
+
+    func testAutoLimitScalesWithMemoryAndIsClamped() {
+        let gb: UInt64 = 1 << 30
+        let small = QueueLimit.automatic(physicalMemory: 8 * gb)
+        let big = QueueLimit.automatic(physicalMemory: 64 * gb)
+        XCTAssertLessThan(small, big, "more memory, longer queues")
+        XCTAssertEqual(QueueLimit.automatic(physicalMemory: 1 * gb), QueueLimit.automaticFloor)
+        XCTAssertEqual(QueueLimit.automatic(physicalMemory: 1024 * gb), QueueLimit.automaticCeiling)
+        XCTAssertTrue((QueueLimit.automaticFloor...QueueLimit.automaticCeiling).contains(QueueLimit.automaticAtLaunch))
+    }
+
+    func testManualLimitWinsAndIsClamped() {
+        XCTAssertEqual(QueueLimit.resolved(manual: nil), QueueLimit.automaticAtLaunch)
+        XCTAssertEqual(QueueLimit.resolved(manual: 250), 250)
+        XCTAssertEqual(QueueLimit.resolved(manual: 0), QueueLimit.manualRange.lowerBound)
+        XCTAssertEqual(QueueLimit.resolved(manual: 1_000_000), QueueLimit.manualRange.upperBound)
+    }
+
+    func testQueueLimitPreferenceRoundTripsAndDefaultsToAuto() throws {
+        var preferences = Preferences()
+        XCTAssertNil(preferences.queueLimit, "Auto unless set by hand")
+        preferences.queueLimit = 500
+        let decoded = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(preferences))
+        XCTAssertEqual(decoded.queueLimit, 500)
+        let auto = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(Preferences()))
+        XCTAssertNil(auto.queueLimit)
+    }
+
     func testPeekDoesNotConsume() {
         var playlist = Playlist()
         playlist.append(url: url("one.mov"))

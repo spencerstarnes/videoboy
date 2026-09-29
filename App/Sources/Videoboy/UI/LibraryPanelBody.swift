@@ -7,7 +7,7 @@
 //            filed and removed, ⌘A selects everything showing, and right-clicking
 //            anything offers what can be done to it.
 //  Inputs  : the LibraryModel; the asset browser's fixed tabs (generators, sources).
-//  Outputs : `onItemOpened` (load into a channel), `onItemQueued`, `onFilesDropped`.
+//  Outputs : `onItemOpened` (load into a channel), `onItemsQueued`, `onFilesDropped`.
 //  Connects: LibraryBrowser (what this panel is looking at), LibraryGridView,
 //            LibraryListView, LibraryColumnView (the three ways of drawing it),
 //            ShellController (loads, queues and imports).
@@ -212,8 +212,9 @@ final class LibraryPanelBody: NSView {
     private var playlistViews: [String: PlaylistView] = [:]
     private let queueScroll = NSScrollView()
 
-    /// Called when a clip is queued: (item, channel, playNext).
-    var onItemQueued: ((LibraryItem, String, Bool) -> Void)?
+    /// Called when clips are queued: (items in play order, channel, playNext). One
+    /// call per gesture, however many clips — the queue redraws once, not per clip.
+    var onItemsQueued: (([LibraryItem], String, Bool) -> Void)?
 
     /// Called when a queued item is removed from a channel's playlist.
     var onQueuedItemRemoved: ((String, PlaylistItem.ID) -> Void)?
@@ -924,10 +925,9 @@ final class LibraryPanelBody: NSView {
     @objc private func menuQueue(_ sender: NSMenuItem) {
         guard let channel = sender.representedObject as? String else { return }
         let items = selectedFileItems
-        // "Play next" for several clips keeps their order: each goes in front of the
-        // one queued before it, so they are inserted last-first.
-        let ordered = sender.tag == 1 ? Array(items.reversed()) : items
-        for item in ordered { onItemQueued?(item, channel, sender.tag == 1) }
+        guard !items.isEmpty else { return }
+        // "Play next" for several clips keeps their order (`Playlist.insertNext(urls:)`).
+        onItemsQueued?(items, channel, sender.tag == 1)
     }
 
     @objc private func menuMove(_ sender: NSMenuItem) {
@@ -1324,7 +1324,7 @@ final class LibraryQueueDropView: FlippedView {
         guard let panel, let channel = panel.shownPlaylistChannel else { return false }
         let items = clips(from: sender)
         guard !items.isEmpty else { return false }
-        for item in items { panel.onItemQueued?(item, channel, false) }
+        panel.onItemsQueued?(items, channel, false)
         return true
     }
 }
