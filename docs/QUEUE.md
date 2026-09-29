@@ -13,16 +13,23 @@ request goes here before any work starts; nothing is worked outside it.
 4. Items are never deleted. A dropped item moves to *Done* marked "dropped by owner".
 
 ## In progress
-- **Q2 — Queue memory limit.** "video boy seems to be crashing if I load too many
-  things into the queue. I think the queue needs a limit on how many clips it loads
-  at once. Right now it seems to just load everything, maybe we have a number that's
-  automatically set by how much memory is available at launch. We can have a setting
-  in the settings menu where you can manually define it."
+_(none)_
 
 ## Queued
 _(empty — next request goes here)_
 
 ## Awaiting verification
+- **Q2 — Queue memory limit.** "video boy seems to be crashing if I load too many
+  things into the queue. I think the queue needs a limit on how many clips it loads
+  at once. Right now it seems to just load everything, maybe we have a number that's
+  automatically set by how much memory is available at launch. We can have a setting
+  in the settings menu where you can manually define it."
+  Built in `adcf78f`. Cause found in code: queuing N clips was N full list rebuilds +
+  N library re-sorts (quadratic). Fixed with one edit per gesture, in-place list
+  updates, and a per-channel limit (Auto from RAM, or Settings ▸ Defaults). Not
+  built or tested (Linux container, no Swift). Crash cause unconfirmed without a
+  crash report. Needs on the Mac Studio: `scripts/verify.sh`,
+  `scripts/selfqa.sh ab-roll` (step 4c), and a manual queue of 1,000+ clips.
 - **Q1 — Up Next REPEAT.** "a toggle to allow repeating on the queue … default to
   move the clip to the bottom of the queue and have an easy to see toggle in the
   queue to stop it." Built in `ad8d1f8` on `claude/wonderful-knuth-7x6t6w`.
