@@ -38,6 +38,11 @@ Full spec: `docs/SELF-QA-HARNESS.md`. You have three ways to verify without the 
 3. **Virtual MIDI** — create a virtual CoreMIDI source in a test and send messages to self-verify detect/mapping without the physical controller.
 Every visual/output acceptance item is checked by you via these before it counts as done. Save the PNGs/metrics you used as evidence under `selfqa/out/<phase>/`.
 
+## Task queue (owner rule, 2026-09-29)
+**All tasks go through `docs/QUEUE.md`.** Append every new request there (verbatim)
+before starting it, work the queue top to bottom one item at a time, and move an item
+to Done only with its commit hash and how it was verified. Rules are in the file.
+
 ## Workflow rules
 1. Read the current phase's acceptance in `@docs/BUILD-PLAN.md` first. Work through phases in order, but **keep going across phases in one run** — don't stop between phases to ask permission.
 2. After changes to `Core`, run `scripts/test.sh`. Before a phase counts as done, run `scripts/verify.sh` AND the relevant self-QA checks; verify.sh must exit 0.
