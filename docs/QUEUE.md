@@ -60,4 +60,8 @@ _(empty — next request goes here)_
   Program flip, green glow on the receiving bank while armed, flash on execute,
   any other action disarms. Reviewed in chat: keep arm/execute; disarm only on
   explicit cancel, not on any input; Space during a running Setlist counts as GO.
+  Decided: arm stays until executed or Esc. Follow-up 3: owner asks whether a
+  "setlist creation mode" is needed. Answered in chat: no separate editor; Scenes
+  are captured from the live rig, edited by staging on the off-air side; the list
+  itself lives in a Setlist tab + a ⌘4 mode for reorder/names/notes/macros.
 
