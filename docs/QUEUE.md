@@ -51,4 +51,9 @@ _(empty — next request goes here)_
   MIDI model; add a show-wide macro layer that each Set assigns; Sets side-relative;
   ⌘→ GO / ⌘← BACK; docked, not a popover. Next step if approved: fold the decisions
   into `docs/PROPOSAL-2026-09-28-setlist.md`.
+  Follow-up (same day): owner asked for a critical review of that answer. Reviewed in
+  chat; corrections: drop the 4th level, rename Set→Scene, BACK always re-preps (no
+  grace window), ⌘←/⌘→ must yield to text fields, macros are a target type in the
+  one mapping table (not a second system), a Scene's clip list deals into the
+  existing Up Next queues.
 
