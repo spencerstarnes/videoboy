@@ -90,6 +90,8 @@ enum SelfQARunner {
             verdict = FramingSelfQA.run()
         case "undo":
             verdict = UndoSelfQA.run()
+        case "fx-focus":
+            verdict = FXFocusSelfQA.run()
         case "push-fade":
             verdict = PushFadeSelfQA.run()
         case "mosh":

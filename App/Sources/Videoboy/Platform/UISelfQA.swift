@@ -1082,9 +1082,11 @@ enum UISelfQA {
             // check being skipped. A skipped check proves nothing; this one proves the
             // card really went, and would catch it coming back by accident.
             guard FeatureFlag.bitstreamCorruptor.isOn else {
+                // Found by its switch: cards no longer carry a selector (the panel's
+                // focus does that job), so looking for one would prove nothing.
                 let stillThere =
-                    segmentedControl(named: corruptorName, in: shell.grid.panels.effectsOneBody) != nil
-                    || segmentedControl(named: corruptorName, in: shell.grid.panels.effectsTwoBody) != nil
+                    enableSwitch(named: corruptorName, in: shell.grid.panels.effectsOneBody) != nil
+                    || enableSwitch(named: corruptorName, in: shell.grid.panels.effectsTwoBody) != nil
                 check.record(AssertionResult(
                     name: "the bitstream card is absent while its flag is off",
                     passed: !stillThere,
@@ -1095,21 +1097,12 @@ enum UISelfQA {
                 break section11
             }
 
-            guard let selectorOne = segmentedControl(named: corruptorName, in: shell.grid.panels.effectsOneBody),
-                  let selectorTwo = segmentedControl(named: corruptorName, in: shell.grid.panels.effectsTwoBody) else {
-                check.record(AssertionResult(
-                    name: "both FX chains have a channel selector on the corruptor card",
-                    passed: false, detail: "one or both selectors were not found"
-                ))
-                break section11
-            }
+            // The panel's FOCUS (A · B · MIX) is what points the corruptor at a channel.
+            let selectorOne = shell.grid.panels.effectsOneBody.focusControl
+            let selectorTwo = shell.grid.panels.effectsTwoBody.focusControl
             check.record(AssertionResult(
-                name: "both FX chains have a channel selector on the corruptor card",
-                // TWO segments and three states: clicking past the last channel
-                // selects BOTH, which lights both segments rather than adding a
-                // third. A word meaning "both" costs more width than the two things
-                // it describes.
-                passed: selectorOne.segmentCount == 2 && selectorTwo.segmentCount == 2,
+                name: "both FX panels have a focus control: two channels and MIX",
+                passed: selectorOne.segmentCount == 3 && selectorTwo.segmentCount == 3,
                 detail: "A/B has \(selectorOne.segmentCount) segments, C/D has \(selectorTwo.segmentCount)"
             ))
 
@@ -1243,8 +1236,8 @@ enum UISelfQA {
 
                 check.record(AssertionResult(
                     name: "the corruptor card's ✕ actually takes the card out of the chain",
-                    passed: segmentedControl(named: corruptorName, in: shell.grid.panels.effectsTwoBody) == nil,
-                    detail: "card present after ✕: \(segmentedControl(named: corruptorName, in: shell.grid.panels.effectsTwoBody) != nil)"
+                    passed: enableSwitch(named: corruptorName, in: shell.grid.panels.effectsTwoBody) == nil,
+                    detail: "card present after ✕: \(enableSwitch(named: corruptorName, in: shell.grid.panels.effectsTwoBody) != nil)"
                 ))
 
                 // Both channels, not just the one the selector pointed at. Bypassing
@@ -2924,14 +2917,21 @@ enum UISelfQA {
                     detail: "no fader, or \(slot) is not in the graph"))
             }
 
-            // A built-in pattern on B: the card follows the channel that just changed.
+            // A built-in pattern on B. The panel's focus decides what the sheet shows
+            // (2026-09-28): the card stays on A until the focus goes to B, then shows
+            // B's pattern controls.
             bodyB.onReferenceDropped?("generator:\(GeneratorKind.checkerboard.rawValue)")
+            shell.layoutSubtreeIfNeeded()
+            let stayedOnA = subtitle().hasPrefix("A ·")
+            let focus = shell.grid.panels.effectsOneBody.focusControl
+            focus.selectedSegment = 1
+            _ = focus.target?.perform(focus.action, with: focus)
             shell.layoutSubtreeIfNeeded()
             let patternFaders = pinned().map { Self.faders(in: $0) } ?? []
             check.record(AssertionResult(
-                name: "a built-in pattern on B brings B's controls to the pinned card",
-                passed: patternFaders.count == 4 && subtitle().hasPrefix("B ·"),
-                detail: "\(patternFaders.count) faders; says '\(subtitle())'"))
+                name: "a pattern loaded on B leaves the sheet on A; focus B brings B's controls to the pinned card",
+                passed: stayedOnA && patternFaders.count == 4 && subtitle().hasPrefix("B ·"),
+                detail: "stayed on A \(stayedOnA); after focus B: \(patternFaders.count) faders; says '\(subtitle())'"))
 
             // Glued: scrolling the chain leaves it exactly where it was.
             if let scroll, let current = pinned() {
@@ -3054,17 +3054,6 @@ enum UISelfQA {
         }
         for subview in view.subviews {
             if let found = removeButton(named: identifier, in: subview) { return found }
-        }
-        return nil
-    }
-
-    /// The first segmented control found with a matching identifier.
-    private static func segmentedControl(named identifier: String, in view: NSView) -> NSSegmentedControl? {
-        if let control = view as? NSSegmentedControl, control.identifier?.rawValue == identifier {
-            return control
-        }
-        for subview in view.subviews {
-            if let found = segmentedControl(named: identifier, in: subview) { return found }
         }
         return nil
     }

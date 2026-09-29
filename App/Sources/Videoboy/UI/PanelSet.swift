@@ -164,6 +164,12 @@ final class PanelSet {
 
         effectsOne = PanelView(title: "A/B FX", bus: .one, body: effectsOneBody)
         effectsTwo = PanelView(title: "C/D FX", bus: .two, body: effectsTwoBody)
+        // FOCUS in each FX panel's title bar: which copy every card edits. In the
+        // header so nothing below it moves.
+        effectsOneBody.configureFocus(channels: ChainBus.one.channels)
+        effectsTwoBody.configureFocus(channels: ChainBus.two.channels)
+        effectsOne.setHeaderAccessory(effectsOneBody.focusControl)
+        effectsTwo.setHeaderAccessory(effectsTwoBody.focusControl)
 
         // MARK: Libraries
         // The sub-mix libraries start from what is actually in samples/; the central
@@ -267,12 +273,9 @@ final class PanelSet {
                                          value: 0.0, enabled: true),
                     EffectParameterModel(name: "rate", code: ParamCode.corruptRate.rawValue,
                                          value: 0.25, enabled: true)
-                ],
+                ]
                 // SPEC 2's chFX runs once per CHANNEL — A and B each carry their own
-                // wedge. This one card reaches whichever of the two is selected here,
-                // rather than being hardwired to A the way it was before this could
-                // be switched at all.
-                channelOptions: channels
+                // wedge. The panel's focus (A · B) picks which one this card edits.
             )
     }
 

@@ -336,6 +336,15 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       61K–68K, 69J/6AJ). Clips kept pre-opened (Engine.preparePad); saved with the
       show (template v4). `selfqa pads` 12/12 ×3: 8 HD presses under live render all
       instant (~1 ms main thread), 0 dropped, 0 held; stress 10/10.
+- [x] **One FX focus per panel: A · B · MIX** (owner, 2026-09-28: "one master toggle on
+      the very top that changes the whole card sheet"; "MIX is for the sub mix"). The
+      per-card A/B selectors are gone; each FX panel's title bar has one segmented
+      control — A · B · MIX (C · D · MIX) — that points every card, the corruptor and
+      Source Controls at that copy (MIX = the sub-mix's bus copy, after its crossfader;
+      Source Controls and the corruptor keep their channel on MIX). Focus only: every
+      copy keeps its own switch and values, nothing on air changes. New cards take the
+      focus; a load into B no longer moves Source Controls to B; a show opens on its
+      first card's copy. `selfqa fx-focus`.
 - [x] **Take-backs** (owner, 2026-09-28: "a consistent bug … being unable to undo
       things"). Eject, or choosing a generator/camera, cancels a clip still opening
       (it used to land afterwards). MIDI learn: Esc cancels, ⌫ unmaps the Shift-clicked

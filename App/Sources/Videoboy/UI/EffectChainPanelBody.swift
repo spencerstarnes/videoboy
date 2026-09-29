@@ -84,18 +84,6 @@ struct EffectCardModel {
     let parameters: [EffectParameterModel]
     /// Which modulation sources are driving anything on this effect, by badge.
     var activeModulation: Set<String> = []
-    /// Channel letters this card can target, e.g. ["A", "B"]. Empty means the card
-    /// has exactly one target and no selector is drawn.
-    ///
-    /// This exists because SPEC 2's chFX runs once per CHANNEL, not once per bus —
-    /// A and B each carry their own bitstream wedge — but the panel only has room to
-    /// show one card's worth of controls at a time. The selector is what lets one
-    /// card reach either channel rather than the card being hardwired to whichever
-    /// channel got there first.
-    var channelOptions: [String] = []
-    /// Where the selector starts: an index into `channelOptions`, or one past the
-    /// end for BOTH. Must match what the controller routes to at launch.
-    var initialChannelIndex = 0
     /// A neutral line under the header — what the Source Controls card is showing
     /// ("A · 01_Strobosphere"). `status` is for problems and is drawn in their colour.
     var subtitle: String? = nil
@@ -231,9 +219,18 @@ final class EffectChainPanelBody: NSView {
     /// the badge view to hang a menu from).
     var onEffectModulationRequested: ((String, ModulationSource, NSView) -> Void)?
 
-    /// A card's channel selector changed: (effect name, index into its
-    /// `channelOptions`).
-    var onCardChannelChanged: ((String, Int) -> Void)?
+    /// The panel's FOCUS changed: 0 the first channel (A / C), 1 the second (B / D),
+    /// 2 MIX — the sub-mix, after its crossfader. Every card edits that copy.
+    var onFocusChanged: ((Int) -> Void)?
+
+    /// FOCUS, for the panel's header: A · B · MIX (or C · D · MIX). One control for
+    /// the whole sheet (owner, 2026-09-28) — it replaced an A/B selector on every
+    /// card, which let one card edit A while the card under it edited B.
+    let focusControl = NSSegmentedControl()
+    /// What `focusControl` shows: 0, 1, or 2 (MIX).
+    private(set) var focus = 0
+    /// Position of MIX on the focus control.
+    static let mixFocus = ChainEntry.both
 
     /// Called when an effect's enable switch is toggled: (effect name, on).
     var onEffectToggled: ((String, Bool) -> Void)?
@@ -278,16 +275,8 @@ final class EffectChainPanelBody: NSView {
     /// Each card's readout text per param code, from its parameters.
     private var valueTexts: [String: [String: EffectParameterModel]] = [:]
 
-    /// Which channel each channel-selecting card is currently pointed at, by effect
-    /// name. Kept here rather than in `EffectCardModel` so a rebuild (reordering,
-    /// enabling) does not reset a choice the performer just made.
-    private var cardChannelSelection: [String: Int] = [:]
-
     init(effects: [EffectCardModel]) {
         self.effects = effects
-        for effect in effects where effect.initialChannelIndex != 0 {
-            cardChannelSelection[effect.name] = effect.initialChannelIndex
-        }
         super.init(frame: .zero)
 
         stack.orientation = .vertical
@@ -447,31 +436,6 @@ final class EffectChainPanelBody: NSView {
             target: self, action: #selector(effectRemoved(_:)))
         removeButton.identifier = NSUserInterfaceItemIdentifier(effect.name)
 
-        // The channel selector, for chFX cards — an effect that runs once per
-        // CHANNEL (SPEC 2) rather than once per bus, where the panel only has room
-        // for one card's worth of controls. Small and in the same family as the
-        // A/B · C/D toggle on the libraries, so it reads as the same kind of choice.
-        var channelSelector: NSSegmentedControl?
-        if effect.channelOptions.count > 1 {
-            // Three STATES, two segments. Clicking past the last channel selects
-            // BOTH, and both segments light rather than a third segment appearing —
-            // a word that says "both" takes more width than the two things it is
-            // describing, in the narrowest column in the window.
-            let selected = cardChannelSelection[effect.name] ?? 0
-            let focusTitles = effect.channelOptions.enumerated().map { index, name in
-                index == selected ? Theme.focusCaret + name : name
-            }
-            let selector = Controls.segmented(
-                focusTitles,
-                selected: min(selected, effect.channelOptions.count - 1),
-                enabled: effect.isImplemented,
-                target: self, action: #selector(cardChannelChanged(_:))
-            )
-            selector.identifier = NSUserInterfaceItemIdentifier(effect.name)
-            selector.toolTip = "Focus — which channel this effect's controls edit"
-            channelSelector = selector
-        }
-
         // The three modulation sources, once per EFFECT rather than once per
         // parameter. Spelled out, because "M S C" reads as Mute/Solo/... to anyone
         // who has used an audio mixer — and this app has no mute and no solo. They
@@ -522,15 +486,6 @@ final class EffectChainPanelBody: NSView {
         var modulationRow: NSView?
         if effect.isImplemented {
             var badges: [NSView] = []
-            if let channelSelector {
-                badges.append(channelSelector)
-                // A gap, or BOTH runs straight into MIDI and the two controls read as
-                // one run-on string.
-                let gap = NSView()
-                gap.translatesAutoresizingMaskIntoConstraints = false
-                gap.widthAnchor.constraint(equalToConstant: 8).isActive = true
-                badges.append(gap)
-            }
             // The effect-wide badges drive an effect's wet/dry, which a source does not
             // have. Its faders are still learnable one by one with Shift-click.
             for source in ModulationSource.allCases where !isPinned {
@@ -1100,7 +1055,6 @@ final class EffectChainPanelBody: NSView {
         sourceCardView?.discardFromSuperview()
         sourceCardView = nil
         guard let sourceCard else { return }
-        cardChannelSelection[sourceCard.name] = sourceCard.initialChannelIndex
         valueTexts[sourceCard.name] = Dictionary(
             sourceCard.parameters.map { ($0.code, $0) }, uniquingKeysWith: { first, _ in first })
         let view = makeCard(sourceCard, index: -1, isPinned: true)
@@ -1181,82 +1135,37 @@ final class EffectChainPanelBody: NSView {
         onEffectToggled?(name, sender.state == .on)
     }
 
-    /// Paints the selector for a state, where a state past the last segment is BOTH.
-    ///
-    /// BOTH lights every segment in the focus orange rather than selecting one. The
-    /// segmented control has no "all selected" mode, so the state lives in
-    /// `cardChannelSelection` and this is what makes it visible.
-    private func restyleFocus(_ control: NSSegmentedControl, options: [String], state: Int) {
-        let isBoth = state >= options.count
-
-        // THE SELECTION IS NOT YELLOW YET, and it is worth writing down why so the
-        // next person does not spend the afternoon I did on it.
-        //
-        // `selectedSegmentBezelColor` is the documented API and AppKit ignores it here.
-        // Three approaches were tried and photographed: the property alone, the
-        // property with `segmentStyle = .roundRect`, and an `NSSegmentedCell` subclass
-        // overriding `drawSegment`. All three rendered the same system grey, because a
-        // modern NSSegmentedControl no longer draws through its cell.
-        //
-        // The selection is currently said with the caret (▸A) and with BOTH lighting
-        // every segment, which is legible but is not the app's colour language, where
-        // yellow means SELECTED and red means LIVE.
-        //
-        // The fix is to replace this control with two of the app's own VBOptionButton
-        // keys, which colour reliably because they draw themselves — that is how CUT,
-        // FADE, BEAT and the bus keys all light. It is deferred rather than difficult:
-        // UISelfQA's section 11 finds this selector AS an NSSegmentedControl, asserts
-        // it has two segments, and clicks it by setting `selectedSegment` and firing
-        // target/action, so the swap means rewriting that check too.
-
-        // BOTH genuinely LIGHTS BOTH. `.selectAny` is what makes that possible: the
-        // default one-of-N tracking can only ever bezel a single segment, so BOTH used
-        // to show the last channel highlighted with a caret on every label — which
-        // reads as "B, and something odd is going on" rather than as "both". The
-        // selector covering its whole width is the state, and it is the one a glance
-        // has to be able to tell apart from "B".
-        //
-        // Tracking mode does not decide behaviour here; `cardChannelChanged` advances
-        // the state itself and this function then paints it. The mode only controls
-        // what the control is ALLOWED to show.
-        control.trackingMode = .selectAny
-        for index in options.indices {
-            control.setSelected(isBoth || index == state, forSegment: index)
+    /// Labels the focus control for this panel's channels: A · B · MIX or C · D · MIX.
+    func configureFocus(channels: [String]) {
+        focusControl.segmentCount = channels.count + 1
+        for (index, name) in (channels + ["MIX"]).enumerated() {
+            focusControl.setLabel(name, forSegment: index)
+            focusControl.setWidth(0, forSegment: index)
         }
-        for (index, name) in options.enumerated() {
-            let isLit = isBoth || index == state
-            control.setLabel(isLit ? Theme.focusCaret + name : name, forSegment: index)
-        }
+        focusControl.trackingMode = .selectOne
+        focusControl.segmentStyle = .rounded
+        focusControl.controlSize = .small
+        focusControl.font = Theme.Font.tinyLabel
+        focusControl.selectedSegment = focus
+        focusControl.target = self
+        focusControl.action = #selector(focusPicked(_:))
+        focusControl.toolTip = "Which effects this panel shows and edits: \(channels.joined(separator: " or ")) "
+            + "before the crossfader, or MIX — the \(channels.joined(separator: "/")) sub-mix, after it. "
+            + "Nothing on air changes; each keeps its own settings."
+        focusControl.setAccessibilityLabel("Effects focus")
+        focusControl.setAccessibilityIdentifier("fx-focus")
     }
 
-    @objc private func cardChannelChanged(_ sender: NSSegmentedControl) {
-        guard let name = sender.identifier?.rawValue,
-              let options = card(named: name)?.model.channelOptions
-        else { return }
+    /// Shows a focus without reporting it (launch, a loaded show).
+    func setFocus(_ index: Int) {
+        focus = max(0, min(index, focusControl.segmentCount - 1))
+        focusControl.selectedSegment = focus
+    }
 
-        // ONE GESTURE, THREE STATES, ALWAYS IN THE SAME ORDER.
-        //
-        //     A  ->  B  ->  BOTH  ->  A
-        //
-        // A click ADVANCES, wherever on the control it lands. It used to be a picker:
-        // clicking a segment selected that segment, and BOTH was reached only by
-        // clicking the last segment when it was already selected. That makes the same
-        // click mean different things depending on the state you were already in — you
-        // had to know where you were before you knew what a click would do, which is
-        // not something anyone can hold onto mid-set.
-        //
-        // Advancing means the control is aimed at rather than read: hit it once to get
-        // to B, again to cover both. The cost is that going from BOTH back to a
-        // specific channel can take two clicks instead of one. That is the right trade
-        // for a control you operate without looking.
-        // Source Controls has no BOTH: two sources are two different sets of controls.
-        let states = name == Self.sourceCardName ? options.count : options.count + 1
-        let previous = cardChannelSelection[name] ?? 0
-        let next = (previous + 1) % states
-
-        cardChannelSelection[name] = next
-        restyleFocus(sender, options: options, state: next)
-        onCardChannelChanged?(name, next)
+    @objc private func focusPicked(_ sender: NSSegmentedControl) {
+        guard sender.selectedSegment >= 0, sender.selectedSegment != focus else { return }
+        focus = sender.selectedSegment
+        onFocusChanged?(focus)
     }
 
     /// Pushes new values into a specific card's parameter faders and readouts, for
@@ -1330,11 +1239,10 @@ final class EffectChainPanelBody: NSView {
         popUp.selectItem(at: 0)
     }
 
-    /// Replaces the cards, keeping each card's fold and channel choice by name.
+    /// Replaces the cards, keeping each card's fold by name.
     /// For when the chain itself changed — an effect added or removed.
     func setEffects(_ newEffects: [EffectCardModel]) {
         effects = newEffects
-        for effect in newEffects { cardChannelSelection[effect.name] = effect.initialChannelIndex }
         let names = Set(newEffects.map(\.name) + [Self.sourceCardName])
         collapsedEffects = collapsedEffects.filter { names.contains($0) }
         rebuild()

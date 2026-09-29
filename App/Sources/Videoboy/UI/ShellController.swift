@@ -1549,6 +1549,10 @@ final class ShellController {
 
         clipPads?.restore(document.clipPads)
         repaintFromRegistry()
+        // The show's cards say which copy they edit; the sheet takes the first's.
+        for bus in [Bus.one, .two] {
+            setFXFocus(engine.chains[chainBus(bus)]?.entries.first?.target ?? 0, bus: bus)
+        }
         currentTemplateURL = url
         onTemplateURLChanged?(url)
         Log.info(.template, "opened \(document.name)" + (unknown > 0 ? " (\(unknown) mappings this build does not know)" : ""))
@@ -2144,9 +2148,7 @@ final class ShellController {
                 status: status(of: node),
                 isEnabled: (engine.registry.value(slot: slot, code: .wetDry) ?? 0) > 0.5,
                 isImplemented: available,
-                parameters: parameters,
-                channelOptions: chainBus.channels,
-                initialChannelIndex: entry.target)
+                parameters: parameters)
             // The badges say what is ACTUALLY driving this card, read from the engine.
             // Left empty, every rebuild (adding, removing or reordering any card)
             // turned every badge dark while its MIDI, LFO or audio kept driving.
@@ -2263,8 +2265,6 @@ final class ShellController {
             name: EffectChainPanelBody.sourceCardName, id: EffectChainPanelBody.sourceCardName,
             badge: badge, isEnabled: true, isImplemented: true,
             parameters: parameters,
-            channelOptions: chainBus(bus).channels,
-            initialChannelIndex: sourceChannelIndex[bus] ?? 0,
             subtitle: subtitle, subtitleDetail: detail ?? subtitle)
     }
 
@@ -2422,11 +2422,13 @@ final class ShellController {
             // a separate enable flag threaded through every node.
             panel.onEffectToggled = { [weak self] name, isOn in self?.setEffectEnabled(name, isOn, bus: bus) }
             panel.onSweepsChanged = { [weak self] in self?.refreshArmedSweeps() }
-            panel.onCardChannelChanged = { [weak self] name, index in self?.cardChannelChanged(name, index, bus: bus) }
+            panel.onFocusChanged = { [weak self] index in self?.setFXFocus(index, bus: bus) }
             // ORDER IS PROCESSING ORDER: a drag rewires the graph (it used to move
             // pictures of cards and nothing else).
             panel.onReordered = { [weak self] names in self?.chainReordered(names, bus: bus) }
             refreshCards(bus)
+            // One focus for the whole sheet, A (or C) at launch.
+            setFXFocus(0, bus: bus)
         }
         // A channel pointed at a different source shows that source's controls.
         // ADV's swap: refresh Source Controls if it is showing that channel, but do not
@@ -2439,12 +2441,10 @@ final class ShellController {
         engine.onChannelSourceChanged = { [weak self] letter in
             guard let self else { return }
             let bus: Bus = ChainBus.one.channels.contains(letter) ? .one : .two
-            // Follow the channel that just changed: loading a generator into B is
-            // the moment someone wants B's controls in front of them.
-            if let index = self.chainBus(bus).channels.firstIndex(of: letter) {
-                self.sourceChannelIndex[bus] = index
-            }
-            self.refreshSourceCard(bus)
+            // Refresh Source Controls if it shows that channel. It no longer jumps to
+            // it: the panel's focus decides what the whole sheet shows, and a load
+            // into B while A is in focus must not move one card to B under the rest.
+            if self.sourceChannel(bus: bus) == letter { self.refreshSourceCard(bus) }
         }
         // Files added, edited or fixed in the ISF folders show up without a relaunch.
         engine.onModulesChanged = { [weak self] in self?.refreshEffectPanels() }
@@ -2501,37 +2501,58 @@ final class ShellController {
         Engine.slot(forChannel: corruptorChannel(bus: bus))
     }
 
-    /// The card's selector changed. Three things have to follow it, or the toggle
-    /// would move the underlying data without changing what the screen shows: the
-    /// Shift-detect address on every fader in the card, the enable switch (each
-    /// copy's own bypass, not a single shared one), and the fader/readout values.
-    private func cardChannelChanged(_ name: String, _ index: Int, bus: Bus) {
-        if name == EffectChainPanelBody.sourceCardName {
-            sourceChannelIndex[bus] = index
-            refreshSourceCard(bus)
-            return
-        }
-        if name == PanelSet.corruptorCardName {
-            corruptorChannelIndex[bus] = index
-        } else if let entry = entry(forCard: name, bus: bus) {
-            engine.setTarget(index, of: entry.instanceID, on: chainBus(bus))
-        }
-        guard let slot = slot(forEffect: name, bus: bus) else { return }
-        let panel = panel(bus)
-        panel.refreshMappingAddresses()
+    /// Each FX panel's focus: 0 or 1 a channel's copy, 2 (MIX) the sub-mix's.
+    private var fxFocus: [Bus: Int] = [:]
+    /// The A/B FX panel's focus (0 A, 1 B, 2 MIX) — for self-QA.
+    var abFXFocusForChecks: Int? { fxFocus[.one] }
 
-        guard let node = engine.graph.nodes[slot] else { return }
+    /// Points the whole FX sheet at one copy — every chain card, the corruptor, and
+    /// Source Controls — from the panel's focus control (owner, 2026-09-28). What is
+    /// on air does not change: each copy keeps its own switch and values, and this
+    /// only chooses which ones the cards show and edit.
+    ///
+    /// Source Controls and the corruptor belong to a channel, not a mix, so on MIX
+    /// they keep the channel they last showed.
+    private func setFXFocus(_ index: Int, bus: Bus) {
+        let chainBus = chainBus(bus)
+        let focus = max(0, min(index, ChainEntry.both))
+        fxFocus[bus] = focus
+        let panel = panel(bus)
+        panel.setFocus(focus)
+        for entry in engine.chains[chainBus]?.entries ?? [] where entry.target != focus {
+            engine.setTarget(focus, of: entry.instanceID, on: chainBus)
+        }
+        if focus < chainBus.channels.count {
+            corruptorChannelIndex[bus] = focus
+            if sourceChannelIndex[bus] != focus {
+                sourceChannelIndex[bus] = focus
+                refreshSourceCard(bus)
+            }
+        }
+        for name in Array((cardInstances[bus] ?? [:]).keys) + [PanelSet.corruptorCardName] {
+            showTargetedCopy(name, bus: bus)
+        }
+        panel.refreshMappingAddresses()
+        let label = focus < chainBus.channels.count ? chainBus.channels[focus] : "MIX"
+        Log.info(.param, "\(bus == .one ? "A/B" : "C/D") FX now show \(label)")
+    }
+
+    /// Repaints one card for the copy it now edits: its faders and readouts, its
+    /// switch (each copy's own bypass), and its badges (what drives THAT copy).
+    private func showTargetedCopy(_ name: String, bus: Bus) {
+        guard let slot = slot(forEffect: name, bus: bus), let node = engine.graph.nodes[slot] else { return }
+        let panel = panel(bus)
         var displayed: [String: Double] = [:]
         for declared in node.parameters where declared.code != .wetDry {
             guard let value = engine.registry.value(slot: slot, code: declared.code) else { continue }
             displayed[declared.code.rawValue] = declared.normalise(value)
         }
         panel.setDisplayedParameterValues(effectName: name, values: displayed)
-
-        let isEngaged = (engine.registry.value(slot: slot, code: .wetDry) ?? 1) > 0.5
-        panel.setEnabled(effectName: name, isOn: isEngaged)
-
-        Log.info(.param, "\(name) on \(bus == .one ? "ONE" : "TWO") now targets \(slot)")
+        panel.setEnabled(effectName: name, isOn: (engine.registry.value(slot: slot, code: .wetDry) ?? 1) > 0.5)
+        let lit = activeModulationBadges(slot: slot)
+        for source in ModulationSource.allCases {
+            panel.setEffectModulationActive(effect: name, source: source, isActive: lit.contains(source.badge))
+        }
     }
 
     /// Which graph slot each armable feed reads from.
@@ -2810,7 +2831,10 @@ final class ShellController {
     private func addEffect(_ moduleID: String, bus: Bus) {
         if moduleID == Self.corruptorModuleID {
             corruptorRemoved.remove(bus)
-        } else if engine.addModule(moduleID, to: chainBus(bus)) == nil {
+        } else if let entry = engine.addModule(moduleID, to: chainBus(bus)) {
+            // A new card edits what the rest of the sheet edits.
+            engine.setTarget(fxFocus[bus] ?? 0, of: entry.instanceID, on: chainBus(bus))
+        } else {
             return
         }
         refreshCards(bus)
