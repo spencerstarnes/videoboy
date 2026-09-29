@@ -1098,27 +1098,25 @@ enum UISelfQA {
             }
 
             // The panel's FOCUS (A · B · MIX) is what points the corruptor at a channel.
-            let selectorOne = shell.grid.panels.effectsOneBody.focusControl
-            let selectorTwo = shell.grid.panels.effectsTwoBody.focusControl
+            let panelOne = shell.grid.panels.effectsOneBody
+            let panelTwo = shell.grid.panels.effectsTwoBody
             check.record(AssertionResult(
-                name: "both FX panels have a focus control: two channels and MIX",
-                passed: selectorOne.segmentCount == 3 && selectorTwo.segmentCount == 3,
-                detail: "A/B has \(selectorOne.segmentCount) segments, C/D has \(selectorTwo.segmentCount)"
+                name: "both FX panels have focus keys: two channels and MIX",
+                passed: panelOne.focusKeys.count == 3 && panelTwo.focusKeys.count == 3,
+                detail: "A/B has \(panelOne.focusKeys.count) keys, C/D has \(panelTwo.focusKeys.count)"
             ))
 
-            /// Fires a segmented control's action exactly as AppKit would after a
-            /// click lands on a segment — set the selection, then invoke target/action.
-            func click(_ control: NSSegmentedControl, segment: Int) {
-                control.selectedSegment = segment
-                _ = control.target?.perform(control.action, with: control)
+            /// Picks a focus key on the panel, as a click on it does.
+            func click(_ panel: EffectChainPanelBody, segment: Int) {
+                panel.pickFocusForChecks(segment)
             }
 
             // A gets 0.9, B gets 0.3, written the way a real drag writes them: through
             // the card's own onParameterChanged closure, with the selector pointed at
             // each channel in turn.
-            click(selectorOne, segment: 0) // A
+            click(panelOne, segment: 0) // A
             shell.grid.panels.effectsOneBody.onParameterChanged?(corruptorName, ParamCode.corruptAmount.rawValue, 0.9)
-            click(selectorOne, segment: 1) // B
+            click(panelOne, segment: 1) // B
             shell.grid.panels.effectsOneBody.onParameterChanged?(corruptorName, ParamCode.corruptAmount.rawValue, 0.3)
 
             let amountA = engine.registry.value(slot: GraphTopology.sourceA, code: .corruptAmount)
@@ -1133,7 +1131,7 @@ enum UISelfQA {
             // Switch back to A. The card must show A's 0.9 — not B's 0.3, and not the
             // stale 0.0 the card was built with — proving the readback sync actually
             // reads the registry rather than just remembering what it last wrote.
-            click(selectorOne, segment: 0)
+            click(panelOne, segment: 0)
             if let faderA = fader(named: ParamCode.corruptAmount.rawValue, in: shell.grid.panels.effectsOneBody) {
                 check.record(AssertionResult(
                     name: "switching back to A shows A's value, not B's or a stale default",
@@ -1147,7 +1145,7 @@ enum UISelfQA {
             // MIDI mapping) having set it — then confirm selecting B shows the switch
             // off, and that A's switch state is untouched by anything done to B.
             engine.registry.setValue(0, slot: GraphTopology.sourceB, code: .wetDry)
-            click(selectorOne, segment: 1)
+            click(panelOne, segment: 1)
             if let switchB = enableSwitch(named: corruptorName, in: shell.grid.panels.effectsOneBody) {
                 check.record(AssertionResult(
                     name: "each channel's bypass is independent, and the card shows it",
@@ -1195,7 +1193,7 @@ enum UISelfQA {
                 return renderer.readback(texture)
             }
 
-            click(selectorTwo, segment: 1) // D
+            click(panelTwo, segment: 1) // D
             // The corruptor boots BYPASSED now, like every effect except the grade, so
             // the wedge has to be switched on before it can damage anything — exactly
             // what an operator does. Driven through the card's own enable switch
@@ -2867,10 +2865,12 @@ enum UISelfQA {
             let scroll = Self.firstScrollView(in: panel)
             let insideScroll = scroll.map { card.isDescendant(of: $0) } ?? true
             let cardTop = card.convert(card.bounds, to: panel).maxY
+            // Directly under the focus keys (A · B · MIX), which head the panel.
+            let keysBottom = panel.focusKeys.first.map { $0.convert($0.bounds, to: panel).minY } ?? panel.bounds.maxY
             check.record(AssertionResult(
-                name: "Source Controls is glued to the top of the FX panel, outside the scrolling chain",
-                passed: !insideScroll && abs(panel.bounds.maxY - cardTop) <= 6,
-                detail: "in the scroll view: \(insideScroll); top \(Int(cardTop)) of \(Int(panel.bounds.maxY))"))
+                name: "Source Controls is glued under the focus keys at the top of the FX panel, outside the scrolling chain",
+                passed: !insideScroll && abs(keysBottom - cardTop) <= 6,
+                detail: "in the scroll view: \(insideScroll); top \(Int(cardTop)), focus keys end at \(Int(keysBottom))"))
             check.record(AssertionResult(
                 name: "it cannot be dragged, bypassed or removed",
                 passed: Self.firstDragHandle(in: card) == nil && Self.switches(in: card).isEmpty
@@ -2923,9 +2923,7 @@ enum UISelfQA {
             bodyB.onReferenceDropped?("generator:\(GeneratorKind.checkerboard.rawValue)")
             shell.layoutSubtreeIfNeeded()
             let stayedOnA = subtitle().hasPrefix("A ·")
-            let focus = shell.grid.panels.effectsOneBody.focusControl
-            focus.selectedSegment = 1
-            _ = focus.target?.perform(focus.action, with: focus)
+            shell.grid.panels.effectsOneBody.pickFocusForChecks(1)
             shell.layoutSubtreeIfNeeded()
             let patternFaders = pinned().map { Self.faders(in: $0) } ?? []
             check.record(AssertionResult(

@@ -164,12 +164,9 @@ final class PanelSet {
 
         effectsOne = PanelView(title: "A/B FX", bus: .one, body: effectsOneBody)
         effectsTwo = PanelView(title: "C/D FX", bus: .two, body: effectsTwoBody)
-        // FOCUS in each FX panel's title bar: which copy every card edits. In the
-        // header so nothing below it moves.
+        // FOCUS keys across the top of each FX panel: which copy every card edits.
         effectsOneBody.configureFocus(channels: ChainBus.one.channels)
         effectsTwoBody.configureFocus(channels: ChainBus.two.channels)
-        effectsOne.setHeaderAccessory(effectsOneBody.focusControl)
-        effectsTwo.setHeaderAccessory(effectsTwoBody.focusControl)
 
         // MARK: Libraries
         // The sub-mix libraries start from what is actually in samples/; the central

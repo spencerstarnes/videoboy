@@ -10,8 +10,8 @@
 //            edits the sub-mix; Source Controls follows A/B and holds on MIX; a new
 //            card takes the focus; and nothing on air changes when focus moves.
 //  Inputs  : samples/motion.mov (a clip for B), a scratch preference file.
-//  Outputs : selfqa/out/perf/fx-focus/{result.txt,header.png}.
-//  Connects: EffectChainPanelBody (focusControl), ShellController (setFXFocus), Engine.
+//  Outputs : selfqa/out/perf/fx-focus/{result.txt,panel.png}.
+//  Connects: EffectChainPanelBody (focusKeys), ShellController (setFXFocus), Engine.
 //
 
 import AppKit
@@ -47,29 +47,48 @@ enum FXFocusSelfQA {
         let engine = controller.engine
         let panels = shell.shell.grid.panels
         let body = panels.effectsOneBody
-        let focus = body.focusControl
+        let keys = body.focusKeys
 
-        // 1. In the title bar, reachable, and the cards carry no selector of their own.
+        // 1. Three tall keys across the top of the panel, above Source Controls, each
+        //    reached by a real hit-test; A lit; no card keeps a selector of its own.
         content.layoutSubtreeIfNeeded()
-        let centre = content.convert(NSPoint(x: focus.bounds.midX, y: focus.bounds.midY), from: focus)
-        let hit = content.hitTest(centre)
-        let reachable = hit === focus || hit?.isDescendant(of: focus) == true
-        let inHeader = !focus.isDescendant(of: body) && focus.isDescendant(of: panels.effectsOne)
-        let labels = (0..<focus.segmentCount).map { focus.label(forSegment: $0) ?? "" }
+        let unreachable = keys.filter { key in
+            let centre = content.convert(NSPoint(x: key.bounds.midX, y: key.bounds.midY), from: key)
+            let hit = content.hitTest(centre)
+            return !(hit === key || hit?.isDescendant(of: key) == true)
+        }.map(\.title)
+        let labels = keys.map(\.title)
+        let frames = keys.map { $0.convert($0.bounds, to: body) }
+        let rowWidth = (frames.last?.maxX ?? 0) - (frames.first?.minX ?? 0)
+        let height = frames.first?.height ?? 0
+        let atTop = frames.allSatisfy { abs($0.maxY - body.bounds.maxY) <= 6 }
+        let lit = keys.map(\.isOn)
         let leftover = all(NSSegmentedControl.self, in: body).count
             + all(NSSegmentedControl.self, in: panels.effectsTwoBody).count
         check.record(AssertionResult(
-            name: "each FX panel has one A · B · MIX focus in its title bar, a click reaches it, and no card has its own",
-            passed: reachable && inHeader && labels == ["A", "B", "MIX"]
-                && panels.effectsTwoBody.focusControl.segmentCount == 3 && leftover == 0,
-            detail: "reachable \(reachable), in header \(inHeader), labels \(labels), selectors left on cards \(leftover)"))
-        if let header = focus.superview, let image = UISelfQA.render(view: header) {
-            _ = try? check.writeImage(image, named: "header.png")
+            name: "each FX panel has A · B · MIX focus keys across its top — tall, full width, reachable, A lit — and no card has its own",
+            passed: unreachable.isEmpty && labels == ["A", "B", "MIX"] && atTop && lit == [true, false, false]
+                && rowWidth >= body.bounds.width - 12 && height >= 22
+                && panels.effectsTwoBody.focusKeys.map(\.title) == ["C", "D", "MIX"] && leftover == 0,
+            detail: "labels \(labels), unreachable \(unreachable), at top \(atTop), lit \(lit), "
+                + "row \(Int(rowWidth)) of \(Int(body.bounds.width)) pt, \(Int(height)) pt tall, selectors left on cards \(leftover)"))
+
+        // A REAL click on B: through the key's own mouse tracking (its mouse-up queued
+        // first, as a finger would release it).
+        func realClick(_ key: VBOptionButton) {
+            let point = key.convert(NSPoint(x: key.bounds.midX, y: key.bounds.midY), to: nil)
+            func event(_ type: NSEvent.EventType) -> NSEvent? {
+                NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                                   timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                   context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+            }
+            if let up = event(.leftMouseUp) { window.postEvent(up, atStart: true) }
+            if let down = event(.leftMouseDown) { key.mouseDown(with: down) }
+            spin(0.1)
         }
 
         func pick(_ segment: Int) {
-            focus.selectedSegment = segment
-            _ = focus.target?.perform(focus.action, with: focus)
+            body.pickFocusForChecks(segment)
             spin(0.1)
         }
         func targets() -> Set<Int> { Set(engine.chains[.one]?.entries.map(\.target) ?? []) }
@@ -98,16 +117,18 @@ enum FXFocusSelfQA {
         engine.registry.setValue(0, slot: slotA, code: .wetDry)
         engine.registry.setValue(1, slot: slotB, code: .wetDry)
         let before = onAir()
-        pick(1)
+        realClick(keys[1])
+        let litAfterClick = keys.map(\.isOn)
         body.onParameterChanged?(colourName, firstCode.rawValue, 0.8)   // a drag's own path
         let landedOnB = engine.registry.parameter(slot: slotB, code: firstCode).map {
             abs((engine.registry.value(slot: slotB, code: firstCode) ?? -1) - $0.denormalise(0.8)) < 1e-6
         } ?? false
         check.record(AssertionResult(
-            name: "B: every card edits B's copy — a drag lands there, the switch shows B's bypass, Source Controls shows B",
+            name: "a real click on B lights B alone; every card edits B's copy — a drag lands there, the switch shows B's bypass, Source Controls shows B",
             passed: targets() == [1] && landedOnB && colourSwitch?.state == .on && subtitle().hasPrefix("B")
-                && shell.abFXFocusForChecks == 1,
-            detail: "targets \(targets().sorted()), drag on B \(landedOnB), switch \(colourSwitch?.state == .on ? "on" : "off"), "
+                && shell.abFXFocusForChecks == 1 && litAfterClick == [false, true, false],
+            detail: "a real click on B lit \(litAfterClick); targets \(targets().sorted()), drag on B \(landedOnB), "
+                + "switch \(colourSwitch?.state == .on ? "on" : "off"), "
                 + "Source Controls \"\(subtitle())\""))
         check.record(AssertionResult(
             name: "changing focus changes nothing on air: every copy keeps its own on/off",
@@ -151,6 +172,16 @@ enum FXFocusSelfQA {
                 name: "loading into B while A is in focus leaves the whole sheet on A",
                 passed: subtitle().hasPrefix("A") && targets() == [0],
                 detail: "Source Controls \"\(subtitle())\", targets \(targets().sorted())"))
+        }
+
+        // A real screen photo of the panel (an offscreen render draws no key colour).
+        let shot = RepoPaths.selfQAOutput.appendingPathComponent("perf/fx-focus/window.png")
+        let capture = Process()
+        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        capture.arguments = ["-x", "-o", "-l", "\(window.windowNumber)", shot.path]
+        if (try? capture.run()) != nil {
+            while capture.isRunning { spin(0.05) }
+            check.note("window photo: \(shot.path)")
         }
 
         window.orderOut(nil)

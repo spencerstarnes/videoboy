@@ -223,11 +223,14 @@ final class EffectChainPanelBody: NSView {
     /// 2 MIX — the sub-mix, after its crossfader. Every card edits that copy.
     var onFocusChanged: ((Int) -> Void)?
 
-    /// FOCUS, for the panel's header: A · B · MIX (or C · D · MIX). One control for
-    /// the whole sheet (owner, 2026-09-28) — it replaced an A/B selector on every
-    /// card, which let one card edit A while the card under it edited B.
-    let focusControl = NSSegmentedControl()
-    /// What `focusControl` shows: 0, 1, or 2 (MIX).
+    /// FOCUS: three tall keys across the top of the panel — A · B · MIX (or C · D ·
+    /// MIX). One control for the whole sheet (owner, 2026-09-28), replacing an A/B
+    /// selector on every card. Keys, not a segmented control: they draw their own
+    /// lit state in the focus yellow, which a segmented control cannot, and the
+    /// owner asked for them to be prominent ("more prominent for A B MIX").
+    private(set) var focusKeys: [VBOptionButton] = []
+    private let focusRow = NSStackView()
+    /// Which key is lit: 0, 1, or 2 (MIX).
     private(set) var focus = 0
     /// Position of MIX on the focus control.
     static let mixFocus = ChainEntry.both
@@ -302,8 +305,14 @@ final class EffectChainPanelBody: NSView {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
 
-        // The pinned Source Controls card sits above the scroll view, not in it, so
-        // nothing a drag or a scroll does can move it. Empty, it takes no height.
+        // FOCUS keys first, then the pinned Source Controls card; both sit above the
+        // scroll view, not in it, so nothing a drag or a scroll does can move them.
+        focusRow.orientation = .horizontal
+        focusRow.distribution = .fillEqually
+        focusRow.spacing = 4
+        focusRow.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(focusRow)
+        // Empty, the Source Controls container takes no height.
         sourceContainer.translatesAutoresizingMaskIntoConstraints = false
         addSubview(sourceContainer)
         let emptyHeight = sourceContainer.heightAnchor.constraint(equalToConstant: 0)
@@ -311,7 +320,10 @@ final class EffectChainPanelBody: NSView {
         emptyHeight.isActive = true
 
         NSLayoutConstraint.activate([
-            sourceContainer.topAnchor.constraint(equalTo: topAnchor),
+            focusRow.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            focusRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            focusRow.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            sourceContainer.topAnchor.constraint(equalTo: focusRow.bottomAnchor),
             sourceContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
             sourceContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
 
@@ -1135,37 +1147,56 @@ final class EffectChainPanelBody: NSView {
         onEffectToggled?(name, sender.state == .on)
     }
 
-    /// Labels the focus control for this panel's channels: A · B · MIX or C · D · MIX.
+    /// Builds the focus keys for this panel's channels: A · B · MIX or C · D · MIX.
     func configureFocus(channels: [String]) {
-        focusControl.segmentCount = channels.count + 1
-        for (index, name) in (channels + ["MIX"]).enumerated() {
-            focusControl.setLabel(name, forSegment: index)
-            focusControl.setWidth(0, forSegment: index)
+        for key in focusKeys { focusRow.removeArrangedSubview(key); key.removeFromSuperview() }
+        let names = channels + ["MIX"]
+        focusKeys = names.enumerated().map { index, name in
+            let key = VBOptionButton(title: name, onColour: Theme.Color.focusOn)
+            key.isTall = true
+            key.tag = index
+            key.target = self
+            key.action = #selector(focusKeyPressed(_:))
+            key.toolTip = index < channels.count
+                ? "Show and edit \(name)'s effects, before the crossfader"
+                : "Show and edit the \(channels.joined(separator: "/")) sub-mix's effects, after its crossfader"
+            key.setAccessibilityLabel("Effects focus \(name)")
+            key.setAccessibilityIdentifier("fx-focus-\(name)")
+            focusRow.addArrangedSubview(key)
+            return key
         }
-        focusControl.trackingMode = .selectOne
-        focusControl.segmentStyle = .rounded
-        focusControl.controlSize = .small
-        focusControl.font = Theme.Font.tinyLabel
-        focusControl.selectedSegment = focus
-        focusControl.target = self
-        focusControl.action = #selector(focusPicked(_:))
-        focusControl.toolTip = "Which effects this panel shows and edits: \(channels.joined(separator: " or ")) "
-            + "before the crossfader, or MIX — the \(channels.joined(separator: "/")) sub-mix, after it. "
-            + "Nothing on air changes; each keeps its own settings."
-        focusControl.setAccessibilityLabel("Effects focus")
-        focusControl.setAccessibilityIdentifier("fx-focus")
+        focusRow.toolTip = "Which effects this panel shows and edits. Nothing on air changes; "
+            + "each keeps its own settings."
+        showFocus()
     }
 
     /// Shows a focus without reporting it (launch, a loaded show).
     func setFocus(_ index: Int) {
-        focus = max(0, min(index, focusControl.segmentCount - 1))
-        focusControl.selectedSegment = focus
+        focus = max(0, min(index, focusKeys.count - 1))
+        showFocus()
     }
 
-    @objc private func focusPicked(_ sender: NSSegmentedControl) {
-        guard sender.selectedSegment >= 0, sender.selectedSegment != focus else { return }
-        focus = sender.selectedSegment
-        onFocusChanged?(focus)
+    /// Picks a focus the way a click does — for self-QA.
+    func pickFocusForChecks(_ index: Int) {
+        guard focusKeys.indices.contains(index) else { return }
+        focusKeyPressed(focusKeys[index])
+    }
+
+    private func showFocus() {
+        for key in focusKeys {
+            key.isOn = key.tag == focus
+            key.needsDisplay = true
+        }
+    }
+
+    /// Radio: the pressed key lights and the others go out. Pressing the lit key
+    /// leaves it lit — there is always a focus.
+    @objc private func focusKeyPressed(_ sender: VBOptionButton) {
+        let picked = sender.tag
+        let changed = picked != focus
+        focus = picked
+        showFocus()
+        if changed { onFocusChanged?(focus) }
     }
 
     /// Pushes new values into a specific card's parameter faders and readouts, for

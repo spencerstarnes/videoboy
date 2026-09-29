@@ -75,8 +75,7 @@ enum MoshSelfQA {
         // This check moshes a CUT, which happens on the A/B mix — so the panel's focus
         // goes to MIX first (one focus for the whole sheet since 2026-09-28; it opens
         // on A). Through the control's own target/action, as a click lands.
-        panel.focusControl.selectedSegment = EffectChainPanelBody.mixFocus
-        _ = panel.focusControl.target?.perform(panel.focusControl.action, with: panel.focusControl)
+        panel.pickFocusForChecks(EffectChainPanelBody.mixFocus)
         RunLoop.main.run(until: Date().addingTimeInterval(0.1))
 
         // 1. The switch, with a real click routed through the window.

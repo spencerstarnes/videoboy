@@ -57,6 +57,9 @@ enum ISFSelfQA {
         pump(1)
 
         let panel = shell.grid.panels.effectsOneBody
+        // This check follows the card's BUS copy (the A/B sub-mix): focus MIX first, so
+        // the card added below edits it (a new card takes the panel's focus).
+        panel.pickFocusForChecks(EffectChainPanelBody.mixFocus)
         let cardName = "QA Invert"
         let instance = "isf-qa-invert"
         let busSlot = EffectChain.slot(instanceID: instance, lane: "one")
