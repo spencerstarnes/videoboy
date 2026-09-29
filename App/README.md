@@ -14,3 +14,5 @@ The layout in `UI/` is normative — see SPEC 14 and `docs/mockups/layout-v6.htm
 Do not redesign it.
 
 Build with `scripts/build.sh`, launch with `scripts/run.sh`.
+
+_Last updated: 2026-09-29_
