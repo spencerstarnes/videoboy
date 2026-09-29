@@ -56,4 +56,8 @@ _(empty — next request goes here)_
   grace window), ⌘←/⌘→ must yield to text fields, macros are a target type in the
   one mapping table (not a second system), a Scene's clip list deals into the
   existing Up Next queues.
+  Follow-up 2: owner proposes ⌘⇧←/→ arm-then-execute (two presses), Space = plain
+  Program flip, green glow on the receiving bank while armed, flash on execute,
+  any other action disarms. Reviewed in chat: keep arm/execute; disarm only on
+  explicit cancel, not on any input; Space during a running Setlist counts as GO.
 
