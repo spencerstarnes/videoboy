@@ -106,7 +106,10 @@ public struct NextClipPicker: Sendable {
         isLoadable: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
         random: () -> Double = { Double.random(in: 0..<1) }
     ) -> Pick? {
-        while let next = queue.takeNext() {
+        // At most one pass: a repeating queue sends a missing file to the bottom
+        // rather than dropping it, so "until empty" would never end.
+        for _ in 0..<queue.count {
+            guard let next = queue.takeNext() else { break }
             if isLoadable(next.url) { return Pick(url: next.url, fromQueue: true, fallback: nil) }
         }
         // Never the clip on air opposite, and never the clip that is leaving — cueing

@@ -34,8 +34,12 @@ final class PlaylistTests: XCTestCase {
             "Play Next goes in front of the queue, Add goes on the end")
     }
 
-    func testTakingAnItemConsumesIt() {
-        var playlist = Playlist()
+    func testRepeatIsOnByDefault() {
+        XCTAssertTrue(Playlist().repeats, "a queue cycles unless the performer turns REPEAT off")
+    }
+
+    func testWithRepeatOffTakingAnItemConsumesIt() {
+        var playlist = Playlist(repeats: false)
         playlist.append(url: url("one.mov"))
         playlist.append(url: url("two.mov"))
 
@@ -43,6 +47,48 @@ final class PlaylistTests: XCTestCase {
         XCTAssertEqual(playlist.count, 1, "playing an item takes it off the queue — Up Next's rule")
         XCTAssertEqual(playlist.takeNext()?.displayName, "two.mov")
         XCTAssertNil(playlist.takeNext(), "an exhausted queue reports empty rather than repeating")
+    }
+
+    func testWithRepeatOnTakingAnItemMovesItToTheBottom() {
+        var playlist = Playlist()
+        for name in ["one", "two", "three"] { playlist.append(url: url("\(name).mov")) }
+        let firstID = playlist.items[0].id
+
+        XCTAssertEqual(playlist.takeNext()?.displayName, "one.mov")
+        XCTAssertEqual(playlist.items.map(\.displayName), ["two.mov", "three.mov", "one.mov"],
+                       "the played clip goes to the bottom, the rest move up")
+        XCTAssertEqual(playlist.items.last?.id, firstID, "same item, moved — not a copy")
+
+        let order = (0..<4).compactMap { _ in playlist.takeNext()?.displayName }
+        XCTAssertEqual(order, ["two.mov", "three.mov", "one.mov", "two.mov"], "it cycles forever")
+        XCTAssertEqual(playlist.count, 3)
+    }
+
+    func testTurningRepeatOffMidSetKeepsTheQueueAndStopsTheCycle() {
+        var playlist = Playlist()
+        playlist.append(url: url("one.mov"))
+        playlist.append(url: url("two.mov"))
+        _ = playlist.takeNext()
+        playlist.repeats = false
+        XCTAssertEqual(playlist.items.map(\.displayName), ["two.mov", "one.mov"])
+        _ = playlist.takeNext()
+        _ = playlist.takeNext()
+        XCTAssertTrue(playlist.isEmpty)
+    }
+
+    func testAQueueWrittenBeforeRepeatExistedDecodesAsRepeating() throws {
+        // Today's encoding with the `repeats` key taken out = what an older build wrote.
+        var written = Playlist(repeats: false)
+        written.append(url: url("a.mov"))
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(written)) as? [String: Any])
+        object["repeats"] = nil
+        let old = try JSONSerialization.data(withJSONObject: object)
+        let playlist = try JSONDecoder().decode(Playlist.self, from: old)
+        XCTAssertTrue(playlist.repeats)
+        XCTAssertEqual(playlist.count, 1)
+        let round = try JSONDecoder().decode(Playlist.self, from: JSONEncoder().encode(Playlist(repeats: false)))
+        XCTAssertFalse(round.repeats, "REPEAT off survives a round trip")
     }
 
     func testPeekDoesNotConsume() {

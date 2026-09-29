@@ -11,13 +11,14 @@
 //  Connects: ClipSourceNode (which says when a one-shot clip has finished),
 //            ShellController (which owns the four of these and does the loading),
 //            the library panels (which fill them).
-//  Extend  : shuffle or repeat-all would go here as a mode on the queue, NOT as a
-//            second queue type — `takeNext` stays the one way anything leaves.
+//  Extend  : shuffle would go here as a mode on the queue, NOT as a second queue
+//            type — `takeNext` stays the one way anything leaves the front.
 //
-//  Up Next semantics, deliberately: taking an item PLAYS it and therefore REMOVES it.
-//  A queue that kept what it had already played would need a separate cursor, and
-//  then "what is next" and "where am I" could disagree — which is the bug that makes
-//  queue UIs confusing. Here the front of the list is always literally next.
+//  Up Next semantics, deliberately: taking an item PLAYS it and moves it off the
+//  FRONT. With REPEAT on (the default, owner request 2026-09-29 — a DJ set ran out of
+//  queued content fast) it goes to the BOTTOM, so the queue cycles; with REPEAT off
+//  it is removed. Either way there is no separate cursor: the front of the list is
+//  always literally next, so "what is next" and "where am I" can never disagree.
 //
 
 import Foundation
@@ -43,8 +44,22 @@ public struct Playlist: Equatable, Codable, Sendable {
 
     public private(set) var items: [PlaylistItem]
 
-    public init(items: [PlaylistItem] = []) {
+    /// REPEAT: a taken item goes to the bottom of the queue instead of leaving it.
+    /// On by default, so a queue never runs dry mid-set.
+    public var repeats: Bool
+
+    public init(items: [PlaylistItem] = [], repeats: Bool = true) {
         self.items = items
+        self.repeats = repeats
+    }
+
+    private enum CodingKeys: String, CodingKey { case items, repeats }
+
+    /// Reads queues written before REPEAT existed as repeating (the default).
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decode([PlaylistItem].self, forKey: .items)
+        repeats = try container.decodeIfPresent(Bool.self, forKey: .repeats) ?? true
     }
 
     public var isEmpty: Bool { items.isEmpty }
@@ -66,10 +81,15 @@ public struct Playlist: Equatable, Codable, Sendable {
         items.insert(PlaylistItem(url: url), at: 0)
     }
 
-    /// Takes the next item off the front. Returns nil when the queue is empty, which
-    /// is how a one-shot clip knows to just stop the way it always did.
+    /// Takes the next item off the front. With REPEAT on it goes back in at the
+    /// bottom (same id, so a view can show it as a move); with REPEAT off it is gone.
+    /// Returns nil only when the queue is empty, which is how a one-shot clip knows
+    /// to just stop the way it always did.
     public mutating func takeNext() -> PlaylistItem? {
-        items.isEmpty ? nil : items.removeFirst()
+        guard !items.isEmpty else { return nil }
+        let item = items.removeFirst()
+        if repeats { items.append(item) }
+        return item
     }
 
     public mutating func remove(id: PlaylistItem.ID) {

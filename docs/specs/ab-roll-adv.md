@@ -13,6 +13,11 @@ Two independent keys on the **A/B and C/D** faders (program fader later):
   Off · In order (a cursor down the panel's current sort and search, wrapping) ·
   Shuffle bin (the outgoing clip's bin) · Shuffle all. Never the clip on air opposite;
   missing files skipped; shuffles deal every clip before repeating.
+- **Up Next REPEAT** (added 2026-09-29, owner request): each queue view has a REPEAT
+  key, **on by default**. On, a clip taken from the queue (by ADV or a one-shot end)
+  goes to the BOTTOM, so the queue cycles and the library fallback is reached only
+  when the queue is empty. Off, a taken clip leaves the queue (the original rule).
+  Per channel; not yet saved in the show (neither are the queues).
 
 | ROLL | ADV | Result |
 |---|---|---|

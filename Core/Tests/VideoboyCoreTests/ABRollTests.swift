@@ -18,13 +18,41 @@ final class ABRollTests: XCTestCase {
 
     func testTheQueueAlwaysWins() {
         var picker = NextClipPicker()
-        var queue = Playlist()
+        var queue = Playlist(repeats: false)
         queue.append(url: url("q1.mov"))
         let library = [LibraryCandidate(url: url("l1.mov"), bin: nil)]
         let pick = picker.pick(queue: &queue, library: library, fallback: .inOrder,
                                onAir: nil, outgoing: nil, isLoadable: always)
         XCTAssertEqual(pick, .init(url: url("q1.mov"), fromQueue: true, fallback: nil))
         XCTAssertTrue(queue.isEmpty, "taken off the queue")
+    }
+
+    func testARepeatingQueueCyclesAndNeverFallsBack() {
+        var picker = NextClipPicker()
+        var queue = Playlist()
+        queue.append(url: url("q1.mov"))
+        queue.append(url: url("q2.mov"))
+        let library = [LibraryCandidate(url: url("l1.mov"), bin: nil)]
+        let picks = (0..<5).map { _ in
+            picker.pick(queue: &queue, library: library, fallback: .inOrder,
+                        onAir: nil, outgoing: nil, isLoadable: always)
+        }
+        XCTAssertEqual(picks.map { $0?.url.lastPathComponent }, ["q1.mov", "q2.mov", "q1.mov", "q2.mov", "q1.mov"])
+        XCTAssertTrue(picks.allSatisfy { $0?.fromQueue == true })
+        XCTAssertEqual(queue.count, 2)
+    }
+
+    func testARepeatingQueueOfMissingFilesFallsBackInsteadOfSpinning() {
+        var picker = NextClipPicker()
+        var queue = Playlist()
+        queue.append(url: url("gone1.mov"))
+        queue.append(url: url("gone2.mov"))
+        let library = [LibraryCandidate(url: url("1.mov"), bin: nil)]
+        let pick = picker.pick(queue: &queue, library: library, fallback: .inOrder, onAir: nil, outgoing: nil,
+                               isLoadable: { !$0.lastPathComponent.hasPrefix("gone") })
+        XCTAssertEqual(pick?.url.lastPathComponent, "1.mov")
+        XCTAssertEqual(queue.items.map(\.displayName), ["gone1.mov", "gone2.mov"],
+                       "missing files stay queued, in order, in case the drive comes back")
     }
 
     func testInOrderWalksDownSkipsOnAirAndWraps() {

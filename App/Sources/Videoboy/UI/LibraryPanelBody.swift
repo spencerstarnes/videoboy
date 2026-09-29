@@ -218,6 +218,9 @@ final class LibraryPanelBody: NSView {
     /// Called when a queued item is removed from a channel's playlist.
     var onQueuedItemRemoved: ((String, PlaylistItem.ID) -> Void)?
 
+    /// Called when a channel's queue REPEAT key is toggled: (channel, repeats).
+    var onQueueRepeatChanged: ((String, Bool) -> Void)?
+
     /// Where Copy writes and Paste reads. The self-QA points this at a private board
     /// so a check never overwrites what the person at the machine had copied.
     static var pasteboardForChecks: NSPasteboard?
@@ -304,6 +307,9 @@ final class LibraryPanelBody: NSView {
             queue.isHidden = true
             queue.onRemove = { [weak self] id in
                 self?.onQueuedItemRemoved?(channel, id)
+            }
+            queue.onRepeatChanged = { [weak self] repeats in
+                self?.onQueueRepeatChanged?(channel, repeats)
             }
             queueDocument.addSubview(queue)
             playlistViews[channel] = queue
@@ -695,6 +701,7 @@ final class LibraryPanelBody: NSView {
 
     /// Hands a channel's queue its current contents.
     func setPlaylist(_ playlist: Playlist, forChannel channel: String) {
+        playlistViews[channel]?.setRepeats(playlist.repeats)
         playlistViews[channel]?.setItems(playlist.items)
         // The tab says how many are waiting, so the count is legible without
         // switching to it mid-set.
@@ -706,6 +713,9 @@ final class LibraryPanelBody: NSView {
 
     /// The channel whose queue is showing, if one is — where a drop on the queue goes.
     var shownPlaylistChannel: String? { shownPlaylist }
+
+    /// A channel's queue view — for self-QA.
+    func playlistViewForChecks(_ channel: String) -> PlaylistView? { playlistViews[channel] }
 
     @objc private func newBinPressed() {
         makeBin(filing: [])

@@ -191,6 +191,15 @@ final class ShellController {
         }
     }
 
+    /// Queue REPEAT for one channel: on, a clip taken from the queue goes to its
+    /// bottom; off, it leaves. A queue edit like any other, so ADV re-plans.
+    func setQueueRepeats(_ repeats: Bool, channel: String) {
+        guard playlists[channel].repeats != repeats else { return }
+        playlists[channel].repeats = repeats
+        Log.info(.app, "Up Next \(channel) repeat \(repeats ? "on" : "off")")
+        refreshPlaylists()
+    }
+
     private func refreshPlaylistViews() {
         let panels = shell.grid.panels
         for channel in ["A", "B"] {
@@ -441,6 +450,9 @@ final class ShellController {
                 guard let self else { return }
                 self.playlists[channel].remove(id: id)
                 self.refreshPlaylists()
+            }
+            library.onQueueRepeatChanged = { [weak self] channel, repeats in
+                self?.setQueueRepeats(repeats, channel: channel)
             }
             library.onItemOpened = { [weak self] item, channel, range in
                 guard let self else { return }
@@ -1869,6 +1881,15 @@ final class ShellController {
         playlists[channel].append(url: url)
         refreshPlaylists()
     }
+
+    /// Empties a channel's Up Next — for self-QA.
+    func clearQueueForChecks(_ channel: String) {
+        playlists[channel].clear()
+        refreshPlaylists()
+    }
+
+    /// A channel's Up Next as it stands — for self-QA.
+    func queueStateForChecks(_ channel: String) -> Playlist { playlists[channel] }
 
     /// Loads a clip exactly as a drop would — for self-QA.
     func loadForChecks(_ url: URL, channel: String) { loadClip(url, into: channel) }

@@ -124,6 +124,10 @@ enum ABRollSelfQA {
         func reset(roll: Bool, advance: Bool) {
             shell.setRoll(false, on: slot)
             shell.setAdvance(false, on: slot)
+            // Queues REPEAT by default, so a step's queued clip would otherwise still
+            // be there for the next one.
+            shell.clearQueueForChecks("A")
+            shell.clearQueueForChecks("B")
             shell.loadForChecks(clips[0], channel: "A")
             shell.loadForChecks(clips[1], channel: "B")
             // Loads open off the main thread (F9); wait for both to be in.
@@ -169,6 +173,30 @@ enum ABRollSelfQA {
             name: "ADV on: the outgoing source loads its Up Next clip, and with AUTO on it plays off air",
             passed: name("A") == "motion.mov" && playing("A"),
             detail: "A \(name("A")) playing \(playing("A"))"))
+
+        // 4b. Queue REPEAT (default on): the taken clip goes to the bottom, not away.
+        // Off (pressed on the queue view's own key): it leaves the queue.
+        let queueA = shell.queueStateForChecks("A")
+        check.record(AssertionResult(
+            name: "Up Next REPEAT is on by default: the clip ADV took is still queued, at the bottom",
+            passed: queueA.repeats && queueA.items.map(\.displayName) == ["motion.mov"],
+            detail: "repeats \(queueA.repeats); queue \(queueA.items.map(\.displayName))"))
+        let repeatView = shell.shell.grid.panels.libraryOneBody.playlistViewForChecks("A")
+        reset(roll: false, advance: true)
+        repeatView?.toggleRepeatForChecks()
+        shell.queueForChecks(clips[2], channel: "A")
+        cut()
+        let queueOff = shell.queueStateForChecks("A")
+        check.record(AssertionResult(
+            name: "Up Next REPEAT off (from the queue's key): the clip ADV took leaves the queue",
+            passed: repeatView != nil && !queueOff.repeats && queueOff.isEmpty && name("A") == "motion.mov",
+            detail: "view \(repeatView != nil); repeats \(queueOff.repeats); queue \(queueOff.items.map(\.displayName)); "
+                + "A \(name("A"))"))
+        repeatView?.toggleRepeatForChecks()
+        check.record(AssertionResult(
+            name: "Up Next REPEAT key and the queue agree after switching it back on",
+            passed: shell.queueStateForChecks("A").repeats && repeatView?.repeatsForChecks == true,
+            detail: "queue \(shell.queueStateForChecks("A").repeats); key \(repeatView?.repeatsForChecks ?? false)"))
 
         // 5. Both: queue empty → library fallback, paused at its head; announced once.
         reset(roll: true, advance: true)

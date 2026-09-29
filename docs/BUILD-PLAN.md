@@ -228,6 +228,11 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       fallback in Settings ▸ Defaults). A/B and C/D faders; MIDI-learnable (6CA/6DA).
       `selfqa ab-roll`. Still to do: ROLL/ADV on the program fader; a "Then from" key
       on the library row; blink the linked play key when ROLL starts a source.
+- [ ] **Up Next REPEAT** (owner request 2026-09-29): per-channel REPEAT key at the top
+      of each queue view, on by default — a taken clip moves to the bottom instead of
+      leaving. Core `Playlist.repeats` + tests; `selfqa ab-roll` steps 4b. Code
+      committed without a Mac build; tick once `scripts/verify.sh` and
+      `selfqa ab-roll` pass on the Mac Studio.
 
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)
