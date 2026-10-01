@@ -144,6 +144,19 @@ extension PreferencesWindowController {
             on: store.preferences.announcesAdvanceFallback,
             target: self, action: #selector(announceFallbackChanged(_:)))
 
+        // How far ⌘Z reaches back — File ▸ Undo History links here. A stored value
+        // that is not one of the presets (an edited file) is shown as itself.
+        var undoChoices = Self.undoLimitChoices
+        if !undoChoices.contains(store.preferences.undoLimit) {
+            undoChoices = (undoChoices + [store.preferences.undoLimit]).sorted()
+        }
+        let undoLimit = Controls.popUp(
+            undoChoices.map { "\($0) steps" }, target: self, action: #selector(undoLimitChanged(_:)))
+        for (index, value) in undoChoices.enumerated() { undoLimit.item(at: index)?.tag = value }
+        undoLimit.selectItem(withTag: store.preferences.undoLimit)
+        undoLimit.toolTip = "How many edits File ▸ Undo History keeps. Lowering it forgets "
+            + "the oldest straight away."
+
         return Controls.column([
             header(.defaults),
             spacer(14),
@@ -158,6 +171,7 @@ extension PreferencesWindowController {
             field("Queue empty, A/B", fallbackPopUp("one")),
             field("Queue empty, C/D", fallbackPopUp("two")),
             field("Say when ADV improvises", announce),
+            field("Undo history", undoLimit),
             spacer(12),
             field("Reminders", Controls.row([restore, reminderCountLabel!], spacing: 10))
         ], spacing: 8)
@@ -168,6 +182,16 @@ extension PreferencesWindowController {
               ABRollFallback.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
         store.preferences.advanceFallback[bus] = ABRollFallback.allCases[sender.indexOfSelectedItem]
         Log.info(.app, "ADV fallback for \(bus): \(ABRollFallback.allCases[sender.indexOfSelectedItem].displayName)")
+    }
+
+    /// The Undo history pop-up's presets.
+    static let undoLimitChoices = [10, 25, 50, 100, 250, 500, 1000]
+
+    @objc func undoLimitChanged(_ sender: NSPopUpButton) {
+        guard let value = sender.selectedItem?.tag, value > 0 else { return }
+        store.preferences.undoLimit = min(max(value, UndoHistory.limitRange.lowerBound),
+                                          UndoHistory.limitRange.upperBound)
+        Log.info(.app, "undo history keeps \(store.preferences.undoLimit) steps")
     }
 
     @objc func announceFallbackChanged(_ sender: NSSwitch) {

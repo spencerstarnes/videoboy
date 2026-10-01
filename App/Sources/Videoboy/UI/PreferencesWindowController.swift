@@ -83,7 +83,7 @@ final class PreferencesWindowController: NSWindowController {
             case .media: "Where the library, imported clips and optimized media live."
             case .optimize: "What Copy + Optimize turns clips into."
             case .save: "Where your work goes, and how often it gets there by itself."
-            case .defaults: "What a new source, bus and session start out as."
+            case .defaults: "What a new source, bus and session start out as, and how far ⌘Z reaches back."
             case .outputs: "Where PROGRAM and the buses can be sent."
             case .dataBurn: "How FILE and TC text looks on the monitors, and when DATA BURN "
                 + "puts it into a sub-mix."

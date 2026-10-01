@@ -1,0 +1,17 @@
+check:    perf/undo
+verdict:  PASS
+when:     2026-10-01T12:44:07Z
+core:     0.4.10
+
+assertions (11/11 passed):
+  PASS  Eject while a clip is still opening leaves the channel empty — the clip never lands — load was in flight true, A holds nothing 2 s later
+  PASS  choosing a generator while a clip is opening keeps the generator; the clip is dropped — B shows Optional(Videoboy.ChannelSourceKind.generator), file node holds nothing
+  PASS  Esc cancels an armed MIDI learn: the next knob moved maps nothing — armed true, Esc taken true, still armed false, mapped false
+  PASS  Shift-click a mapped control and press ⌫: its mapping is removed and the knob no longer moves it — learned true, ⌫ taken true, still mapped false, value 0.4 → 0.4 after the knob moved
+  PASS  an effect's LFO badge stays lit when the panel rebuilds its cards — Freeze: badge found true, lit true
+  PASS  a card fader dragged through twenty values is one undo step; a blend change is a second — steps ["Freeze wet/dry", "Blend Mode"], wet/dry 0.0 → 0.8
+  PASS  ⌘Z (the real Edit menu item) undoes the blend, then the whole drag; the item names the step — menu said "Undo Blend Mode", blend restored true, wet/dry back to 0.0 (was 0.0)
+  PASS  ⇧⌘Z redoes both, and applying steps adds no steps of its own — wet/dry 0.8, blend 0.15384615384615385, steps 2 at 2
+  PASS  ⌘Z in a text field being edited leaves the show's history alone — history at 2 of 2, first responder NSTextView
+  PASS  File ▸ Undo History lists Opened and each step, ticks the current one, ends with the Undo Settings link, and choosing Opened reverts everything — items ["Opened", "Freeze wet/dry", "Blend Mode", "Clear Undo History", "Undo Settings… (keeps 100 steps)"], ticked 2, wet/dry 0.0, blend 0.0
+  PASS  Settings ▸ Defaults' undo limit applies to the open show at once and trims the oldest — limit 10, steps 10

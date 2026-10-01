@@ -371,6 +371,15 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       encoder froze it until reset). A MIDI note is a full press at any velocity (soft
       MPK hits fired nothing). `selfqa undo` 5/5 (fails 3/5 with the fixes reverted);
       Core tests for the watchdog, LFO/audio restore, note velocity.
+- [x] **Undo / redo + File ▸ Undo History** (owner, 2026-10-01). ⌘Z / ⇧⌘Z take back
+      hand edits: card parameters (a drag is one step), reset-to-default, effect
+      on/bypass, blend mode, transition, AVE-5 keys and positioner. Not recorded, on
+      purpose: crossfaders, CUT/FADE/takes/pads (would jump Program on air), MIDI, LFOs,
+      sweeps, automation. A text field being typed in keeps its own ⌘Z. File ▸ Undo
+      History lists every step (choose one to jump there) and ends with "Undo Settings…",
+      which opens Settings ▸ Defaults ▸ Undo history (10–1000 steps, default 100).
+      Opening a template clears the history. Core `UndoHistoryTests` 13/13; `selfqa
+      undo` 11/11. **Not yet undoable:** adding, removing or reordering a card.
 - [x] **Hot Punch — the (!) key** (owner, 2026-09-28; spec `docs/specs/clip-pads.md`).
       Armed (red), a pad press loads, plays and cuts its sub-mix AND Program to it; beat
       fires never punch; MIDI 6BJ toggles; Settings ▸ Defaults ▸ "Hot Punch armed at

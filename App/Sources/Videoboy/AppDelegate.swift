@@ -300,6 +300,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(entry)
         }
         menu.addItem(.separator())
+        // Every step ⌘Z can reach, to jump back (or forward) to any of them; built
+        // each time it opens (`menuNeedsUpdate`).
+        let history = NSMenuItem(title: "Undo History", action: nil, keyEquivalent: "")
+        undoHistoryMenu.delegate = self
+        history.submenu = undoHistoryMenu
+        menu.addItem(history)
+        menu.addItem(.separator())
         // ⇧⌘I, Lightroom's import key.
         let importItem = NSMenuItem(title: "Import Clips…", action: #selector(importClips), keyEquivalent: "i")
         importItem.keyEquivalentModifierMask = [.command, .shift]
@@ -320,6 +327,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let recentMenu = NSMenu(title: "Open Recent")
     fileprivate var recentMenuForDelegate: NSMenu { recentMenu }
+    let undoHistoryMenu = NSMenu(title: "Undo History")
+    /// See `undoShell`.
+    weak var undoShellForChecks: ShellController?
     private var autosaveTimer: Timer?
 
     private var shellController: ShellController? { mainWindowController?.shellController }
@@ -502,7 +512,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let item = NSMenuItem()
             if title == "Edit" {
-                item.submenu = Self.makeEditMenu()
+                item.submenu = Self.makeEditMenu(undoTarget: self)
                 mainMenu.addItem(item)
                 continue
             }
@@ -542,16 +552,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// implements copy, paste, delete and select-all for its clips. Without this menu
     /// those keys went nowhere at all — not even in the search field. Static so the
     /// self-QA can install the same menu and press the same keys.
-    static func makeEditMenu() -> NSMenu {
+    ///
+    /// Undo and Redo are the exception when `undoTarget` is given: they go to the app
+    /// delegate, which hands them to a text field being typed in and otherwise to the
+    /// show's own history (`ShellController.undoHistory`). Through the responder chain
+    /// they would stop at the window's empty UndoManager and never reach the show.
+    static func makeEditMenu(undoTarget: AppDelegate? = nil) -> NSMenu {
         let menu = NSMenu(title: "Edit")
+        @discardableResult
         func add(_ title: String, _ action: Selector, _ key: String,
-                 _ modifiers: NSEvent.ModifierFlags = .command) {
+                 _ modifiers: NSEvent.ModifierFlags = .command) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
             item.keyEquivalentModifierMask = modifiers
             menu.addItem(item)
+            return item
         }
-        add("Undo", Selector(("undo:")), "z")
-        add("Redo", Selector(("redo:")), "z", [.command, .shift])
+        if let undoTarget {
+            add("Undo", #selector(AppDelegate.undoEdit(_:)), "z").target = undoTarget
+            // "Z", not "z" + Shift: a real ⇧⌘Z arrives as "Z", and AppKit matches an
+            // upper-case key equivalent to it.
+            add("Redo", #selector(AppDelegate.redoEdit(_:)), "Z", [.command, .shift]).target = undoTarget
+        } else {
+            add("Undo", Selector(("undo:")), "z")
+            add("Redo", Selector(("redo:")), "z", [.command, .shift])
+        }
         menu.addItem(.separator())
         add("Cut", #selector(NSText.cut(_:)), "x")
         add("Copy", #selector(NSText.copy(_:)), "c")
@@ -568,6 +592,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === undoHistoryMenu {
+            fillUndoHistoryMenu(menu)
+            return
+        }
         guard menu === recentMenuForDelegate else { return }
         menu.removeAllItems()
         let paths = preferences.preferences.recentTemplates.filter { FileManager.default.fileExists(atPath: $0) }
@@ -587,3 +615,131 @@ extension AppDelegate: NSMenuDelegate {
     }
 }
 
+
+// MARK: - Undo (Edit ▸ Undo/Redo, File ▸ Undo History)
+
+extension AppDelegate: NSMenuItemValidation {
+
+    /// The text view being typed in, if any. ⌘Z there is the text's own undo — a
+    /// person correcting a typo in a tempo or a search field is not asking for the
+    /// last fader move back.
+    /// The show the Undo items act on. Self-QA sets `undoShellForChecks`, because it
+    /// builds its own window rather than launching through this delegate.
+    private var undoShell: ShellController? {
+        undoShellForChecks ?? mainWindowController?.shellController
+    }
+
+    private var editingTextView: NSTextView? {
+        // The key window is the one being typed in. Self-QA runs as a bare binary
+        // that can never be frontmost, so there it is the show's own window.
+        let window = NSApp.keyWindow ?? undoShellForChecks?.shell.window
+        guard let textView = window?.firstResponder as? NSTextView,
+              textView.isEditable else { return nil }
+        return textView
+    }
+
+    @objc func undoEdit(_ sender: Any?) {
+        if let textView = editingTextView {
+            textView.undoManager?.undo()
+            return
+        }
+        undoShell?.undoEdit()
+    }
+
+    @objc func redoEdit(_ sender: Any?) {
+        if let textView = editingTextView {
+            textView.undoManager?.redo()
+            return
+        }
+        undoShell?.redoEdit()
+    }
+
+    @objc func undoHistoryEntryChosen(_ sender: NSMenuItem) {
+        undoShell?.revertHistory(to: sender.tag)
+    }
+
+    @objc func clearUndoHistory(_ sender: Any?) {
+        undoShell?.undoHistory.clear()
+    }
+
+    /// The link at the bottom of File ▸ Undo History: Settings ▸ Defaults, where the
+    /// number of steps kept is set.
+    @objc func showUndoSettings(_ sender: Any?) {
+        if let modes = mainWindowController?.modeController {
+            modes.showSettings(.defaults)
+            return
+        }
+        showPreferences()
+        preferencesController?.select(.defaults)
+    }
+
+    /// Names the next undo and redo ("Undo Wet/Dry") and greys them when there is
+    /// nothing to take back. Every other item targeting the delegate stays enabled.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let isUndo = menuItem.action == #selector(undoEdit(_:))
+        let isRedo = menuItem.action == #selector(redoEdit(_:))
+        guard isUndo || isRedo else { return true }
+
+        if let textView = editingTextView, let manager = textView.undoManager {
+            menuItem.title = isUndo ? manager.undoMenuItemTitle : manager.redoMenuItemTitle
+            return isUndo ? manager.canUndo : manager.canRedo
+        }
+        guard let history = undoShell?.undoHistory else {
+            menuItem.title = isUndo ? "Undo" : "Redo"
+            return false
+        }
+        let step = isUndo ? history.nextUndo : history.nextRedo
+        menuItem.title = (isUndo ? "Undo" : "Redo") + (step.map { " \($0.name)" } ?? "")
+        return step != nil
+    }
+
+    /// Oldest at the top, "Opened" first, the current state ticked; steps that have
+    /// been undone (still redoable) are greyed but can be chosen. At the very bottom,
+    /// the link to the setting for how many steps are kept.
+    func fillUndoHistoryMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let history = undoShell?.undoHistory
+
+        if let history, !history.steps.isEmpty {
+            let time = DateFormatter()
+            time.dateFormat = "HH:mm:ss"
+            func entry(_ title: String, position: Int, date: Date?) {
+                let item = NSMenuItem(title: title, action: #selector(undoHistoryEntryChosen(_:)),
+                                      keyEquivalent: "")
+                item.target = self
+                item.tag = position
+                item.state = position == history.position ? .on : .off
+                if position > history.position {
+                    // Undone: still there to redo to, but visibly not part of the show.
+                    item.attributedTitle = NSAttributedString(string: title, attributes: [
+                        .foregroundColor: NSColor.tertiaryLabelColor,
+                        .font: NSFont.menuFont(ofSize: 0)
+                    ])
+                }
+                if let date { item.toolTip = time.string(from: date) }
+                menu.addItem(item)
+            }
+            entry("Opened", position: 0, date: nil)
+            for (index, step) in history.steps.enumerated() {
+                entry(step.name, position: index + 1, date: step.date)
+            }
+            menu.addItem(.separator())
+            let clear = NSMenuItem(title: "Clear Undo History", action: #selector(clearUndoHistory(_:)),
+                                   keyEquivalent: "")
+            clear.target = self
+            menu.addItem(clear)
+        } else {
+            let empty = NSMenuItem(title: "No Edits Yet", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        }
+
+        // Always last: how many steps are kept, and where to change it.
+        menu.addItem(.separator())
+        let limit = history?.limit ?? preferences.preferences.undoLimit
+        let settings = NSMenuItem(title: "Undo Settings… (keeps \(limit) steps)",
+                                  action: #selector(showUndoSettings(_:)), keyEquivalent: "")
+        settings.target = self
+        menu.addItem(settings)
+    }
+}

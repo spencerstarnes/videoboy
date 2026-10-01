@@ -74,6 +74,7 @@ final class ShellController {
         // HOT PUNCH starts as Settings ▸ Defaults says (off unless chosen).
         clipPads?.setHotPunchArmed(preferences.preferences.hotPunchArmedAtLaunch)
         wireDetect()
+        wireUndo()
         refreshDrivenParameters()
         engine.onTempoChanged = { [weak self] tempo in
             self?.shell.flashTempoChange()
@@ -472,6 +473,7 @@ final class ShellController {
         preferences.onChange = { [weak self] preferences in
             self?.refreshConfiguredSources()
             self?.applyDataBurnStyle(preferences.dataBurnStyle)
+            self?.undoHistory.limit = preferences.undoLimit
         }
     }
 
@@ -1108,7 +1110,7 @@ final class ShellController {
         guard let declared = engine.graph.nodes[slot]?.parameters
             .first(where: { $0.code == parameter }) else { return }
 
-        engine.registry.setValue(declared.defaultValue, slot: slot, code: parameter)
+        edit("Reset \(card) \(parameter.displayName)", slot: slot, [(parameter, declared.defaultValue)])
 
         // Move the fader and its readout to match. The write above is the truth; this
         // is the panel catching up, and without it the control sits where it was
@@ -1507,6 +1509,9 @@ final class ShellController {
     /// Replaces the show with a template: chains, values, mappings, clock, channels,
     /// and every control repainted to match.
     func openTemplate(_ document: TemplateDocument, from url: URL?) {
+        // The steps name values in the show being replaced; taking one back after the
+        // load would write a stranger's value into the new show.
+        undoHistory.clear()
         engine.loadChains([.one: document.chain(for: .one), .two: document.chain(for: .two)])
         // The template's mappings REPLACE the current ones — opening a set is not a merge.
         for binding in engine.registry.bindings { engine.registry.unbind(source: binding.source) }
@@ -1555,6 +1560,8 @@ final class ShellController {
         for bus in [Bus.one, .two] {
             setFXFocus(engine.chains[chainBus(bus)]?.entries.first?.target ?? 0, bus: bus)
         }
+        // Again at the end, in case repainting the controls reported anything back.
+        undoHistory.clear()
         currentTemplateURL = url
         onTemplateURLChanged?(url)
         Log.info(.template, "opened \(document.name)" + (unknown > 0 ? " (\(unknown) mappings this build does not know)" : ""))
@@ -1631,6 +1638,79 @@ final class ShellController {
         fresh.channels = Dictionary(uniqueKeysWithValues: ["A", "B", "C", "D"].map { ($0, TemplateChannel()) })
         openTemplate(fresh, from: nil)
         Log.info(.template, "new template")
+    }
+
+    // MARK: - Undo (⌘Z, ⇧⌘Z, File ▸ Undo History)
+    //
+    // What is recorded: an edit made by hand to a card's parameter, an effect's
+    // on/bypass, a bus's blend mode or transition, and the AVE-5 block — everything
+    // that goes through `edit(...)`. What is NOT: crossfader moves, CUT, FADE, takes
+    // and pads (taking one of those back would jump Program on air), and anything MIDI,
+    // an LFO, a sweep or automation writes. Adding, removing or reordering a card is
+    // not recorded yet — `UndoHistory` holds values only.
+
+    /// Every hand edit since the show was opened, up to Settings ▸ Defaults' limit.
+    let undoHistory = UndoHistory()
+
+    private func wireUndo() {
+        undoHistory.limit = preferences.preferences.undoLimit
+        // Straight to the registry, never through `edit`: applying a step must not
+        // record a step.
+        undoHistory.apply = { [weak self] slot, code, value in
+            self?.engine.registry.setValue(value, slot: slot, code: code)
+        }
+    }
+
+    /// Makes a hand edit and records it: reads each value as it was, writes the new
+    /// one, and hands both to the history. The single way a recordable edit is made.
+    private func edit(_ name: String, slot: String, _ writes: [(ParamCode, Double)]) {
+        var changes: [ParameterChange] = []
+        for (code, value) in writes {
+            let before = engine.registry.value(slot: slot, code: code)
+            guard engine.registry.setValue(value, slot: slot, code: code),
+                  let before, let after = engine.registry.value(slot: slot, code: code) else { continue }
+            // `after` is what the registry kept (clamped), so undo-then-redo lands on it.
+            changes.append(ParameterChange(slot: slot, code: code, before: before, after: after))
+        }
+        undoHistory.record(name, changes: changes)
+    }
+
+    /// ⌘Z. Returns the name of what was taken back.
+    @discardableResult
+    func undoEdit() -> String? {
+        guard let name = undoHistory.undo() else { return nil }
+        afterHistoryMove()
+        Log.info(.param, "undo \(name)")
+        return name
+    }
+
+    /// ⇧⌘Z. Returns the name of what was put back.
+    @discardableResult
+    func redoEdit() -> String? {
+        guard let name = undoHistory.redo() else { return nil }
+        afterHistoryMove()
+        Log.info(.param, "redo \(name)")
+        return name
+    }
+
+    /// File ▸ Undo History: back (or forward) to the show as it was after `position`
+    /// steps.
+    func revertHistory(to position: Int) {
+        undoHistory.revert(to: position)
+        afterHistoryMove()
+        Log.info(.param, "undo history: now \(undoHistory.position) of \(undoHistory.steps.count)")
+    }
+
+    /// The registry changed under the controls; bring them back into line.
+    private func afterHistoryMove() {
+        repaintFromRegistry()
+        refreshAVE5()
+        // The transition key may have left AVE-5 behind; its block edits that wipe.
+        if let slot = ave5Panel?.slot,
+           let value = engine.registry.value(slot: slot, code: .transition),
+           Transition.from(normalised: value) != .ave5 {
+            closeAVE5Panel()
+        }
     }
 
     // MARK: - A/B ROLL and ADV (docs/specs/ab-roll-adv.md)
@@ -1917,15 +1997,13 @@ final class ShellController {
             // Blend lives on the fader panel now, and writes to the same slot the
             // composite above it reads — the control moved, the wiring did not.
             bus.body.onBlendModeChanged = { [weak self] mode in
-                self?.engine.registry.setValue(
-                    mode.normalisedPosition, slot: bus.slot, code: .blendMode)
+                self?.edit("Blend Mode", slot: bus.slot, [(.blendMode, mode.normalisedPosition)])
             }
             // The transition pattern, beside it: the same composite reads both, so
             // a wipe follows every fader move whether it came from a hand, FADE,
             // CUT, a sweep or MIDI.
             bus.body.onTransitionChanged = { [weak self] transition in
-                self?.engine.registry.setValue(
-                    transition.normalisedPosition, slot: bus.slot, code: .transition)
+                self?.edit("Transition", slot: bus.slot, [(.transition, transition.normalisedPosition)])
                 // Leaving AVE-5 closes its block: it would be editing a wipe that
                 // is no longer the one the fader follows.
                 if transition != .ave5, self?.ave5Panel?.slot == bus.slot {
@@ -2493,7 +2571,7 @@ final class ShellController {
         }
         // The fader is 0...1; the registry scales it into the parameter's range.
         guard let declared = engine.graph.nodes[slot]?.parameters.first(where: { $0.code == parameter }) else { return }
-        engine.registry.setValue(declared.denormalise(value), slot: slot, code: parameter)
+        edit("\(card) \(parameter.displayName)", slot: slot, [(parameter, declared.denormalise(value))])
     }
 
     /// The panel's cards were dragged into a new order.
@@ -2931,7 +3009,7 @@ final class ShellController {
                 guard let value = engine.registry.value(slot: bus.slot, code: key.triggerCode),
                       value > 0.5 else { continue }
                 engine.registry.setValue(0, slot: bus.slot, code: key.triggerCode)
-                pressAVE5(key, slot: bus.slot)
+                pressAVE5(key, slot: bus.slot, recordsUndo: false)
             }
         }
     }
@@ -2959,10 +3037,18 @@ final class ShellController {
 
     /// Presses one key of a bus's block — what a click on the popover and a learned
     /// MIDI key both come down to.
-    func pressAVE5(_ key: AVE5Wipe.Key, slot: String) {
+    ///
+    /// - Parameter recordsUndo: false for a learned MIDI key — ⌘Z takes back what was
+    ///   done with the mouse, not what a controller did.
+    func pressAVE5(_ key: AVE5Wipe.Key, slot: String, recordsUndo: Bool = true) {
         var state = ave5State(slot: slot)
         state.press(key)
-        writeAVE5(state, slot: slot)
+        if recordsUndo {
+            edit("AVE-5 \(key.legend)", slot: slot, state.parameterValues)
+            refreshAVE5()
+        } else {
+            writeAVE5(state, slot: slot)
+        }
         Log.info(.graph, "AVE-5 \(key.legend) on \(slot): \(state.shape.displayName)"
             + (state.multi == .off ? "" : " \(state.multi.label)")
             + (state.edge == .normal ? "" : ", \(state.edge.label.lowercased()) edge"))
@@ -2970,8 +3056,7 @@ final class ShellController {
 
     /// Moves a bus's positioner.
     func positionAVE5(x: Double, y: Double, slot: String) {
-        engine.registry.setValue(x, slot: slot, code: .ave5PositionX)
-        engine.registry.setValue(y, slot: slot, code: .ave5PositionY)
+        edit("AVE-5 Position", slot: slot, [(.ave5PositionX, x), (.ave5PositionY, y)])
         refreshAVE5()
     }
 
@@ -3412,7 +3497,7 @@ final class ShellController {
     /// Enables or bypasses a named effect on one of the buses.
     private func setEffectEnabled(_ name: String, _ isOn: Bool, bus: Bus) {
         guard let slot = slot(forEffect: name, bus: bus) else { return }
-        engine.registry.setValue(isOn ? 1 : 0, slot: slot, code: .wetDry)
+        edit("\(name) \(isOn ? "On" : "Bypass")", slot: slot, [(.wetDry, isOn ? 1 : 0)])
         Log.info(.app, "\(name) on \(bus == .one ? "ONE" : "TWO") \(isOn ? "enabled" : "bypassed")")
     }
 

@@ -132,6 +132,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var hotPunchArmedAtLaunch: Bool = false
     /// How a picture is placed when its shape and its window's disagree.
     public var previewFill: PreviewFill = .fit
+    /// How many steps File ▸ Undo History keeps (⌘Z reaches back this far). Clamped
+    /// to `UndoHistory.limitRange` wherever it is read or written.
+    public var undoLimit: Int = UndoHistory.defaultLimit
 
     /// Every live source the person has added in Settings — cameras, captured
     /// windows, IP cameras. See `ConfiguredSource`.
@@ -238,6 +241,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         playOnLoad = decode(.playOnLoad, true)
         hotPunchArmedAtLaunch = decode(.hotPunchArmedAtLaunch, false)
         previewFill = decode(.previewFill, PreviewFill.fit)
+        let storedUndoLimit = decode(.undoLimit, UndoHistory.defaultLimit)
+        undoLimit = min(max(storedUndoLimit, UndoHistory.limitRange.lowerBound),
+                        UndoHistory.limitRange.upperBound)
         emulatorDiscPath = try? container.decodeIfPresent(String.self, forKey: .emulatorDiscPath)
         // Element by element, same reasoning as `destinations` below: one source of a
         // kind a future build removes must not take its siblings down with it. A
