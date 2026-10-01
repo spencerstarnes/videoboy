@@ -232,6 +232,22 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)
 
+- **Queues, Playlists, Setlists (names + rules owner-set 2026-09-29, not started).**
+  `docs/PROPOSAL-2026-09-28-setlist.md`. Queue = a channel's live list, where Play Next
+  drops clips. Playlist = a saved Queue; loading it onto a non-empty Queue asks Append or
+  Replace, with "Do not remind me again" and a Settings ▸ Defaults preference. Setlist =
+  two Playlists + the bank's effects (with automation) + its 4 punch-bar pads, relative
+  to the bank and loaded onto the bank it's loaded from. MIDI is never included.
+  Start Up Sequence per Setlist: Punch (cut) / Cue / Crossfade. Song linking: Videoboy
+  listens to Music's `com.apple.Music.playerInfo` broadcast. Link to Current Song, from
+  the Setlist's Asset Browser context menu, shows an alert first. When a linked song
+  starts: load onto the off-air bank → the Setlist's BPM, or Detect → Start Up Sequence.
+  **LOCK** per side, in a top-bar strip between the pads and the cluster, freezes that
+  bank's sources, FX, sub-mix row and pads against clicks and MIDI. Program still takes,
+  and a locked bank skips song links. Playlists and Setlists are stored in the catalog
+  and share their own **Lists** tab in the middle Asset Browser. Phase order: names → LOCK → Playlists → Setlists
+  → song linking. The open questions are in the proposal's §10.
+
 - **Under-constrained grid layout (found 2026-09-27, `selfqa modes`).** About 10–20
   controls (some bus pop-ups, step buttons and crossfader-row faders) land differently in
   identical `ShellView`s built back to back, for example a fader 0 pt vs 216 pt wide.
