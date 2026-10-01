@@ -6,7 +6,9 @@ by the owner: **Clip Pads**.
 ## What it is
 
 Eight pads in the top bar, flanking the tempo cluster: **1–4 left of it, 5–8 right of
-it**. Drag a clip from any library onto a pad and its thumbnail embeds, with the pad's
+it**, outside each side's LOCK strip (setlist plan §7, 2026-10-01: the pads moved
+outward by the strip's 147 pt; they now hide below ~1,675 pt instead of ~1,460; LOCK
+never hides). Drag a clip from any library onto a pad and its thumbnail embeds, with the pad's
 number. Pressing a pad puts its clip into a source at once — no stall, no glitch.
 
 ```

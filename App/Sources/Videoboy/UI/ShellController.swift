@@ -29,6 +29,8 @@ final class ShellController {
     private lazy var router = OutputRouter(store: preferences, metal: MetalContext.shared)
     /// Shift-to-detect. Exposed so the self-QA render can arm it.
     private(set) var detectSession: DetectSession?
+    /// LOCK: which sides refuse clicks, keys, MIDI and loads.
+    private(set) var bankLock: BankLockController?
     /// The control a MIDI learn is armed for, until a message maps it or it is
     /// cancelled (Esc) or cleared (⌫) — what the learn keys act on.
     private(set) var pendingLearn: (slot: String, code: ParamCode)?
@@ -73,6 +75,8 @@ final class ShellController {
         clipPads = ClipPadController(shell: self, engine: engine, toolbar: shell.toolbar)
         // HOT PUNCH starts as Settings ▸ Defaults says (off unless chosen).
         clipPads?.setHotPunchArmed(preferences.preferences.hotPunchArmedAtLaunch)
+        // LOCK (setlist plan §7). Always starts unlocked; never saved.
+        bankLock = BankLockController(shell: self, engine: engine)
         wireDetect()
         wireUndo()
         refreshDrivenParameters()
@@ -429,6 +433,7 @@ final class ShellController {
             }
             library.onItemQueued = { [weak self] item, channel, playNext in
                 guard let self, let url = item.url else { return }
+                if self.bankLock?.refusesLoad(channel: channel) == true { return }
                 if playNext {
                     self.queues[channel].insertNext(url: url)
                 } else {
@@ -440,11 +445,13 @@ final class ShellController {
             }
             library.onQueuedItemRemoved = { [weak self] channel, id in
                 guard let self else { return }
+                if self.bankLock?.refusesLoad(channel: channel) == true { return }
                 self.queues[channel].remove(id: id)
                 self.refreshQueues()
             }
             library.onItemOpened = { [weak self] item, channel, range in
                 guard let self else { return }
+                if self.bankLock?.refusesLoad(channel: channel) == true { return }
                 if let sourceID = item.configuredSourceID {
                     self.assignSource(sourceID, toChannel: channel)
                     return
@@ -1016,11 +1023,14 @@ final class ShellController {
                 Log.info(.render, "source \(letter) framing is now \(fill.displayName)")
             }
             body.onClipDropped = { [weak self] url, range in
+                // A drag never passes through a click, so LOCK is asked here.
+                if self?.bankLock?.refusesLoad(channel: letter) == true { return }
                 // The range travels with the drag now, so a dragged clip honours its
                 // marks exactly as a double-clicked one does.
                 self?.loadClip(url, into: letter, range: range)
             }
             body.onReferenceDropped = { [weak self] reference in
+                if self?.bankLock?.refusesLoad(channel: letter) == true { return }
                 self?.loadLibraryReference(reference, into: letter)
             }
             body.onLoopModeChanged = { [weak self] mode in
@@ -1678,6 +1688,8 @@ final class ShellController {
     /// ⌘Z. Returns the name of what was taken back.
     @discardableResult
     func undoEdit() -> String? {
+        if let step = undoHistory.nextUndo,
+           bankLock?.refusesValues(step.changes, what: "undo \(step.name)") == true { return nil }
         guard let name = undoHistory.undo() else { return nil }
         afterHistoryMove()
         Log.info(.param, "undo \(name)")
@@ -1687,6 +1699,8 @@ final class ShellController {
     /// ⇧⌘Z. Returns the name of what was put back.
     @discardableResult
     func redoEdit() -> String? {
+        if let step = undoHistory.nextRedo,
+           bankLock?.refusesValues(step.changes, what: "redo \(step.name)") == true { return nil }
         guard let name = undoHistory.redo() else { return nil }
         afterHistoryMove()
         Log.info(.param, "redo \(name)")
@@ -1696,6 +1710,10 @@ final class ShellController {
     /// File ▸ Undo History: back (or forward) to the show as it was after `position`
     /// steps.
     func revertHistory(to position: Int) {
+        // Every step between here and there, whichever direction.
+        let low = min(position, undoHistory.position), high = max(position, undoHistory.position)
+        let crossing = undoHistory.steps[max(low, 0)..<min(high, undoHistory.steps.count)].flatMap(\.changes)
+        if bankLock?.refusesValues(crossing, what: "undo history") == true { return }
         undoHistory.revert(to: position)
         afterHistoryMove()
         Log.info(.param, "undo history: now \(undoHistory.position) of \(undoHistory.steps.count)")
@@ -3821,6 +3839,7 @@ final class ShellController {
         fireActionTriggers(from: engine)
         flipAutomatedButtons(from: engine)
         clipPads?.tick()
+        bankLock?.tick()
         refreshAVE5()
 
         // The status and transport readouts are cheap, but not free; once a second is

@@ -380,6 +380,17 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       which opens Settings ▸ Defaults ▸ Undo history (10–1000 steps, default 100).
       Opening a template clears the history. Core `UndoHistoryTests` 13/13; `selfqa
       undo` 11/11. **Not yet undoable:** adding, removing or reordering a card.
+- [x] **LOCK per side** (setlist plan phase 1, `docs/PROPOSAL-2026-09-28-setlist.md` §7;
+      owner 2026-10-01). A LOCK key each side of the cluster (padlock, red when locked,
+      MIDI 6CJ/6DJ toggle) with a greyed "No setlist" beside it for phase 3. A locked
+      side refuses clicks and keys on its sources, FX, sub-mix row, swap key and pads
+      (one event monitor), MIDI (`ParamRegistry.refusesDelivery` → `BankLock`), loads,
+      Queue changes and drops, and ⌘Z on its parameters; the refused touch blinks its
+      LOCK key; its panels show a padlock. Still works: the picture, LFOs/sweeps and
+      beat-armed pads, Program, monitors and scope keys, collapsing panels, Shift-click
+      learn. Never saved. Pads moved outward 147 pt (hide below ~1,675 pt). Core
+      `BankLockTests` 7/7; `selfqa lock` 12/12. Not covered: File ▸ Open replaces a
+      locked side too (a deliberate whole-show load).
 - [x] **Hot Punch — the (!) key** (owner, 2026-09-28; spec `docs/specs/clip-pads.md`).
       Armed (red), a pad press loads, plays and cuts its sub-mix AND Program to it; beat
       fires never punch; MIDI 6BJ toggles; Settings ▸ Defaults ▸ "Hot Punch armed at

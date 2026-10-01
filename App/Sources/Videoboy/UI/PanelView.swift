@@ -57,6 +57,8 @@ final class PanelView: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let busDot = NSView()
+    /// Shown after the title while this panel's side is LOCKed (setlist plan §7).
+    private let padlock = NSImageView()
     private let bodyContainer = NSView()
     /// The header's contents, left to right; `setHeaderAccessory` appends to it.
     private var headerRow: NSStackView?
@@ -189,7 +191,14 @@ final class PanelView: NSView {
         busDot.layer?.backgroundColor = bus.dotColor?.cgColor
         busDot.isHidden = bus.dotColor == nil
 
-        let row = NSStackView(views: [chevron, busDot, titleLabel, NSView(), subtitleLabel])
+        padlock.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Locked")?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
+        padlock.contentTintColor = Theme.Color.recordActive
+        padlock.toolTip = "This side is locked — its LOCK key is in the top bar"
+        // Hidden views leave a stack, so the title does not move while unlocked.
+        padlock.isHidden = true
+
+        let row = NSStackView(views: [chevron, busDot, titleLabel, padlock, NSView(), subtitleLabel])
         headerRow = row
         row.orientation = .horizontal
         row.spacing = Theme.Metrics.controlSpacing
@@ -249,6 +258,17 @@ final class PanelView: NSView {
         accessory.setContentCompressionResistancePriority(.required, for: .horizontal)
         headerRow?.addArrangedSubview(accessory)
     }
+
+    /// Shows or hides the padlock after the title. The controls keep their look —
+    /// greyed means "not available", and a locked control is available, just held.
+    func setLocked(_ locked: Bool) { padlock.isHidden = !locked }
+
+    /// Whether the padlock is showing — self-QA.
+    var showsPadlock: Bool { !padlock.isHidden }
+
+    /// The header strip that collapses the panel. LOCK lets it through: collapsing
+    /// changes the window, not the picture.
+    var collapseControl: NSView { headerButton }
 
     // MARK: - Collapsing
 

@@ -312,6 +312,10 @@ Asset Browser**. The A/B and C/D Library panels don't get it.
 | **3 — Setlists** | `BankMap` + tests; bank capture/apply; Save Bank as Setlist (optional tempo); Asset Browser context menu (Load to A/B / C/D, Start Up Sequence ▸, Rename, Copy, Delete); Punch / Cue / Crossfade; Setlist name in the top-bar strip; locked banks refuse loads | `selfqa setlist`: an A/B Setlist loaded onto C/D lands on C, D, bus two, pads 5–8; each Start Up Sequence does what §4 says; 10 loads onto the off-air bank under the HD soak, **0 dropped frames** |
 | **4 — Song linking** | `playerInfo` listener → `NowPlayingHub` (key names checked on a real Music first); Link to Current Song + alert; Unlink; song start → off-air bank → BPM or Detect → Start Up Sequence; skipped when locked | mocked hub: a fake song change puts the linked Setlist on air with **0 dropped frames**; locked off-air bank → skipped and shown; `selfqa ui` drives the menu and the alert through `hitTest` |
 
+**Phase 1 (LOCK) shipped 2026-10-01** — `BankLock` + `BankLockTests` 7/7, `selfqa lock`
+12/12 (the gate, as `selfqa lock` rather than inside `selfqa ui`). Question 3 below was
+built as recommended: the pads hide first (now below ~1,675 pt), LOCK never hides.
+
 LOCK comes first because it doesn't depend on anything else, it's useful the day it
 ships, and it's what makes an automatic song trigger safe to use.
 

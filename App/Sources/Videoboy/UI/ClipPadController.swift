@@ -86,6 +86,7 @@ final class ClipPadController {
         pad.canAccept = { [weak self] pasteboard in self?.clip(on: pasteboard) != nil }
         pad.onDrop = { [weak self] index, pasteboard in
             guard let self, let clip = self.clip(on: pasteboard) else { return false }
+            if self.shell.bankLock?.refusesPad(index) == true { return false }
             self.assign(clip.url, range: clip.range, toPad: index)
             return true
         }
@@ -173,6 +174,9 @@ final class ClipPadController {
     /// one `fromBeat`, which no hand pressed.
     func press(_ index: Int, take requestedTake: Bool, fromBeat: Bool = false) {
         guard let pad = bank[pad: index] else { return }
+        // LOCK refuses a hand; a pad armed on the beat keeps firing, like any other
+        // automation on a locked side.
+        if !fromBeat, shell.bankLock?.refusesPad(index) == true { return }
         let punch = isHotPunchArmed && !fromBeat
         let take = requestedTake || punch
         let channel = bank.channel(forPad: index)

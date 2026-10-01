@@ -111,6 +111,12 @@ public final class ParamRegistry {
     /// Momentary parameters pressed since their node last looked, by slot.
     private var pendingPresses: [String: Set<ParamCode>] = [:]
 
+    /// Asked before a mapped control's value is delivered; true drops it. LOCK
+    /// (`BankLock.refuses`) is the one user: a locked bank ignores its controller.
+    /// Only `deliver` asks — the app's own writes (automation, undo, templates) are
+    /// not a controller and are not filtered here.
+    public var refusesDelivery: ((_ slot: String, _ code: ParamCode) -> Bool)?
+
     public init() {}
 
     // MARK: - Slots
@@ -233,6 +239,7 @@ public final class ParamRegistry {
         var applied: [ControlBinding] = []
         for binding in bindings where binding.source == source {
             guard let parameter = parametersBySlot[binding.slot]?[binding.code] else { continue }
+            if refusesDelivery?(binding.slot, binding.code) == true { continue }
             setValue(parameter.denormalise(normalisedValue), slot: binding.slot, code: binding.code)
             applied.append(binding)
         }

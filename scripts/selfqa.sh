@@ -34,6 +34,7 @@
 #           now-playing — the Now Playing generator on a channel, each look as a PNG
 #           framing     — FIT/FILL/STRETCH/CENTRE change the feed and the sub-mix, not only the monitor
 #           undo        — take-backs: eject/generator mid-open, MIDI learn Esc and ⌫ unmap, badges kept
+#           lock        — LOCK per side: every A/B control refuses by hit-test, Program takes, MIDI, drops, undo
 #           fx-focus    — one A · B · MIX focus per FX panel: whole sheet, nothing on air moves
 #           fullscreen  — the real window at full-screen size: every scope key, hovered
 #                         sources, the Generators tab, photographed
@@ -125,6 +126,7 @@ case "$CHECK" in
   now-playing) run_app_check now-playing ;;
   framing)   run_app_check framing ;;
   undo)      run_app_check undo ;;
+  lock)      run_app_check lock ;;
   fx-focus)  run_app_check fx-focus ;;
   # Copy + Optimize (0.4.10): the helper process, catalog link, playback fallback,
   # cancel, and a live show beside it. Real window; opt-in.

@@ -1,0 +1,18 @@
+check:    perf/lock
+verdict:  PASS
+when:     2026-10-01T13:16:01Z
+core:     0.4.10
+
+assertions (12/12 passed):
+  PASS  LOCK sits between each side's pads and the cluster, reachable; the pads hide first, LOCK never — 1800 pt: lock strips 147/147 pt, pads shown; 1100 pt: lock strips 147/147 pt, pads hidden; pads hide below ~1675 pt
+  PASS  locking moves nothing in the bar: pads, LOCK strips, cluster and Punch stay exactly put — no movement
+  PASS  clicking LOCK A/B locks that side: the key reads locked, its panels show a padlock, C/D's do not — locked ["ab"], A/B padlocks [true, true, true, true], C/D padlocks [false, false, false, false]
+  PASS  every reachable A/B control refuses a click and blinks LOCK A/B; every C/D control still works — 107 A/B controls, let through: []; blinks 107; 103 C/D controls, refused: []
+  PASS  a click on an A/B card fader and on an A/B bus key changes nothing — fader fx.a.freeze/24A 0.0 → 0.0, A/B mix 0.5 → 0.5
+  PASS  with A/B locked, Program's bus keys still cut, and the picture keeps rendering — 2 Program keys ["6AA→0.0/0.0", "6BA→1.0/1.0"], Program 0.5 → 1.0, 48 frames rendered in ~1.3 s
+  PASS  MIDI: a knob mapped to the locked side does nothing; one on C/D still moves its card — fx.a.freeze 0.0 → 0.0, fx.c.freeze → 0.77
+  PASS  a clip dropped on locked Source A is refused; the same drop on Source C loads — A holds nothing, C holds motion.m2v
+  PASS  ⌘Z will not take back an edit on a locked side (the step waits until it is unlocked) — wet/dry 0.0 → 0.9, undo refused, now 0.9
+  PASS  an arrow key on a focused A/B fader is refused; ⌘Z is left to the menu — arrow refused true, ⌘Z passed true
+  PASS  with Shift held (Detect armed), a click on a locked control gets through to learn it — allowed true
+  PASS  a note learned to LOCK A/B (6CJ) toggles it off from the controller; padlocks go — locked [], key false

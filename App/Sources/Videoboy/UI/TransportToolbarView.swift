@@ -17,9 +17,14 @@
 //            (2026-09-28): launching clips on the beat is a transport concern.
 //            HOT PUNCH, the (!) key beside Learn, arms the pads to go straight to
 //            air (owner's instruction, 2026-09-28; docs/specs/clip-pads.md).
-//  Extend  : do not add anything here that is not transport, clock or the pads. The
-//            pads must never move anything else in the bar: they hang off the
-//            cluster's sides and simply hide when a window is too narrow for them.
+//            LOCK (setlist plan §7, owner 2026-09-29): a strip each side between the
+//            pads and the cluster — the LOCK key, then the Setlist name (greyed "No
+//            setlist" until Setlists exist). The pads moved outward by the strip's
+//            width to make room; that is the one deliberate move.
+//  Extend  : do not add anything here that is not transport, clock, the pads or
+//            LOCK. The pads must never move anything else in the bar: they hang off
+//            the LOCK strips and simply hide when a window is too narrow for them.
+//            LOCK never hides — it is a safety control.
 //
 
 import AppKit
@@ -56,6 +61,13 @@ final class TransportToolbarView: NSView {
         display.formatField.value = next.rawValue
         Log.info(.app, "recording format is now \(next.rawValue)")
     }
+
+    /// LOCK, each side: the key, and the Setlist name beside it (`LockStrip`).
+    let leftLock = LockStrip(bank: .ab)
+    let rightLock = LockStrip(bank: .cd)
+
+    /// The strip for a bank.
+    func lockStrip(_ bank: Bank) -> LockStrip { bank == .ab ? leftLock : rightLock }
 
     /// The Clip Pads either side of the cluster. ClipPadController drives them.
     let leftPads = ClipPadStrip(side: .left)
@@ -243,6 +255,8 @@ final class TransportToolbarView: NSView {
         addSubview(leftGroup)
         addSubview(display)
         addSubview(rightGroup)
+        addSubview(leftLock)
+        addSubview(rightLock)
         addSubview(leftPads)
         addSubview(rightPads)
         leftGroupView = leftGroup
@@ -262,11 +276,15 @@ final class TransportToolbarView: NSView {
             rightGroup.leadingAnchor.constraint(
                 greaterThanOrEqualTo: display.trailingAnchor, constant: 12),
 
-            // The pads hang off the cluster and constrain nothing else, so they can
-            // never push a control that was already here.
-            leftPads.trailingAnchor.constraint(equalTo: display.leadingAnchor, constant: -Self.padGap),
+            // LOCK hangs off the cluster, the pads off LOCK; neither constrains
+            // anything else, so they can never push a control that was already here.
+            leftLock.trailingAnchor.constraint(equalTo: display.leadingAnchor, constant: -Self.padGap),
+            leftLock.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rightLock.leadingAnchor.constraint(equalTo: display.trailingAnchor, constant: Self.padGap),
+            rightLock.centerYAnchor.constraint(equalTo: centerYAnchor),
+            leftPads.trailingAnchor.constraint(equalTo: leftLock.leadingAnchor, constant: -Self.padGap),
             leftPads.centerYAnchor.constraint(equalTo: centerYAnchor),
-            rightPads.leadingAnchor.constraint(equalTo: display.trailingAnchor, constant: Self.padGap),
+            rightPads.leadingAnchor.constraint(equalTo: rightLock.trailingAnchor, constant: Self.padGap),
             rightPads.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
     }
@@ -276,7 +294,7 @@ final class TransportToolbarView: NSView {
     private static let padGap: CGFloat = 16
 
     /// Hides both pad strips (never one — the bar stays symmetrical) when either
-    /// would crowd its edge group in a narrow window.
+    /// would crowd its edge group in a narrow window. The LOCK strips stay.
     override func layout() {
         super.layout()
         guard let leftGroupView, let rightGroupView else { return }

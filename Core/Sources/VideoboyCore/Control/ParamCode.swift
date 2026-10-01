@@ -33,6 +33,7 @@
 //    6xG  — AVE-5 wipe block key PRESSES (momentary, like 68A–6BA)
 //    6xJ  — Clip Pads: pad 1–8 PRESSES (61J–68J, momentary), then the two side
 //           switches (69J left A/B, 6AJ right C/D) — docs/specs/clip-pads.md
+//           then HOT PUNCH (6BJ) and the LOCK keys (6CJ A/B, 6DJ C/D)
 //    6xK  — Clip Pads: pad 1–8 TAKES (load, play and cut — a controller's ⌥-press)
 //    6xE  — genlock/chroma key (6xA's nine slots are already spoken for; this
 //           extends the same mixer family rather than starting a new number range,
@@ -261,6 +262,10 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
     /// HOT PUNCH, the toolbar's (!) key: a press toggles it. Armed, every pad press
     /// loads, plays and cuts its sub-mix and Program to it.
     public static let clipPadHotPunch = ParamCode(known: "6BJ")
+    /// LOCK, A/B side: a press toggles it (setlist plan §7, `BankLock`).
+    public static let bankLockAB = ParamCode(known: "6CJ")
+    /// LOCK, C/D side: a press toggles it.
+    public static let bankLockCD = ParamCode(known: "6DJ")
 
     // MARK: Now Playing generator (7xH)
 
@@ -530,6 +535,7 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         "61K": "pad 1 take", "62K": "pad 2 take", "63K": "pad 3 take", "64K": "pad 4 take",
         "65K": "pad 5 take", "66K": "pad 6 take", "67K": "pad 7 take", "68K": "pad 8 take",
         "69J": "pads 1–4 → A/B", "6AJ": "pads 5–8 → C/D",
+        "6CJ": "lock A/B", "6DJ": "lock C/D",
         "71H": "now playing look",
         "72H": "now playing on change only",
         "73H": "now playing hold",
@@ -743,7 +749,9 @@ public struct ParamCode: RawRepresentable, Hashable, Codable, Sendable, CustomSt
         .emuBox,
         .clipPadLeftSide,
         .clipPadRightSide,
-        .clipPadHotPunch
+        .clipPadHotPunch,
+        .bankLockAB,
+        .bankLockCD
     ] + clipPadPresses + clipPadTakes
 
     /// The fixed table by raw value, for validation.
