@@ -1,6 +1,6 @@
 check:    phase-2/playback
 verdict:  PASS
-when:     2026-09-28T18:05:16Z
+when:     2026-09-29T14:06:23Z
 core:     0.4.10
 
 notes:
