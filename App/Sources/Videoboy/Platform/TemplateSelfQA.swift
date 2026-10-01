@@ -3,7 +3,7 @@
 //
 //  Purpose : Builds a distinctive show — a trimmed clip in ping-pong playing in A, a
 //            generator in C, an extra effect card, a moved crossfader and effect
-//            fader, a MIDI mapping, a tempo — saves it, clears everything with New,
+//            fader, a MIDI mapping, a tempo, and Queues on A and D — saves it, clears everything with New,
 //            opens the file again, and checks each thing came back: in the engine AND
 //            on the controls a performer sees.
 //  Inputs  : samples/motion.mov; scratch preferences and template file.
@@ -62,6 +62,26 @@ enum TemplateSelfQA {
                                      slot: GraphTopology.subMixOne, code: .crossfadeAB)
         registry.bind(mapping)
         engine.setTempo(97)
+
+        // The Queues, lined up through the handler the right-click menu calls: Play
+        // Last, then Play Next jumps the line (docs/PROPOSAL-2026-09-28-setlist.md §2).
+        let queued = ["hd-h264-25.mov", "motion.m2v", "hd-prores.mov"].map { RepoPaths.samples.appendingPathComponent($0) }
+        guard queued.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }) else {
+            return check.finish(blockedReason: "samples for the Queue round-trip are missing")
+        }
+        func queue(_ url: URL, on channel: String, next: Bool) {
+            let item = LibraryItem(name: url.lastPathComponent, badge: "", isAvailable: true, url: url, bin: nil)
+            let library = ["A", "B"].contains(channel) ? panels.libraryOneBody : panels.libraryTwoBody
+            library.onItemQueued?(item, channel, next)
+        }
+        queue(queued[0], on: "A", next: false)
+        queue(queued[1], on: "A", next: true)
+        queue(queued[2], on: "D", next: false)
+        let queueAOrder = [queued[1].lastPathComponent, queued[0].lastPathComponent]
+        check.record(AssertionResult(
+            name: "Play Next puts a clip in front of what Play Last queued",
+            passed: panels.libraryOneBody.queueForChecks("A").names == queueAOrder,
+            detail: "A's Queue shows \(panels.libraryOneBody.queueForChecks("A").names)"))
         spin(0.5)
 
         // SAVE.
@@ -77,9 +97,21 @@ enum TemplateSelfQA {
         try? FileManager.default.removeItem(at: evidence.appendingPathComponent("QA Show.vbt"))
         try? FileManager.default.copyItem(at: file, to: evidence.appendingPathComponent("QA Show.vbt"))
 
+        let savedText = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+        check.record(AssertionResult(
+            name: "the file is template v5 and lists the Queues",
+            passed: savedText.contains("\"version\" : 5") && savedText.contains("\"queues\"")
+                && savedText.contains(queued[1].lastPathComponent),
+            detail: "version 5 \(savedText.contains("\"version\" : 5")), queues \(savedText.contains("\"queues\""))"))
+
         // NEW: everything goes.
         shell.newTemplate()
         spin(0.8)
+        let emptiedA = panels.libraryOneBody.queueForChecks("A"), emptiedD = panels.libraryTwoBody.queueForChecks("D")
+        check.record(AssertionResult(
+            name: "New empties every Queue, on screen too",
+            passed: emptiedA.names.isEmpty && emptiedD.names.isEmpty && emptiedA.tab == "A" && emptiedD.tab == "D",
+            detail: "A \(emptiedA.names) tab '\(emptiedA.tab ?? "-")', D \(emptiedD.names) tab '\(emptiedD.tab ?? "-")'"))
         let cleared = engine.sources["A"]?.mediaURL == nil
             && (engine.channelSourceKinds["C"] ?? .file) == .file
             && engine.chains[.one]?.entries.count == chainBefore
@@ -121,6 +153,13 @@ enum TemplateSelfQA {
             detail: "chain \(engine.chains[.one]?.entries.count ?? -1)/\(chainCount), crossfade \(restoredCrossfade), "
                 + "colour \(restoredColour.map { String(format: "%.3f", $0) } ?? "nil"), mapping \(registry.bindings.contains(mapping)), "
                 + "tempo \(engine.transport.beatsPerMinute)"))
+
+        let reopenedA = panels.libraryOneBody.queueForChecks("A"), reopenedD = panels.libraryTwoBody.queueForChecks("D")
+        check.record(AssertionResult(
+            name: "Open brings back the Queues in play order, and their tabs count them",
+            passed: reopenedA.names == queueAOrder && reopenedD.names == [queued[2].lastPathComponent]
+                && reopenedA.tab == "A 2" && reopenedD.tab == "D 1",
+            detail: "A \(reopenedA.names) tab '\(reopenedA.tab ?? "-")', D \(reopenedD.names) tab '\(reopenedD.tab ?? "-")'"))
 
         // And the controls on screen show it — not only the engine.
         var shownFaderMatches = false

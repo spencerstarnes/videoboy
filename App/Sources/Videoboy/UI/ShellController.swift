@@ -63,7 +63,7 @@ final class ShellController {
         wireRecordIndicators()
         wireEmulator()
         wireLibraries()
-        refreshPlaylists()
+        refreshQueues()
         wireRouting()
         setPreviewFill(preferences.preferences.previewFill)
         // No single default camera to start here any more — a configured source's
@@ -159,65 +159,65 @@ final class ShellController {
         Log.info(.clip, "loaded \(url.lastPathComponent) into channel \(channel)")
     }
 
-    /// One up-next queue per source (A, B, C, D).
+    /// One Queue per source (A, B, C, D) — where Play Next and Play Last put clips.
     ///
-    /// Only consulted when a source is in ONE SHOT — see `Playlist`. Loop and
+    /// Only consulted when a source is in ONE SHOT — see `ClipQueue`. Loop and
     /// ping-pong have their own answer for what happens at the end of a clip.
-    private var playlists = PlaylistSet()
+    private var queues = QueueSet()
 
     /// Pushes the queues back into whichever library shows them.
-    private func refreshPlaylists() {
+    private func refreshQueues() {
         // A queue edit can change ADV's next clip: plan (and pre-open) again.
         if advanceOn.values.contains(true) { replanAdvance() }
-        refreshPlaylistViews()
+        refreshQueueViews()
     }
 
-    private var playlistChannelsToRefresh: Set<String> = []
+    private var queueChannelsToRefresh: Set<String> = []
 
-    /// Redraws one channel's Up Next list on the next run-loop turn (coalesced).
-    private func schedulePlaylistViewRefresh(_ channel: String) {
-        let first = playlistChannelsToRefresh.isEmpty
-        playlistChannelsToRefresh.insert(channel)
+    /// Redraws one channel's Queue on the next run-loop turn (coalesced).
+    private func scheduleQueueViewRefresh(_ channel: String) {
+        let first = queueChannelsToRefresh.isEmpty
+        queueChannelsToRefresh.insert(channel)
         guard first else { return }
         RunLoop.main.perform(inModes: [.common]) { [weak self] in
             guard let self else { return }
-            let channels = self.playlistChannelsToRefresh
-            self.playlistChannelsToRefresh = []
+            let channels = self.queueChannelsToRefresh
+            self.queueChannelsToRefresh = []
             let panels = self.shell.grid.panels
             for channel in channels {
                 let panel = ["A", "B"].contains(channel) ? panels.libraryOneBody : panels.libraryTwoBody
-                panel.setPlaylist(self.playlists[channel], forChannel: channel)
+                panel.setQueue(self.queues[channel], forChannel: channel)
             }
         }
     }
 
-    private func refreshPlaylistViews() {
+    private func refreshQueueViews() {
         let panels = shell.grid.panels
         for channel in ["A", "B"] {
-            panels.libraryOneBody.setPlaylist(playlists[channel], forChannel: channel)
+            panels.libraryOneBody.setQueue(queues[channel], forChannel: channel)
         }
         for channel in ["C", "D"] {
-            panels.libraryTwoBody.setPlaylist(playlists[channel], forChannel: channel)
+            panels.libraryTwoBody.setQueue(queues[channel], forChannel: channel)
         }
     }
 
     /// A one-shot clip finished. Pull the next thing off that channel's queue, if
     /// there is one; otherwise leave the source stopped on its last frame exactly as
-    /// it behaved before playlists existed.
+    /// it behaved before queues existed.
     ///
     /// Hops to the main queue first: this arrives from the playback advance, and it
     /// is about to open a file and touch the panel.
-    private func playlistAdvance(channel: String) {
+    private func queueAdvance(channel: String) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            guard let next = self.playlists[channel].takeNext() else { return }
-            Log.info(.clip, "\(channel) taking \(next.displayName) from its playlist")
+            guard let next = self.queues[channel].takeNext() else { return }
+            Log.info(.clip, "\(channel) taking \(next.displayName) from its queue")
             self.loadClip(next.url, into: channel) { [weak self] loaded in
                 // Up next means up NEXT — it plays, rather than landing paused and
                 // waiting for someone to notice the clip changed.
                 if loaded { self?.engine.setPlaying(true, channel: channel) }
             }
-            self.refreshPlaylists()
+            self.refreshQueues()
         }
     }
 
@@ -429,18 +429,18 @@ final class ShellController {
             library.onItemQueued = { [weak self] item, channel, playNext in
                 guard let self, let url = item.url else { return }
                 if playNext {
-                    self.playlists[channel].insertNext(url: url)
+                    self.queues[channel].insertNext(url: url)
                 } else {
-                    self.playlists[channel].append(url: url)
+                    self.queues[channel].append(url: url)
                 }
                 Log.info(.app, "queued \(url.lastPathComponent) on \(channel)"
                     + (playNext ? " (next)" : ""))
-                self.refreshPlaylists()
+                self.refreshQueues()
             }
             library.onQueuedItemRemoved = { [weak self] channel, id in
                 guard let self else { return }
-                self.playlists[channel].remove(id: id)
-                self.refreshPlaylists()
+                self.queues[channel].remove(id: id)
+                self.refreshQueues()
             }
             library.onItemOpened = { [weak self] item, channel, range in
                 guard let self else { return }
@@ -958,7 +958,7 @@ final class ShellController {
             body.onEjectRequested = { [weak self] in self?.ejectClip(fromChannel: letter) }
             // Only fires in ONE SHOT — the node decides that, not this closure.
             engine.sources[letter]?.onReachedEnd = { [weak self] in
-                self?.playlistAdvance(channel: letter)
+                self?.queueAdvance(channel: letter)
             }
             body.onPlayToggled = { [weak self] in self?.togglePlayback(channel: letter) }
             body.onFileSelected = { [weak self] in
@@ -1491,6 +1491,7 @@ final class ShellController {
                                  subdivision: engine.beatSubdivision.rawValue),
             chains: engine.chains, channels: channels)
         document.clipPads = clipPads?.bank
+        document.queues = queues.savedPaths
         return document
     }
 
@@ -1548,6 +1549,7 @@ final class ShellController {
         }
 
         clipPads?.restore(document.clipPads)
+        restoreQueues(document.queues)
         repaintFromRegistry()
         // The show's cards say which copy they edit; the sheet takes the first's.
         for bus in [Bus.one, .two] {
@@ -1556,6 +1558,30 @@ final class ShellController {
         currentTemplateURL = url
         onTemplateURLChanged?(url)
         Log.info(.template, "opened \(document.name)" + (unknown > 0 ? " (\(unknown) mappings this build does not know)" : ""))
+    }
+
+    /// Replaces the four Queues with a show's (none before template v5, so an older
+    /// show opens with empty Queues — opening a show is never a merge). A queued file
+    /// that is no longer there is left out and said so once, not queued to fail later.
+    private func restoreQueues(_ saved: [String: [String]]?) {
+        var missing: [String] = []
+        var present: [String: [String]] = [:]
+        for (channel, paths) in saved ?? [:] {
+            present[channel] = paths.filter { path in
+                let exists = FileManager.default.fileExists(atPath: path)
+                if !exists { missing.append(path) }
+                return exists
+            }
+        }
+        queues = QueueSet(savedPaths: present)
+        if let first = missing.first {
+            let name = URL(fileURLWithPath: first).lastPathComponent
+            Log.warn(.template, "\(missing.count) queued file(s) missing, left out: \(missing.joined(separator: ", "))")
+            presentNotice(missing.count == 1 ? "\(name) is missing — left out of its Queue"
+                                             : "\(missing.count) queued clips are missing — left out of their Queues",
+                          "The show points at \(first)\(missing.count > 1 ? " and others" : ""), which is not there any more.")
+        }
+        refreshQueues()
     }
 
     /// Sets every control on screen to what the registry holds — after a template load,
@@ -1705,7 +1731,7 @@ final class ShellController {
         }
         let pick: NextClipPicker.Pick?
         if let plan = advancePlans.removeValue(forKey: channel), isStillValid(plan, channel: channel, busKey: busKey, onAir: take.incoming) {
-            playlists[channel] = plan.queueAfter
+            queues[channel] = plan.queueAfter
             pickers[busKey] = plan.pickerAfter
             pick = plan.pick
         } else {
@@ -1742,20 +1768,20 @@ final class ShellController {
         }
         // The Up Next list redraws on the next turn — only this channel's — and without
         // re-planning: the take plans the next channel itself (`after`).
-        schedulePlaylistViewRefresh(channel)
+        scheduleQueueViewRefresh(channel)
         if pick.fromQueue {
             announcedFallback.remove(channel)
         } else if preferences.preferences.announcesAdvanceFallback, !announcedFallback.contains(channel) {
             announcedFallback.insert(channel)
             let how = pick.fallback?.displayName.lowercased() ?? "library"
             shell.statusBar.showNotice(
-                "Up Next \(channel) was empty — cued \(pick.url.lastPathComponent) (\(how))",
+                "Queue \(channel) was empty — cued \(pick.url.lastPathComponent) (\(how))",
                 detail: "ADV loads from the library when a queue runs out. "
-                    + "Settings ▸ Defaults ▸ When Up Next runs out.",
+                    + "Settings ▸ Defaults ▸ Queue empty.",
                 isWarning: false)
         }
         Log.info(.app, "ADV: \(channel) cued \(pick.url.lastPathComponent)"
-            + (pick.fromQueue ? " from Up Next" : " (\(pick.fallback?.rawValue ?? "?"))"))
+            + (pick.fromQueue ? " from the Queue" : " (\(pick.fallback?.rawValue ?? "?"))"))
     }
 
     /// Paused on its head (the in point when trimmed), waiting to roll.
@@ -1771,8 +1797,8 @@ final class ShellController {
     private struct AdvancePlan {
         let pick: NextClipPicker.Pick
         let pickerAfter: NextClipPicker
-        let queueBefore: Playlist
-        let queueAfter: Playlist
+        let queueBefore: ClipQueue
+        let queueAfter: ClipQueue
         let fallback: ABRollFallback
         let onAirURL: URL?
     }
@@ -1782,7 +1808,7 @@ final class ShellController {
     private(set) var advanceWaitedCount = 0
 
     private func isStillValid(_ plan: AdvancePlan, channel: String, busKey: String, onAir: String) -> Bool {
-        plan.queueBefore == playlists[channel]
+        plan.queueBefore == queues[channel]
             && plan.fallback == (preferences.preferences.advanceFallback[busKey] ?? .inOrder)
             && plan.onAirURL == engine.sources[onAir]?.mediaURL
     }
@@ -1796,7 +1822,7 @@ final class ShellController {
         if let existing = advancePlans[channel], isStillValid(existing, channel: channel, busKey: busKey, onAir: onAir) {
             return
         }
-        var queue = playlists[channel]
+        var queue = queues[channel]
         var picker = pickers[busKey] ?? NextClipPicker()
         guard let pick = pickNext(for: channel, onAir: onAir, busKey: busKey, queue: &queue, picker: &picker) else {
             advancePlans[channel] = nil
@@ -1804,7 +1830,7 @@ final class ShellController {
             return
         }
         advancePlans[channel] = AdvancePlan(
-            pick: pick, pickerAfter: picker, queueBefore: playlists[channel], queueAfter: queue,
+            pick: pick, pickerAfter: picker, queueBefore: queues[channel], queueAfter: queue,
             fallback: preferences.preferences.advanceFallback[busKey] ?? .inOrder,
             onAirURL: engine.sources[onAir]?.mediaURL)
         let target = playbackTarget(for: pick.url)
@@ -1833,16 +1859,16 @@ final class ShellController {
 
     /// The next clip for a channel leaving air, or nil (commits the choice).
     private func nextClip(for channel: String, onAir: String, busKey: String) -> NextClipPicker.Pick? {
-        var queue = playlists[channel]
+        var queue = queues[channel]
         var picker = pickers[busKey] ?? NextClipPicker()
         let pick = pickNext(for: channel, onAir: onAir, busKey: busKey, queue: &queue, picker: &picker)
         pickers[busKey] = picker
-        playlists[channel] = queue
+        queues[channel] = queue
         return pick
     }
 
     private func pickNext(for channel: String, onAir: String, busKey: String,
-                          queue: inout Playlist, picker: inout NextClipPicker) -> NextClipPicker.Pick? {
+                          queue: inout ClipQueue, picker: inout NextClipPicker) -> NextClipPicker.Pick? {
         let panel = busKey == "one" ? shell.grid.panels.libraryOneBody : shell.grid.panels.libraryTwoBody
         let shown = panel.browser.fallbackOrder()
         let candidates = shown.compactMap { item in item.url.map { LibraryCandidate(url: $0, bin: item.bin) } }
@@ -1864,10 +1890,10 @@ final class ShellController {
         (rollOn[slot] ?? false, advanceOn[slot] ?? false)
     }
 
-    /// Queues a clip on a channel's Up Next — for self-QA.
+    /// Puts a clip at the end of a channel's Queue (Play Last) — for self-QA.
     func queueForChecks(_ url: URL, channel: String) {
-        playlists[channel].append(url: url)
-        refreshPlaylists()
+        queues[channel].append(url: url)
+        refreshQueues()
     }
 
     /// Loads a clip exactly as a drop would — for self-QA.

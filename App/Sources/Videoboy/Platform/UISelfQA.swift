@@ -1424,6 +1424,8 @@ enum UISelfQA {
                     format: "%.1f ms for %d files — %.1f frames' worth",
                     milliseconds, dropped.count, milliseconds / budget)
             ))
+            // The controller wires `onFilesDropped`; keep it alive through the drop.
+            withExtendedLifetime(controller) {}
         }
 
         // FRAME TIME AND JITTER. The single most important property of this app: the

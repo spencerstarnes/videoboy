@@ -534,10 +534,10 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     }
 
     /// Called when a ONE SHOT clip runs out, so something upstream can decide what
-    /// happens next — in practice, pull the next item off this channel's playlist.
+    /// happens next — in practice, pull the next item off this channel's queue.
     ///
     /// The node deliberately does not own that decision. It has no idea what a
-    /// playlist is, and giving it one would mean the graph reaching back out into
+    /// queue is, and giving it one would mean the graph reaching back out into
     /// the library to fetch files mid-render.
     ///
     /// Fired from the playback advance, so a handler that loads a file should get
@@ -616,7 +616,7 @@ public final class ClipSourceNode: Node, DataEffectProvider {
         // ONE SHOT stops on its end and asks what next — unless something is
         // listening, in which case it may put the next clip in (see `onReachedEnd`).
         // Only ONE SHOT asks: loop and ping-pong already have an answer for what
-        // happens at the end, and a playlist that overrode them would quietly take
+        // happens at the end, and a queue that overrode them would quietly take
         // the shuttle key's meaning away.
         switch step.ended {
         case .none:

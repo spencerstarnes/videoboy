@@ -104,13 +104,12 @@ public enum NowPlayingRenderer {
         return CTFontCreateWithFontDescriptor(descriptor, size, nil)
     }
 
-    private enum Weight { case regular, semibold, bold
-        var value: CGFloat { self == .regular ? 0 : (self == .semibold ? 0.3 : 0.4) }
-    }
+    /// Raw values are CoreText weight traits (`kCTFontWeightTrait`).
+    private enum Weight: CGFloat { case regular = 0, semibold = 0.3, bold = 0.4 }
 
     private static func line(_ string: String, size: CGFloat, weight: Weight, gray: CGFloat) -> CTLine {
         let attributes: [CFString: Any] = [
-            kCTFontAttributeName: font(size, weight.value),
+            kCTFontAttributeName: font(size, weight.rawValue),
             // NTSC-legal white (235 of 255), not full-scale.
             kCTForegroundColorAttributeName: CGColor(gray: gray * 235 / 255, alpha: 1)
         ]

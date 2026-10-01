@@ -99,6 +99,15 @@ public enum ModuleOrigin: String, Equatable, Sendable {
         case .imported, .shared: "ISF"
         }
     }
+
+    /// Where the list puts it: natives, then built-in ports, then everything else.
+    var listingRank: Int {
+        switch self {
+        case .native: 0
+        case .builtin: 1
+        case .imported, .shared: 2
+        }
+    }
 }
 
 /// Everything the app needs to know about one module.
@@ -218,11 +227,12 @@ public final class ModuleCatalog {
                 available.append(descriptor)
             }
         }
-        // Natives, then built-in ports, then everything else by name.
-        let rank: (ModuleDescriptor) -> Int = { $0.origin == .native ? 0 : ($0.origin == .builtin ? 1 : 2) }
+        // By origin, then by name.
         modules = available.sorted {
-            rank($0) != rank($1) ? rank($0) < rank($1)
-                : $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            if $0.origin.listingRank != $1.origin.listingRank {
+                return $0.origin.listingRank < $1.origin.listingRank
+            }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
         unavailable = failed.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         generators = sources.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

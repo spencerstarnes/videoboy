@@ -130,7 +130,7 @@ extension PreferencesWindowController {
         reminderCountLabel = Controls.label(
             reminderSummary(), font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
 
-        // What ADV loads when a sub-mix's Up Next is empty (docs/specs/ab-roll-adv.md).
+        // What ADV loads when a sub-mix's Queue is empty (docs/specs/ab-roll-adv.md).
         // Set before the show, so it lives here rather than on the tight fader row.
         let fallbacks = ABRollFallback.allCases
         func fallbackPopUp(_ bus: String) -> NSPopUpButton {
@@ -155,8 +155,8 @@ extension PreferencesWindowController {
             field("Play on load", playOnLoad),
             field("Hot Punch armed at launch", hotPunch),
             field("Picture fill", fill),
-            field("Up Next empty, A/B", fallbackPopUp("one")),
-            field("Up Next empty, C/D", fallbackPopUp("two")),
+            field("Queue empty, A/B", fallbackPopUp("one")),
+            field("Queue empty, C/D", fallbackPopUp("two")),
             field("Say when ADV improvises", announce),
             spacer(12),
             field("Reminders", Controls.row([restore, reminderCountLabel!], spacing: 10))

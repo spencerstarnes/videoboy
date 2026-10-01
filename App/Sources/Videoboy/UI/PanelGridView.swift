@@ -554,7 +554,6 @@ final class PanelGridView: NSView {
         // width goes to the monitors and the library rather than being left empty.
         for column in [0, 4] where columnIsFullyCollapsed(column) && weights[column] > 0 {
             weights[column] = Theme.Grid.railWeight
-            continue
         }
 
         // Otherwise a band narrows only if the group occupying THAT band is folded

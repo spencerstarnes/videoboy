@@ -65,7 +65,7 @@ def main():
             if locked:
                 bpms = [float(r['bpm']) for r in locked]
                 mean = statistics.fmean(bpms)
-                ratio = min((1, 2, 0.5), key=lambda k: abs(mean - ref_bpm * k))
+                ratio = min((1, 2, 0.5), key=lambda k, m=mean: abs(m - ref_bpm * k))
                 row['bpm'] = mean
                 row['ratio'] = ratio
                 row['bpm_err'] = abs(mean - ref_bpm * ratio)

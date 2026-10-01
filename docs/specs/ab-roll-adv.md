@@ -8,8 +8,8 @@ Two independent keys on the **A/B and C/D** faders (program fader later):
 - **ROLL** (when): the incoming source rolls (plays) when a take STARTS (a fade
   dissolves in moving); the outgoing source pauses and re-cues to its head (in point
   when trimmed) once fully off air.
-- **ADV** (what): when a source leaves air it loads its next clip — its **Up Next
-  queue first**, then the library fallback (Settings ▸ Defaults ▸ "Up Next empty"):
+- **ADV** (what): when a source leaves air it loads its next clip — its **Queue
+  first**, then the library fallback (Settings ▸ Defaults ▸ "Queue empty"):
   Off · In order (a cursor down the panel's current sort and search, wrapping) ·
   Shuffle bin (the outgoing clip's bin) · Shuffle all. Never the clip on air opposite;
   missing files skipped; shuffles deal every clip before repeating.

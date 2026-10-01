@@ -49,15 +49,15 @@ final class NowPlayingWatcher {
     /// One query per player; the first that is playing wins.
     private func poll() {
         let now = CACurrentMediaTime()
-        for player in ["Music", "Spotify"] where isRunning(player) {
+        for player in Player.allCases where player.isRunning {
             switch query(player) {
             case .playing(var track, let key):
                 if key != lastTrackKey {
                     lastTrackKey = key
-                    artwork = player == "Music" ? musicArtwork() : nil
+                    artwork = player == .music ? musicArtwork() : nil
                 }
                 track.artwork = artwork
-                NowPlayingHub.shared.publish(track, status: player, at: now)
+                NowPlayingHub.shared.publish(track, status: player.rawValue, at: now)
                 return
             case .notPlaying:
                 continue
@@ -69,31 +69,62 @@ final class NowPlayingWatcher {
         NowPlayingHub.shared.publish(nil, status: "Nothing playing in Music or Spotify", at: now)
     }
 
+    /// The players asked, in order of preference. The raw value is the app's name.
+    private enum Player: String, CaseIterable {
+        case music = "Music"
+        case spotify = "Spotify"
+
+        var isRunning: Bool {
+            let identifier = self == .music ? "com.apple.Music" : "com.spotify.client"
+            return !NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty
+        }
+
+        /// The current-track query, as a fixed literal: nothing is ever spliced into
+        /// AppleScript source. The two differ only in the app they tell, and must — the
+        /// app's name is resolved when the script compiles, not when it runs. Fields come
+        /// back joined by the unit separator (`character id 31`), which no title,
+        /// artist or album contains.
+        var trackScript: String {
+            switch self {
+            case .music:
+                return """
+                    tell application "Music"
+                        if player state is not playing then return ""
+                        set t to current track
+                        set d to duration of t
+                        if d > 1000 then set d to d / 1000
+                        set s to character id 31
+                        return (name of t) & s & (artist of t) & s & (album of t) ¬
+                            & s & (player position as text) & s & (d as text)
+                    end tell
+                    """
+            case .spotify:
+                return """
+                    tell application "Spotify"
+                        if player state is not playing then return ""
+                        set t to current track
+                        set d to duration of t
+                        if d > 1000 then set d to d / 1000
+                        set s to character id 31
+                        return (name of t) & s & (artist of t) & s & (album of t) ¬
+                            & s & (player position as text) & s & (d as text)
+                    end tell
+                    """
+            }
+        }
+    }
+
     private enum Answer {
         case playing(NowPlayingTrack, key: String)
         case notPlaying
         case refused(String)
     }
 
-    private func isRunning(_ app: String) -> Bool {
-        let identifier = app == "Music" ? "com.apple.Music" : "com.spotify.client"
-        return !NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty
-    }
-
-    private func query(_ app: String) -> Answer {
+    private func query(_ player: Player) -> Answer {
         let separator = "\u{1F}"
-        let source = """
-            tell application "\(app)"
-                if player state is not playing then return ""
-                set t to current track
-                set d to duration of t
-                if d > 1000 then set d to d / 1000
-                return (name of t) & "\(separator)" & (artist of t) & "\(separator)" & (album of t) ¬
-                    & "\(separator)" & (player position as text) & "\(separator)" & (d as text)
-            end tell
-            """
+        let app = player.rawValue
         var error: NSDictionary?
-        guard let result = NSAppleScript(source: source)?.executeAndReturnError(&error) else {
+        guard let result = NSAppleScript(source: player.trackScript)?.executeAndReturnError(&error) else {
             let code = (error?[NSAppleScript.errorNumber] as? Int) ?? 0
             // -1743: the Automation permission was refused.
             return code == -1743

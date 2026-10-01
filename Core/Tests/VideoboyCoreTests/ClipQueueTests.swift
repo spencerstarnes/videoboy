@@ -1,15 +1,15 @@
 //
-//  PlaylistTests.swift — the per-source queue, and who is allowed to consult it.
+//  ClipQueueTests.swift — the per-source queue, and who is allowed to consult it.
 //
-//  The load-bearing rule is the last group: ONLY one shot pulls from a playlist.
-//  Loop and ping-pong already answer "what happens at the end", and a playlist that
+//  The load-bearing rule is the last group: ONLY one shot pulls from a queue.
+//  Loop and ping-pong already answer "what happens at the end", and a queue that
 //  overrode them would silently redefine the shuttle key.
 //
 
 import XCTest
 @testable import VideoboyCore
 
-final class PlaylistTests: XCTestCase {
+final class ClipQueueTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
@@ -23,64 +23,64 @@ final class PlaylistTests: XCTestCase {
     // MARK: - Queue behaviour
 
     func testAppendAddsToTheBackAndInsertNextToTheFront() {
-        var playlist = Playlist()
-        playlist.append(url: url("first.mov"))
-        playlist.append(url: url("second.mov"))
-        playlist.insertNext(url: url("jumped.mov"))
+        var queue = ClipQueue()
+        queue.append(url: url("first.mov"))
+        queue.append(url: url("second.mov"))
+        queue.insertNext(url: url("jumped.mov"))
 
         XCTAssertEqual(
-            playlist.items.map(\.displayName),
+            queue.items.map(\.displayName),
             ["jumped.mov", "first.mov", "second.mov"],
             "Play Next goes in front of the queue, Add goes on the end")
     }
 
     func testTakingAnItemConsumesIt() {
-        var playlist = Playlist()
-        playlist.append(url: url("one.mov"))
-        playlist.append(url: url("two.mov"))
+        var queue = ClipQueue()
+        queue.append(url: url("one.mov"))
+        queue.append(url: url("two.mov"))
 
-        XCTAssertEqual(playlist.takeNext()?.displayName, "one.mov")
-        XCTAssertEqual(playlist.count, 1, "playing an item takes it off the queue — Up Next's rule")
-        XCTAssertEqual(playlist.takeNext()?.displayName, "two.mov")
-        XCTAssertNil(playlist.takeNext(), "an exhausted queue reports empty rather than repeating")
+        XCTAssertEqual(queue.takeNext()?.displayName, "one.mov")
+        XCTAssertEqual(queue.count, 1, "playing an item takes it off the queue — Up Next's rule")
+        XCTAssertEqual(queue.takeNext()?.displayName, "two.mov")
+        XCTAssertNil(queue.takeNext(), "an exhausted queue reports empty rather than repeating")
     }
 
     func testPeekDoesNotConsume() {
-        var playlist = Playlist()
-        playlist.append(url: url("one.mov"))
-        XCTAssertEqual(playlist.peekNext?.displayName, "one.mov")
-        XCTAssertEqual(playlist.count, 1, "peeking is for showing what is next, not for taking it")
+        var queue = ClipQueue()
+        queue.append(url: url("one.mov"))
+        XCTAssertEqual(queue.peekNext?.displayName, "one.mov")
+        XCTAssertEqual(queue.count, 1, "peeking is for showing what is next, not for taking it")
     }
 
     func testMoveReordersAndIgnoresNonsense() {
-        var playlist = Playlist()
-        for name in ["a", "b", "c"] { playlist.append(url: url("\(name).mov")) }
+        var queue = ClipQueue()
+        for name in ["a", "b", "c"] { queue.append(url: url("\(name).mov")) }
 
-        playlist.move(from: 2, to: 0)
-        XCTAssertEqual(playlist.items.map(\.displayName), ["c.mov", "a.mov", "b.mov"])
+        queue.move(from: 2, to: 0)
+        XCTAssertEqual(queue.items.map(\.displayName), ["c.mov", "a.mov", "b.mov"])
 
         // A gesture that lands badly should do nothing, not trap mid-set.
-        playlist.move(from: 99, to: 0)
-        playlist.move(from: 0, to: 99)
-        XCTAssertEqual(playlist.count, 3)
+        queue.move(from: 99, to: 0)
+        queue.move(from: 0, to: 99)
+        XCTAssertEqual(queue.count, 3)
     }
 
     func testRemoveTakesTheNamedItemRatherThanAPosition() {
-        var playlist = Playlist()
-        playlist.append(url: url("a.mov"))
-        playlist.append(url: url("b.mov"))
-        let second = playlist.items[1]
+        var queue = ClipQueue()
+        queue.append(url: url("a.mov"))
+        queue.append(url: url("b.mov"))
+        let second = queue.items[1]
 
-        playlist.remove(id: second.id)
+        queue.remove(id: second.id)
 
-        XCTAssertEqual(playlist.items.map(\.displayName), ["a.mov"])
+        XCTAssertEqual(queue.items.map(\.displayName), ["a.mov"])
     }
 
     // MARK: - Four of them, one per source
 
-    func testThereIsOnePlaylistPerSourceAndTheyAreIndependent() {
-        var set = PlaylistSet()
-        XCTAssertEqual(PlaylistSet.channels, ["A", "B", "C", "D"])
+    func testThereIsOneQueuePerSourceAndTheyAreIndependent() {
+        var set = QueueSet()
+        XCTAssertEqual(QueueSet.channels, ["A", "B", "C", "D"])
 
         set["A"].append(url: url("only-a.mov"))
 
@@ -92,11 +92,42 @@ final class PlaylistTests: XCTestCase {
     }
 
     func testAnUnknownChannelReadsAsEmptyRatherThanTrapping() {
-        let set = PlaylistSet()
+        let set = QueueSet()
         XCTAssertTrue(set["Z"].isEmpty)
     }
 
-    // MARK: - Only ONE SHOT asks the playlist
+    // MARK: - Saved with the show (template v5)
+
+    func testQueuesRoundTripInATemplateInPlayOrder() throws {
+        var set = QueueSet()
+        set["A"].append(url: url("second.mov"))
+        set["A"].insertNext(url: url("first.mov"))
+        set["D"].append(url: url("only-d.mov"))
+
+        let document = TemplateDocument(queues: set.savedPaths)
+        let data = try JSONEncoder().encode(document)
+        let back = QueueSet(savedPaths: try JSONDecoder().decode(TemplateDocument.self, from: data).queues ?? [:])
+
+        XCTAssertEqual(back["A"].items.map(\.displayName), ["first.mov", "second.mov"],
+                       "Play Next's position survives the save")
+        XCTAssertEqual(back["D"].items.map(\.displayName), ["only-d.mov"])
+        XCTAssertTrue(back["B"].isEmpty && back["C"].isEmpty)
+        XCTAssertNil(set.savedPaths["B"], "an empty queue is left out of the file")
+    }
+
+    func testAShowFromBeforeQueuesWereSavedOpensWithEmptyQueues() throws {
+        let old = try JSONDecoder().decode(TemplateDocument.self, from: Data(#"{"version":4}"#.utf8))
+        XCTAssertNil(old.queues)
+        XCTAssertEqual(QueueSet(savedPaths: old.queues ?? [:]).totalCount, 0)
+    }
+
+    func testASavedQueueForANonChannelIsIgnored() {
+        let set = QueueSet(savedPaths: ["E": ["/clips/x.mov"], "B": ["/clips/b.mov"]])
+        XCTAssertEqual(set.totalCount, 1, "there is no fifth source for a queue to play into")
+        XCTAssertEqual(set["B"].peekNext?.displayName, "b.mov")
+    }
+
+    // MARK: - Only ONE SHOT asks the queue
 
     /// Runs a source to the end of its clip in the given loop mode and reports
     /// whether it announced that it had finished.
@@ -105,7 +136,7 @@ final class PlaylistTests: XCTestCase {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw XCTSkip("samples/motion.mov is missing — run scripts/make-fixtures.sh")
         }
-        let node = ClipSourceNode(identifier: "test.playlist", context: nil)
+        let node = ClipSourceNode(identifier: "test.queue", context: nil)
         XCTAssertTrue(node.load(url: url))
         node.loopMode = mode
 
@@ -123,7 +154,7 @@ final class PlaylistTests: XCTestCase {
     func testOneShotAnnouncesThatItFinished() throws {
         XCTAssertTrue(
             try reachesEnd(in: .oneShot),
-            "one shot is the mode that hands over to the playlist")
+            "one shot is the mode that hands over to the queue")
     }
 
     func testLoopNeverAnnouncesAnEnd() throws {
@@ -135,7 +166,7 @@ final class PlaylistTests: XCTestCase {
     func testPingPongNeverAnnouncesAnEnd() throws {
         XCTAssertFalse(
             try reachesEnd(in: .pingPong),
-            "ping-pong turns around instead of finishing — taking a playlist item here "
+            "ping-pong turns around instead of finishing — taking a queue item here "
                 + "would quietly redefine what the shuttle key means")
     }
 }

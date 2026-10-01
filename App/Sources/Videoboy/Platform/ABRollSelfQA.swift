@@ -166,7 +166,7 @@ enum ABRollSelfQA {
         shell.queueForChecks(clips[2], channel: "A")
         cut()
         check.record(AssertionResult(
-            name: "ADV on: the outgoing source loads its Up Next clip, and with AUTO on it plays off air",
+            name: "ADV on: the outgoing source loads its Queue's next clip, and with AUTO on it plays off air",
             passed: name("A") == "motion.mov" && playing("A"),
             detail: "A \(name("A")) playing \(playing("A"))"))
 
@@ -185,8 +185,8 @@ enum ABRollSelfQA {
                 && bCued != "motion.dv" && bCued != firstFallback,
             detail: "A cued \(firstFallback) then rolled \(aRolled); B cued \(bCued), paused at head \(bPaused)"))
         check.record(AssertionResult(
-            name: "an empty Up Next falls back to the library and says so once, as information",
-            passed: noticeAfterFirst.contains("Up Next A was empty") && !noticeAfterFirst.hasPrefix("⚠"),
+            name: "an empty Queue falls back to the library and says so once, as information",
+            passed: noticeAfterFirst.contains("Queue A was empty") && !noticeAfterFirst.hasPrefix("⚠"),
             detail: noticeAfterFirst.isEmpty ? "no notice" : noticeAfterFirst))
 
         // 6. FADE: the incoming source rolls at the START; the outgoing one settles at the END.

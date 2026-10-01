@@ -5,7 +5,7 @@
 //            `toolTip` has been set, keyed by the view. A view merely removed from its
 //            superview stays registered there and is never freed — along with its
 //            subviews, constraints and observers. Every panel that rebuilds its
-//            controls (Source Controls on each clip load, the effect chain, playlists)
+//            controls (Source Controls on each clip load, the effect chain, queues)
 //            leaked its old controls this way: ~8 MB/min on a soak (found with `heap` and
 //            `leaks --traceTree`, 0.4.7).
 //  Inputs  : a view that will not be shown again.

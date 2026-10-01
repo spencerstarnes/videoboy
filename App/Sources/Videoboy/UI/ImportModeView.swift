@@ -522,7 +522,11 @@ final class ImportModeView: NSView {
 
     private func updateImportButton() {
         let count = importableURLs().count
-        importButton.title = count == 0 ? "Import" : count == 1 ? "Import 1 Clip" : "Import \(count) Clips"
+        switch count {
+        case 0: importButton.title = "Import"
+        case 1: importButton.title = "Import 1 Clip"
+        default: importButton.title = "Import \(count) Clips"
+        }
         importButton.isEnabled = count > 0
         refreshSummary(count: count)
         refreshSelectionMenu()

@@ -180,9 +180,9 @@ final class PanelSet {
         self.library = library
 
         libraryOneBody = LibraryPanelBody(
-            model: library, columns: 3, showsTabs: false, playlistChannels: ["A", "B"])
+            model: library, columns: 3, showsTabs: false, queueChannels: ["A", "B"])
         libraryTwoBody = LibraryPanelBody(
-            model: library, columns: 3, showsTabs: false, playlistChannels: ["C", "D"])
+            model: library, columns: 3, showsTabs: false, queueChannels: ["C", "D"])
         // The emulated machine, and the EMU tab that drives it. Owned here because the
         // asset browser is built here and the tab has to exist when it is.
         emulator = EmulatorController()

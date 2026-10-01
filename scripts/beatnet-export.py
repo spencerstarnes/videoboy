@@ -65,7 +65,7 @@ print('frame0 first nonzero idx', np.flatnonzero(fs[0])[:1], 'frame1 == x[441-70
       np.allclose(fs[1][705 - 441:], x[:WIN - (705 - 441)]))
 
 model = BDA(272, 150, 2, 'cpu')
-sd = torch.load(os.path.join(BEATNET, 'src/BeatNet/models/model_1_weights.pt'), map_location='cpu')
+sd = torch.load(os.path.join(BEATNET, 'src/BeatNet/models/model_1_weights.pt'), map_location='cpu', weights_only=True)
 model.load_state_dict(sd); model.eval()
 with torch.no_grad():
     out = model(torch.from_numpy(feats).unsqueeze(0))[0]

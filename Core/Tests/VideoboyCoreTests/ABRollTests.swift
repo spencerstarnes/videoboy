@@ -18,7 +18,7 @@ final class ABRollTests: XCTestCase {
 
     func testTheQueueAlwaysWins() {
         var picker = NextClipPicker()
-        var queue = Playlist()
+        var queue = ClipQueue()
         queue.append(url: url("q1.mov"))
         let library = [LibraryCandidate(url: url("l1.mov"), bin: nil)]
         let pick = picker.pick(queue: &queue, library: library, fallback: .inOrder,
@@ -29,7 +29,7 @@ final class ABRollTests: XCTestCase {
 
     func testInOrderWalksDownSkipsOnAirAndWraps() {
         var picker = NextClipPicker()
-        var queue = Playlist()
+        var queue = ClipQueue()
         let library = ["1", "2", "3"].map { LibraryCandidate(url: url("\($0).mov"), bin: nil) }
         var picks: [String] = []
         for _ in 0..<4 {
@@ -42,7 +42,7 @@ final class ABRollTests: XCTestCase {
 
     func testOffLoadsNothingAndMissingFilesAreSkipped() {
         var picker = NextClipPicker()
-        var queue = Playlist()
+        var queue = ClipQueue()
         queue.append(url: url("gone.mov"))
         let library = [LibraryCandidate(url: url("1.mov"), bin: nil)]
         XCTAssertNil(picker.pick(queue: &queue, library: library, fallback: .off,
@@ -51,7 +51,7 @@ final class ABRollTests: XCTestCase {
 
     func testShuffleDealsEveryClipOnceBeforeRepeating() {
         var picker = NextClipPicker()
-        var queue = Playlist()
+        var queue = ClipQueue()
         let library = (1...5).map { LibraryCandidate(url: url("\($0).mov"), bin: nil) }
         var seen: [String] = []
         var seed = 0.0
@@ -67,7 +67,7 @@ final class ABRollTests: XCTestCase {
 
     func testShuffleBinStaysInTheOutgoingClipsBin() {
         var picker = NextClipPicker()
-        var queue = Playlist()
+        var queue = ClipQueue()
         let library = [LibraryCandidate(url: url("t1.mov"), bin: "Tapes"),
                        LibraryCandidate(url: url("t2.mov"), bin: "Tapes"),
                        LibraryCandidate(url: url("p1.mov"), bin: "Phone")]
@@ -81,7 +81,7 @@ final class ABRollTests: XCTestCase {
 
     func testTheClipLeavingAirIsNotCuedAgain() {
         var picker = NextClipPicker()
-        var queue = Playlist()
+        var queue = ClipQueue()
         let library = ["1", "2", "3"].map { LibraryCandidate(url: url("\($0).mov"), bin: nil) }
         let pick = picker.pick(queue: &queue, library: library, fallback: .inOrder,
                                onAir: url("2.mov"), outgoing: LibraryCandidate(url: url("1.mov"), bin: nil),

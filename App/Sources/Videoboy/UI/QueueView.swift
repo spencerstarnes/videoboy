@@ -1,14 +1,14 @@
 //
-//  PlaylistView.swift — one source's up-next queue, as a list.
+//  QueueView.swift — one channel's Queue, as a list.
 //
 //  Purpose : The view behind a library's A / B (or C / D) tab. Shows what is queued
 //            for that source, in play order, with the next one marked — because the
 //            only question this view exists to answer quickly is "what comes next".
-//  Inputs  : `setItems`, called whenever that channel's playlist changes.
+//  Inputs  : `setItems`, called whenever that channel's queue changes.
 //  Outputs : `onRemove`, when a row's ✕ is pressed.
 //  Connects: LibraryPanelBody (which owns one per channel), ShellController (which
-//            owns the playlists themselves).
-//  Extend  : drag-to-reorder belongs here, driven onto `Playlist.move` — do not add
+//            owns the queues themselves).
+//  Extend  : drag-to-reorder belongs here, driven onto `ClipQueue.move` — do not add
 //            a second ordering mechanism.
 //
 
@@ -16,10 +16,10 @@ import AppKit
 import VideoboyCore
 
 /// A simple ordered list of queued clips for one channel.
-final class PlaylistView: NSView {
+final class QueueView: NSView {
 
     /// Called with the item to drop from the queue.
-    var onRemove: ((PlaylistItem.ID) -> Void)?
+    var onRemove: ((QueueItem.ID) -> Void)?
 
     private let channel: String
     private let stack = NSStackView()
@@ -28,8 +28,8 @@ final class PlaylistView: NSView {
     init(channel: String) {
         self.channel = channel
         self.emptyLabel = Controls.label(
-            "Nothing queued for \(channel). Right-click a clip to add it, "
-                + "then set the source to 1 so it plays the queue.",
+            "\(channel)'s Queue is empty. Right-click a clip and choose Play Next or "
+                + "Play Last, then set the source to 1 so it plays its Queue.",
             font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
         super.init(frame: .zero)
 
@@ -60,12 +60,15 @@ final class PlaylistView: NSView {
     required init?(coder: NSCoder) { fatalError("built in code, never from a nib") }
 
     /// What is shown, so the common change can be done without a rebuild.
-    private var shownItems: [PlaylistItem] = []
+    private var shownItems: [QueueItem] = []
+
+    /// The rows' clip names, in play order — for self-QA.
+    var shownNamesForChecks: [String] { shownItems.map(\.displayName) }
 
     /// Replaces the list. The one change that happens at a TAKE — ADV taking the top
     /// clip — only removes the top row and restyles the new top one (the accent
     /// moves); anything else rebuilds, since a queue is a handful of rows.
-    func setItems(_ items: [PlaylistItem]) {
+    func setItems(_ items: [QueueItem]) {
         defer { shownItems = items }
         if !shownItems.isEmpty, items == Array(shownItems.dropFirst()),
            stack.arrangedSubviews.count == shownItems.count {
@@ -92,7 +95,7 @@ final class PlaylistView: NSView {
         }
     }
 
-    private func row(for item: PlaylistItem, position: Int) -> NSView {
+    private func row(for item: QueueItem, position: Int) -> NSView {
         // The first row is what plays next, so it is the one that gets the accent.
         // Everything below it is just order.
         let isNext = position == 0
@@ -110,7 +113,7 @@ final class PlaylistView: NSView {
 
         let remove = Controls.button("✕", target: self, action: #selector(removePressed(_:)))
         remove.identifier = NSUserInterfaceItemIdentifier(item.id.uuidString)
-        remove.toolTip = "Take \(item.displayName) out of \(channel)'s queue"
+        remove.toolTip = "Take \(item.displayName) out of \(channel)'s Queue"
 
         return Controls.row([number, name, Controls.spacer(), remove], spacing: 4)
     }

@@ -188,8 +188,6 @@ func runSetup() {
         let written = try configuration.write(to: workspace)
         // Read back off the config rather than restating it here: a readout that
         // says NTSC while the file says PAL is worse than no readout.
-        let standard = written.path.isEmpty ? "" : ""
-        _ = standard
         print("\n  machine    \(configuration.amigaModel), "
             + "\(configuration.fastMemory)MB fast, "
             + (configuration.text.contains("ntsc_mode = 1") ? "NTSC" : "PAL"))

@@ -98,7 +98,7 @@ public struct NextClipPicker: Sendable {
     ///   - isLoadable: skip anything that cannot be loaded (missing files).
     ///   - random: a number in 0..<1, injected so tests are repeatable.
     public mutating func pick(
-        queue: inout Playlist,
+        queue: inout ClipQueue,
         library: [LibraryCandidate],
         fallback: ABRollFallback,
         onAir: URL?,

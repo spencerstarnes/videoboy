@@ -403,7 +403,6 @@ final class SourcePanelBody: NSView {
         overlayStack.translatesAutoresizingMaskIntoConstraints = false
         shuttleScrim.addSubview(overlayStack)
 
-        let padding = Theme.Metrics.panelBodyPadding
         let scrimInset: CGFloat = 4
         NSLayoutConstraint.activate([
             // The picture takes the WHOLE cell. Every control that used to sit under
@@ -1220,7 +1219,7 @@ final class FaderPanelBody: NSView, FloatingHitTargets {
             advance.target = self
             advance.action = #selector(advancePressed(_:))
             advance.mappingCode = .advanceToggleTrigger
-            advance.toolTip = "ADV: the source leaving air loads its next clip — Up Next first, "
+            advance.toolTip = "ADV: the source leaving air loads its next clip — its Queue first, "
                 + "then the library (Settings ▸ Defaults). Shift-click to learn a MIDI button."
             advance.setAccessibilityIdentifier("ab-advance")
             roll.isTall = true

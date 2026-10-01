@@ -187,8 +187,8 @@ final class LibraryPanelBody: NSView {
     /// The asset browser's tab strip.
     private var tabControl: NSSegmentedControl?
 
-    /// Which channels this library keeps playlists for. Empty in the asset browser.
-    private let playlistChannels: [String]
+    /// Which channels this library keeps queues for. Empty in the asset browser.
+    private let queueChannels: [String]
 
     /// The AUTO key, so every library can be kept showing the same state.
     private var autoPlayKey: VBOptionButton?
@@ -199,24 +199,24 @@ final class LibraryPanelBody: NSView {
     /// Which channels the focus control offers. A bus library offers its own pair;
     /// the asset browser, which belongs to no bus, offers all four.
     private var focusChannels: [String] {
-        playlistChannels.isEmpty ? ChannelDestination.allChannels : playlistChannels
+        queueChannels.isEmpty ? ChannelDestination.allChannels : queueChannels
     }
 
-    /// The Library / A / B tab strip, when this library has playlists.
-    private var playlistTabs: NSSegmentedControl?
+    /// The Library / A / B tab strip, when this library has queues.
+    private var queueTabs: NSSegmentedControl?
 
     /// Which view is showing: nil means the library, a letter means that channel's queue.
-    private var shownPlaylist: String?
+    private var shownQueue: String?
 
     /// The queue views, one per channel, in one scroll view.
-    private var playlistViews: [String: PlaylistView] = [:]
+    private var queueViews: [String: QueueView] = [:]
     private let queueScroll = NSScrollView()
 
     /// Called when a clip is queued: (item, channel, playNext).
     var onItemQueued: ((LibraryItem, String, Bool) -> Void)?
 
-    /// Called when a queued item is removed from a channel's playlist.
-    var onQueuedItemRemoved: ((String, PlaylistItem.ID) -> Void)?
+    /// Called when a queued item is removed from a channel's queue.
+    var onQueuedItemRemoved: ((String, QueueItem.ID) -> Void)?
 
     /// Where Copy writes and Paste reads. The self-QA points this at a private board
     /// so a check never overwrites what the person at the machine had copied.
@@ -229,11 +229,11 @@ final class LibraryPanelBody: NSView {
     ///   - showsTabs: true for the asset browser, which is tabbed by asset kind.
     init(
         model: LibraryModel, columns: Int, showsTabs: Bool,
-        playlistChannels: [String] = [], emuView: NSView? = nil
+        queueChannels: [String] = [], emuView: NSView? = nil
     ) {
         self.model = model
         self.browser = LibraryBrowser(model: model)
-        self.playlistChannels = playlistChannels
+        self.queueChannels = queueChannels
         self.emuView = emuView
         self.gridView = LibraryGridView(browser: browser)
         self.pathBar = LibraryPathBar()
@@ -298,15 +298,15 @@ final class LibraryPanelBody: NSView {
             queueDocument.widthAnchor.constraint(equalTo: queueScroll.contentView.widthAnchor),
             queueDocument.heightAnchor.constraint(greaterThanOrEqualTo: queueScroll.contentView.heightAnchor)
         ])
-        for channel in playlistChannels {
-            let queue = PlaylistView(channel: channel)
+        for channel in queueChannels {
+            let queue = QueueView(channel: channel)
             queue.translatesAutoresizingMaskIntoConstraints = false
             queue.isHidden = true
             queue.onRemove = { [weak self] id in
                 self?.onQueuedItemRemoved?(channel, id)
             }
             queueDocument.addSubview(queue)
-            playlistViews[channel] = queue
+            queueViews[channel] = queue
             NSLayoutConstraint.activate([
                 queue.topAnchor.constraint(equalTo: queueDocument.topAnchor),
                 queue.leadingAnchor.constraint(equalTo: queueDocument.leadingAnchor),
@@ -380,13 +380,13 @@ final class LibraryPanelBody: NSView {
             tabControl = tabs
             topRow.append(tabs)
             topRow.append(Controls.spacer())
-        } else if !playlistChannels.isEmpty {
-            let titles = ["Library"] + playlistChannels
+        } else if !queueChannels.isEmpty {
+            let titles = ["Library"] + queueChannels
             let tabs = Controls.segmented(
-                titles, selected: 0, target: self, action: #selector(playlistTabChanged(_:)))
-            tabs.toolTip = "The library, or a source's up-next queue"
+                titles, selected: 0, target: self, action: #selector(queueTabChanged(_:)))
+            tabs.toolTip = "The library, or a channel's Queue"
             tabs.setContentCompressionResistancePriority(.required, for: .horizontal)
-            playlistTabs = tabs
+            queueTabs = tabs
             bottomRow.append(tabs)
         } else {
             bottomRow.append(Controls.popUp(["Page 1"], enabled: false))
@@ -536,13 +536,13 @@ final class LibraryPanelBody: NSView {
     func reloadNow() {
         browser.pruneSelection()
         if let open = browser.openBin, !model.binNames.contains(open) { browser.openBin = nil }
-        let showingLibrary = shownPlaylist == nil && currentTab != .emu
+        let showingLibrary = shownQueue == nil && currentTab != .emu
 
         gridView.isHidden = !showingLibrary || viewStyle != .icon
         listView?.isHidden = !showingLibrary || viewStyle != .list
         columnView?.isHidden = !showingLibrary || viewStyle != .column
-        queueScroll.isHidden = shownPlaylist == nil
-        emuView?.isHidden = currentTab != .emu || shownPlaylist != nil
+        queueScroll.isHidden = shownQueue == nil
+        emuView?.isHidden = currentTab != .emu || shownQueue != nil
 
         let showsPath = showingLibrary && viewStyle != .column && browser.effectiveOpenBin != nil
         pathBar.isHidden = !showsPath
@@ -685,27 +685,33 @@ final class LibraryPanelBody: NSView {
         scheduleReload()
     }
 
-    @objc private func playlistTabChanged(_ sender: NSSegmentedControl) {
+    @objc private func queueTabChanged(_ sender: NSSegmentedControl) {
         // Segment 0 is the library; the rest are channels, in order.
         let index = sender.selectedSegment
-        shownPlaylist = index <= 0 ? nil : playlistChannels[min(index - 1, playlistChannels.count - 1)]
-        for (channel, view) in playlistViews { view.isHidden = channel != shownPlaylist }
+        shownQueue = index <= 0 ? nil : queueChannels[min(index - 1, queueChannels.count - 1)]
+        for (channel, view) in queueViews { view.isHidden = channel != shownQueue }
         reloadNow()
     }
 
     /// Hands a channel's queue its current contents.
-    func setPlaylist(_ playlist: Playlist, forChannel channel: String) {
-        playlistViews[channel]?.setItems(playlist.items)
+    func setQueue(_ queue: ClipQueue, forChannel channel: String) {
+        queueViews[channel]?.setItems(queue.items)
         // The tab says how many are waiting, so the count is legible without
         // switching to it mid-set.
-        guard let tabs = playlistTabs,
-              let index = playlistChannels.firstIndex(of: channel) else { return }
+        guard let tabs = queueTabs,
+              let index = queueChannels.firstIndex(of: channel) else { return }
         tabs.setLabel(
-            playlist.isEmpty ? channel : "\(channel) \(playlist.count)", forSegment: index + 1)
+            queue.isEmpty ? channel : "\(channel) \(queue.count)", forSegment: index + 1)
     }
 
     /// The channel whose queue is showing, if one is — where a drop on the queue goes.
-    var shownPlaylistChannel: String? { shownPlaylist }
+    var shownQueueChannel: String? { shownQueue }
+
+    /// A channel's Queue as its list shows it, and its tab's title — for self-QA.
+    func queueForChecks(_ channel: String) -> (names: [String], tab: String?) {
+        let tab = queueChannels.firstIndex(of: channel).flatMap { queueTabs?.label(forSegment: $0 + 1) }
+        return (queueViews[channel]?.shownNamesForChecks ?? [], tab)
+    }
 
     @objc private func newBinPressed() {
         makeBin(filing: [])
@@ -770,7 +776,7 @@ final class LibraryPanelBody: NSView {
     /// (the top level when none), selects it and puts its name into edit mode, as the
     /// Finder's New Folder does.
     private func makeBin(filing ids: [String]) {
-        let parent = currentTab == .clips && shownPlaylist == nil ? browser.effectiveOpenBin : nil
+        let parent = currentTab == .clips && shownQueue == nil ? browser.effectiveOpenBin : nil
         let name: String
         if ids.isEmpty {
             name = model.addBin(in: parent)
@@ -781,10 +787,10 @@ final class LibraryPanelBody: NSView {
         Log.info(.app, "created bin '\(name)'" + (ids.isEmpty ? "" : " holding \(ids.count) clip(s)"))
         // A bin lives in the clip library, so that is where it has to be seen being
         // made — in the bin it was made inside.
-        if shownPlaylist != nil {
-            playlistTabs?.selectedSegment = 0
-            shownPlaylist = nil
-            for view in playlistViews.values { view.isHidden = true }
+        if shownQueue != nil {
+            queueTabs?.selectedSegment = 0
+            shownQueue = nil
+            for view in queueViews.values { view.isHidden = true }
         }
         if currentTab != .clips {
             tabControl?.selectedSegment = AssetTab.allCases.firstIndex(of: .clips) ?? 0
@@ -877,7 +883,7 @@ final class LibraryPanelBody: NSView {
 
     /// ⌘A. Everything in the view that is showing.
     override func selectAll(_ sender: Any?) {
-        guard shownPlaylist == nil, currentTab != .emu else { return }
+        guard shownQueue == nil, currentTab != .emu else { return }
         switch viewStyle {
         case .icon: gridView.selectAllEntries()
         case .list: listView?.outline.selectAll(nil)
@@ -1123,14 +1129,16 @@ extension LibraryPanelBody: LibraryBrowserActions {
             add("Load into \(channel)", #selector(menuLoad(_:)), channel,
                 enabled: single?.isAvailable == true)
         }
-        if !playlistChannels.isEmpty {
+        if !queueChannels.isEmpty {
             menu.addItem(.separator())
-            for channel in playlistChannels {
-                add("Add to \(channel)", #selector(menuQueue(_:)), channel, enabled: !files.isEmpty)
-            }
-            for channel in playlistChannels {
+            // Apple Music's pair, in its order: Play Next goes to the front of the
+            // Queue, Play Last to the end.
+            for channel in queueChannels {
                 add("Play Next on \(channel)", #selector(menuQueue(_:)), channel, tag: 1,
                     enabled: !files.isEmpty)
+            }
+            for channel in queueChannels {
+                add("Play Last on \(channel)", #selector(menuQueue(_:)), channel, enabled: !files.isEmpty)
             }
         }
         menu.addItem(.separator())
@@ -1188,7 +1196,7 @@ extension LibraryPanelBody: NSMenuItemValidation {
             return browser.fixedItems == nil
                 && (!browser.selectedItems.isEmpty || !browser.selectedBins.isEmpty)
         case #selector(selectAll(_:)):
-            return shownPlaylist == nil && currentTab != .emu
+            return shownQueue == nil && currentTab != .emu
         default:
             return menuItem.isEnabled
         }
@@ -1307,11 +1315,11 @@ final class LibraryQueueDropView: FlippedView {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        panel?.shownPlaylistChannel != nil && !clips(from: sender).isEmpty ? .copy : []
+        panel?.shownQueueChannel != nil && !clips(from: sender).isEmpty ? .copy : []
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let panel, let channel = panel.shownPlaylistChannel else { return false }
+        guard let panel, let channel = panel.shownQueueChannel else { return false }
         let items = clips(from: sender)
         guard !items.isEmpty else { return false }
         for item in items { panel.onItemQueued?(item, channel, false) }
