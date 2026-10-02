@@ -255,7 +255,15 @@ final class OutputRouter {
 
         do {
             streamers[id]?.close()
-            streamers[id] = try MPEGTSStreamer(target: configured.target)
+            // At the project canvas's size; the bitrate scales with it the way a
+            // recording's does, from 6 Mb/s at SD.
+            let canvas = CanvasGeometry.project
+            let scale = min(max(Double(canvas.width * canvas.height)
+                / Double(StandardDefinition.width * StandardDefinition.height), 1),
+                FrameRecorder.Codec.maximumBitRateScale)
+            streamers[id] = try MPEGTSStreamer(
+                target: configured.target, width: canvas.width, height: canvas.height,
+                bitrate: Int(6_000_000 * scale))
             failedStreams.remove(id)
             routes[.configured(id)] = source
             Log.info(.render, "streaming \(source.displayName) to \(configured.name)")

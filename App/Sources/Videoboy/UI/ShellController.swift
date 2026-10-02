@@ -121,7 +121,7 @@ final class ShellController {
         // Linked optimized media plays in place of the original when there is one for
         // this canvas (Settings ▸ Optimize; a missing file falls back to the original).
         let library = shell.grid.panels.library
-        let playing = preferences.preferences.usesOptimizedMedia
+        let playing = usesOptimizedMedia
             ? library.playbackURL(for: url, canvas: ClipOptimizer.canvasTag) : (url: url, optimized: false)
         let known = playing.optimized ? nil : library.frameCount(forPath: url.path)
         engine.loadAsync(url: playing.url, intoChannel: channel, knownFrameCount: known) { [weak self] loaded in
@@ -1946,11 +1946,20 @@ final class ShellController {
         }
     }
 
+    /// Whether linked optimized media plays in place of originals. Optimized files are
+    /// made for the SD reference canvas (`ClipOptimizer.canvasTag`); on any other canvas
+    /// a 4:3 SD copy would replace the person's 9:16 or HD original, so they play the
+    /// originals.
+    private var usesOptimizedMedia: Bool {
+        // The canvas this run renders at, not the stored choice: a change waits for relaunch.
+        preferences.preferences.usesOptimizedMedia && CanvasGeometry.project == .standardDefinition
+    }
+
     /// The file that would actually be PLAYED for a clip (its optimized file when
     /// there is one), and the catalog's frame count for it.
     func playbackTarget(for url: URL) -> (url: URL, knownFrameCount: Int?) {
         let library = shell.grid.panels.library
-        let playing = preferences.preferences.usesOptimizedMedia
+        let playing = usesOptimizedMedia
             ? library.playbackURL(for: url, canvas: ClipOptimizer.canvasTag) : (url: url, optimized: false)
         return (playing.url, playing.optimized ? nil : library.frameCount(forPath: url.path))
     }
@@ -2887,7 +2896,7 @@ final class ShellController {
             let frameHeight = picture?.height ?? Int(DataBurnRenderer.referenceFrameHeight)
             guard let image = DataBurnRenderer.render(
                 lines: lines, style: preferences.preferences.dataBurnStyle,
-                frameHeight: frameHeight) else {
+                frameHeight: frameHeight, frameWidth: frameWidth) else {
                 composite.body.preview.setDataImage(nil, rect: (0, 0, 0, 0))
                 continue
             }
@@ -3335,7 +3344,7 @@ final class ShellController {
 
             guard let texture = engine.texture(for: composite.texture)
                 ?? engine.texture(for: composite.slot),
-                  let image = renderer.readback(texture) else { continue }
+                  let image = renderer.readback(scopeSized(texture)) else { continue }
 
             // Drawn at the size it will be SHOWN at. Rendering full size and letting
             // the layer shrink it turns a one-pixel trace into a grey smear — which is
@@ -3369,6 +3378,29 @@ final class ShellController {
 
     /// Frames between scope refreshes. About six a second at 29.97.
     private static let scopeRefreshInterval = 5
+
+    /// The longest side a scope reads. A scope draws at most 480 wide, so an SD
+    /// picture is read as it is; a 1080×1920 vertical one is shrunk on the GPU first.
+    /// Reading it back whole and walking 2 M pixels on the CPU put the DATA BURN
+    /// stress run's worst tick over one frame (33.7 ms, 2026-10-02).
+    private static let scopeLongestSide = 720
+
+    /// `texture`, or a copy no longer than `scopeLongestSide` on either side, same shape.
+    private func scopeSized(_ texture: MTLTexture) -> MTLTexture {
+        let longest = max(texture.width, texture.height)
+        guard longest > Self.scopeLongestSide, let metal = MetalContext.shared else { return texture }
+        let scale = Double(Self.scopeLongestSide) / Double(longest)
+        func even(_ value: Int) -> Int { max(2, Int((Double(value) * scale / 2).rounded()) * 2) }
+        let small = CanvasGeometry(width: even(texture.width), height: even(texture.height))
+        if scopeFitter == nil { scopeFitter = CanvasFit(context: metal, label: "scope-input") }
+        return scopeFitter?.fit(
+            texture, sourceAspect: Double(texture.width) / Double(texture.height),
+            quarterTurns: 0, framing: .stretch, canvas: small) ?? texture
+    }
+
+    /// Shrinks large pictures for the scopes; one target, reused (the readback that
+    /// follows each fit waits for it, so the scopes never share it in flight).
+    private var scopeFitter: CanvasFit?
 
     /// Used to read textures back for the scopes.
     private lazy var offscreenRenderer: OffscreenRenderer? = OffscreenRenderer()

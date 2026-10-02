@@ -185,7 +185,7 @@ public final class ScopeOverlayNode: Node {
         drawnHeight = frameHeight
 
         guard let image = DataBurnRenderer.render(
-            lines: lines, style: textStyle, frameHeight: frameHeight) else {
+            lines: lines, style: textStyle, frameHeight: frameHeight, frameWidth: frameWidth) else {
             textTexture = nil
             return
         }

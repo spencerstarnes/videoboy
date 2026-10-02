@@ -102,6 +102,9 @@ case .selfQA(let check):
     // AVFoundation capture session requires a run loop to deliver frames.
     let application = NSApplication.shared
     application.setActivationPolicy(.accessory)
+    // SD unless VIDEOBOY_CANVAS asks otherwise; a check never reads the person's
+    // preferences.
+    CanvasGeometry.project = ProjectCanvas.atLaunch(stored: .sdNTSC).geometry
     let exitCode = SelfQARunner.run(check: check)
     exit(exitCode)
 

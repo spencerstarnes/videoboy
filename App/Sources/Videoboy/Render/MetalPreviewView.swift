@@ -294,14 +294,15 @@ final class MetalPreviewView: NSView {
         guard let metalLayer else { return }
 
         // Where the picture sits inside this view, per the chosen fill mode. The
-        // source is SD 4:3; the view is whatever the grid gave us, which is now also
-        // 4:3 for the previews, so Fit and Fill agree and there is nothing to see —
-        // the modes earn their keep on material that is not 4:3 and on the output
+        // source is the project canvas — SD 4:3 by default; the view is whatever the
+        // grid gave us, which is now also 4:3 for the previews, so on SD Fit and Fill
+        // agree and there is nothing to see — the modes earn their keep on a vertical
+        // canvas (pillarboxed at Fit), on material that is not 4:3 and on the output
         // window, where the display decides the shape.
         //
         // By DISPLAY shape, not pixel count: an SD raster is 720×480 pixels but is
         // shown 4:3. Placing it by its pixel count drew every preview 12.5% too wide.
-        let canvas = CanvasGeometry.standardDefinition
+        let canvas = CanvasGeometry.project
         let sourceSize = CGSize(width: canvas.displayAspect * CGFloat(canvas.height),
                                 height: CGFloat(canvas.height))
         let placed = fillMode.rect(sourceSize: sourceSize, in: bounds.size)

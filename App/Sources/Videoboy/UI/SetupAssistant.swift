@@ -140,10 +140,10 @@ final class SetupAssistant: NSWindowController {
             ]
         case .project:
             views = heading("Project", SetupChoices.canvasReason)
-            views += [Controls.row([Controls.label("Canvas"), SetupChoices.popUp(SetupChoices.canvases)]),
+            views += [Controls.row([Controls.label("Canvas"), SetupChoices.canvasPopUp(store: store)]),
                       Controls.row([Controls.label("Frame rate"), SetupChoices.popUp(SetupChoices.frameRates)])]
         case .done:
-            views = heading("Ready", "Canvas SD NTSC 29.97 · library at "
+            views = heading("Ready", "Canvas \(store.preferences.projectCanvas.title) 29.97 · library at "
                 + store.preferences.catalogURL.path
                 + ". Open Import to bring clips in, or Done to start in VJ.")
         }

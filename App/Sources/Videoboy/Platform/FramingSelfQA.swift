@@ -80,9 +80,12 @@ enum FramingSelfQA {
             passed: (fill?.top ?? 0) > 20 && (stretch?.top ?? 0) > 20
                 && fill.map { f in stretch.map { f.image.pixels != $0.image.pixels } ?? false } == true,
             detail: String(format: "fill top %.0f, stretch top %.0f", fill?.top ?? -1, stretch?.top ?? -1)))
+        // At native size the 1080-line clip overfills an SD canvas (no bars), but sits
+        // between bars on the 1920-line vertical one.
+        let clipFillsHeight = CanvasGeometry.project.height <= 1080
         check.record(AssertionResult(
             name: "CENTRE shows the HD clip at native size (cropped to its middle), unlike FILL",
-            passed: (centre?.top ?? 0) > 20
+            passed: (clipFillsHeight ? (centre?.top ?? 0) > 20 : (centre?.top ?? 99) < 20)
                 && centre.map { c in fill.map { c.image.pixels != $0.image.pixels } ?? false } == true,
             detail: String(format: "centre top %.0f", centre?.top ?? -1)))
         check.record(AssertionResult(

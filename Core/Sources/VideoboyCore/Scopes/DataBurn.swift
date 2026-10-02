@@ -206,7 +206,8 @@ public enum DataBurnText {
 /// Draws a block of lines in a `DataBurnStyle`.
 public enum DataBurnRenderer {
 
-    /// The frame height `DataBurnStyle.pixelSize` is measured against.
+    /// The frame height `DataBurnStyle.pixelSize` is measured against — strictly, the
+    /// frame's SHORTER side, which is its height on every landscape canvas.
     public static let referenceFrameHeight = 480.0
 
     /// Opacity of the `.box` backing — dark enough to read white over white, light
@@ -217,11 +218,18 @@ public enum DataBurnRenderer {
     ///
     /// Returns just the text block, premultiplied RGBA, with transparent pixels where
     /// there is no text or backing. Nil when there is nothing to draw.
+    ///
+    /// - Parameter frameWidth: when given, the text is sized from the frame's shorter
+    ///   side. On a landscape canvas that is the height, so nothing changes; on the
+    ///   1080×1920 vertical canvas, sizing from the height drew text 4× SD's — wider
+    ///   than the frame for a long filename, and four times the pixels to draw on the
+    ///   CPU every frame the timecode ticks.
     public static func render(
-        lines: [String], style: DataBurnStyle, frameHeight: Int
+        lines: [String], style: DataBurnStyle, frameHeight: Int, frameWidth: Int? = nil
     ) -> ImageBuffer? {
         guard !lines.isEmpty, frameHeight > 0 else { return nil }
-        let scale = Double(frameHeight) / referenceFrameHeight
+        let shorterSide = min(frameHeight, frameWidth.map { max($0, 1) } ?? frameHeight)
+        let scale = Double(shorterSide) / referenceFrameHeight
         let fontSize = CGFloat(max(style.pixelSize, 4) * scale)
         let font = makeFont(style: style, size: fontSize)
 

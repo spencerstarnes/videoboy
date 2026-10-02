@@ -37,6 +37,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         logEnvironment()
 
+        // The canvas is fixed for this run, and installed before the engine or any
+        // window is built: every render target, decode and recorder is sized from it.
+        let canvas = ProjectCanvas.atLaunch(stored: preferences.preferences.projectCanvas)
+        CanvasGeometry.project = canvas.geometry
+        Log.info(.app, "canvas: \(canvas.title) (\(canvas.geometry.width)x\(canvas.geometry.height))")
+
         if MetalContext.shared != nil {
             launch.complete(.metal)
             launch.complete(.shaders)

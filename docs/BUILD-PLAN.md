@@ -221,6 +221,15 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
       and the bundled LGPL DV/MPEG-2 encoders, so no ffmpeg CLI build was needed.
       `selfqa optimize`.
 - [ ] **0.4.11 Phase 5** — any resolution and frame rate (`ProjectFormat`).
+      **Vertical 1080×1920 (9:16) built 2026-10-02** (owner needed it for a job), branch
+      `feature/vertical-canvas`: `ProjectCanvas` in Settings ▸ Project / setup, stored,
+      applied at the next launch (`CanvasGeometry.project`; `VIDEOBOY_CANVAS=vertical`
+      overrides for checks). Render, clip decode, previews (pillarboxed), output windows,
+      recording (1080×1920, bitrate scaled) and MPEG-TS streams follow it. Optimized
+      (SD) media is not substituted off the SD canvas. Evidence `selfqa/out/perf/vertical/`:
+      `record` and `framing` PASS on both canvases; `stress` at 9:16 full load 30 fps,
+      0 dropped, mean 16.2 / p95 18.7 / worst 22.2 ms (SD 5.9 mean); no effects 5.6 mean.
+      Still open: PAL, HD, square and other frame rates; the per-canvas soak.
 - [ ] **0.5.0** — tags (proposal appendix A).
 - [x] **A/B ROLL + ADV** (designed with the owner 2026-09-24, built 2026-09-27;
       `docs/specs/ab-roll-adv.md`): ROLL rolls the source you take and re-cues the one
@@ -231,6 +240,15 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
 
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)
+
+- **Vertical canvas, known gaps (2026-10-02).** (1) Under `stress` full load (every
+  effect on every channel and bus) a 9:16 frame costs ~16 ms of GPU, right on a 60 Hz
+  refresh, so the program preview's cadence reads 68–74% even against a 90% bar (frames
+  are never dropped; with no effects it is 100%). Levers: run per-channel chains below
+  canvas size, or present at a fixed refresh offset. (2) The emulated titler (FS-UAE)
+  and window capture still produce SD pictures, stretched into 9:16. (3) Changing the
+  canvas needs a relaunch; the Settings note says so. (4) Datamosh runs at canvas size
+  (the proposal's SD/720p internal size is not done) — measured not to be the 9:16 cost.
 
 - **Queues, Playlists, Setlists (names + rules owner-set 2026-09-29, not started).**
   `docs/PROPOSAL-2026-09-28-setlist.md`. Queue = a channel's live list, where Play Next

@@ -17,6 +17,7 @@
 //  a lossy codec would throw away the thing the app exists to produce.
 //
 
+import Accelerate
 import AVFoundation
 import Foundation
 import VideoboyCore
@@ -78,6 +79,18 @@ final class FrameRecorder {
             }
         }
 
+        /// Bits per second for a raster: the SD rate scaled by pixel count, so a
+        /// 1080×1920 vertical canvas (6× SD's pixels) is not starved, capped at 4×
+        /// because a delivery file past ~50 Mb/s stops being a delivery file.
+        func bitRate(width: Int, height: Int) -> Int {
+            let ratio = Double(width * height)
+                / Double(StandardDefinition.width * StandardDefinition.height)
+            return Int(Double(bitRate) * min(max(ratio, 1), Self.maximumBitRateScale))
+        }
+
+        /// The most `bitRate(width:height:)` scales the SD rate by.
+        static let maximumBitRateScale = 4.0
+
         /// One line for the tooltip, so the choice can be made without knowing codecs.
         var explanation: String {
             switch self {
@@ -118,7 +131,7 @@ final class FrameRecorder {
         guard codec.isCompressed else { return settings }
 
         settings[AVVideoCompressionPropertiesKey] = [
-            AVVideoAverageBitRateKey: codec.bitRate,
+            AVVideoAverageBitRateKey: codec.bitRate(width: width, height: height),
             // NO FRAME REORDERING. B-frames buy a little efficiency by describing a
             // frame from the one AFTER it, which means holding frames back before
             // writing them. For a live recording that costs latency and makes the file
@@ -138,8 +151,8 @@ final class FrameRecorder {
     init(
         url: URL,
         codec: Codec,
-        width: Int = StandardDefinition.width,
-        height: Int = StandardDefinition.height,
+        width: Int = CanvasGeometry.project.width,
+        height: Int = CanvasGeometry.project.height,
         frameRate: Double = StandardDefinition.frameRate
     ) throws {
         self.url = url
@@ -221,20 +234,23 @@ final class FrameRecorder {
         let width = min(image.width, CVPixelBufferGetWidth(pixelBuffer))
         let height = min(image.height, CVPixelBufferGetHeight(pixelBuffer))
 
-        image.pixels.withUnsafeBufferPointer { source in
-            for y in 0..<height {
-                let sourceRow = y * image.bytesPerRow
-                let destinationRow = y * stride
-                for x in 0..<width {
-                    let from = sourceRow + x * 4
-                    let to = destinationRow + x * 4
-                    // RGBA in, BGRA out.
-                    destination[to] = source[from + 2]
-                    destination[to + 1] = source[from + 1]
-                    destination[to + 2] = source[from]
-                    destination[to + 3] = source[from + 3]
-                }
-            }
+        // RGBA in, BGRA out, in one vectorised pass. This runs on the render tick
+        // once per armed feed, and a per-pixel loop that was ~1 ms at SD is ~6× that
+        // on a 1080×1920 canvas.
+        let swapped = image.pixels.withUnsafeBufferPointer { source -> vImage_Error in
+            var from = vImage_Buffer(
+                data: UnsafeMutableRawPointer(mutating: source.baseAddress),
+                height: vImagePixelCount(height), width: vImagePixelCount(width),
+                rowBytes: image.bytesPerRow)
+            var to = vImage_Buffer(
+                data: destination, height: vImagePixelCount(height),
+                width: vImagePixelCount(width), rowBytes: stride)
+            let rgbaToBGRA: [UInt8] = [2, 1, 0, 3]
+            return vImagePermuteChannels_ARGB8888(&from, &to, rgbaToBGRA, vImage_Flags(kvImageNoFlags))
+        }
+        guard swapped == kvImageNoError else {
+            Log.warn(.app, "a frame for \(url.lastPathComponent) could not be converted (\(swapped))")
+            return false
         }
 
         let presentationTime = CMTimeMultiply(frameDuration, multiplier: Int32(frameCount))

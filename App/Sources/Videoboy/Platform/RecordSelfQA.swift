@@ -121,9 +121,9 @@ enum RecordSelfQA {
             ))
 
             check.record(AssertionResult(
-                name: "\(label) is SD",
-                passed: Int(track.naturalSize.width) == StandardDefinition.width
-                    && Int(track.naturalSize.height) == StandardDefinition.height,
+                name: "\(label) is the canvas size (\(CanvasGeometry.project.width)x\(CanvasGeometry.project.height))",
+                passed: Int(track.naturalSize.width) == CanvasGeometry.project.width
+                    && Int(track.naturalSize.height) == CanvasGeometry.project.height,
                 detail: "\(Int(track.naturalSize.width))x\(Int(track.naturalSize.height))"
             ))
 

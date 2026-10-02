@@ -103,6 +103,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var advanceFallback: [String: ABRollFallback] = [:]
     /// Say in the status strip when ADV fell back to the library (once per dry spell).
     public var announcesAdvanceFallback: Bool = true
+    /// The canvas the project renders at (Settings ▸ Project). Read once at launch;
+    /// a change takes effect the next time the app opens (see `ProjectCanvas`).
+    public var projectCanvas: ProjectCanvas = .sdNTSC
     /// Play a clip's linked optimized file when there is one (0.4.10, proposal §5).
     public var usesOptimizedMedia: Bool = true
     /// What Copy + Optimize writes. Only "compact" (MPEG-2 GOP 6) exists; any other
@@ -227,6 +230,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         importFavorites = decode(.importFavorites, [String]())
         advanceFallback = decode(.advanceFallback, [String: ABRollFallback]())
         announcesAdvanceFallback = decode(.announcesAdvanceFallback, true)
+        // A canvas this build does not offer (yet) reads as the reference.
+        let storedCanvas = decode(.projectCanvas, ProjectCanvas.sdNTSC)
+        projectCanvas = storedCanvas.isAvailable ? storedCanvas : .sdNTSC
         usesOptimizedMedia = decode(.usesOptimizedMedia, true)
         // Anything but a known preset reads as the one that exists.
         let storedPreset = decode(.optimizePreset, "compact")

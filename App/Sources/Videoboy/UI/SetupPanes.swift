@@ -8,9 +8,9 @@
 //  Inputs  : the PreferenceStore.
 //  Outputs : edits written straight through the store.
 //  Connects: PreferencesWindowController (panes), SetupAssistant (pages).
-//  Extend  : a canvas or frame rate becomes selectable by enabling it in
-//            `SetupChoices` when its phase lands (0.4.11). Optimize presets arrive in
-//            0.4.10. Until then they are present and disabled, never omitted.
+//  Extend  : a canvas becomes selectable through `ProjectCanvas.isAvailable`; a frame
+//            rate by enabling it in `SetupChoices.frameRates`. Until then they are
+//            present and disabled, never omitted.
 //
 
 import AppKit
@@ -18,20 +18,33 @@ import VideoboyCore
 
 /// The choices both Settings and the setup assistant offer.
 enum SetupChoices {
-    /// Canvases in proposal §6 order; only SD NTSC is built (any-canvas is 0.4.11).
-    static let canvases: [(title: String, available: Bool)] = [
-        ("SD NTSC 720×480", true),
-        ("SD PAL 720×576", false),
-        ("HD 1920×1080", false),
-        ("Square 1080×1080", false),
-        ("Vertical 1080×1920", false)
-    ]
     static let frameRates: [(title: String, available: Bool)] = [
         ("29.97", true), ("30", false), ("25", false), ("24", false), ("23.976", false)
     ]
     /// Why SD NTSC 29.97 is preselected, in one line (proposal §8).
     static let canvasReason = "SD NTSC 29.97 is the reference: the bitstream effects and "
-        + "the analog output are built for it. Other canvases arrive in 0.4.11."
+        + "the analog output are built for it. Vertical 1080×1920 (9:16) renders, previews "
+        + "(pillarboxed), records and outputs at 9:16. A canvas change takes effect the "
+        + "next time Videoboy opens."
+
+    /// The canvas pop-up, in proposal §6 order: shows the stored canvas, writes a
+    /// change straight to the store. Canvases not built yet are present and disabled.
+    static func canvasPopUp(store: PreferenceStore) -> NSPopUpButton {
+        let popUp = NSPopUpButton(frame: .zero, pullsDown: false)
+        popUp.autoenablesItems = false
+        for canvas in ProjectCanvas.allCases {
+            popUp.addItem(withTitle: canvas.isAvailable ? canvas.title : "\(canvas.title) — coming")
+            popUp.lastItem?.isEnabled = canvas.isAvailable
+            popUp.lastItem?.representedObject = canvas.rawValue
+        }
+        popUp.selectItem(at: ProjectCanvas.allCases.firstIndex(of: store.preferences.projectCanvas) ?? 0)
+        let target = CanvasChoice(store: store)
+        popUp.target = target
+        popUp.action = #selector(CanvasChoice.chosen(_:))
+        // The pop-up holds its target weakly; keep it alive as long as the pop-up.
+        objc_setAssociatedObject(popUp, &CanvasChoice.key, target, .OBJC_ASSOCIATION_RETAIN)
+        return popUp
+    }
 
     /// A pop-up whose unavailable items are present and disabled. Choosing an item
     /// logs it; only the SD NTSC 29.97 reference is selectable until 0.4.11, so there
@@ -47,6 +60,25 @@ enum SetupChoices {
         }
         popUp.selectItem(at: 0)
         return popUp
+    }
+}
+
+/// Target for the canvas pop-up: stores the choice, for the next launch.
+final class CanvasChoice: NSObject {
+    static var key = 0
+    private weak var store: PreferenceStore?
+
+    init(store: PreferenceStore) {
+        self.store = store
+    }
+
+    @objc func chosen(_ sender: NSPopUpButton) {
+        guard let raw = sender.selectedItem?.representedObject as? String,
+              let canvas = ProjectCanvas(rawValue: raw), canvas.isAvailable else { return }
+        store?.preferences.projectCanvas = canvas
+        let running = CanvasGeometry.project == canvas.geometry
+        Log.info(.app, "project: canvas = \(canvas.title)"
+            + (running ? "" : " (takes effect the next time Videoboy opens)"))
     }
 }
 
@@ -121,7 +153,7 @@ extension PreferencesWindowController {
     // MARK: - Project
 
     func makeProjectPane() -> NSView {
-        let canvas = SetupChoices.popUp(SetupChoices.canvases)
+        let canvas = SetupChoices.canvasPopUp(store: store)
         canvas.setAccessibilityIdentifier("project-canvas")
         let rate = SetupChoices.popUp(SetupChoices.frameRates)
         rate.setAccessibilityIdentifier("project-rate")

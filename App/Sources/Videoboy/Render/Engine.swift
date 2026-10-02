@@ -195,10 +195,17 @@ final class Engine {
     /// The mode the output display negotiated, logged and shown in the settings bar.
     private(set) var negotiatedOutputMode = "not yet negotiated"
 
-    /// - Parameter catalog: where modules come from. The self-QA passes one pointed at
-    ///   temporary ISF folders, so a check never touches the operator's library.
-    init(catalog: ModuleCatalog = ModuleCatalog()) {
+    /// The raster every frame is rendered at: the project canvas chosen at launch.
+    /// Fixed for the engine's life — every node sizes its targets from it.
+    let canvas: CanvasGeometry
+
+    /// - Parameters:
+    ///   - catalog: where modules come from. The self-QA passes one pointed at
+    ///     temporary ISF folders, so a check never touches the operator's library.
+    ///   - canvas: the render size; the project canvas unless a check asks otherwise.
+    init(catalog: ModuleCatalog = ModuleCatalog(), canvas: CanvasGeometry = .project) {
         self.catalog = catalog
+        self.canvas = canvas
         buildGraph()
         buildSchedule()
     }
@@ -211,6 +218,7 @@ final class Engine {
         for letter in ["A", "B", "C", "D"] {
             let identifier = Engine.slot(forChannel: letter)
             let node = ClipSourceNode(identifier: identifier, context: metal)
+            node.decodeCanvas = canvas
             sources[letter] = node
             graph.add(node)
         }
@@ -915,7 +923,9 @@ final class Engine {
         let context = RenderContext(
             frameIndex: frameIndex,
             presentationTime: link.targetTimestamp,
-            musicalPosition: transport.isRunning ? transport.position(atHostTime: now) : nil
+            musicalPosition: transport.isRunning ? transport.position(atHostTime: now) : nil,
+            width: canvas.width,
+            height: canvas.height
         )
         let graphStart = CACurrentMediaTime()
         evaluate(context: context)

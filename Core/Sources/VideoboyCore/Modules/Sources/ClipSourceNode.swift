@@ -290,9 +290,9 @@ public final class ClipSourceNode: Node, DataEffectProvider {
     /// as bars rather than as picture.
     public private(set) var picturePlacement: CGRect?
 
-    /// The canvas decoders size their frames for. Set before `load`; the project
-    /// canvas becomes a setting in 0.4.11, and this is where it will arrive.
-    public var decodeCanvas = CanvasGeometry.standardDefinition
+    /// The canvas decoders size their frames for. Set before `load`; defaults to the
+    /// project canvas chosen at launch (`CanvasGeometry.project`).
+    public var decodeCanvas = CanvasGeometry.project
 
     /// How a picture that is not the canvas's shape is placed in it: the whole picture
     /// with black bars (`fit`, Resolve's default), cropped to fill, or stretched. The
