@@ -1,14 +1,14 @@
 check:    phase-4/record
 verdict:  PASS
-when:     2026-09-29T14:06:25Z
+when:     2026-10-02T19:55:29Z
 core:     0.4.10
 
 assertions (8/8 passed):
   PASS  a take writes one file per armed feed — 2 files: A.mov, P.mov
   PASS  A is as long as the take — 1.002 s recorded, 1.001 s expected
-  PASS  A is SD — 720x480
+  PASS  A is the canvas size (720x480) — 720x480
   PASS  A contains a picture, not black — luminance variance 4151.5
   PASS  P is as long as the take — 1.002 s recorded, 1.001 s expected
-  PASS  P is SD — 720x480
+  PASS  P is the canvas size (720x480) — 720x480
   PASS  P contains a picture, not black — luminance variance 4151.5
-  PASS  recording two feeds keeps inside the frame budget — 4.2 ms per frame against a 33.4 ms budget
+  PASS  recording two feeds keeps inside the frame budget — 3.4 ms per frame against a 33.4 ms budget

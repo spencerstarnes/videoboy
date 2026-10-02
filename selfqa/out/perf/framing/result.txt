@@ -1,6 +1,6 @@
 check:    perf/framing
 verdict:  PASS
-when:     2026-09-28T02:31:36Z
+when:     2026-10-02T19:55:33Z
 core:     0.4.10
 
 assertions (5/5 passed):

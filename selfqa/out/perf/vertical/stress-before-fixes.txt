@@ -1,0 +1,76 @@
+check:    perf/stress
+verdict:  FAIL
+when:     2026-10-02T19:40:17Z
+core:     0.4.10
+
+notes:
+  loaded A=bars.dv, B=motion.dv, C=motion.m2v, D=motion.mov
+    fx.a.mosh: MoshStatistics(received: 250, emitted: 247, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 119, passedUnchanged: 0), heals 19
+    fx.b.mosh: MoshStatistics(received: 246, emitted: 243, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 117, passedUnchanged: 0), heals 19
+    fx.c.mosh: MoshStatistics(received: 237, emitted: 234, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 113, passedUnchanged: 0), heals 19
+    fx.d.mosh: MoshStatistics(received: 237, emitted: 234, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 113, passedUnchanged: 0), heals 19
+    fx.one.mosh: MoshStatistics(received: 238, emitted: 235, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 113, passedUnchanged: 0), heals 19
+    fx.two.mosh: MoshStatistics(received: 237, emitted: 234, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 113, passedUnchanged: 0), heals 19
+  display link at 30.0 Hz (33.33 ms/refresh)
+  240 frames rendered in 8 s = 30.00/s; 0 dropped refreshes
+  whole tick: mean 16.10 ms, p95 19.16 ms, worst 20.56 ms
+    of which graph: mean 15.74 ms, worst 20.24 ms; UI/onFrame: mean 0.35 ms
+    node fx.d.mosh: 1.00 ms/tick
+    node fx.one.mosh: 0.96 ms/tick
+    node fx.c.mosh: 0.96 ms/tick
+    node fx.a.mosh: 0.93 ms/tick
+    node fx.b.mosh: 0.92 ms/tick
+    node fx.two.mosh: 0.92 ms/tick
+    node source.a: 0.25 ms/tick
+    node source.b: 0.23 ms/tick
+    node source.d: 0.21 ms/tick
+    node source.c: 0.19 ms/tick
+  program preview: 197 frames shown; refreshes each was held for — 1×: 32, 2×: 133, 3×: 30, 4×: 1
+  main window: visible true, on the active Space true
+  transitions moving: 195 frames in 6.5 s = 30.00/s, 0 dropped; tick mean 15.62 ms, p95 18.14 ms, worst 21.42 ms; graph mean 15.19 ms, worst 21.01 ms
+  data burn on air: 150 frames in 5 s = 30.00/s, 0 dropped; tick mean 21.53 ms, p95 30.28 ms, worst 33.74 ms
+  window hidden: 120 frames in 4 s, worst tick 20.55 ms
+
+assertions (8/10 passed):
+  PASS  every datamosh node is encoding, decoding, blooming and healing on the beat under load — 6 of 6 running with frames flowing
+  PASS  the graph renders at the 29.97 content rate under full load — 30.00 frames/s against 29.97
+  PASS  under 1% of display-link ticks dropped under full load — 0 dropped of 240
+  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 20.56 ms, p95 19.16 ms, mean 16.10 ms
+  PASS  the program preview presented frames while the wipes moved — 197 frames shown; window visible true, on the active Space true
+  FAIL  the program preview paces a moving wipe evenly (90% of frames held 2 refreshes) — 133 of 196 — 1×: 32, 2×: 133, 3×: 30, 4×: 1
+  PASS  transitions in motion hold 29.97 with no tick over one SD frame — 30.00 frames/s, 0 dropped, worst 21.42 ms, p95 18.14 ms
+  PASS  both sub-mixes burn their text while it is on — 2 of 2 burning text
+  FAIL  DATA BURN on both sub-mixes holds 29.97 with no tick over one SD frame — 30.00 frames/s, 0 dropped, worst 33.74 ms, p95 30.28 ms
+  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 20.55 ms
+
+recent log:
+  1790970007.428 INFO [selfqa] perf/stress: PASS  transitions in motion hold 29.97 with no tick over one SD frame — 30.00 frames/s, 0 dropped, worst 21.42 ms, p95 18.14 ms
+  1790970007.428 INFO [app] scopes on mix.one: Waveform · Corner
+  1790970007.428 INFO [app] scopes on mix.one: Waveform+name · Corner
+  1790970007.428 INFO [app] scopes on mix.one: Waveform+name+timecode · Corner
+  1790970007.428 INFO [app] scopes on mix.one: Waveform+name+timecode · Corner · BURNED IN
+  1790970007.428 INFO [app] scopes on mix.two: Waveform · Corner
+  1790970007.428 INFO [app] scopes on mix.two: Waveform+name · Corner
+  1790970007.428 INFO [app] scopes on mix.two: Waveform+name+timecode · Corner
+  1790970007.428 INFO [app] scopes on mix.two: Waveform+name+timecode · Corner · BURNED IN
+  1790970007.428 INFO [app] scopes on mix.primary: name · Full
+  1790970007.428 INFO [app] scopes on mix.primary: name+timecode · Full
+  1790970007.428 INFO [clock] transport started at 120.0 BPM
+  1790970012.928 INFO [clock] transport stopped at beat 11.00
+  1790970012.928 INFO [app] scopes on mix.one: Waveform+name+timecode · Corner
+  1790970012.928 INFO [app] scopes on mix.one: Waveform+name · Corner
+  1790970012.928 INFO [app] scopes on mix.one: Waveform · Corner
+  1790970012.928 INFO [app] scopes on mix.one: off
+  1790970012.928 INFO [app] scopes on mix.two: Waveform+name+timecode · Corner
+  1790970012.928 INFO [app] scopes on mix.two: Waveform+name · Corner
+  1790970012.928 INFO [app] scopes on mix.two: Waveform · Corner
+  1790970012.928 INFO [app] scopes on mix.two: off
+  1790970012.928 INFO [app] scopes on mix.primary: name · Full
+  1790970012.928 INFO [app] scopes on mix.primary: off
+  1790970012.928 INFO [selfqa] perf/stress: data burn on air: 150 frames in 5 s = 30.00/s, 0 dropped; tick mean 21.53 ms, p95 30.28 ms, worst 33.74 ms
+  1790970012.928 INFO [selfqa] perf/stress: PASS  both sub-mixes burn their text while it is on — 2 of 2 burning text
+  1790970012.928 ERROR [selfqa] perf/stress: FAIL  DATA BURN on both sub-mixes holds 29.97 with no tick over one SD frame — 30.00 frames/s, 0 dropped, worst 33.74 ms, p95 30.28 ms
+  1790970012.930 INFO [clock] transport started at 120.0 BPM
+  1790970017.432 INFO [clock] transport stopped at beat 9.00
+  1790970017.432 INFO [selfqa] perf/stress: window hidden: 120 frames in 4 s, worst tick 20.55 ms
+  1790970017.432 INFO [selfqa] perf/stress: PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 20.55 ms
