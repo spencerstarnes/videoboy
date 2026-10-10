@@ -138,6 +138,10 @@ final class Engine {
     /// `audioFFT` inputs) while the clock is not on audio. See `refreshShaderAudio`.
     private var shaderAudioInput: AudioInput?
 
+    /// Where the clock's audio goes when a take is recording. Owned here rather than
+    /// by an AudioInput so it survives a change of clock source mid-take.
+    let recordAudioFeed = AudioRecordFeed()
+
     /// Where the transport gets its tempo from.
     private(set) var clockSource: ClockSource = .internalTransport
 
@@ -1479,6 +1483,7 @@ final class Engine {
 
         case .audio(let captureSource):
             let input = AudioInput(source: captureSource)
+            input.recordFeed = recordAudioFeed
             input.onFrame = { [weak self, weak input] frame in
                 // ISF audio inputs read the newest window straight from here; the feed
                 // is thread-safe, so this costs no hop to the main thread.

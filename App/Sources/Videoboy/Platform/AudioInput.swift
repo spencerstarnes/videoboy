@@ -6,14 +6,16 @@
 //            beat tracker. Everything that decides what the numbers *mean* lives in
 //            Core; this file only gets the samples and keeps time on them.
 //  Inputs  : an `AudioCaptureSource`.
-//  Outputs : `AudioFrame`s and `BeatTrackerReport`s, delivered on the analysis queue.
+//  Outputs : `AudioFrame`s and `BeatTrackerReport`s, delivered on the analysis queue;
+//            and, while a take is recording, the same audio in stereo to an
+//            `AudioRecordFeed`, so the recording has the sound the beat came from.
 //  Connects: AudioAnalyzer, and BeatNetTracker (Core) — or the older BeatTracker
 //            when VIDEOBOY_LEGACY_BEAT=1 or the BeatNet weights are missing —
-//            SystemAudioTap (for system and
-//            app sources), and the Engine, which routes results to the reactivity
-//            bus and the transport.
+//            SystemAudioTap (for system and app sources), the Engine, which routes
+//            results to the reactivity bus and the transport, and RecordingSession
+//            through the record feed.
 //  Extend  : a new kind of source is a new case in `AudioCaptureSource` and a branch
-//            in `start()` that ends by calling `deliver(_:sampleRate:hostTime:)`.
+//            in `start()` that ends by calling `captured(_:sampleRate:hostTime:)`.
 //
 //  Permission: the input device needs microphone permission (NSMicrophoneUsage-
 //  Description); system and app sources need System Audio Recording permission
@@ -64,6 +66,37 @@ enum AudioCaptureSource: Equatable {
     }
 }
 
+/// Carries captured audio to a recording, across threads.
+///
+/// Audio arrives on whichever thread its source delivers on; recordings start and
+/// stop on the main thread. This is the one place both touch, so it is locked. It
+/// outlives any one AudioInput — the Engine owns it — so switching the clock source
+/// mid-take carries on recording from the new source rather than going quiet.
+final class AudioRecordFeed {
+
+    /// Takes interleaved stereo float samples, their rate, and the host time of the
+    /// first one. Called on a capture thread: it must only hand the samples on.
+    typealias Sink = (_ interleavedStereo: [Float], _ sampleRate: Double, _ hostTime: Double) -> Void
+
+    private let lock = NSLock()
+    private var sink: Sink?
+
+    /// Starts sending audio to `sink`, or stops with nil.
+    func attach(_ sink: Sink?) {
+        lock.lock()
+        self.sink = sink
+        lock.unlock()
+    }
+
+    /// The current sink, if a take is recording. Checked before building stereo, so
+    /// nothing is converted when nothing is listening.
+    var currentSink: Sink? {
+        lock.lock()
+        defer { lock.unlock() }
+        return sink
+    }
+}
+
 /// Captures audio from one source and analyses it.
 final class AudioInput {
 
@@ -75,6 +108,8 @@ final class AudioInput {
     var onBeatReport: ((BeatTrackerReport, Double) -> Void)?
 
     let source: AudioCaptureSource
+    /// Where captured audio goes when a take is recording. Set before `start()`.
+    var recordFeed: AudioRecordFeed?
     /// Whether capture is running.
     private(set) var isRunning = false
     /// Why the last `start()` failed, for the notice. Nil after a success.
@@ -182,20 +217,12 @@ final class AudioInput {
             let frameCount = Int(buffer.frameLength)
             let channelCount = Int(buffer.format.channelCount)
             guard frameCount > 0, channelCount > 0 else { return }
-            // Mix to mono. An out-of-phase stereo pair would partly cancel, but for
-            // level and onset detection that is a fair trade.
-            var mono = [Float](repeating: 0, count: frameCount)
-            for channel in 0..<channelCount {
-                let samples = channelData[channel]
-                for frame in 0..<frameCount { mono[frame] += samples[frame] }
-            }
-            if channelCount > 1 {
-                let scale = 1 / Float(channelCount)
-                for frame in 0..<frameCount { mono[frame] *= scale }
+            let channels = (0..<channelCount).map { channel in
+                Array(UnsafeBufferPointer(start: channelData[channel], count: frameCount))
             }
             let hostTime = when.isHostTimeValid
                 ? AVAudioTime.seconds(forHostTime: when.hostTime) : CACurrentMediaTime()
-            self.deliver(mono, sampleRate: format.sampleRate, hostTime: hostTime)
+            self.captured(channels, sampleRate: format.sampleRate, hostTime: hostTime)
         }
 
         do {
@@ -229,8 +256,8 @@ final class AudioInput {
 
         let systemTap = SystemAudioTap()
         do {
-            try systemTap.start(target) { [weak self] samples, sampleRate, hostTime in
-                self?.deliver(samples, sampleRate: sampleRate, hostTime: hostTime)
+            try systemTap.start(target) { [weak self] channels, sampleRate, hostTime in
+                self?.captured(channels, sampleRate: sampleRate, hostTime: hostTime)
             }
         } catch {
             failureReason = "\(error)"
@@ -287,8 +314,63 @@ final class AudioInput {
         }
     }
 
-    /// Hands samples to the analysis queue. Called from whichever thread the source
-    /// delivers on.
+    /// Takes one buffer from a source, one array per channel: sends it to a recording
+    /// if one is running, and to the analysis as mono. Called from whichever thread
+    /// the source delivers on.
+    private func captured(_ channels: [[Float]], sampleRate: Double, hostTime: Double) {
+        guard let first = channels.first, !first.isEmpty else { return }
+        let frameCount = first.count
+
+        if let sink = recordFeed?.currentSink {
+            sink(Self.interleavedStereo(channels, frameCount: frameCount), sampleRate, hostTime)
+        }
+
+        deliver(Self.mono(channels), sampleRate: sampleRate, hostTime: hostTime)
+    }
+
+    /// Any number of channels mixed to one, for analysis. An out-of-phase stereo pair
+    /// would partly cancel, but for level and onset detection that is a fair trade.
+    static func mono(_ channels: [[Float]]) -> [Float] {
+        let frameCount = channels.first?.count ?? 0
+        var mono = [Float](repeating: 0, count: frameCount)
+        for channel in channels {
+            for frame in 0..<min(frameCount, channel.count) { mono[frame] += channel[frame] }
+        }
+        if channels.count > 1 {
+            let scale = 1 / Float(channels.count)
+            for frame in 0..<frameCount { mono[frame] *= scale }
+        }
+        return mono
+    }
+
+    /// Any number of channels as interleaved stereo, for a recording.
+    ///
+    /// Mono goes to both sides. More than two — an audio interface with the mixer on
+    /// inputs 3 and 4, say — are folded odd-to-left, even-to-right, so the recording
+    /// hears everything the beat tracker does rather than only the first pair.
+    static func interleavedStereo(_ channels: [[Float]], frameCount: Int) -> [Float] {
+        var stereo = [Float](repeating: 0, count: frameCount * 2)
+        var counts = [0, 0]
+        for (index, channel) in channels.enumerated() {
+            let side = channels.count == 1 ? -1 : index % 2
+            for frame in 0..<min(frameCount, channel.count) {
+                if side < 0 {
+                    stereo[frame * 2] = channel[frame]
+                    stereo[frame * 2 + 1] = channel[frame]
+                } else {
+                    stereo[frame * 2 + side] += channel[frame]
+                }
+            }
+            if side >= 0 { counts[side] += 1 }
+        }
+        for side in 0..<2 where counts[side] > 1 {
+            let scale = 1 / Float(counts[side])
+            for frame in 0..<frameCount { stereo[frame * 2 + side] *= scale }
+        }
+        return stereo
+    }
+
+    /// Hands samples to the analysis queue.
     private func deliver(_ samples: [Float], sampleRate: Double, hostTime: Double) {
         analysisQueue.async { [weak self] in
             self?.analyse(samples, sampleRate: sampleRate, hostTime: hostTime)

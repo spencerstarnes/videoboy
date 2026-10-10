@@ -539,6 +539,9 @@ final class ShellController {
                 metal: MetalContext.shared
             )
             recording = session
+            // Whatever the beat is coming from is recorded with the picture. Attached
+            // even on the internal clock, so switching to audio mid-take is heard.
+            engine.recordAudioFeed.attach(session.audioSink)
             // A feed that could not be opened is said once, here, rather than being
             // discovered afterwards as a missing file.
             if !session.failedFeeds.isEmpty {
@@ -563,6 +566,7 @@ final class ShellController {
     private func stopRecording() {
         guard let session = recording else { return }
         recording = nil
+        engine.recordAudioFeed.attach(nil)
         let folder = session.folder
         let frames = session.frameCount
 
@@ -578,19 +582,26 @@ final class ShellController {
                 return
             }
             Log.info(.app, "take finished: \(written.count) files, \(frames) frames")
-            self.presentRecordingFinished(folder: folder, files: written, frames: frames)
+            self.presentRecordingFinished(
+                folder: folder, files: written, frames: frames, hadAudio: session.hadAudio)
         }
     }
 
     /// Says where the take went, and offers to open it.
-    private func presentRecordingFinished(folder: URL, files: [URL], frames: Int) {
+    private func presentRecordingFinished(folder: URL, files: [URL], frames: Int, hadAudio: Bool) {
         let seconds = Double(frames) / StandardDefinition.frameRate
+        // Said either way, so a silent file is never a surprise found in the edit.
+        let sound = hadAudio
+            ? "With sound from the clock's audio source."
+            : "No sound: the clock was not listening to audio. Set CLOCK to an audio "
+                + "source (Input, System or an app) to record what makes the beat."
         let alert = NSAlert()
         alert.messageText = "Recorded \(files.count) file\(files.count == 1 ? "" : "s")"
         alert.informativeText = String(
-            format: "%@ · %.1f seconds\n\n%@",
+            format: "%@ · %.1f seconds\n%@\n\n%@",
             files.map { $0.deletingPathExtension().lastPathComponent }.joined(separator: ", "),
             seconds,
+            sound,
             folder.path)
         alert.addButton(withTitle: "Show in Finder")
         alert.addButton(withTitle: "Done")
@@ -3853,7 +3864,7 @@ final class ShellController {
         // Recording reads the same textures the previews do, so what is written is
         // what was on screen rather than a second render of the graph.
         if let recording {
-            recording.write { [weak self] feed in
+            recording.write(presentationTime: engine.framePresentationTime) { [weak self] feed in
                 guard let self else { return nil }
                 let slot = self.slot(forFeed: feed)
                 return self.engine.texture(for: slot)

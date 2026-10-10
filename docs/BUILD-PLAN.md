@@ -576,3 +576,20 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
     launch and hot reload never cost a frame; the whole folder is ready in ~13 s.
   - Still open: at the 1460pt layout the longest Source Controls line ("D · clip —
     speed & scrub on D's panel", 181pt) may truncate; it fits at full screen (231pt).
+- **Recordings carry the clock's audio (2026-10-10, feature/record-audio).** Whatever
+  CLOCK is listening to — Audio Input, System Audio, or one app — is written into
+  every file of a take as a stereo track: 24-bit PCM beside ProRes, 256 kbit AAC beside
+  H.264/HEVC, always 48 kHz (44.1 kHz sources are converted). It is the beat tracker's
+  own capture, so there is no second device to choose and nothing extra opened.
+  On Internal the take has no sound track at all (and the "Recorded" alert says so);
+  switching to an audio source mid-take starts the sound from that point, in place.
+  Sync: AVAssetWriter closes up gaps in an audio track (measured), so
+  `RecordedAudioClock` (Core) keeps it one continuous run — silence for gaps, overlaps
+  trimmed, re-anchored when it drifts past 20 ms — and `RecordedFrameClock` stamps
+  frames on the 29.97 grid but leaves a gap after lost frames, so the picture no longer
+  slides early against the sound after a stall. Nothing new on the render path: audio
+  is converted and appended on its own queue. Evidence: `RecordingClockTests` (11),
+  `scripts/selfqa.sh record` (sound read back out of the files at 0.3001 s / 0.7001 s
+  for 0.3 / 0.7, gap kept, no track when silent), `selfqa stress` unchanged (worst
+  16.2 ms). Not verified: a live take from the real app with real music — and no
+  calibration of capture vs. output latency, so sound may sit a frame or so off picture.

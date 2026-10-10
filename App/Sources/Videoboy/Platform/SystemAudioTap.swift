@@ -8,8 +8,8 @@
 //            Audio") or chosen ones (one app). Playback is untouched: the tap is a
 //            copy, the speakers keep playing. No BlackHole, no Soundflower.
 //  Inputs  : a `SystemAudioTap.Target`.
-//  Outputs : mono float samples with the host time of their first sample, delivered
-//            to a handler on a private queue.
+//  Outputs : float samples, one array per channel, with the host time of their
+//            first sample, delivered to a handler on a private queue.
 //  Connects: AudioInput (which owns one of these when the audio source is not the
 //            input device). `AudioAppCatalog` lists the apps that can be tapped.
 //  Extend  : the recipe is Apple's ("Capturing system audio with Core Audio taps")
@@ -179,9 +179,11 @@ final class SystemAudioTap {
         let description: String
     }
 
-    /// Called per IO cycle with mono samples, the sample rate, and the host time
-    /// (seconds, same clock as CACurrentMediaTime) of the first sample.
-    typealias Handler = (_ samples: [Float], _ sampleRate: Double, _ hostTime: Double) -> Void
+    /// Called per IO cycle with the samples (one array per channel, all the same
+    /// length), the sample rate, and the host time (seconds, same clock as
+    /// CACurrentMediaTime) of the first sample. Channels are kept apart because the
+    /// beat tracker wants mono and a recording wants stereo; AudioInput makes both.
+    typealias Handler = (_ channels: [[Float]], _ sampleRate: Double, _ hostTime: Double) -> Void
 
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
@@ -259,38 +261,34 @@ final class SystemAudioTap {
             let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
             guard let first = buffers.first, let firstData = first.mData else { return }
 
-            // Mix to mono, interleaved or not.
-            var mono: [Float]
+            // Split into one array per channel, interleaved or not.
+            var split: [[Float]]
             if interleaved {
                 let frames = Int(first.mDataByteSize) / (MemoryLayout<Float>.size * channels)
                 let samples = firstData.assumingMemoryBound(to: Float.self)
-                mono = [Float](repeating: 0, count: frames)
-                for frame in 0..<frames {
-                    var sum: Float = 0
-                    for channel in 0..<channels { sum += samples[frame * channels + channel] }
-                    mono[frame] = sum / Float(channels)
+                split = (0..<channels).map { channel in
+                    (0..<frames).map { frame in samples[frame * channels + channel] }
                 }
             } else {
                 let frames = Int(first.mDataByteSize) / MemoryLayout<Float>.size
-                mono = [Float](repeating: 0, count: frames)
-                var used = 0
+                split = []
                 for buffer in buffers {
                     guard let data = buffer.mData else { continue }
                     let samples = data.assumingMemoryBound(to: Float.self)
+                    var channel = [Float](repeating: 0, count: frames)
                     for frame in 0..<min(frames, Int(buffer.mDataByteSize) / MemoryLayout<Float>.size) {
-                        mono[frame] += samples[frame]
+                        channel[frame] = samples[frame]
                     }
-                    used += 1
+                    split.append(channel)
                 }
-                if used > 1 { for frame in 0..<frames { mono[frame] /= Float(used) } }
             }
-            guard !mono.isEmpty else { return }
+            guard let firstChannel = split.first, !firstChannel.isEmpty else { return }
 
             let time = inputTime.pointee
             let hostTime = time.mFlags.contains(.hostTimeValid)
                 ? Double(AudioConvertHostTimeToNanos(time.mHostTime)) / 1e9
                 : CACurrentMediaTime()
-            handler(mono, sampleRate, hostTime)
+            handler(split, sampleRate, hostTime)
         }
         guard status == noErr, ioProcID != nil else {
             stop()

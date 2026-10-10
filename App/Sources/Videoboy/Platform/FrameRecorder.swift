@@ -5,9 +5,12 @@
 //            nothing behind them. This is the encoder: one recorder per armed feed,
 //            so PROGRAM and the four sources can be captured discretely (SPEC 15) and
 //            cut together afterwards rather than only as a finished mix.
-//  Inputs  : `ImageBuffer` frames, pushed once per rendered frame.
-//  Outputs : a .mov per feed, in the save location from preferences.
-//  Connects: RecordingSession (which owns one of these per feed), ShellController.
+//  Inputs  : `ImageBuffer` frames, pushed once per rendered frame with their place
+//            on the take's timeline; audio sample buffers, from TakeAudio.
+//  Outputs : a .mov per feed, in the save location from preferences, with the
+//            clock's audio as a stereo track when the beat was coming from audio.
+//  Connects: RecordingSession (which owns one of these per feed), TakeAudio (which
+//            feeds every recorder's audio track), ShellController.
 //  Extend  : another codec is another `AVVideoCodecType` in `Codec`. Do NOT add a
 //            second writer path — AVAssetWriter handles every codec macOS can encode,
 //            and a parallel libav path would be two sets of timing bugs.
@@ -91,6 +94,30 @@ final class FrameRecorder {
         /// The most `bitRate(width:height:)` scales the SD rate by.
         static let maximumBitRateScale = 4.0
 
+        /// The audio track to go with it, at `FrameRecorder.audioSampleRate`, stereo.
+        ///
+        /// Uncompressed 24-bit beside ProRes, because a file meant for an edit should
+        /// not have its sound squeezed either (and next to 40 Mbit/s of picture it
+        /// costs nothing). AAC beside H.264 and HEVC, because those files are for
+        /// watching and sharing, and everything that plays them plays AAC.
+        var audioSettings: [String: Any] {
+            var settings: [String: Any] = [
+                AVSampleRateKey: FrameRecorder.audioSampleRate,
+                AVNumberOfChannelsKey: 2
+            ]
+            if isCompressed {
+                settings[AVFormatIDKey] = kAudioFormatMPEG4AAC
+                settings[AVEncoderBitRateKey] = 256_000
+            } else {
+                settings[AVFormatIDKey] = kAudioFormatLinearPCM
+                settings[AVLinearPCMBitDepthKey] = 24
+                settings[AVLinearPCMIsFloatKey] = false
+                settings[AVLinearPCMIsBigEndianKey] = false
+                settings[AVLinearPCMIsNonInterleaved] = false
+            }
+            return settings
+        }
+
         /// One line for the tooltip, so the choice can be made without knowing codecs.
         var explanation: String {
             switch self {
@@ -105,6 +132,9 @@ final class FrameRecorder {
         }
     }
 
+    /// Every recording's audio track runs at this rate; TakeAudio converts to it.
+    static let audioSampleRate = 48_000.0
+
     /// Where this recording is being written.
     let url: URL
     /// Frames written so far, for the status readout.
@@ -113,6 +143,12 @@ final class FrameRecorder {
     private let writer: AVAssetWriter
     private let input: AVAssetWriterInput
     private let adaptor: AVAssetWriterInputPixelBufferAdaptor
+    /// The audio track. Always added: a track that is never given a sample is left
+    /// out of the file (checked 2026-10-10), so a take with no audio source simply
+    /// has no sound, and one whose source is switched on mid-take still gets it.
+    private let audioInput: AVAssetWriterInput
+    /// Audio samples written, for the log. Touched only on TakeAudio's queue.
+    private(set) var audioSampleCount: Int64 = 0
     private let frameDuration: CMTime
     private var hasStarted = false
     private var hasFailed = false
@@ -187,6 +223,16 @@ final class FrameRecorder {
         }
         writer.add(input)
 
+        audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: codec.audioSettings)
+        audioInput.expectsMediaDataInRealTime = true
+        guard writer.canAdd(audioInput) else {
+            throw NSError(
+                domain: "Videoboy", code: 1,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "the writer would not accept an audio track beside \(codec.rawValue)"])
+        }
+        writer.add(audioInput)
+
         // 1001/30000 for 29.97, as a ratio rather than a decimal — NTSC's rate is a
         // ratio and rounding it is how a long recording drifts out of sync.
         frameDuration = CMTime(
@@ -202,13 +248,17 @@ final class FrameRecorder {
         Log.info(.app, "recording to \(url.lastPathComponent) as \(codec.rawValue)")
     }
 
-    /// Writes one frame.
+    /// Writes one frame at `frameIndex` on the take's timeline.
+    ///
+    /// The index comes from the session's `RecordedFrameClock`, not from counting
+    /// here: a frame dropped below must leave a gap, not pull every later frame
+    /// earlier and out of step with the sound.
     ///
     /// - Returns: false when the frame was dropped, either because the writer is not
     ///   ready or because it has failed. Dropping rather than blocking is deliberate:
     ///   the render loop must not stall waiting on a disk.
     @discardableResult
-    func write(_ image: ImageBuffer) -> Bool {
+    func write(_ image: ImageBuffer, frameIndex: Int) -> Bool {
         guard hasStarted, !hasFailed else { return false }
         guard writer.status == .writing else {
             if writer.status == .failed {
@@ -253,7 +303,7 @@ final class FrameRecorder {
             return false
         }
 
-        let presentationTime = CMTimeMultiply(frameDuration, multiplier: Int32(frameCount))
+        let presentationTime = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
         guard adaptor.append(pixelBuffer, withPresentationTime: presentationTime) else {
             Log.warn(.app, "a frame was refused by \(url.lastPathComponent)")
             return false
@@ -261,6 +311,36 @@ final class FrameRecorder {
         frameCount += 1
         return true
     }
+
+    /// Writes audio to the file's sound track. TakeAudio's queue only.
+    ///
+    /// Waits briefly when the writer is busy rather than dropping, unlike a picture:
+    /// a dropped picture is a held frame, but dropped audio pulls everything after it
+    /// early. This queue is not the render loop, so a short wait costs nothing seen.
+    @discardableResult
+    func appendAudio(_ buffer: CMSampleBuffer) -> Bool {
+        guard hasStarted, !hasFailed, writer.status == .writing else { return false }
+        var waited = 0
+        while !audioInput.isReadyForMoreMediaData {
+            guard waited < Self.audioWaitLimitMilliseconds else {
+                Log.warn(.app, "\(url.lastPathComponent) was not ready for audio; "
+                    + "\(CMSampleBufferGetNumSamples(buffer)) samples lost")
+                return false
+            }
+            usleep(1000)
+            waited += 1
+        }
+        guard audioInput.append(buffer) else {
+            Log.warn(.app, "audio was refused by \(url.lastPathComponent): "
+                + "\(writer.error?.localizedDescription ?? "unknown")")
+            return false
+        }
+        audioSampleCount += Int64(CMSampleBufferGetNumSamples(buffer))
+        return true
+    }
+
+    /// How long `appendAudio` waits on a busy writer before giving up.
+    private static let audioWaitLimitMilliseconds = 500
 
     /// Finishes the file and calls back when it is safe to open.
     ///
@@ -272,10 +352,14 @@ final class FrameRecorder {
             return
         }
         input.markAsFinished()
+        audioInput.markAsFinished()
         let url = self.url
         let frames = frameCount
+        let audioSeconds = Double(audioSampleCount) / Self.audioSampleRate
         writer.finishWriting {
-            Log.info(.app, "wrote \(frames) frames to \(url.lastPathComponent)")
+            Log.info(.app, "wrote \(frames) frames"
+                + (audioSeconds > 0 ? String(format: " and %.1f s of audio", audioSeconds) : ", no audio")
+                + " to \(url.lastPathComponent)")
             completion(url)
         }
     }
