@@ -1,76 +1,44 @@
 check:    perf/stress
-verdict:  FAIL
-when:     2026-10-02T19:56:01Z
+verdict:  PASS
+when:     2026-10-10T22:31:34Z
 core:     0.4.10
 
 notes:
   loaded A=bars.dv, B=motion.dv, C=motion.m2v, D=motion.mov
-    fx.a.mosh: MoshStatistics(received: 252, emitted: 249, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 120, passedUnchanged: 0), heals 19
-    fx.b.mosh: MoshStatistics(received: 248, emitted: 245, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 118, passedUnchanged: 0), heals 19
-    fx.c.mosh: MoshStatistics(received: 241, emitted: 238, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 115, passedUnchanged: 0), heals 19
-    fx.d.mosh: MoshStatistics(received: 239, emitted: 236, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 114, passedUnchanged: 0), heals 19
-    fx.one.mosh: MoshStatistics(received: 241, emitted: 238, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 115, passedUnchanged: 0), heals 19
-    fx.two.mosh: MoshStatistics(received: 239, emitted: 236, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 114, passedUnchanged: 0), heals 19
+    fx.a.mosh: MoshStatistics(received: 289, emitted: 285, droppedKeyframes: 0, droppedCuts: 1, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.b.mosh: MoshStatistics(received: 289, emitted: 286, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.c.mosh: MoshStatistics(received: 289, emitted: 286, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.d.mosh: MoshStatistics(received: 289, emitted: 286, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.one.mosh: MoshStatistics(received: 289, emitted: 286, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
+    fx.two.mosh: MoshStatistics(received: 289, emitted: 286, droppedKeyframes: 0, droppedCuts: 0, droppedRandom: 3, bloomed: 138, passedUnchanged: 0), heals 19
   display link at 30.0 Hz (33.33 ms/refresh)
-  240 frames rendered in 8 s = 30.00/s; 0 dropped refreshes
-  whole tick: mean 16.16 ms, p95 18.67 ms, worst 22.18 ms
-    of which graph: mean 15.81 ms, worst 21.81 ms; UI/onFrame: mean 0.35 ms
-    node fx.d.mosh: 0.96 ms/tick
-    node fx.one.mosh: 0.93 ms/tick
-    node fx.c.mosh: 0.93 ms/tick
-    node fx.b.mosh: 0.90 ms/tick
-    node fx.two.mosh: 0.89 ms/tick
-    node fx.a.mosh: 0.88 ms/tick
-    node source.a: 0.24 ms/tick
-    node source.b: 0.22 ms/tick
-    node source.d: 0.21 ms/tick
-    node source.c: 0.18 ms/tick
-  program preview: 196 frames shown; refreshes each was held for — 1×: 31, 2×: 133, 3×: 30, 5×: 1
+  239 frames rendered in 8 s = 29.88/s; 1 dropped refreshes
+  whole tick: mean 5.44 ms, p95 5.76 ms, worst 8.91 ms
+    of which graph: mean 5.31 ms, worst 8.77 ms; UI/onFrame: mean 0.13 ms
+    node fx.a.mosh: 0.26 ms/tick
+    node fx.b.mosh: 0.23 ms/tick
+    node fx.d.mosh: 0.23 ms/tick
+    node fx.c.mosh: 0.23 ms/tick
+    node fx.one.mosh: 0.21 ms/tick
+    node fx.two.mosh: 0.21 ms/tick
+    node source.d: 0.18 ms/tick
+    node source.b: 0.17 ms/tick
+    node source.a: 0.17 ms/tick
+    node source.c: 0.15 ms/tick
+  program preview: 28 frames shown; refreshes each was held for — 2×: 26, 4×: 1
   main window: visible true, on the active Space true
-  transitions moving: 194 frames in 6.5 s = 29.85/s, 0 dropped; tick mean 15.85 ms, p95 17.95 ms, worst 20.23 ms; graph mean 15.42 ms, worst 19.83 ms
-  data burn on air: 150 frames in 5 s = 30.00/s, 0 dropped; tick mean 17.12 ms, p95 20.54 ms, worst 24.98 ms
-  window hidden: 120 frames in 4 s, worst tick 17.64 ms
+  transitions moving: 196 frames in 6.5 s = 30.15/s, 0 dropped; tick mean 5.46 ms, p95 6.01 ms, worst 10.94 ms; graph mean 5.20 ms, worst 7.30 ms
+  data burn on air: 150 frames in 5 s = 30.00/s, 0 dropped; tick mean 7.10 ms, p95 9.13 ms, worst 12.52 ms
+  window hidden: 120 frames in 4 s, worst tick 6.80 ms
 
-assertions (9/10 passed):
+assertions (10/10 passed):
   PASS  every datamosh node is encoding, decoding, blooming and healing on the beat under load — 6 of 6 running with frames flowing
-  PASS  the graph renders at the 29.97 content rate under full load — 30.00 frames/s against 29.97
-  PASS  under 1% of display-link ticks dropped under full load — 0 dropped of 240
-  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 22.18 ms, p95 18.67 ms, mean 16.16 ms
-  PASS  the program preview presented frames while the wipes moved — 196 frames shown; window visible true, on the active Space true
-  FAIL  the program preview paces a moving wipe evenly (90% of frames held 2 refreshes) — 133 of 195 — 1×: 31, 2×: 133, 3×: 30, 5×: 1
-  PASS  transitions in motion hold 29.97 with no tick over one SD frame — 29.85 frames/s, 0 dropped, worst 20.23 ms, p95 17.95 ms
+  PASS  the graph renders at the 29.97 content rate under full load — 29.88 frames/s against 29.97
+  PASS  under 1% of display-link ticks dropped under full load — 1 dropped of 239
+  PASS  no whole tick exceeds one SD frame (33.4 ms) — worst 8.91 ms, p95 5.76 ms, mean 5.44 ms
+  PASS  the program preview presented frames while the wipes moved — 28 frames shown; window visible true, on the active Space true
+  PASS  the program preview paces a moving wipe evenly (90% of frames held 2 refreshes) — 26 of 27 — 2×: 26, 4×: 1
+  PASS  transitions in motion hold 29.97 with no tick over one SD frame — 30.15 frames/s, 0 dropped, worst 10.94 ms, p95 6.01 ms
   PASS  both sub-mixes burn their text while it is on — 2 of 2 burning text
-  PASS  DATA BURN on both sub-mixes holds 29.97 with no tick over one SD frame — 30.00 frames/s, 0 dropped, worst 24.98 ms, p95 20.54 ms
-  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 17.64 ms
-
-recent log:
-  1790970951.689 INFO [selfqa] perf/stress: PASS  transitions in motion hold 29.97 with no tick over one SD frame — 29.85 frames/s, 0 dropped, worst 20.23 ms, p95 17.95 ms
-  1790970951.689 INFO [app] scopes on mix.one: Waveform · Corner
-  1790970951.689 INFO [app] scopes on mix.one: Waveform+name · Corner
-  1790970951.689 INFO [app] scopes on mix.one: Waveform+name+timecode · Corner
-  1790970951.689 INFO [app] scopes on mix.one: Waveform+name+timecode · Corner · BURNED IN
-  1790970951.689 INFO [app] scopes on mix.two: Waveform · Corner
-  1790970951.689 INFO [app] scopes on mix.two: Waveform+name · Corner
-  1790970951.689 INFO [app] scopes on mix.two: Waveform+name+timecode · Corner
-  1790970951.689 INFO [app] scopes on mix.two: Waveform+name+timecode · Corner · BURNED IN
-  1790970951.689 INFO [app] scopes on mix.primary: name · Full
-  1790970951.689 INFO [app] scopes on mix.primary: name+timecode · Full
-  1790970951.689 INFO [clock] transport started at 120.0 BPM
-  1790970957.190 INFO [clock] transport stopped at beat 11.00
-  1790970957.190 INFO [app] scopes on mix.one: Waveform+name+timecode · Corner
-  1790970957.190 INFO [app] scopes on mix.one: Waveform+name · Corner
-  1790970957.190 INFO [app] scopes on mix.one: Waveform · Corner
-  1790970957.190 INFO [app] scopes on mix.one: off
-  1790970957.190 INFO [app] scopes on mix.two: Waveform+name+timecode · Corner
-  1790970957.190 INFO [app] scopes on mix.two: Waveform+name · Corner
-  1790970957.190 INFO [app] scopes on mix.two: Waveform · Corner
-  1790970957.190 INFO [app] scopes on mix.two: off
-  1790970957.190 INFO [app] scopes on mix.primary: name · Full
-  1790970957.190 INFO [app] scopes on mix.primary: off
-  1790970957.190 INFO [selfqa] perf/stress: data burn on air: 150 frames in 5 s = 30.00/s, 0 dropped; tick mean 17.12 ms, p95 20.54 ms, worst 24.98 ms
-  1790970957.190 INFO [selfqa] perf/stress: PASS  both sub-mixes burn their text while it is on — 2 of 2 burning text
-  1790970957.190 INFO [selfqa] perf/stress: PASS  DATA BURN on both sub-mixes holds 29.97 with no tick over one SD frame — 30.00 frames/s, 0 dropped, worst 24.98 ms, p95 20.54 ms
-  1790970957.192 INFO [clock] transport started at 120.0 BPM
-  1790970961.694 INFO [clock] transport stopped at beat 9.00
-  1790970961.694 INFO [selfqa] perf/stress: window hidden: 120 frames in 4 s, worst tick 17.64 ms
-  1790970961.694 INFO [selfqa] perf/stress: PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 17.64 ms
+  PASS  DATA BURN on both sub-mixes holds 29.97 with no tick over one SD frame — 30.00 frames/s, 0 dropped, worst 12.52 ms, p95 9.13 ms
+  PASS  a hidden main window never stalls the render loop — 120 frames in 4 s, worst 6.80 ms

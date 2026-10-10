@@ -1,14 +1,22 @@
 check:    phase-4/record
 verdict:  PASS
-when:     2026-10-02T19:55:29Z
+when:     2026-10-10T22:29:07Z
 core:     0.4.10
 
-assertions (8/8 passed):
+assertions (16/16 passed):
+  PASS  the take knows it has sound — yes
   PASS  a take writes one file per armed feed — 2 files: A.mov, P.mov
-  PASS  A is as long as the take — 1.002 s recorded, 1.001 s expected
+  PASS  A is as long as the take — 1.009 s recorded, 1.001 s expected
   PASS  A is the canvas size (720x480) — 720x480
+  PASS  A sound starts where it was captured (44.1 kHz, converted) — starts at 0.3001 s, expected 0.3000
+  PASS  A keeps a gap in the sound instead of closing it up — resumes at 0.7001 s, expected 0.7000
+  PASS  A sound runs as long as the picture — 1.009 s of sound, 1.001 s of picture
   PASS  A contains a picture, not black — luminance variance 4151.5
-  PASS  P is as long as the take — 1.002 s recorded, 1.001 s expected
+  PASS  P is as long as the take — 1.009 s recorded, 1.001 s expected
   PASS  P is the canvas size (720x480) — 720x480
+  PASS  P sound starts where it was captured (44.1 kHz, converted) — starts at 0.3001 s, expected 0.3000
+  PASS  P keeps a gap in the sound instead of closing it up — resumes at 0.7001 s, expected 0.7000
+  PASS  P sound runs as long as the picture — 1.009 s of sound, 1.001 s of picture
   PASS  P contains a picture, not black — luminance variance 4151.5
-  PASS  recording two feeds keeps inside the frame budget — 3.4 ms per frame against a 33.4 ms budget
+  PASS  recording two feeds keeps inside the frame budget — 3.2 ms per frame against a 33.4 ms budget
+  PASS  a take with no audio source has no sound track — 0 audio tracks, hadAudio false
