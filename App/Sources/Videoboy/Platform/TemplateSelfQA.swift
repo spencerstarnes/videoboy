@@ -72,7 +72,7 @@ enum TemplateSelfQA {
         func queue(_ url: URL, on channel: String, next: Bool) {
             let item = LibraryItem(name: url.lastPathComponent, badge: "", isAvailable: true, url: url, bin: nil)
             let library = ["A", "B"].contains(channel) ? panels.libraryOneBody : panels.libraryTwoBody
-            library.onItemQueued?(item, channel, next)
+            library.onItemsQueued?([item], channel, next)
         }
         queue(queued[0], on: "A", next: false)
         queue(queued[1], on: "A", next: true)

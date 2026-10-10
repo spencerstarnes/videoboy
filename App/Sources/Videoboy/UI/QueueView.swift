@@ -4,8 +4,10 @@
 //  Purpose : The view behind a library's A / B (or C / D) tab. Shows what is queued
 //            for that source, in play order, with the next one marked — because the
 //            only question this view exists to answer quickly is "what comes next".
-//  Inputs  : `setItems`, called whenever that channel's queue changes.
-//  Outputs : `onRemove`, when a row's ✕ is pressed.
+//            A REPEAT key heads the list: lit (the default), a played clip goes to
+//            the bottom so the queue cycles; dark, it leaves the queue.
+//  Inputs  : `setItems` and `setRepeats`, whenever that channel's queue changes.
+//  Outputs : `onRemove`, when a row's ✕ is pressed; `onRepeatChanged`, on REPEAT.
 //  Connects: LibraryPanelBody (which owns one per channel), ShellController (which
 //            owns the queues themselves).
 //  Extend  : drag-to-reorder belongs here, driven onto `ClipQueue.move` — do not add
@@ -21,9 +23,22 @@ final class QueueView: NSView {
     /// Called with the item to drop from the queue.
     var onRemove: ((QueueItem.ID) -> Void)?
 
+    /// Called when REPEAT is toggled, with its new state.
+    var onRepeatChanged: ((Bool) -> Void)?
+
     private let channel: String
     private let stack = NSStackView()
     private let emptyLabel: NSTextField
+
+    /// REPEAT: lit = played clips go to the bottom; dark = they leave the queue.
+    private let repeatKey = VBOptionButton(title: "REPEAT")
+    /// Says in words what REPEAT is doing, beside it.
+    private let repeatCaption = Controls.label(
+        "", font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
+
+    /// The number and name labels of each row, parallel to `stack.arrangedSubviews`,
+    /// so a take can restyle rows in place instead of rebuilding them.
+    private var rowLabels: [(number: NSTextField, name: NSTextField)] = []
 
     init(channel: String) {
         self.channel = channel
@@ -32,6 +47,20 @@ final class QueueView: NSView {
                 + "Play Last, then set the source to 1 so it plays its Queue.",
             font: Theme.Font.tinyLabel, color: Theme.Color.textTertiary)
         super.init(frame: .zero)
+
+        // REPEAT heads the list, where the eye already is when checking the queue.
+        repeatKey.isOn = true
+        repeatKey.target = self
+        repeatKey.action = #selector(repeatToggled)
+        repeatKey.toolTip = "REPEAT on: a clip that plays goes to the bottom of \(channel)'s queue, "
+            + "so the queue never runs out. Off: it leaves the queue."
+        repeatKey.setContentCompressionResistancePriority(.required, for: .horizontal)
+        repeatCaption.lineBreakMode = .byTruncatingTail
+        repeatCaption.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let header = Controls.row([repeatKey, repeatCaption, Controls.spacer()], spacing: 6)
+        header.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(header)
+        showRepeatState()
 
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -45,15 +74,44 @@ final class QueueView: NSView {
         addSubview(emptyLabel)
 
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            header.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            header.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            header.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+
+            stack.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
 
-            emptyLabel.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            emptyLabel.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
             emptyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
             emptyLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)
         ])
+    }
+
+    /// Points REPEAT at the queue's state without firing its action.
+    func setRepeats(_ repeats: Bool) {
+        guard repeatKey.isOn != repeats else { return }
+        repeatKey.isOn = repeats
+        showRepeatState()
+    }
+
+    /// REPEAT's state — for self-QA.
+    var repeatsForChecks: Bool { repeatKey.isOn }
+
+    /// Presses REPEAT the way a click does — for self-QA.
+    func toggleRepeatForChecks() {
+        repeatKey.isOn.toggle()
+        repeatToggled()
+    }
+
+    @objc private func repeatToggled() {
+        showRepeatState()
+        onRepeatChanged?(repeatKey.isOn)
+    }
+
+    private func showRepeatState() {
+        repeatCaption.stringValue = repeatKey.isOn ? "played clips go to the bottom" : "played clips leave the queue"
     }
 
     @available(*, unavailable)
@@ -65,48 +123,66 @@ final class QueueView: NSView {
     /// The rows' clip names, in play order — for self-QA.
     var shownNamesForChecks: [String] { shownItems.map(\.displayName) }
 
-    /// Replaces the list. The one change that happens at a TAKE — ADV taking the top
-    /// clip — only removes the top row and restyles the new top one (the accent
-    /// moves); anything else rebuilds, since a queue is a handful of rows.
+    /// Replaces the list, touching as few rows as it can: a queue can hold up to the
+    /// Up Next limit (hundreds of rows), and this runs on the main thread mid-show.
+    /// In place: unchanged (nothing), one row removed (a take with REPEAT off, or a
+    /// ✕), top row to the bottom (a take with REPEAT on), clips added at the end.
+    /// Only anything else — Play Next, a clear — rebuilds the whole list.
     func setItems(_ items: [QueueItem]) {
         defer { shownItems = items }
-        if !shownItems.isEmpty, items == Array(shownItems.dropFirst()),
-           stack.arrangedSubviews.count == shownItems.count {
+        let inPlace = stack.arrangedSubviews.count == shownItems.count
+            && rowLabels.count == shownItems.count
+        // Every queue edit refreshes all four lists; the unchanged ones stop here.
+        if inPlace, items == shownItems { return }
+        if inPlace, !shownItems.isEmpty, items.count == shownItems.count - 1,
+           case let gone = items.indices.first(where: { items[$0].id != shownItems[$0].id }) ?? items.count,
+           items == Array(shownItems[..<gone]) + Array(shownItems[(gone + 1)...]) {
+            let row = stack.arrangedSubviews[gone]
+            stack.removeArrangedSubview(row)
+            row.discardFromSuperview()
+            rowLabels.remove(at: gone)
+            restyleRows()
+            emptyLabel.isHidden = !items.isEmpty
+            return
+        }
+        if inPlace, items.count > 1, items.count == shownItems.count,
+           items == Array(shownItems.dropFirst()) + [shownItems[0]] {
             let top = stack.arrangedSubviews[0]
             stack.removeArrangedSubview(top)
-            top.discardFromSuperview()
-            if let first = items.first, let old = stack.arrangedSubviews.first {
-                stack.removeArrangedSubview(old)
-                old.discardFromSuperview()
-                stack.insertArrangedSubview(row(for: first, position: 0), at: 0)
+            stack.addArrangedSubview(top)
+            rowLabels.append(rowLabels.removeFirst())
+            restyleRows()
+            return
+        }
+        if inPlace, items.count > shownItems.count, Array(items.prefix(shownItems.count)) == shownItems {
+            for item in items.dropFirst(shownItems.count) {
+                stack.addArrangedSubview(row(for: item))
             }
-            emptyLabel.isHidden = !items.isEmpty
+            restyleRows()
+            emptyLabel.isHidden = true
             return
         }
         for view in stack.arrangedSubviews {
             stack.removeArrangedSubview(view)
             view.discardFromSuperview()
         }
+        rowLabels = []
 
         emptyLabel.isHidden = !items.isEmpty
 
-        for (index, item) in items.enumerated() {
-            stack.addArrangedSubview(row(for: item, position: index))
+        for item in items {
+            stack.addArrangedSubview(row(for: item))
         }
+        restyleRows()
     }
 
-    private func row(for item: QueueItem, position: Int) -> NSView {
-        // The first row is what plays next, so it is the one that gets the accent.
-        // Everything below it is just order.
-        let isNext = position == 0
-        let number = Controls.monoLabel(
-            isNext ? "▸" : "\(position + 1)",
-            color: isNext ? Theme.Color.accent : Theme.Color.textTertiary,
-            holdsWidth: true)
+    private func row(for item: QueueItem) -> NSView {
+        // Sized for three digits, then numbered by `restyleRows`: a take renumbers
+        // rows in place, so every row's number column has to be the same width.
+        let number = Controls.monoLabel("000", color: Theme.Color.textTertiary, holdsWidth: true)
+        number.alignment = .right
 
-        let name = Controls.label(
-            item.displayName,
-            color: isNext ? Theme.Color.textPrimary : Theme.Color.textSecondary)
+        let name = Controls.label(item.displayName, color: Theme.Color.textSecondary)
         name.lineBreakMode = .byTruncatingMiddle
         name.toolTip = item.url.path
         name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -115,7 +191,24 @@ final class QueueView: NSView {
         remove.identifier = NSUserInterfaceItemIdentifier(item.id.uuidString)
         remove.toolTip = "Take \(item.displayName) out of \(channel)'s Queue"
 
+        rowLabels.append((number, name))
         return Controls.row([number, name, Controls.spacer(), remove], spacing: 4)
+    }
+
+    /// Numbers the rows in play order. The first row is what plays next, so it is
+    /// the one that gets the accent; everything below it is just order.
+    private func restyleRows() {
+        for (position, labels) in rowLabels.enumerated() {
+            let isNext = position == 0
+            let text = isNext ? "▸" : "\(position + 1)"
+            if labels.number.stringValue != text { labels.number.stringValue = text }
+            // Set only on change: every set invalidates the label, and this walks
+            // every row on every take.
+            let numberColor = isNext ? Theme.Color.accent : Theme.Color.textTertiary
+            let nameColor = isNext ? Theme.Color.textPrimary : Theme.Color.textSecondary
+            if labels.number.textColor != numberColor { labels.number.textColor = numberColor }
+            if labels.name.textColor != nameColor { labels.name.textColor = nameColor }
+        }
     }
 
     @objc private func removePressed(_ sender: NSButton) {

@@ -156,6 +156,20 @@ extension PreferencesWindowController {
         undoLimit.selectItem(withTag: store.preferences.undoLimit)
         undoLimit.toolTip = "How many edits File ▸ Undo History keeps. Lowering it forgets "
             + "the oldest straight away."
+        // Up Next limit: Auto (from this Mac's memory, worked out at launch) or a
+        // number picked by hand. A stored value that is not one of the choices (an
+        // edited preferences file) is shown as its own item rather than lost.
+        var limitChoices = QueueLimit.manualChoices
+        if let manual = store.preferences.queueLimit, !limitChoices.contains(manual) {
+            limitChoices = (limitChoices + [manual]).sorted()
+        }
+        let queueLimit = Controls.popUp(
+            ["Auto (\(QueueLimit.automaticAtLaunch) clips)"] + limitChoices.map { "\($0) clips" },
+            target: self, action: #selector(queueLimitChanged(_:)))
+        queueLimit.identifier = NSUserInterfaceItemIdentifier(limitChoices.map(String.init).joined(separator: ","))
+        queueLimit.selectItem(at: store.preferences.queueLimit.flatMap { limitChoices.firstIndex(of: $0) }.map { $0 + 1 } ?? 0)
+        queueLimit.toolTip = "Most clips each channel's Up Next can hold. Auto is set from this Mac's "
+            + "memory when Videoboy opens. Lowering it does not remove clips already queued."
 
         return Controls.column([
             header(.defaults),
@@ -172,6 +186,7 @@ extension PreferencesWindowController {
             field("Queue empty, C/D", fallbackPopUp("two")),
             field("Say when ADV improvises", announce),
             field("Undo history", undoLimit),
+            field("Up Next limit", queueLimit),
             spacer(12),
             field("Reminders", Controls.row([restore, reminderCountLabel!], spacing: 10))
         ], spacing: 8)
@@ -196,6 +211,14 @@ extension PreferencesWindowController {
 
     @objc func announceFallbackChanged(_ sender: NSSwitch) {
         store.preferences.announcesAdvanceFallback = sender.state == .on
+    }
+
+    @objc func queueLimitChanged(_ sender: NSPopUpButton) {
+        let choices = (sender.identifier?.rawValue ?? "").split(separator: ",").compactMap { Int($0) }
+        let index = sender.indexOfSelectedItem
+        store.preferences.queueLimit = index >= 1 && choices.indices.contains(index - 1) ? choices[index - 1] : nil
+        Log.info(.app, "Up Next limit: " + (store.preferences.queueLimit.map { "\($0) clips" }
+            ?? "Auto (\(QueueLimit.automaticAtLaunch) clips)"))
     }
 
     private func reminderSummary() -> String {

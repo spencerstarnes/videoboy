@@ -106,6 +106,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// The canvas the project renders at (Settings ▸ Project). Read once at launch;
     /// a change takes effect the next time the app opens (see `ProjectCanvas`).
     public var projectCanvas: ProjectCanvas = .sdNTSC
+    /// Most clips one channel's Up Next may hold. Nil = Auto (`QueueLimit`, from the
+    /// Mac's memory at launch).
+    public var queueLimit: Int?
     /// Play a clip's linked optimized file when there is one (0.4.10, proposal §5).
     public var usesOptimizedMedia: Bool = true
     /// What Copy + Optimize writes. Only "compact" (MPEG-2 GOP 6) exists; any other
@@ -233,6 +236,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         // A canvas this build does not offer (yet) reads as the reference.
         let storedCanvas = decode(.projectCanvas, ProjectCanvas.sdNTSC)
         projectCanvas = storedCanvas.isAvailable ? storedCanvas : .sdNTSC
+        queueLimit = decode(.queueLimit, nil as Int?)
         usesOptimizedMedia = decode(.usesOptimizedMedia, true)
         // Anything but a known preset reads as the one that exists.
         let storedPreset = decode(.optimizePreset, "compact")

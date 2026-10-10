@@ -34,8 +34,12 @@ final class ClipQueueTests: XCTestCase {
             "Play Next goes in front of the queue, Add goes on the end")
     }
 
-    func testTakingAnItemConsumesIt() {
-        var queue = ClipQueue()
+    func testRepeatIsOnByDefault() {
+        XCTAssertTrue(ClipQueue().repeats, "a queue cycles unless the performer turns REPEAT off")
+    }
+
+    func testWithRepeatOffTakingAnItemConsumesIt() {
+        var queue = ClipQueue(repeats: false)
         queue.append(url: url("one.mov"))
         queue.append(url: url("two.mov"))
 
@@ -43,6 +47,93 @@ final class ClipQueueTests: XCTestCase {
         XCTAssertEqual(queue.count, 1, "playing an item takes it off the queue — Up Next's rule")
         XCTAssertEqual(queue.takeNext()?.displayName, "two.mov")
         XCTAssertNil(queue.takeNext(), "an exhausted queue reports empty rather than repeating")
+    }
+
+    func testWithRepeatOnTakingAnItemMovesItToTheBottom() {
+        var queue = ClipQueue()
+        for name in ["one", "two", "three"] { queue.append(url: url("\(name).mov")) }
+        let firstID = queue.items[0].id
+
+        XCTAssertEqual(queue.takeNext()?.displayName, "one.mov")
+        XCTAssertEqual(queue.items.map(\.displayName), ["two.mov", "three.mov", "one.mov"],
+                       "the played clip goes to the bottom, the rest move up")
+        XCTAssertEqual(queue.items.last?.id, firstID, "same item, moved — not a copy")
+
+        let order = (0..<4).compactMap { _ in queue.takeNext()?.displayName }
+        XCTAssertEqual(order, ["two.mov", "three.mov", "one.mov", "two.mov"], "it cycles forever")
+        XCTAssertEqual(queue.count, 3)
+    }
+
+    func testTurningRepeatOffMidSetKeepsTheQueueAndStopsTheCycle() {
+        var queue = ClipQueue()
+        queue.append(url: url("one.mov"))
+        queue.append(url: url("two.mov"))
+        _ = queue.takeNext()
+        queue.repeats = false
+        XCTAssertEqual(queue.items.map(\.displayName), ["two.mov", "one.mov"])
+        _ = queue.takeNext()
+        _ = queue.takeNext()
+        XCTAssertTrue(queue.isEmpty)
+    }
+
+    func testAQueueWrittenBeforeRepeatExistedDecodesAsRepeating() throws {
+        // Today's encoding with the `repeats` key taken out = what an older build wrote.
+        var written = ClipQueue(repeats: false)
+        written.append(url: url("a.mov"))
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(written)) as? [String: Any])
+        object["repeats"] = nil
+        let old = try JSONSerialization.data(withJSONObject: object)
+        let queue = try JSONDecoder().decode(ClipQueue.self, from: old)
+        XCTAssertTrue(queue.repeats)
+        XCTAssertEqual(queue.count, 1)
+        let round = try JSONDecoder().decode(ClipQueue.self, from: JSONEncoder().encode(ClipQueue(repeats: false)))
+        XCTAssertFalse(round.repeats, "REPEAT off survives a round trip")
+    }
+
+    func testBatchAppendKeepsOrderAndStopsAtTheLimit() {
+        var queue = ClipQueue()
+        queue.append(url: url("already.mov"))
+        let added = queue.append(urls: ["a", "b", "c", "d"].map { url("\($0).mov") }, limit: 3)
+        XCTAssertEqual(added, 2, "room for two: the queue already held one")
+        XCTAssertEqual(queue.items.map(\.displayName), ["already.mov", "a.mov", "b.mov"])
+        XCTAssertEqual(queue.append(urls: [url("e.mov")], limit: 3), 0, "a full queue takes nothing")
+    }
+
+    func testBatchPlayNextKeepsTheSelectionsOrderInFront() {
+        var queue = ClipQueue()
+        queue.append(url: url("later.mov"))
+        let added = queue.insertNext(urls: [url("one.mov"), url("two.mov")], limit: 10)
+        XCTAssertEqual(added, 2)
+        XCTAssertEqual(queue.items.map(\.displayName), ["one.mov", "two.mov", "later.mov"],
+                       "the first selected plays first")
+    }
+
+    func testAutoLimitScalesWithMemoryAndIsClamped() {
+        let gb: UInt64 = 1 << 30
+        let small = QueueLimit.automatic(physicalMemory: 8 * gb)
+        let big = QueueLimit.automatic(physicalMemory: 64 * gb)
+        XCTAssertLessThan(small, big, "more memory, longer queues")
+        XCTAssertEqual(QueueLimit.automatic(physicalMemory: 1 * gb), QueueLimit.automaticFloor)
+        XCTAssertEqual(QueueLimit.automatic(physicalMemory: 1024 * gb), QueueLimit.automaticCeiling)
+        XCTAssertTrue((QueueLimit.automaticFloor...QueueLimit.automaticCeiling).contains(QueueLimit.automaticAtLaunch))
+    }
+
+    func testManualLimitWinsAndIsClamped() {
+        XCTAssertEqual(QueueLimit.resolved(manual: nil), QueueLimit.automaticAtLaunch)
+        XCTAssertEqual(QueueLimit.resolved(manual: 250), 250)
+        XCTAssertEqual(QueueLimit.resolved(manual: 0), QueueLimit.manualRange.lowerBound)
+        XCTAssertEqual(QueueLimit.resolved(manual: 1_000_000), QueueLimit.manualRange.upperBound)
+    }
+
+    func testQueueLimitPreferenceRoundTripsAndDefaultsToAuto() throws {
+        var preferences = Preferences()
+        XCTAssertNil(preferences.queueLimit, "Auto unless set by hand")
+        preferences.queueLimit = 500
+        let decoded = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(preferences))
+        XCTAssertEqual(decoded.queueLimit, 500)
+        let auto = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(Preferences()))
+        XCTAssertNil(auto.queueLimit)
     }
 
     func testPeekDoesNotConsume() {

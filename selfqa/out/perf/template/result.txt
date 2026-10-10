@@ -1,12 +1,16 @@
 check:    perf/template
 verdict:  PASS
-when:     2026-09-28T03:09:37Z
+when:     2026-10-10T22:42:12Z
 core:     0.4.10
 
-assertions (6/6 passed):
+assertions (10/10 passed):
+  PASS  Play Next puts a clip in front of what Play Last queued — A's Queue shows ["motion.m2v", "hd-h264-25.mov"]
   PASS  the show saves to a template file — file true, window subtitle 'QA Show.vbt'
+  PASS  the file is template v5 and lists the Queues — version 5 true, queues true
+  PASS  New empties every Queue, on screen too — A [] tab 'A', D [] tab 'D'
   PASS  New clears the show back to how the app opened — A empty true, C file true, chain 7/7, mappings 0
   PASS  Open brings back channel A: the clip, its marks, ping-pong, playing — motion.mov, range Optional(ClosedRange(0.2...0.7)), Ping-Pong, playing true
   PASS  Open brings back the generator in C — C is Optional(Videoboy.ChannelSourceKind.generator)
   PASS  Open brings back the effect chain, values, MIDI mapping and tempo — chain 8/8, crossfade 0.8, colour 0.660, mapping true, tempo 97.0
+  PASS  Open brings back the Queues in play order, and their tabs count them — A ["motion.m2v", "hd-h264-25.mov"] tab 'A 2', D ["hd-prores.mov"] tab 'D 1'
   PASS  the controls on screen show the opened values (crossfader, effect fader) — A/B crossfader shows 0.80; colour fader matches yes

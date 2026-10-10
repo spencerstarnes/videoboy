@@ -17,13 +17,14 @@
 //  Connects: ClipSourceNode (which says when a one-shot clip has finished),
 //            ShellController (which owns the four of these and does the loading),
 //            the library panels (which fill them).
-//  Extend  : shuffle or repeat-all would go here as a mode on the queue, NOT as a
-//            second queue type — `takeNext` stays the one way anything leaves.
+//  Extend  : shuffle would go here as a mode on the queue, NOT as a second queue
+//            type — `takeNext` stays the one way anything leaves the front.
 //
-//  Up Next semantics, deliberately: taking an item PLAYS it and therefore REMOVES it.
-//  A queue that kept what it had already played would need a separate cursor, and
-//  then "what is next" and "where am I" could disagree — which is the bug that makes
-//  queue UIs confusing. Here the front of the list is always literally next.
+//  Up Next semantics, deliberately: taking an item PLAYS it and moves it off the
+//  FRONT. With REPEAT on (the default, owner request 2026-09-29 — a DJ set ran out of
+//  queued content fast) it goes to the BOTTOM, so the queue cycles; with REPEAT off
+//  it is removed. Either way there is no separate cursor: the front of the list is
+//  always literally next, so "what is next" and "where am I" can never disagree.
 //
 
 import Foundation
@@ -49,8 +50,22 @@ public struct ClipQueue: Equatable, Codable, Sendable {
 
     public private(set) var items: [QueueItem]
 
-    public init(items: [QueueItem] = []) {
+    /// REPEAT: a taken item goes to the bottom of the queue instead of leaving it.
+    /// On by default, so a queue never runs dry mid-set.
+    public var repeats: Bool
+
+    public init(items: [QueueItem] = [], repeats: Bool = true) {
         self.items = items
+        self.repeats = repeats
+    }
+
+    private enum CodingKeys: String, CodingKey { case items, repeats }
+
+    /// Reads queues written before REPEAT existed as repeating (the default).
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decode([QueueItem].self, forKey: .items)
+        repeats = try container.decodeIfPresent(Bool.self, forKey: .repeats) ?? true
     }
 
     public var isEmpty: Bool { items.isEmpty }
@@ -72,10 +87,36 @@ public struct ClipQueue: Equatable, Codable, Sendable {
         items.insert(QueueItem(url: url), at: 0)
     }
 
-    /// Takes the next item off the front. Returns nil when the queue is empty, which
-    /// is how a one-shot clip knows to just stop the way it always did.
+    /// Adds several clips to the END, in order, stopping at `limit` items in the
+    /// queue. Returns how many went in — the rest did not fit. One call for a whole
+    /// selection, so the caller redraws once rather than once per clip.
+    @discardableResult
+    public mutating func append(urls: [URL], limit: Int) -> Int {
+        let room = max(0, limit - items.count)
+        let taken = urls.prefix(room)
+        items.append(contentsOf: taken.map { QueueItem(url: $0) })
+        return taken.count
+    }
+
+    /// Puts several clips at the FRONT, keeping their order (the first plays first),
+    /// stopping at `limit` items in the queue. Returns how many went in.
+    @discardableResult
+    public mutating func insertNext(urls: [URL], limit: Int) -> Int {
+        let room = max(0, limit - items.count)
+        let taken = urls.prefix(room)
+        items.insert(contentsOf: taken.map { QueueItem(url: $0) }, at: 0)
+        return taken.count
+    }
+
+    /// Takes the next item off the front. With REPEAT on it goes back in at the
+    /// bottom (same id, so a view can show it as a move); with REPEAT off it is gone.
+    /// Returns nil only when the queue is empty, which is how a one-shot clip knows
+    /// to just stop the way it always did.
     public mutating func takeNext() -> QueueItem? {
-        items.isEmpty ? nil : items.removeFirst()
+        guard !items.isEmpty else { return nil }
+        let item = items.removeFirst()
+        if repeats { items.append(item) }
+        return item
     }
 
     public mutating func remove(id: QueueItem.ID) {
@@ -141,5 +182,44 @@ public struct QueueSet: Equatable, Codable, Sendable {
             for path in paths { queue.append(url: URL(fileURLWithPath: path)) }
             queues[channel] = queue
         }
+    }
+}
+
+/// How many clips one channel's Up Next may hold.
+///
+/// Queued clips are not opened — ADV opens only the next one — but every queued clip
+/// is a row in the queue list, and on a layer-backed panel each row keeps rendered
+/// text bitmaps. The limit keeps that bounded. Auto is set once at launch from the
+/// Mac's memory; Settings ▸ Defaults can set it by hand (`Preferences.queueLimit`).
+public enum QueueLimit {
+
+    /// Estimated memory one queued row costs in the list (two text labels and a ✕
+    /// button, rendered at 2×). An estimate, deliberately on the high side.
+    public static let estimatedBytesPerRow: UInt64 = 150 * 1024
+    /// The share of physical memory Auto lets the four queue lists use together.
+    public static let memoryShare: Double = 0.01
+    /// Auto never goes below this (small Macs) or above `automaticCeiling`.
+    public static let automaticFloor = 50
+    public static let automaticCeiling = 1000
+    /// What Settings offers as a manual limit, in clips per channel.
+    public static let manualChoices = [50, 100, 250, 500, 1000, 2000]
+    /// A stored manual limit is kept inside these bounds.
+    public static let manualRange = 10...5000
+
+    /// Auto's limit for a Mac with `physicalMemory` bytes: its share of memory, split
+    /// across the four channels, divided by the cost of a row, clamped.
+    public static func automatic(physicalMemory: UInt64) -> Int {
+        let perChannel = Double(physicalMemory) * memoryShare / Double(QueueSet.channels.count)
+        let rows = Int(perChannel / Double(estimatedBytesPerRow))
+        return min(max(rows, automaticFloor), automaticCeiling)
+    }
+
+    /// Auto's limit for this Mac, worked out once at launch.
+    public static let automaticAtLaunch = automatic(physicalMemory: ProcessInfo.processInfo.physicalMemory)
+
+    /// The limit in force: the manual one when set (clamped), else Auto.
+    public static func resolved(manual: Int?) -> Int {
+        guard let manual else { return automaticAtLaunch }
+        return min(max(manual, manualRange.lowerBound), manualRange.upperBound)
     }
 }

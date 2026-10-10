@@ -10,7 +10,7 @@
         {
           "instanceID" : "mosh",
           "moduleID" : "native.datamosh",
-          "target" : 2
+          "target" : 0
         },
         {
           "instanceID" : "transform",
@@ -20,7 +20,7 @@
         {
           "instanceID" : "colour",
           "moduleID" : "builtin.Colour",
-          "target" : 2
+          "target" : 0
         },
         {
           "instanceID" : "composite",
@@ -49,7 +49,7 @@
         {
           "instanceID" : "mosh",
           "moduleID" : "native.datamosh",
-          "target" : 2
+          "target" : 0
         },
         {
           "instanceID" : "transform",
@@ -59,7 +59,7 @@
         {
           "instanceID" : "colour",
           "moduleID" : "builtin.Colour",
-          "target" : 2
+          "target" : 0
         },
         {
           "instanceID" : "composite",
@@ -90,7 +90,7 @@
       "inPoint" : 0.2,
       "isPlaying" : true,
       "loopMode" : "pingPong",
-      "mediaPath" : "/Users/spencerstarnes/dev/videoboy-perf/samples/motion.mov",
+      "mediaPath" : "/Users/spencerstarnes/dev/videoboy/samples/motion.mov",
       "outPoint" : 0.7
     },
     "B" : {
@@ -110,6 +110,20 @@
       "loopMode" : "loop"
     }
   },
+  "clipPads" : {
+    "leftTakesSecond" : false,
+    "pads" : [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "rightTakesSecond" : false
+  },
   "clock" : {
     "beatsPerBar" : 4,
     "beatsPerMinute" : 97,
@@ -117,29 +131,14 @@
   },
   "edges" : [
     {
-      "from" : "data.one",
+      "from" : "fx.one.freeze",
       "inputIndex" : 0,
       "to" : "burn.one"
     },
     {
-      "from" : "data.two",
-      "inputIndex" : 0,
-      "to" : "burn.two"
-    },
-    {
-      "from" : "fx.one.freeze",
-      "inputIndex" : 0,
-      "to" : "data.one"
-    },
-    {
-      "from" : "fx.program.composite",
-      "inputIndex" : 0,
-      "to" : "data.program"
-    },
-    {
       "from" : "fx.two.freeze",
       "inputIndex" : 0,
-      "to" : "data.two"
+      "to" : "burn.two"
     },
     {
       "from" : "fx.a.transform",
@@ -433,42 +432,6 @@
       "moduleType" : "ScopeOverlayNode",
       "parameters" : {
 
-      }
-    },
-    {
-      "identifier" : "data.one",
-      "moduleType" : "BusCodecNode",
-      "parameters" : {
-        "02A" : 1,
-        "31B" : 0,
-        "32B" : 0,
-        "33B" : 0.25,
-        "34B" : 1,
-        "75A" : 0
-      }
-    },
-    {
-      "identifier" : "data.program",
-      "moduleType" : "BusCodecNode",
-      "parameters" : {
-        "02A" : 0,
-        "31B" : 0,
-        "32B" : 0,
-        "33B" : 0.25,
-        "34B" : 1,
-        "75A" : 0
-      }
-    },
-    {
-      "identifier" : "data.two",
-      "moduleType" : "BusCodecNode",
-      "parameters" : {
-        "02A" : 1,
-        "31B" : 0,
-        "32B" : 0,
-        "33B" : 0.25,
-        "34B" : 1,
-        "75A" : 0
       }
     },
     {
@@ -1335,5 +1298,14 @@
       }
     }
   ],
-  "version" : 3
+  "queues" : {
+    "A" : [
+      "/Users/spencerstarnes/dev/videoboy/samples/motion.m2v",
+      "/Users/spencerstarnes/dev/videoboy/samples/hd-h264-25.mov"
+    ],
+    "D" : [
+      "/Users/spencerstarnes/dev/videoboy/samples/hd-prores.mov"
+    ]
+  },
+  "version" : 5
 }

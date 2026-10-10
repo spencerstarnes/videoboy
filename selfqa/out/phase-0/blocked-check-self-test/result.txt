@@ -1,6 +1,6 @@
 check:    phase-0/blocked-check-self-test
 verdict:  BLOCKED
-when:     2026-10-10T22:30:57Z
+when:     2026-10-10T22:41:08Z
 core:     0.4.10
 
 notes:
@@ -10,33 +10,33 @@ assertions (1/1 passed):
   PASS  irrelevant — ignored
 
 recent log:
-  1791671452.884 INFO [app] reminder 'setSaveLocation' suppressed
-  1791671452.884 INFO [app] reminder 'noOutputsSelected' suppressed
-  1791671452.884 INFO [app] reminder 'saveOnQuit' suppressed
-  1791671452.885 INFO [app] reminder 'midiWithNoDevice' suppressed
-  1791671452.885 INFO [app] reminder 'audioMappingWithoutAudioClock' suppressed
-  1791671452.885 INFO [app] all reminders restored
-  1791671452.886 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-D82F956D-E7CF-4488-9B86-22C84CDE01D8/preferences.json; using defaults
-  1791671452.887 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-DF2528BA-3CD9-4FCD-B896-5B7C97757BE6/preferences.json; using defaults
-  1791671452.887 INFO [app] reminder 'saveOnQuit' suppressed
-  1791671452.888 WARN [app] VIDEOBOY_CANVAS=hd is not an available canvas; using Vertical 1080×1920 (9:16)
-  1791671455.753 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/scopes/send/before.png
-  1791671455.757 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/scopes/send/after-lower-third.png
-  1791671455.759 INFO [selfqa] wrote 480x360 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/scopes/send/scope.png
-  1791671456.747 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/00-source.png
-  1791671456.785 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/waveform.png
-  1791671456.785 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1791671456.801 INFO [selfqa] phase-5/scopes: PASS  Waveform draws a trace — variance 437
-  1791671456.839 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/parade.png
-  1791671456.839 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1791671456.855 INFO [selfqa] phase-5/scopes: PASS  RGB Parade draws a trace — variance 432
-  1791671456.880 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/histogram.png
-  1791671456.880 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1791671456.896 INFO [selfqa] phase-5/scopes: PASS  Histogram draws a trace — variance 409
-  1791671456.977 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/vectorscope.png
-  1791671456.977 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
-  1791671456.993 INFO [selfqa] phase-5/scopes: PASS  Vectorscope draws a trace — variance 185
-  1791671457.224 INFO [selfqa] wrote 640x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/quad.png
-  1791671457.246 INFO [selfqa] phase-5/scopes: colour bars read: 12.5% crushed
-  1791671457.246 INFO [selfqa] phase-5/scopes: PASS -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/result.txt
-  1791671457.247 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
+  1791672063.679 INFO [app] reminder 'setSaveLocation' suppressed
+  1791672063.679 INFO [app] reminder 'noOutputsSelected' suppressed
+  1791672063.679 INFO [app] reminder 'saveOnQuit' suppressed
+  1791672063.679 INFO [app] reminder 'midiWithNoDevice' suppressed
+  1791672063.680 INFO [app] reminder 'audioMappingWithoutAudioClock' suppressed
+  1791672063.680 INFO [app] all reminders restored
+  1791672063.680 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-23D0446F-5106-4E18-9814-17367DEA98D4/preferences.json; using defaults
+  1791672063.682 INFO [app] no preferences file at /var/folders/7x/97y4801j1_14pp274q_d98380000gn/T/videoboy-prefs-8AA72D8A-F838-4F90-927A-06C0CCF04F14/preferences.json; using defaults
+  1791672063.682 INFO [app] reminder 'saveOnQuit' suppressed
+  1791672063.683 WARN [app] VIDEOBOY_CANVAS=hd is not an available canvas; using Vertical 1080×1920 (9:16)
+  1791672066.590 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/scopes/send/before.png
+  1791672066.592 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/scopes/send/after-lower-third.png
+  1791672066.594 INFO [selfqa] wrote 480x360 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/scopes/send/scope.png
+  1791672067.596 INFO [selfqa] wrote 720x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/00-source.png
+  1791672067.636 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/waveform.png
+  1791672067.636 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1791672067.652 INFO [selfqa] phase-5/scopes: PASS  Waveform draws a trace — variance 437
+  1791672067.692 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/parade.png
+  1791672067.692 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1791672067.708 INFO [selfqa] phase-5/scopes: PASS  RGB Parade draws a trace — variance 432
+  1791672067.735 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/histogram.png
+  1791672067.735 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1791672067.751 INFO [selfqa] phase-5/scopes: PASS  Histogram draws a trace — variance 409
+  1791672067.834 INFO [selfqa] wrote 480x300 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/vectorscope.png
+  1791672067.834 INFO [selfqa] phase-5/scopes: PASS  dimensions — expected 480x300, got 480x300
+  1791672067.850 INFO [selfqa] phase-5/scopes: PASS  Vectorscope draws a trace — variance 185
+  1791672068.080 INFO [selfqa] wrote 640x480 PNG -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/quad.png
+  1791672068.102 INFO [selfqa] phase-5/scopes: colour bars read: 12.5% crushed
+  1791672068.102 INFO [selfqa] phase-5/scopes: PASS -> /Users/spencerstarnes/dev/videoboy/selfqa/out/phase-5/scopes/result.txt
+  1791672068.104 INFO [selfqa] phase-0/blocked-check-self-test: PASS  irrelevant — ignored
