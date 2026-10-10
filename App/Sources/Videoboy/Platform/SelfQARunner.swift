@@ -92,6 +92,8 @@ enum SelfQARunner {
             verdict = UndoSelfQA.run()
         case "lock":
             verdict = LockSelfQA.run()
+        case "step":
+            verdict = StepSelfQA.run()
         case "fx-focus":
             verdict = FXFocusSelfQA.run()
         case "push-fade":
