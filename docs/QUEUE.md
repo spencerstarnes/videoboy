@@ -13,10 +13,13 @@ request goes here before any work starts; nothing is worked outside it.
 4. Items are never deleted. A dropped item moves to *Done* marked "dropped by owner".
 
 ## In progress
-_(none)_
+- **Q4 — Audit W-01: keep the displays awake while the render clock runs.** "Yes apply
+  both fixes now." (2026-10-12; the owner's go-ahead for W-01 and W-02 in
+  `docs/AUDIT-2026-10-12-WORKLIST.md`.)
 
 ## Queued
-_(empty — next request goes here)_
+- **Q5 — Audit W-02: ⌘H must never hide the program output.** "Yes apply both fixes
+  now." (2026-10-12; same request as Q4.)
 
 ## Awaiting verification
 - **Q2 — Queue memory limit.** "video boy seems to be crashing if I load too many

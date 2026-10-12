@@ -747,7 +747,11 @@ final class Engine {
     /// The view whose window decides which screen clocks the engine.
     private weak var clockView: NSView?
     private var screenObserver: NSObjectProtocol?
-    /// Keeps App Nap from throttling the render clock while the app is in the back.
+    /// Keeps App Nap from throttling the render clock while the app is in the back,
+    /// and holds off display and system sleep while it runs. MIDI input does not count
+    /// as user activity, so in a set played only on a controller the displays slept at
+    /// the energy-saver timeout: the HDMI card lost its signal and the analog output
+    /// went black mid-show (audit 2026-10-12, V-01).
     private var liveActivity: NSObjectProtocol?
 
     /// Starts the render clock, driven by the display the window is on.
@@ -776,8 +780,9 @@ final class Engine {
             self.attachDisplayLink()
         }
         liveActivity = ProcessInfo.processInfo.beginActivity(
-            options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+            options: [.userInitiated, .idleDisplaySleepDisabled, .latencyCritical],
             reason: "live video render loop")
+        Log.info(.render, "display and system sleep held off while the render clock runs")
         midi.start()
         Log.info(.render, "render clock started")
     }
