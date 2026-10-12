@@ -13,13 +13,20 @@ request goes here before any work starts; nothing is worked outside it.
 4. Items are never deleted. A dropped item moves to *Done* marked "dropped by owner".
 
 ## In progress
-- **Q5 — Audit W-02: ⌘H must never hide the program output.** "Yes apply both fixes
-  now." (2026-10-12; same request as Q4.)
+_(none)_
 
 ## Queued
 _(empty — next request goes here)_
 
 ## Awaiting verification
+- **Q5 — Audit W-02: ⌘H must never hide the program output.** "Yes apply both fixes
+  now." (2026-10-12; same request as Q4.) Built in `4ebf3b9` on
+  `claude/audit-2026-10-12`: the borderless output window sets `canHide = false`. Every
+  output window (PROGRAM from ShellController, routed ones from OutputRouter) is built
+  by OutputWindowController, so the one line covers all of them. Not built or tested
+  (Linux container, no Swift). Needs on the Mac Studio: `scripts/verify.sh` and
+  `scripts/selfqa.sh output`; then with PROGRAM routed, ⌘H hides the main window and
+  the output display keeps showing PROGRAM.
 - **Q4 — Audit W-01: keep the displays awake while the render clock runs.** "Yes apply
   both fixes now." (2026-10-12; the owner's go-ahead for W-01 and W-02 in
   `docs/AUDIT-2026-10-12-WORKLIST.md`.) Built in `627b504` on

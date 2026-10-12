@@ -78,6 +78,8 @@ Part K is architect-led. Don't start it piecemeal.
 ### W-01 · Keep the displays awake while the render clock runs
 `P0 · S · Mechanical` · Finding V-01 (FP-3)
 
+> **Status:** built in `627b504` (queue Q4), awaiting verification on the Mac.
+
 **Why.** Nothing stops display sleep. In a MIDI-only set, no keyboard or mouse event
 resets the idle timer. Once the display-sleep timeout passes, the HDMI card loses
 signal and the analog output goes black. The output layer's `nextDrawable()` can
@@ -107,6 +109,8 @@ entries are gone.
 
 ### W-02 · ⌘H must never hide the program output
 `P0 · S · Mechanical` · Finding V-02 (UI-8)
+
+> **Status:** built in `4ebf3b9` (queue Q5), awaiting verification on the Mac.
 
 **Why.** `NSWindow.canHide` defaults to `true`. Hide Videoboy (⌘H, in the app menu)
 hides the borderless PROGRAM window, so the analog chain shows the desktop.
