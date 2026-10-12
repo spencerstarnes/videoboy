@@ -9,6 +9,10 @@ register.
 The audit was a static read. Nothing was built or run, so every "Done when" below
 still has to be proven on the Mac Studio.
 
+**Project.** NewVHS › Research & Development › Videoboy. The Claude Max subscription
+that runs the coding agents is attached to this project as a cost. The ledger and the
+projection to the beta gate are in the report's *Project costs* section.
+
 ---
 
 ## Rules for whoever executes this list
