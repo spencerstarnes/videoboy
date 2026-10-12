@@ -77,6 +77,11 @@ final class OutputWindowController: NSWindowController {
         // The window must not follow the user between spaces or get tidied away by
         // Mission Control — it is a signal output, not a document.
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenNone]
+        // Nor hidden with the app. Hide Videoboy (⌘H) hides every window whose
+        // `canHide` is true, which is the default, so one keystroke took PROGRAM off
+        // the output display and put the desktop on the analog chain (audit
+        // 2026-10-12, V-02). The controls can hide; the signal cannot.
+        window.canHide = false
         window.setFrame(workingDisplay.screen.frame, display: true)
 
         super.init(window: window)

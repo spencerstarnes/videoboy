@@ -13,15 +13,22 @@ request goes here before any work starts; nothing is worked outside it.
 4. Items are never deleted. A dropped item moves to *Done* marked "dropped by owner".
 
 ## In progress
-- **Q4 — Audit W-01: keep the displays awake while the render clock runs.** "Yes apply
-  both fixes now." (2026-10-12; the owner's go-ahead for W-01 and W-02 in
-  `docs/AUDIT-2026-10-12-WORKLIST.md`.)
-
-## Queued
 - **Q5 — Audit W-02: ⌘H must never hide the program output.** "Yes apply both fixes
   now." (2026-10-12; same request as Q4.)
 
+## Queued
+_(empty — next request goes here)_
+
 ## Awaiting verification
+- **Q4 — Audit W-01: keep the displays awake while the render clock runs.** "Yes apply
+  both fixes now." (2026-10-12; the owner's go-ahead for W-01 and W-02 in
+  `docs/AUDIT-2026-10-12-WORKLIST.md`.) Built in `627b504` on
+  `claude/audit-2026-10-12`: the render clock's process activity is now
+  `[.userInitiated, .idleDisplaySleepDisabled, .latencyCritical]`, so display and system
+  sleep are held off while it runs. Not built or tested (Linux container, no Swift).
+  Needs on the Mac Studio: `scripts/verify.sh`; then with the app running,
+  `pmset -g assertions | grep -i -A2 videoboy` lists PreventUserIdleDisplaySleep and
+  PreventUserIdleSystemSleep, and both are gone after quitting.
 - **Q2 — Queue memory limit.** "video boy seems to be crashing if I load too many
   things into the queue. I think the queue needs a limit on how many clips it loads
   at once. Right now it seems to just load everything, maybe we have a number that's
