@@ -1,5 +1,10 @@
 # Rewrite plan — 2026-10-19
 
+> **Amended 2026-10-21 by `docs/GAME-PLAN-2026-10-21.md`.** That file sets the order
+> of work (R4 moves ahead of R3; new performance phases sit between), replaces the
+> rules below, and corrects R0, R1 #4, R2 and R3. Where the two disagree, the game
+> plan wins.
+
 A staged rewrite in place, written to be executed by an autonomous Claude Opus run,
 one phase per run. It follows from the 2026-10-19 static audit (findings are quoted
 inline with file:line as of commit `a4aeb32`).

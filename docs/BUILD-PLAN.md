@@ -251,6 +251,10 @@ feature-flagged, passes `verify.sh` + its own self-QA, and must not regress `str
 ## Backlog notes / deferred ideas
 (Claude Code: append out-of-scope ideas here instead of building them mid-phase.)
 
+- **Game plan 2026-10-21 (owner-requested).** Rewrite phases plus DJ and live-band
+  performance features, in one order of work: `docs/GAME-PLAN-2026-10-21.md`. Its
+  §6 lists what was considered and left out.
+
 - **Vertical canvas, known gaps (2026-10-02).** (1) Under `stress` full load (every
   effect on every channel and bus) a 9:16 frame costs ~16 ms of GPU, right on a 60 Hz
   refresh, so the program preview's cadence reads 68–74% even against a 90% bar (frames

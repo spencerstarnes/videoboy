@@ -13,7 +13,10 @@ request goes here before any work starts; nothing is worked outside it.
 4. Items are never deleted. A dropped item moves to *Done* marked "dropped by owner".
 
 ## In progress
-_(none)_
+- **Q4 — Consolidated game plan.** "Consolidate all reactions into new features and a
+  game plan for attacking it I can use with opus"
+  Writing `docs/GAME-PLAN-2026-10-21.md` from the rewrite-plan review, the DJ review
+  and the live-concert review (all in chat, 2026-10-19 to 2026-10-21).
 
 ## Queued
 _(empty — next request goes here)_
